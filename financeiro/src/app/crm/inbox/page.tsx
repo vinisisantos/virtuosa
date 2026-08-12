@@ -99,7 +99,14 @@ import {
   Smile,
   Volume2,
   VolumeX,
+  Clock3,
 } from "lucide-react";
+import {
+  isWhatsAppFollowUpDue,
+  whatsAppFollowUpInputFromDate,
+  whatsAppFollowUpShortcutInput,
+  type WhatsAppFollowUpShortcut,
+} from "@/lib/whatsapp/follow-ups";
 
 // Tipo para instâncias de colaboradores (admin)
 interface CollaboratorInstance {
@@ -127,10 +134,10 @@ const BULK_FOLLOW_UP_MEDIA_SEND_INTERVAL_MS = 2000;
 const CALLBACK_MAX_TEAM_ATTEMPTS = 6;
 const MESSAGE_LOAD_RETRY_DELAYS_MS = [350, 1000] as const;
 
-type InboxTab = "all" | "open" | "unread" | "closed" | "archived" | "callback" | "lost";
+type InboxTab = "all" | "open" | "unread" | "closed" | "archived" | "callback" | "followup" | "lost";
 
 function serverConversationStatusForTab(tab: InboxTab) {
-  return ["open", "unread", "callback", "lost"].includes(tab) ? tab : "all";
+  return ["open", "unread", "callback", "followup", "lost"].includes(tab) ? tab : "all";
 }
 
 interface BulkFollowUpProgress {
@@ -200,6 +207,33 @@ function isConversationCallbackDue(conversation: Conversation, now = Date.now())
     && (conversation.callbackStreakCount || 0) < CALLBACK_MAX_TEAM_ATTEMPTS
     && !["closed", "resolved", "lost"].includes(conversation.status),
   );
+}
+
+function formatFollowUpSchedule(value?: string | null, now = new Date()) {
+  if (!value) return "";
+  const date = new Date(value);
+  const dateKey = date.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const todayKey = now.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+  const time = date.toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  if (dateKey === todayKey) return `Hoje, ${time}`;
+  return date.toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function sortConversationsByFollowUpSchedule(conversations: Conversation[]) {
+  return [...conversations].sort((a, b) => (
+    new Date(a.activeFollowUp?.scheduledAt || 0).getTime()
+    - new Date(b.activeFollowUp?.scheduledAt || 0).getTime()
+  ));
 }
 
 function formatMessageTime(dateString: string) {
@@ -1704,6 +1738,28 @@ function ContactSidebar({
                 )}
               </>
             )}
+            {conversation.activeFollowUp && (
+              <div className={`rounded-xl border px-3 py-2.5 ${
+                isWhatsAppFollowUpDue(conversation.activeFollowUp)
+                  ? "border-red-500/30 bg-red-500/10"
+                  : "border-indigo-500/25 bg-indigo-500/10"
+              }`}>
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="font-semibold text-foreground">
+                    {isWhatsAppFollowUpDue(conversation.activeFollowUp) ? "Retorno pendente" : "Retorno agendado"}
+                  </span>
+                  <span className="text-right font-medium text-foreground">
+                    {formatFollowUpSchedule(conversation.activeFollowUp.scheduledAt)}
+                  </span>
+                </div>
+                <p className="mt-1.5 whitespace-pre-wrap text-[11px] leading-5 text-muted-foreground">
+                  {conversation.activeFollowUp.note}
+                </p>
+                <p className="mt-1 text-[10px] text-muted-foreground">
+                  Responsável: {conversation.activeFollowUp.assignedToName}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -2361,6 +2417,7 @@ function ConversationItem({
   const isSecondaryMetaAccount = conv.campaignAccountOrigin === "secondary";
   const callbackDue = isConversationCallbackDue(conv);
   const callbackStreakCount = conv.callbackStreakCount || 0;
+  const followUpDue = isWhatsAppFollowUpDue(conv.activeFollowUp);
 
   return (
     <button
@@ -2430,6 +2487,18 @@ function ConversationItem({
           </p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Status badges */}
+            {conv.activeFollowUp && (
+              <span
+                className={`max-w-[8rem] truncate rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                  followUpDue
+                    ? "bg-red-500/15 text-red-700 dark:text-red-300"
+                    : "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300"
+                }`}
+                title={`${formatFollowUpSchedule(conv.activeFollowUp.scheduledAt)} · ${conv.activeFollowUp.note}`}
+              >
+                {followUpDue ? "Retorno atrasado" : formatFollowUpSchedule(conv.activeFollowUp.scheduledAt)}
+              </span>
+            )}
             {(callbackDue || callbackStreakCount > 0) && conv.status !== "lost" && (
               <span
                 className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
@@ -2563,6 +2632,11 @@ export default function InboxPage() {
   const [isArchivingConversation, setIsArchivingConversation] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [isUpdatingContactBlock, setIsUpdatingContactBlock] = useState(false);
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpTime, setFollowUpTime] = useState("");
+  const [followUpNote, setFollowUpNote] = useState("");
+  const [isSavingFollowUp, setIsSavingFollowUp] = useState(false);
   const [evoSignal, setEvoSignal] = useState(0);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [messageLoadError, setMessageLoadError] = useState<string | null>(null);
@@ -2576,6 +2650,7 @@ export default function InboxPage() {
     open: 0,
     unread: 0,
     callback: 0,
+    followup: 0,
     lost: 0,
   });
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
@@ -3285,7 +3360,7 @@ export default function InboxPage() {
       options?.incremental
       && lastSync
       && !conversationSearch
-      && serverConversationStatus !== "callback",
+      && !["callback", "followup"].includes(serverConversationStatus),
     );
     const phase = options?.phase || "refresh";
     const isPage = phase === "page" && !incremental;
@@ -3353,8 +3428,10 @@ export default function InboxPage() {
           }
         } else {
           setConversations((previous) => {
-            if ((serverConversationStatus === "callback" || serverConversationStatus === "lost") && !isPage) {
-              return sortConversationsByActivity(incoming);
+            if (["callback", "followup", "lost"].includes(serverConversationStatus) && !isPage) {
+              return serverConversationStatus === "followup"
+                ? sortConversationsByFollowUpSchedule(incoming)
+                : sortConversationsByActivity(incoming);
             }
             const byId = new Map(previous.map((conversation) => [conversation.id, conversation]));
             incoming.forEach((conversation) => {
@@ -3381,6 +3458,7 @@ export default function InboxPage() {
             open: Number(data.queueCounts.open || 0),
             unread: Number(data.queueCounts.unread || 0),
             callback: Number(data.queueCounts.callback || 0),
+            followup: Number(data.queueCounts.followup || 0),
             lost: Number(data.queueCounts.lost || 0),
           });
         }
@@ -3584,7 +3662,7 @@ export default function InboxPage() {
     setBulkFollowUpComposerOpen(false);
     setBulkFollowUpImage(null);
     setBulkFollowUpProgress(null);
-    setConversationQueueCounts({ open: 0, unread: 0, callback: 0, lost: 0 });
+    setConversationQueueCounts({ open: 0, unread: 0, callback: 0, followup: 0, lost: 0 });
     conversationListAnchorRef.current = null;
   }, [inboxScopeKey]);
 
@@ -4681,6 +4759,85 @@ export default function InboxPage() {
     }
   };
 
+  const applyFollowUpShortcut = useCallback((shortcut: WhatsAppFollowUpShortcut) => {
+    const value = whatsAppFollowUpShortcutInput(shortcut);
+    setFollowUpDate(value.date);
+    setFollowUpTime(value.time);
+  }, []);
+
+  const openFollowUpModal = useCallback(() => {
+    const activeFollowUp = selectedConv?.activeFollowUp;
+    if (activeFollowUp) {
+      const value = whatsAppFollowUpInputFromDate(new Date(activeFollowUp.scheduledAt));
+      setFollowUpDate(value.date);
+      setFollowUpTime(value.time);
+      setFollowUpNote(activeFollowUp.note);
+    } else {
+      const value = whatsAppFollowUpShortcutInput("tomorrow_morning");
+      setFollowUpDate(value.date);
+      setFollowUpTime(value.time);
+      setFollowUpNote("");
+    }
+    setShowFollowUpModal(true);
+  }, [selectedConv?.activeFollowUp]);
+
+  const syncActiveFollowUp = useCallback((conversationId: string, activeFollowUp: Conversation["activeFollowUp"]) => {
+    setConversations((previous) => previous.map((conversation) => (
+      conversation.id === conversationId ? { ...conversation, activeFollowUp } : conversation
+    )));
+    setSelectedConv((previous) => (
+      previous?.id === conversationId ? { ...previous, activeFollowUp } : previous
+    ));
+  }, []);
+
+  const saveFollowUp = useCallback(async () => {
+    if (!selectedConv || isSavingFollowUp) return;
+    setIsSavingFollowUp(true);
+    try {
+      const qs = waParams();
+      const response = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/follow-up${qs ? `?${qs}` : ""}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: followUpDate, time: followUpTime, note: followUpNote }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível agendar o retorno");
+
+      syncActiveFollowUp(selectedConv.id, data.followUp);
+      setShowFollowUpModal(false);
+      toast(selectedConv.activeFollowUp ? "Retorno reagendado." : "Retorno agendado.", "success");
+      void fetchConversations({ incremental: true });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Não foi possível agendar o retorno", "error");
+    } finally {
+      setIsSavingFollowUp(false);
+    }
+  }, [fetchConversations, followUpDate, followUpNote, followUpTime, isSavingFollowUp, selectedConv, syncActiveFollowUp, waParams]);
+
+  const updateFollowUp = useCallback(async (action: "complete" | "cancel") => {
+    if (!selectedConv?.activeFollowUp || isSavingFollowUp) return;
+    setIsSavingFollowUp(true);
+    try {
+      const qs = waParams();
+      const response = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/follow-up${qs ? `?${qs}` : ""}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível atualizar o retorno");
+
+      syncActiveFollowUp(selectedConv.id, null);
+      setShowFollowUpModal(false);
+      toast(action === "complete" ? "Retorno concluído." : "Retorno cancelado.", "success");
+      void fetchConversations({ incremental: true });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Não foi possível atualizar o retorno", "error");
+    } finally {
+      setIsSavingFollowUp(false);
+    }
+  }, [fetchConversations, isSavingFollowUp, selectedConv, syncActiveFollowUp, waParams]);
+
   const leaveBulkSelectionMode = () => {
     if (bulkFollowUpSending) return;
     setBulkSelectionMode(false);
@@ -4943,6 +5100,7 @@ export default function InboxPage() {
     if (tab === "closed" && c.status !== "closed") return false;
     if (tab === "archived" && !c.archivedAt) return false;
     if (tab === "callback" && !isConversationCallbackDue(c)) return false;
+    if (tab === "followup" && !isWhatsAppFollowUpDue(c.activeFollowUp)) return false;
     if (tab === "lost" && c.status !== "lost") return false;
     // Tag (campanha) filter
     if (tagFilter.length > 0 && !tagFilter.includes(c.campaignName || "")) return false;
@@ -5509,6 +5667,7 @@ export default function InboxPage() {
               { key: "all" as const, label: "Todas", count: undefined },
               { key: "open" as const, label: "Em Aberto", count: openCount },
               { key: "unread" as const, label: "Não Lidos", count: unreadCount },
+              { key: "followup" as const, label: "Retornos", count: conversationQueueCounts.followup },
               { key: "callback" as const, label: "Rechamada", count: conversationQueueCounts.callback },
               { key: "lost" as const, label: "Perdidos", count: conversationQueueCounts.lost },
               { key: "archived" as const, label: "Arquivadas", count: undefined },
@@ -6111,6 +6270,14 @@ export default function InboxPage() {
                             </button>
 
                             <button
+                              onClick={() => { openFollowUpModal(); setKebabOpen(false); }}
+                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                            >
+                              <Clock3 className="h-4 w-4 text-muted-foreground" />
+                              {selectedConv?.activeFollowUp ? "Reagendar retorno" : "Agendar retorno"}
+                            </button>
+
+                            <button
                               onClick={() => { void handleMarkConversationUnread(); setKebabOpen(false); }}
                               disabled={isMarkingUnread}
                               className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
@@ -6531,6 +6698,47 @@ export default function InboxPage() {
                     <Play className="h-4 w-4" />
                     Iniciar Atendimento
                   </button>
+                </div>
+              </div>
+            )}
+
+            {selectedConv.activeFollowUp && !selectedConversationNeedsStart && (
+              <div className="shrink-0 border-t border-border px-2 py-2 sm:px-5">
+                <div className={`mx-auto flex max-w-3xl flex-col gap-2 rounded-xl border px-3 py-2.5 sm:flex-row sm:items-center ${
+                  isWhatsAppFollowUpDue(selectedConv.activeFollowUp)
+                    ? "border-red-500/30 bg-red-500/10"
+                    : "border-indigo-500/25 bg-indigo-500/10"
+                }`}>
+                  <Clock3 className={`h-4 w-4 shrink-0 ${
+                    isWhatsAppFollowUpDue(selectedConv.activeFollowUp) ? "text-red-600" : "text-indigo-600"
+                  }`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-foreground">
+                      {isWhatsAppFollowUpDue(selectedConv.activeFollowUp) ? "Retorno pendente" : "Retorno agendado"}
+                      {" · "}{formatFollowUpSchedule(selectedConv.activeFollowUp.scheduledAt)}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground" title={selectedConv.activeFollowUp.note}>
+                      {selectedConv.activeFollowUp.note} · {selectedConv.activeFollowUp.assignedToName}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={openFollowUpModal}
+                      className="inline-flex min-h-10 flex-1 items-center justify-center rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted sm:flex-none"
+                    >
+                      Reagendar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void updateFollowUp("complete")}
+                      disabled={isSavingFollowUp}
+                      className="inline-flex min-h-10 flex-1 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60 sm:flex-none"
+                    >
+                      {isSavingFollowUp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                      Concluir
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -7213,6 +7421,137 @@ export default function InboxPage() {
                 <Send className="h-4 w-4" />
                 Enviar follow-up
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showFollowUpModal && selectedConv && (
+        <div
+          className="fixed inset-0 z-[90] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isSavingFollowUp) setShowFollowUpModal(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="follow-up-title"
+            className="flex max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-border bg-card shadow-2xl sm:max-w-md sm:rounded-2xl"
+          >
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
+              <div className="min-w-0">
+                <h3 id="follow-up-title" className="text-base font-semibold text-foreground">
+                  {selectedConv.activeFollowUp ? "Reagendar retorno" : "Agendar retorno"}
+                </h3>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {displayContactName(selectedConv.contact)} · responsável: {selectedConv.assignedToName || currentUser?.name || "você"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowFollowUpModal(false)}
+                disabled={isSavingFollowUp}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-60"
+                aria-label="Fechar agendamento de retorno"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+              <div>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Atalhos</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ["one_hour", "Hoje +1h"],
+                    ["three_hours", "Hoje +3h"],
+                    ["tomorrow_morning", "Amanhã 09:00"],
+                    ["tomorrow_afternoon", "Amanhã 14:00"],
+                    ["next_monday", "Próxima segunda"],
+                  ] as Array<[WhatsAppFollowUpShortcut, string]>).map(([shortcut, label]) => (
+                    <button
+                      key={shortcut}
+                      type="button"
+                      onClick={() => applyFollowUpShortcut(shortcut)}
+                      className="min-h-11 rounded-xl border border-border bg-background px-3 text-xs font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-xs font-semibold text-foreground">Data</span>
+                  <input
+                    type="date"
+                    value={followUpDate}
+                    onChange={(event) => setFollowUpDate(event.target.value)}
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
+                  />
+                </label>
+                <label className="space-y-1.5">
+                  <span className="text-xs font-semibold text-foreground">Horário</span>
+                  <input
+                    type="time"
+                    value={followUpTime}
+                    onChange={(event) => setFollowUpTime(event.target.value)}
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-1 focus:ring-primary/30"
+                  />
+                </label>
+              </div>
+
+              <label className="block space-y-1.5">
+                <span className="text-xs font-semibold text-foreground">Motivo do retorno</span>
+                <textarea
+                  value={followUpNote}
+                  onChange={(event) => setFollowUpNote(event.target.value.slice(0, 500))}
+                  rows={4}
+                  maxLength={500}
+                  placeholder="Ex.: Cliente vai verificar a agenda e pediu retorno para confirmar a avaliação."
+                  className="w-full resize-none rounded-xl border border-input bg-background px-3 py-2.5 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary/30"
+                />
+                <span className="block text-right text-[10px] text-muted-foreground">{followUpNote.length}/500</span>
+              </label>
+
+              <p className="rounded-xl bg-muted/55 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
+                O retorno ficará visível no chat e aparecerá em <strong className="text-foreground">Retornos</strong> quando chegar o horário. A rechamada automática continuará funcionando separadamente.
+              </p>
+            </div>
+
+            <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-card px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:flex-row sm:justify-between sm:px-5 sm:pb-4">
+              {selectedConv.activeFollowUp ? (
+                <button
+                  type="button"
+                  onClick={() => void updateFollowUp("cancel")}
+                  disabled={isSavingFollowUp}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm font-semibold text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-60 sm:min-h-10"
+                >
+                  Cancelar retorno
+                </button>
+              ) : <span />}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFollowUpModal(false)}
+                  disabled={isSavingFollowUp}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted disabled:opacity-60 sm:min-h-10 sm:flex-none"
+                >
+                  Fechar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveFollowUp()}
+                  disabled={isSavingFollowUp || !followUpDate || !followUpTime || followUpNote.trim().length < 3}
+                  className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60 sm:min-h-10 sm:flex-none"
+                >
+                  {isSavingFollowUp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock3 className="h-4 w-4" />}
+                  {selectedConv.activeFollowUp ? "Reagendar" : "Agendar"}
+                </button>
+              </div>
             </div>
           </div>
         </div>

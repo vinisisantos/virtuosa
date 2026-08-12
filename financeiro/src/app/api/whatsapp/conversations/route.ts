@@ -62,11 +62,36 @@ function getStatusFilter(status: string) {
     };
   }
 
+  if (status === "followup") {
+    return {
+      followUps: {
+        some: {
+          status: "scheduled",
+          scheduledAt: { lte: new Date() },
+        },
+      },
+      status: { notIn: ["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS] },
+    };
+  }
+
   if (status === WHATSAPP_CALLBACK_LOST_STATUS) {
     return { status: WHATSAPP_CALLBACK_LOST_STATUS };
   }
 
   return { status };
+}
+
+function assignedFollowUpFilter(status: string, requesterUserId: string) {
+  if (status !== "followup" || !requesterUserId) return {};
+  return {
+    followUps: {
+      some: {
+        status: "scheduled",
+        scheduledAt: { lte: new Date() },
+        assignedTo: requesterUserId,
+      },
+    },
+  };
 }
 
 function getArchiveFilter(showArchived: boolean) {
@@ -83,6 +108,7 @@ function isConversationVisibleForRequest(
     callbackTrackingStartedAt?: Date | string | null;
     callbackDueAt?: Date | string | null;
     callbackStreakCount?: number | null;
+    followUps?: Array<{ status?: string | null; scheduledAt?: Date | string | null }>;
   },
   requestedStatus: string,
   showArchived: boolean,
@@ -111,6 +137,15 @@ function isConversationVisibleForRequest(
       conversation.callbackTrackingStartedAt
       && dueAt <= Date.now()
       && (conversation.callbackStreakCount || 0) < WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS
+      && !["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS].includes(conversationStatus || ""),
+    );
+  }
+  if (requestedStatus === "followup") {
+    return Boolean(
+      conversation.followUps?.some((followUp) => (
+        followUp.status === "scheduled"
+        && new Date(followUp.scheduledAt || "").getTime() <= Date.now()
+      ))
       && !["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS].includes(conversationStatus || ""),
     );
   }
@@ -213,30 +248,61 @@ export async function GET(req: Request) {
         hasMore: false,
         nextCursor: null,
         serverTime,
-        queueCounts: { open: 0, unread: 0, callback: 0, lost: 0 },
+        queueCounts: { open: 0, unread: 0, callback: 0, followup: 0, lost: 0 },
       });
     }
 
     const instanceIds = dbInstances.map(i => i.id);
+    const requesterUserId = req.headers.get("x-user-id") || "";
     const statusFilter = showArchived && status === "all" ? {} : getStatusFilter(status);
+    const followUpOwnerFilter = assignedFollowUpFilter(status, requesterUserId);
     const archiveFilter = getArchiveFilter(showArchived);
 
     if (summary === "unread") {
-      const conversations = await prisma.whatsAppConversation.findMany({
-        where: {
-          instanceId: { in: instanceIds },
-          unreadCount: { gt: 0 },
-          ...statusFilter,
-          ...archiveFilter,
-        },
-        select: {
-          id: true,
-          instanceId: true,
-          unreadCount: true,
-        },
-      });
+      const [conversations, followUps] = await Promise.all([
+        prisma.whatsAppConversation.findMany({
+          where: {
+            instanceId: { in: instanceIds },
+            unreadCount: { gt: 0 },
+            ...statusFilter,
+            ...archiveFilter,
+          },
+          select: {
+            id: true,
+            instanceId: true,
+            unreadCount: true,
+          },
+        }),
+        requesterUserId
+          ? prisma.whatsAppConversationFollowUp.findMany({
+              where: {
+                assignedTo: requesterUserId,
+                status: "scheduled",
+                scheduledAt: { lte: new Date() },
+                conversation: {
+                  instanceId: { in: instanceIds },
+                  archivedAt: null,
+                  status: { notIn: ["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS] },
+                },
+              },
+              select: {
+                id: true,
+                scheduledAt: true,
+                conversation: {
+                  select: {
+                    id: true,
+                    instanceId: true,
+                    contact: { select: { name: true, phone: true } },
+                  },
+                },
+              },
+              orderBy: { scheduledAt: "asc" },
+              take: 100,
+            })
+          : Promise.resolve([]),
+      ]);
 
-      return NextResponse.json({ conversations, count: conversations.length, serverTime });
+      return NextResponse.json({ conversations, followUps, count: conversations.length, serverTime });
     }
 
     const baseConversationWhere = updatedSince
@@ -250,6 +316,7 @@ export async function GET(req: Request) {
       : {
           instanceId: { in: instanceIds },
           ...statusFilter,
+          ...followUpOwnerFilter,
           ...archiveFilter,
         };
     const conversationWhere = searchFilter
@@ -277,6 +344,23 @@ export async function GET(req: Request) {
       callbackStreakCount: true,
       callbackTotalCount: true,
       callbackPipelineSyncedAt: true,
+      followUps: {
+        where: { status: "scheduled" },
+        select: {
+          id: true,
+          scheduledAt: true,
+          note: true,
+          status: true,
+          assignedTo: true,
+          assignedToName: true,
+          createdBy: true,
+          createdByName: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+        orderBy: { scheduledAt: "asc" as const },
+        take: 1,
+      },
       archivedAt: true,
       archivedByName: true,
       blockedAt: true,
@@ -327,11 +411,17 @@ export async function GET(req: Request) {
     }
 
     const visibleConversations = updatedSince
-      ? conversations.filter((conversation) => isConversationVisibleForRequest(conversation, status, showArchived))
+      ? conversations.filter((conversation) => (
+          isConversationVisibleForRequest(conversation, status, showArchived)
+          && (status !== "followup" || conversation.followUps.some((followUp) => followUp.assignedTo === requesterUserId))
+        ))
       : conversations;
     const removedConversationIds = updatedSince
       ? conversations
-          .filter((conversation) => !isConversationVisibleForRequest(conversation, status, showArchived))
+          .filter((conversation) => (
+            !isConversationVisibleForRequest(conversation, status, showArchived)
+            || (status === "followup" && !conversation.followUps.some((followUp) => followUp.assignedTo === requesterUserId))
+          ))
           .map((conversation) => conversation.id)
       : [];
 
@@ -392,22 +482,29 @@ export async function GET(req: Request) {
         accountOrigin,
       });
     }
-    const conversationsWithTags = includeCampaigns
-      ? visibleConversations.map((c) => {
-          const campaign = campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone));
-          return {
-            ...c,
-            campaignName: campaign?.name || null,
-            campaignUrl: campaign?.url || null,
-            campaignAccountOrigin: campaign?.accountOrigin || null,
-          };
-        })
-      : visibleConversations;
+    const conversationsWithTags = visibleConversations.map((c) => {
+      const { followUps, ...conversation } = c;
+      const campaign = campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone));
+      return {
+        ...conversation,
+        activeFollowUp: followUps[0] || null,
+        ...(includeCampaigns ? {
+          campaignName: campaign?.name || null,
+          campaignUrl: campaign?.url || null,
+          campaignAccountOrigin: campaign?.accountOrigin || null,
+        } : {}),
+      };
+    }).sort((a, b) => {
+      if (status !== "followup") return 0;
+      return new Date(a.activeFollowUp?.scheduledAt || 0).getTime()
+        - new Date(b.activeFollowUp?.scheduledAt || 0).getTime();
+    });
 
     const [queueCountRow] = await prisma.$queryRaw<Array<{
       openCount: bigint;
       unreadCount: bigint;
       callbackCount: bigint;
+      followupCount: bigint;
       lostCount: bigint;
     }>>(Prisma.sql`
       SELECT
@@ -424,6 +521,17 @@ export async function GET(req: Request) {
             AND "callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
             AND "status" NOT IN ('closed', 'resolved', ${WHATSAPP_CALLBACK_LOST_STATUS})
         ) AS "callbackCount",
+        COUNT(*) FILTER (
+          WHERE EXISTS (
+            SELECT 1
+            FROM "WhatsAppConversationFollowUp" follow_up
+            WHERE follow_up."conversationId" = "WhatsAppConversation"."id"
+              AND follow_up."status" = 'scheduled'
+              AND follow_up."scheduledAt" <= NOW()
+              AND follow_up."assignedTo" = ${requesterUserId}
+          )
+            AND "status" NOT IN ('closed', 'resolved', ${WHATSAPP_CALLBACK_LOST_STATUS})
+        ) AS "followupCount",
         COUNT(*) FILTER (WHERE "status" = ${WHATSAPP_CALLBACK_LOST_STATUS}) AS "lostCount"
       FROM "WhatsAppConversation"
       WHERE "instanceId" IN (${Prisma.join(instanceIds)})
@@ -432,6 +540,7 @@ export async function GET(req: Request) {
     const openCount = Number(queueCountRow?.openCount || 0);
     const unreadCount = Number(queueCountRow?.unreadCount || 0);
     const callbackCount = Number(queueCountRow?.callbackCount || 0);
+    const followupCount = Number(queueCountRow?.followupCount || 0);
     const lostCount = Number(queueCountRow?.lostCount || 0);
 
     return NextResponse.json({
@@ -442,7 +551,7 @@ export async function GET(req: Request) {
       nextCursor,
       removedConversationIds,
       serverTime,
-      queueCounts: { open: openCount, unread: unreadCount, callback: callbackCount, lost: lostCount },
+      queueCounts: { open: openCount, unread: unreadCount, callback: callbackCount, followup: followupCount, lost: lostCount },
     });
   } catch (error: any) {
     console.error("[WhatsApp Conversations API Error]:", error);

@@ -46,8 +46,12 @@ import { useVisiblePolling } from "@/hooks/use-visible-polling";
 import { useWhatsAppInstanceNotificationMutes } from "@/hooks/use-whatsapp-instance-notification-mutes";
 import {
   buildWhatsappUnreadSummaryUrl,
+  dueWhatsAppFollowUpKeys,
   hasAudibleWhatsAppNotification,
+  newDueWhatsAppFollowUps,
+  type WhatsAppFollowUpNotificationCandidate,
 } from "@/lib/whatsapp/notification-scope";
+import { toast } from "@/components/toast";
 
 interface NavItem {
   href: string;
@@ -201,6 +205,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
   const prevUnreadRef = useRef<Record<string, number>>({});
   const unreadInFlightRef = useRef(false);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const seenFollowUpKeysRef = useRef<Set<string>>(new Set());
+  const followUpBaselineLoadedRef = useRef(false);
   const unreadSummaryUrl = buildWhatsappUnreadSummaryUrl(pathname, searchParams.toString());
   const notificationMutes = useWhatsAppInstanceNotificationMutes();
   const mutedInstanceIdsRef = useRef<ReadonlySet<string>>(new Set());
@@ -273,6 +279,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     try {
       const requestUrl = unreadSummaryUrl;
       const res = await fetch(requestUrl);
+      if (!res.ok) return;
       const data = await res.json();
       const activeUrl = buildWhatsappUnreadSummaryUrl(window.location.pathname, window.location.search);
       if (activeUrl !== requestUrl) return;
@@ -301,6 +308,30 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         const count = typeof data.count === "number" ? data.count : convs.filter((c) => c.unreadCount > 0).length;
         setTotalUnread(count);
       }
+      if (Array.isArray(data.followUps)) {
+        const followUps = data.followUps as WhatsAppFollowUpNotificationCandidate[];
+        if (followUpBaselineLoadedRef.current) {
+          const newFollowUps = newDueWhatsAppFollowUps(
+            followUps,
+            seenFollowUpKeysRef.current,
+            mutedInstanceIdsRef.current,
+          );
+          if (notificationMutesLoadedRef.current && newFollowUps.length > 0) {
+            playNotificationSound();
+            const first = newFollowUps[0];
+            const contactName = first.conversation.contact?.name || first.conversation.contact?.phone || "cliente";
+            toast(
+              newFollowUps.length === 1
+                ? `Retorno de ${contactName} está no horário.`
+                : `${newFollowUps.length} retornos estão no horário.`,
+              "warning",
+              8000,
+            );
+          }
+        }
+        seenFollowUpKeysRef.current = dueWhatsAppFollowUpKeys(followUps);
+        followUpBaselineLoadedRef.current = true;
+      }
     } catch {
     } finally {
       unreadInFlightRef.current = false;
@@ -309,6 +340,8 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   useEffect(() => {
     prevUnreadRef.current = {};
+    seenFollowUpKeysRef.current = new Set();
+    followUpBaselineLoadedRef.current = false;
     setTotalUnread(0);
     void fetchUnread();
   }, [fetchUnread, unreadSummaryUrl]);

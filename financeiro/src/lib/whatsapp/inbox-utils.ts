@@ -38,6 +38,20 @@ export interface Conversation {
   callbackStreakCount?: number;
   callbackTotalCount?: number;
   callbackPipelineSyncedAt?: string | null;
+  activeFollowUp?: WhatsAppConversationFollowUp | null;
+}
+
+export interface WhatsAppConversationFollowUp {
+  id: string;
+  scheduledAt: string;
+  note: string;
+  status: "scheduled" | "completed" | "cancelled";
+  assignedTo: string;
+  assignedToName: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Message {

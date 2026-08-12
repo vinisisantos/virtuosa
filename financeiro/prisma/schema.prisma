@@ -1347,6 +1347,7 @@ model WhatsAppConversation {
   contact                   WhatsAppContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
   instance                  WhatsAppInstance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   messages                  WhatsAppMessage[]
+  followUps                 WhatsAppConversationFollowUp[]
 
   @@unique([contactId, instanceId])
   @@index([instanceId])
@@ -1357,6 +1358,31 @@ model WhatsAppConversation {
   @@index([status])
   @@index([unreadCount])
   @@index([callbackDueAt, callbackStreakCount, status])
+}
+
+model WhatsAppConversationFollowUp {
+  id              String               @id @default(uuid())
+  conversationId  String
+  scheduledAt     DateTime
+  note            String
+  status          String               @default("scheduled")
+  assignedTo      String
+  assignedToName  String
+  createdBy       String
+  createdByName   String
+  completedAt     DateTime?
+  completedBy     String?
+  completedByName String?
+  cancelledAt     DateTime?
+  cancelledBy     String?
+  cancelledByName String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  conversation    WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, status])
+  @@index([status, assignedTo, scheduledAt])
+  @@index([scheduledAt])
 }
 
 model WhatsAppSavedReply {

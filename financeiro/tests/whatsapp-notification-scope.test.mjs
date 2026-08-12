@@ -3,7 +3,10 @@ import test from "node:test";
 
 import {
   buildWhatsappUnreadSummaryUrl,
+  dueWhatsAppFollowUpKeys,
   hasAudibleWhatsAppNotification,
+  newDueWhatsAppFollowUps,
+  whatsappFollowUpNotificationKey,
 } from "../src/lib/whatsapp/notification-scope.ts";
 
 test("restringe as notificações à instância selecionada no Inbox", () => {
@@ -75,4 +78,23 @@ test("mantém compatibilidade com resumos antigos sem instanceId", () => {
     hasAudibleWhatsAppNotification([{}], new Set(["instancia-a"])),
     true,
   );
+});
+
+test("avisa somente retornos novos de instâncias não silenciadas", () => {
+  const dueAt = "2026-08-12T15:00:00.000Z";
+  const followUps = [
+    { id: "retorno-a", scheduledAt: dueAt, conversation: { id: "c-a", instanceId: "instancia-a" } },
+    { id: "retorno-b", scheduledAt: dueAt, conversation: { id: "c-b", instanceId: "instancia-b" } },
+    { id: "retorno-c", scheduledAt: dueAt, conversation: { id: "c-c", instanceId: "instancia-c" } },
+  ];
+  const seen = new Set([whatsappFollowUpNotificationKey(followUps[0])]);
+  const result = newDueWhatsAppFollowUps(followUps, seen, new Set(["instancia-b"]));
+
+  assert.deepEqual(result.map((item) => item.id), ["retorno-c"]);
+});
+
+test("remove retornos concluídos da linha de base para permitir um novo ciclo", () => {
+  const firstCycle = { id: "retorno", scheduledAt: "2026-08-12T15:00:00.000Z", conversation: { id: "c" } };
+  assert.deepEqual([...dueWhatsAppFollowUpKeys([firstCycle])], [whatsappFollowUpNotificationKey(firstCycle)]);
+  assert.deepEqual([...dueWhatsAppFollowUpKeys([])], []);
 });
