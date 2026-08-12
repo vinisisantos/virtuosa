@@ -479,7 +479,7 @@ function EvaluationCardButton({
       onClick={onClick}
       {...(dragBindings?.listeners || {})}
       {...(dragBindings?.attributes || {})}
-      className={`w-full rounded-lg border px-2 py-1.5 text-left text-xs shadow-sm transition ${statusConfig.cardClass} ${
+      className={`min-w-0 w-full overflow-hidden rounded-lg border px-2 py-1.5 text-left text-xs shadow-sm transition ${statusConfig.cardClass} ${
         dragBindings ? "cursor-grab select-none active:cursor-grabbing" : ""
       }`}
       style={
@@ -563,7 +563,7 @@ function CalendarDayCell({
   return (
     <div
       ref={setNodeRef}
-      className={`min-h-[96px] border-b border-border p-2 transition-colors sm:min-h-[152px] sm:border-r ${
+      className={`min-h-[96px] min-w-0 overflow-hidden border-b border-border p-2 transition-colors sm:min-h-[152px] sm:border-r ${
         isCurrentMonth ? "bg-card" : "bg-muted/20 text-muted-foreground"
       } ${!isCurrentMonth ? "hidden sm:block" : ""} ${isOver ? "bg-primary/10 outline outline-2 outline-inset outline-primary/70" : ""}`}
     >
@@ -1213,7 +1213,7 @@ export default function AvaliacoesAgendaPage() {
   };
 
   return (
-    <div className="absolute inset-0 overflow-y-auto bg-background px-3 py-3 sm:px-6 sm:py-4">
+    <div className="absolute inset-0 min-w-0 overflow-x-hidden overflow-y-auto bg-background px-3 py-3 sm:px-6 sm:py-4">
       <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground sm:text-2xl">Avaliações</h1>
@@ -1392,7 +1392,7 @@ export default function AvaliacoesAgendaPage() {
         onDragEnd={handleDragEnd}
         onDragCancel={() => setActiveEvaluationId(null)}
       >
-        <div className="rounded-xl border border-border bg-card">
+        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card">
           <div className="flex flex-col gap-3 border-b border-border px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
             <div className="flex items-center justify-between gap-3 sm:justify-start">
               <Button
@@ -1445,7 +1445,7 @@ export default function AvaliacoesAgendaPage() {
 
               <div className="hidden sm:block">
                 {calendarView === "month" ? (
-                  <div className="grid grid-cols-[240px_minmax(0,1fr)] xl:grid-cols-[280px_minmax(0,1fr)]">
+                  <div className="grid min-w-0 grid-cols-[240px_minmax(0,1fr)] overflow-hidden xl:grid-cols-[280px_minmax(0,1fr)]">
                     <aside className="border-r border-border bg-background/20 p-3">
                       <div className="mb-3 flex items-center justify-between gap-2">
                         <div>
@@ -1475,13 +1475,13 @@ export default function AvaliacoesAgendaPage() {
                       )}
                     </aside>
 
-                    <div className="min-w-0">
-                      <div className="grid grid-cols-7 border-b border-border bg-muted/30 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <div className="min-w-0 overflow-hidden">
+                      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))] border-b border-border bg-muted/30 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => (
                           <div key={day} className="px-2 py-2">{day}</div>
                         ))}
                       </div>
-                      <div className="grid grid-cols-7">
+                      <div className="grid grid-cols-[repeat(7,minmax(0,1fr))]">
                         {days.map((day) => {
                           const key = dateKey(day);
                           return (
