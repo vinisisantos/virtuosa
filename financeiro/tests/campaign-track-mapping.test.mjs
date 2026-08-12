@@ -100,6 +100,37 @@ test("prioriza o anúncio específico quando a Graph devolve apenas a campanha p
   );
 });
 
+test("prioriza o link abdominal quando a Meta reutiliza o ID de Glúteo Perfeito", () => {
+  assert.equal(
+    campaignNameFromMetaAdAndTrackSignals(
+      "120249502628370006",
+      "120249500621580006",
+      "https://www.instagram.com/p/Db313GhAjB3/",
+      "Osasco",
+    ),
+    "Barriga Trincada",
+  );
+  assert.equal(
+    campaignNameFromMetaSignals(
+      "120249502628370006",
+      "https://www.instagram.com/p/Db31upQgTld/",
+      "Osasco",
+    ),
+    "Glúteo Perfeito",
+  );
+});
+
+test("não propaga o link abdominal confirmado de Osasco para outra unidade", () => {
+  assert.equal(
+    campaignNameFromMetaSignals(
+      "120249502628370006",
+      "https://www.instagram.com/p/Db313GhAjB3/",
+      "SBC",
+    ),
+    null,
+  );
+});
+
 test("não transforma a campanha pai de Osasco em um procedimento", () => {
   assert.equal(
     campaignNameFromMetaSignals("120249500621580006", null, "Osasco"),

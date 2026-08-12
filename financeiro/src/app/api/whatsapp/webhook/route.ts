@@ -16,6 +16,7 @@ import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaig
 import { campaignNameFromAccountTrackId } from "@/lib/campaign-account-origin";
 import {
   campaignNameFromExactMetaAdId,
+  campaignNameFromExactMetaSourceUrl,
   campaignNameFromMetaAdAndTrackSignals,
 } from "@/lib/campaign-track-mapping";
 import {
@@ -1622,7 +1623,9 @@ async function processMessage(
     ? inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "))
     : null;
 
+  const exactSourceCampaignName = campaignNameFromExactMetaSourceUrl(adSourceUrl, leadUnit);
   const exactAdCampaignName = campaignNameFromExactMetaAdId(adId, leadUnit);
+  const canonicalAdCampaignName = exactSourceCampaignName || exactAdCampaignName;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = canCaptureLead ? (resolvedCampaignId || adId) : null;
   const trackedCampaignName = campaignNameFromMetaAdAndTrackSignals(
@@ -1639,7 +1642,7 @@ async function processMessage(
   // prevalecer sobre inferências textuais que podem classificar o anúncio errado.
   const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
   const campaignName: string | null = canCaptureLead && hasCampaignSignal
-    ? exactAdCampaignName || accountCampaignName || trackedCampaignName || keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
+    ? canonicalAdCampaignName || accountCampaignName || trackedCampaignName || keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
     : null;
 
   // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string.
@@ -1783,7 +1786,7 @@ async function processMessage(
           client.campaignName === "HyperSlim" &&
           ["Barriga Trincada", "Gordura Localizada"].includes(campaignNameForUpdate);
         const shouldApplyCanonicalAdCampaign =
-          !!exactAdCampaignName && exactAdCampaignName !== client.campaignName;
+          !!canonicalAdCampaignName && canonicalAdCampaignName !== client.campaignName;
         const shouldSetCampaign =
           !!campaignNameForUpdate &&
           (!client.campaignName ||
@@ -1830,7 +1833,7 @@ async function processMessage(
         },
       });
 
-      if (existingDeal && exactAdCampaignName && (
+      if (existingDeal && canonicalAdCampaignName && (
         existingDeal.campaignIdSnapshot !== client.campaignId
         || existingDeal.campaignNameSnapshot !== client.campaignName
         || existingDeal.campaignAttributionSnapshot !== client.campaignAttribution

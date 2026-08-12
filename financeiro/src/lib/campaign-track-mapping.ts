@@ -13,6 +13,22 @@ type CampaignAdIdRule = {
   unit: string;
 };
 
+type CampaignSourceUrlRule = {
+  campaignName: string;
+  sourceMarkers: string[];
+  unit: string;
+};
+
+// A Meta pode reutilizar o mesmo sourceId em criativos diferentes. Quando o
+// post/reel foi confirmado, o link do criativo é o sinal mais específico.
+const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
+  {
+    campaignName: "Barriga Trincada",
+    sourceMarkers: ["Db313GhAjB3"],
+    unit: "Osasco",
+  },
+];
+
 const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
   { adId: "120249502709450006", campaignName: FACIAL_FILLER_CAMPAIGN_NAME, unit: "Osasco" },
   { adId: "120249502628370006", campaignName: "Glúteo Perfeito", unit: "Osasco" },
@@ -41,6 +57,18 @@ export function campaignNameFromExactMetaAdId(
   return CAMPAIGN_AD_ID_RULES.find((candidate) => (
     candidate.adId === adId
     && candidate.unit.toLowerCase() === normalizedUnit
+  ))?.campaignName || null;
+}
+
+export function campaignNameFromExactMetaSourceUrl(
+  sourceUrl?: string | null,
+  unit?: string | null,
+) {
+  if (!sourceUrl) return null;
+  const normalizedUnit = unit?.trim().toLowerCase();
+  return CAMPAIGN_SOURCE_URL_RULES.find((candidate) => (
+    candidate.unit.toLowerCase() === normalizedUnit
+    && candidate.sourceMarkers.some((marker) => sourceUrl.includes(marker))
   ))?.campaignName || null;
 }
 
@@ -102,6 +130,8 @@ export function campaignNameFromMetaSignals(
   sourceUrl?: string | null,
   unit?: string | null,
 ) {
+  const exactSourceCampaignName = campaignNameFromExactMetaSourceUrl(sourceUrl, unit);
+  if (exactSourceCampaignName) return exactSourceCampaignName;
   if (!trackId) return null;
   const normalizedUnit = unit?.trim().toLowerCase();
   const exactAdCampaignName = campaignNameFromExactMetaAdId(trackId, unit);
