@@ -2669,6 +2669,7 @@ export default function InboxPage() {
   const savedRepliesLibrary = useWhatsAppSavedReplies();
   const {
     replies: savedReplies,
+    categories: savedReplyCategories,
     loading: savedRepliesLoading,
     load: loadSavedReplies,
   } = savedRepliesLibrary;
@@ -2763,9 +2764,9 @@ export default function InboxPage() {
   const savedReplyMenuOpen = Boolean(savedReplyTrigger);
   const savedReplyMatches = useMemo(
     () => savedReplyTrigger
-      ? filterSavedReplies(savedReplies, savedReplyTrigger.query)
+      ? filterSavedReplies(savedReplies, savedReplyTrigger.query, savedReplyCategories)
       : [],
-    [savedReplies, savedReplyTrigger],
+    [savedReplies, savedReplyCategories, savedReplyTrigger],
   );
 
   useEffect(() => {
@@ -6855,6 +6856,7 @@ export default function InboxPage() {
                     open={savedReplyMenuOpen}
                     query={savedReplyTrigger?.query || ""}
                     replies={savedReplies}
+                    categories={savedReplyCategories}
                     loading={savedRepliesLoading}
                     error={savedRepliesMenuError}
                     activeIndex={savedReplyActiveIndex}

@@ -2,7 +2,7 @@
 
 import { Loader2, MessageSquareText, Settings2 } from "lucide-react";
 
-import type { SavedReply } from "@/hooks/use-whatsapp-saved-replies";
+import type { SavedReply, SavedReplyCategory } from "@/hooks/use-whatsapp-saved-replies";
 
 export type SavedReplyTrigger = {
   start: number;
@@ -33,13 +33,20 @@ export function savedReplyCommand(reply: SavedReply) {
   return `/${slug || "resposta"}`;
 }
 
-export function filterSavedReplies(replies: SavedReply[], query: string) {
+export function filterSavedReplies(
+  replies: SavedReply[],
+  query: string,
+  categories: SavedReplyCategory[] = [],
+) {
   const normalizedQuery = normalizeSearch(query).replace(/^\//, "");
   if (!normalizedQuery) return replies.slice(0, 6);
 
+  const categoryTitleById = new Map(categories.map((category) => [category.id, category.title]));
+
   return replies
     .filter((reply) => {
-      const haystack = normalizeSearch(`${savedReplyCommand(reply)}\n${reply.title}\n${reply.content}`);
+      const categoryTitle = reply.categoryId ? categoryTitleById.get(reply.categoryId) || "" : "Sem categoria";
+      const haystack = normalizeSearch(`${savedReplyCommand(reply)}\n${categoryTitle}\n${reply.title}\n${reply.content}`);
       return haystack.includes(normalizedQuery);
     })
     .slice(0, 6);
@@ -49,6 +56,7 @@ type Props = {
   open: boolean;
   query: string;
   replies: SavedReply[];
+  categories: SavedReplyCategory[];
   loading: boolean;
   error?: string | null;
   activeIndex: number;
@@ -61,6 +69,7 @@ export function SavedRepliesComposerMenu({
   open,
   query,
   replies,
+  categories,
   loading,
   error,
   activeIndex,
@@ -70,7 +79,8 @@ export function SavedRepliesComposerMenu({
 }: Props) {
   if (!open) return null;
 
-  const filteredReplies = filterSavedReplies(replies, query);
+  const filteredReplies = filterSavedReplies(replies, query, categories);
+  const categoryTitleById = new Map(categories.map((category) => [category.id, category.title]));
 
   return (
     <div
@@ -115,6 +125,9 @@ export function SavedRepliesComposerMenu({
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="truncate text-sm font-semibold">{reply.title}</span>
                 <span className="shrink-0 font-mono text-[10px] text-primary">{savedReplyCommand(reply)}</span>
+              </span>
+              <span className="mt-0.5 block truncate text-[10px] font-medium text-primary/80">
+                {reply.categoryId ? categoryTitleById.get(reply.categoryId) || "Sem categoria" : "Sem categoria"}
               </span>
               <span className="mt-0.5 line-clamp-1 block whitespace-pre-line text-xs text-muted-foreground">
                 {reply.content}
