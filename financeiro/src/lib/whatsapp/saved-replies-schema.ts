@@ -53,7 +53,7 @@ async function ensureSavedReplyCategorySchema() {
   if (!schemaSetupPromise) {
     schemaSetupPromise = prisma.$transaction(async (tx) => {
       await tx.$queryRawUnsafe(
-        `SELECT pg_advisory_xact_lock(hashtext('whatsapp_saved_reply_categories_schema'))`,
+        `SELECT pg_advisory_xact_lock(hashtext('whatsapp_saved_reply_categories_schema'))::text AS "lockAcquired"`,
       );
       for (const statement of SAVED_REPLY_CATEGORY_SCHEMA_STATEMENTS) {
         await tx.$executeRawUnsafe(statement);

@@ -45,7 +45,9 @@ export function filterSavedReplies(
 
   return replies
     .filter((reply) => {
-      const categoryTitle = reply.categoryId ? categoryTitleById.get(reply.categoryId) || "" : "Sem categoria";
+      const categoryTitle = reply.categoryId
+        ? categoryTitleById.get(reply.categoryId) || ""
+        : `Todas as categorias ${categories.map((category) => category.title).join(" ")}`;
       const haystack = normalizeSearch(`${savedReplyCommand(reply)}\n${categoryTitle}\n${reply.title}\n${reply.content}`);
       return haystack.includes(normalizedQuery);
     })
@@ -127,7 +129,7 @@ export function SavedRepliesComposerMenu({
                 <span className="shrink-0 font-mono text-[10px] text-primary">{savedReplyCommand(reply)}</span>
               </span>
               <span className="mt-0.5 block truncate text-[10px] font-medium text-primary/80">
-                {reply.categoryId ? categoryTitleById.get(reply.categoryId) || "Sem categoria" : "Sem categoria"}
+                {reply.categoryId ? categoryTitleById.get(reply.categoryId) || "Todas as categorias" : "Todas as categorias"}
               </span>
               <span className="mt-0.5 line-clamp-1 block whitespace-pre-line text-xs text-muted-foreground">
                 {reply.content}

@@ -32,6 +32,7 @@ import {
   SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH,
   SAVED_REPLY_MAX_PER_USER,
   SAVED_REPLY_TITLE_MAX_LENGTH,
+  savedReplyIsAvailableInCategory,
 } from "@/lib/whatsapp/saved-replies";
 import type {
   SavedReply,
@@ -103,27 +104,27 @@ export function SavedRepliesDialog({ open, draftText, library, onOpenChange, onS
     const term = search.trim().toLocaleLowerCase("pt-BR");
     if (!term) return replies;
     return replies.filter((reply) => {
-      const categoryTitle = reply.categoryId ? categoryTitleById.get(reply.categoryId) || "" : "Sem categoria";
+      const categoryTitle = reply.categoryId
+        ? categoryTitleById.get(reply.categoryId) || ""
+        : `Todas as categorias ${categories.map((category) => category.title).join(" ")}`;
       return `${categoryTitle}\n${reply.title}\n${reply.content}`.toLocaleLowerCase("pt-BR").includes(term);
     });
-  }, [categoryTitleById, replies, search]);
+  }, [categories, categoryTitleById, replies, search]);
 
   const groupedReplies = useMemo(() => {
-    const groups: Array<{ id: string; title: string; category: SavedReplyCategory | null; replies: SavedReply[] }> = categories.map((category) => ({
-      id: category.id,
-      title: category.title,
-      category,
-      replies: filteredReplies.filter((reply) => reply.categoryId === category.id),
-    }));
-    const uncategorizedReplies = filteredReplies.filter((reply) => !reply.categoryId || !categoryTitleById.has(reply.categoryId));
-    if (uncategorizedReplies.length > 0 || categories.length === 0) {
-      groups.push({ id: "uncategorized", title: "Sem categoria", category: null, replies: uncategorizedReplies });
-    }
+    const groups: Array<{ id: string; title: string; category: SavedReplyCategory | null; replies: SavedReply[] }> = categories.length > 0
+      ? categories.map((category) => ({
+          id: category.id,
+          title: category.title,
+          category,
+          replies: filteredReplies.filter((reply) => savedReplyIsAvailableInCategory(reply.categoryId, category.id)),
+        }))
+      : [{ id: "all-categories", title: "Todas as categorias", category: null, replies: filteredReplies }];
 
     const term = search.trim().toLocaleLowerCase("pt-BR");
     if (!term) return groups;
     return groups.filter((group) => group.title.toLocaleLowerCase("pt-BR").includes(term) || group.replies.length > 0);
-  }, [categories, categoryTitleById, filteredReplies, search]);
+  }, [categories, filteredReplies, search]);
 
   const beginCreate = (nextCategoryId: string | null = null) => {
     setEditingId(null);
@@ -187,7 +188,7 @@ export function SavedRepliesDialog({ open, draftText, library, onOpenChange, onS
     if (deletingCategoryId) return;
     const confirmed = await confirmDialog({
       title: "Excluir categoria",
-      message: `Excluir “${category.title}”? As respostas serão preservadas em “Sem categoria”.`,
+      message: `Excluir “${category.title}”? As respostas serão preservadas e ficarão disponíveis em todas as categorias.`,
       confirmText: "Excluir",
       cancelText: "Cancelar",
       variant: "danger",
@@ -446,12 +447,12 @@ export function SavedRepliesDialog({ open, draftText, library, onOpenChange, onS
                   onChange={(event) => setCategoryId(event.target.value || null)}
                   className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
                 >
-                  <option value="">Sem categoria</option>
+                  <option value="">Todas as categorias</option>
                   {categories.map((category) => (
                     <option key={category.id} value={category.id}>{category.title}</option>
                   ))}
                 </select>
-                <p className="text-[11px] leading-4 text-muted-foreground">A categoria aparece apenas na sua biblioteca de respostas rápidas.</p>
+                <p className="text-[11px] leading-4 text-muted-foreground">Sem uma categoria específica, a resposta aparece em todas as categorias da sua biblioteca.</p>
               </div>
 
               <div className="space-y-1.5">
@@ -544,13 +545,13 @@ export function SavedRepliesDialog({ open, draftText, library, onOpenChange, onS
 
               <div className="space-y-2">
                 {categories.length > 0 ? categories.map((category) => {
-                  const replyCount = replies.filter((reply) => reply.categoryId === category.id).length;
+                  const replyCount = replies.filter((reply) => savedReplyIsAvailableInCategory(reply.categoryId, category.id)).length;
                   return (
                     <div key={category.id} className="flex min-h-14 items-center gap-2 rounded-xl border border-border bg-background p-2 pl-3">
                       <Folder className="h-4 w-4 shrink-0 text-primary" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-foreground">{category.title}</p>
-                        <p className="text-[11px] text-muted-foreground">{replyCount} {replyCount === 1 ? "resposta" : "respostas"}</p>
+                        <p className="text-[11px] text-muted-foreground">{replyCount} {replyCount === 1 ? "resposta disponível" : "respostas disponíveis"}</p>
                       </div>
                       <button
                         type="button"
@@ -575,13 +576,13 @@ export function SavedRepliesDialog({ open, draftText, library, onOpenChange, onS
                   <div className="flex min-h-[180px] flex-col items-center justify-center rounded-2xl border border-dashed border-border px-5 text-center">
                     <FolderCog className="h-7 w-7 text-primary" />
                     <p className="mt-3 text-sm font-semibold text-foreground">Nenhuma categoria criada</p>
-                    <p className="mt-1 max-w-xs text-xs leading-5 text-muted-foreground">Suas respostas atuais continuam disponíveis em “Sem categoria”.</p>
+                    <p className="mt-1 max-w-xs text-xs leading-5 text-muted-foreground">Suas respostas atuais ficam disponíveis em todas as categorias que você criar.</p>
                   </div>
                 )}
               </div>
 
               <p className="rounded-xl bg-muted/40 px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
-                Ao excluir uma categoria, suas respostas não são apagadas: elas voltam para “Sem categoria”.
+                Ao excluir uma categoria, suas respostas não são apagadas: elas passam a aparecer em todas as categorias.
               </p>
             </div>
           </div>

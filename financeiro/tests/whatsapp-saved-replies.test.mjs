@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH,
   normalizeSavedReplyCategoryTitle,
+  savedReplyIsAvailableInCategory,
   validateSavedReplyCategoryInput,
   validateSavedReplyInput,
 } from "../src/lib/whatsapp/saved-replies.ts";
@@ -26,7 +27,7 @@ test("valida o nome e o limite de uma categoria", () => {
   });
 });
 
-test("preserva uma categoria válida e converte categoria vazia em Sem categoria", () => {
+test("preserva uma categoria válida e converte categoria vazia em resposta global", () => {
   assert.equal(validateSavedReplyInput({
     title: "Explicação",
     content: "Mensagem",
@@ -38,4 +39,11 @@ test("preserva uma categoria válida e converte categoria vazia em Sem categoria
     content: "Mensagem",
     categoryId: "   ",
   }).value.categoryId, null);
+});
+
+test("resposta sem categoria específica fica disponível em todas as categorias", () => {
+  assert.equal(savedReplyIsAvailableInCategory(null, "gluteos"), true);
+  assert.equal(savedReplyIsAvailableInCategory(null, "facial"), true);
+  assert.equal(savedReplyIsAvailableInCategory("gluteos", "gluteos"), true);
+  assert.equal(savedReplyIsAvailableInCategory("gluteos", "facial"), false);
 });

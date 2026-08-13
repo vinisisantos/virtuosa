@@ -15,6 +15,13 @@ export function normalizeSavedReplyTitle(value: string) {
 
 export const normalizeSavedReplyCategoryTitle = normalizeSavedReplyTitle;
 
+export function savedReplyIsAvailableInCategory(
+  replyCategoryId: string | null,
+  categoryId: string,
+) {
+  return !replyCategoryId || replyCategoryId === categoryId;
+}
+
 export function validateSavedReplyCategoryInput(input: unknown) {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const title = typeof record.title === "string" ? record.title.trim().replace(/\s+/g, " ") : "";
