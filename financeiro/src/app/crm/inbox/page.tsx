@@ -47,7 +47,12 @@ import {
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
-import { parseWhatsAppText, plainWhatsAppText, type WhatsAppTextNode } from "@/lib/whatsapp/text-format";
+import {
+  hasWhatsAppTextFormatting,
+  parseWhatsAppText,
+  plainWhatsAppText,
+  type WhatsAppTextNode,
+} from "@/lib/whatsapp/text-format";
 import {
   WHATSAPP_MEDIA_MAX_BATCH_FILES,
   WHATSAPP_MEDIA_MAX_FILE_BYTES,
@@ -2603,6 +2608,10 @@ export default function InboxPage() {
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const selectedConversationId = selectedConv?.id || null;
   const newMessage = selectedConversationId ? messageDrafts[selectedConversationId] || "" : "";
+  const composerHasFormatting = useMemo(
+    () => hasWhatsAppTextFormatting(newMessage),
+    [newMessage],
+  );
   const setNewMessage = useCallback((next: React.SetStateAction<string>) => {
     if (!selectedConversationId) return;
 
@@ -6770,6 +6779,20 @@ export default function InboxPage() {
               </div>
             ) : selectedConversationNeedsStart ? null : (
             <div className="inbox-thread-composer shrink-0 border-t px-2 py-1.5 sm:px-3 sm:py-2.5">
+              {composerHasFormatting && !isRecording && (
+                <div
+                  className="inbox-composer-field mb-1 overflow-hidden rounded-lg border border-black/5 shadow-sm dark:border-white/5"
+                  aria-label="Prévia formatada da mensagem"
+                  aria-live="polite"
+                >
+                  <div className="border-b border-black/5 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[#667781] dark:border-white/5 dark:text-[#8696a0]">
+                    Prévia formatada
+                  </div>
+                  <div className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words px-3 py-2 text-[15px] leading-5 sm:max-h-[120px]">
+                    <WhatsAppFormattedText text={newMessage} id={`composer-preview-${selectedConversationId || "new"}`} />
+                  </div>
+                </div>
+              )}
               {replyingTo && !isRecording && (
                 <div className="inbox-composer-field mb-1 flex items-stretch overflow-hidden rounded-lg shadow-sm">
                   <div className="w-1 shrink-0 bg-[#00a884]" />

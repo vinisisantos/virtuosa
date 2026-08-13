@@ -10,6 +10,9 @@ type Marker = {
 
 const MARKERS: Marker[] = [
   { value: "```", type: "code" },
+  { value: "**", type: "bold" },
+  { value: "__", type: "italic" },
+  { value: "~~", type: "strikethrough" },
   { value: "*", type: "bold" },
   { value: "_", type: "italic" },
   { value: "~", type: "strikethrough" },
@@ -109,4 +112,8 @@ function nodeText(node: WhatsAppTextNode): string {
 
 export function plainWhatsAppText(text?: string | null) {
   return parseWhatsAppText(text || "").map(nodeText).join("");
+}
+
+export function hasWhatsAppTextFormatting(text?: string | null) {
+  return parseWhatsAppText(text || "").some((node) => node.type !== "text");
 }
