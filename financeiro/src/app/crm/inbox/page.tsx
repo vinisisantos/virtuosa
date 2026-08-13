@@ -1068,6 +1068,7 @@ function PipelineStageSelector({
                   setScheduleConflict(null);
                 }}
                 variant="input"
+                calendarSize="small"
                 placeholder="Data da avaliação"
               />
             </div>

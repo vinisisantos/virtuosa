@@ -184,6 +184,12 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
     setIsYearPicker(false);
   };
 
+  const ensureCalendarOpen = () => {
+    if (!open) updatePos();
+    setOpen(true);
+    setIsYearPicker(false);
+  };
+
   const isInput   = variant === 'input';
   const isCompact = variant === 'compact';
 
@@ -471,7 +477,11 @@ export function DatePicker({ value, onChange, label, variant = 'button', calenda
             value={typedValue}
             onChange={e => handleTypedInput(e.target.value)}
             onBlur={handleTypedBlur}
-            onFocus={e => e.target.select()}
+            onFocus={e => {
+              e.target.select();
+              ensureCalendarOpen();
+            }}
+            onClick={ensureCalendarOpen}
             placeholder={placeholder || 'DD/MM/AAAA'}
             maxLength={10}
             style={{
