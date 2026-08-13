@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { findAuthorizedConversation } from "@/lib/whatsapp/conversation-access";
+import { whatsappConversationJid } from "@/lib/whatsapp/chat-action-identifiers";
+import { updateEvolutionContactBlock } from "@/lib/whatsapp/evolution-chat-actions";
 import {
   getInstanceProvider,
   readProviderPayload,
@@ -11,52 +13,33 @@ import {
 
 type BlockStatus = "block" | "unblock";
 
-function evolutionConfig() {
-  return {
-    url: (process.env.EVOLUTION_API_URL || "http://localhost:8080").replace(/\/+$/, ""),
-    apiKey: process.env.EVOLUTION_API_KEY || "",
-  };
-}
-
-function contactBlockTarget(lastKnownJid: string | null, phone: string) {
-  const exactJid = (lastKnownJid || "").trim();
-  if (/@(?:hosted\.)?lid$/i.test(exactJid)) return exactJid;
-  if (phone.trim().toLowerCase().startsWith("lid:")) return "";
-  const phoneDigits = phone.replace(/\D/g, "");
-  return phoneDigits.length >= 8 ? phoneDigits : "";
-}
-
 async function updateProviderBlockStatus(params: {
   instanceName: string;
   provider?: string | null;
-  contactId: string;
+  phone: string;
+  remoteJid: string;
   status: BlockStatus;
 }) {
   const provider = getInstanceProvider(params);
-  const response = provider === "waha"
-    ? await wahaRequest(`/api/contacts/${params.status === "block" ? "block" : "unblock"}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contactId: params.contactId, session: params.instanceName }),
-        signal: AbortSignal.timeout(15000),
-      })
-    : await fetch(`${evolutionConfig().url}/chat/updateBlockStatus/${encodeURIComponent(params.instanceName)}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          apikey: evolutionConfig().apiKey,
-        },
-        body: JSON.stringify({ number: params.contactId, status: params.status }),
-        signal: AbortSignal.timeout(15000),
-      });
-  const payload = await readProviderPayload(response);
+  if (provider === "waha") {
+    const response = await wahaRequest(`/api/contacts/${params.status === "block" ? "block" : "unblock"}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contactId: params.remoteJid, session: params.instanceName }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const payload = await readProviderPayload(response);
 
-  if (!response.ok) {
-    const details = summarizeProviderError(payload);
-    throw new Error(details
-      ? `O WhatsApp recusou a ação: ${details}`
-      : "O WhatsApp não confirmou a ação. Tente novamente.");
+    if (!response.ok) {
+      const details = summarizeProviderError(payload);
+      throw new Error(details
+        ? `O WhatsApp recusou a ação: ${details}`
+        : "O WhatsApp não confirmou a ação. Tente novamente.");
+    }
+    return;
   }
+
+  await updateEvolutionContactBlock(params);
 }
 
 export async function PATCH(
@@ -93,8 +76,8 @@ export async function PATCH(
       });
     }
 
-    const contactId = contactBlockTarget(conversation.lastKnownJid, conversation.contact.phone);
-    if (!contactId) {
+    const remoteJid = whatsappConversationJid(conversation.lastKnownJid, conversation.contact.phone);
+    if (!remoteJid) {
       return NextResponse.json({ error: "Contato sem identificador válido para bloqueio" }, { status: 400 });
     }
 
@@ -102,7 +85,8 @@ export async function PATCH(
     await updateProviderBlockStatus({
       instanceName: conversation.instance.name,
       provider: conversation.instance.provider,
-      contactId,
+      phone: conversation.contact.phone,
+      remoteJid,
       status: nextStatus,
     });
 
@@ -143,7 +127,8 @@ export async function PATCH(
       await updateProviderBlockStatus({
         instanceName: conversation.instance.name,
         provider: conversation.instance.provider,
-        contactId,
+        phone: conversation.contact.phone,
+        remoteJid,
         status: body.blocked ? "unblock" : "block",
       }).catch((rollbackError) => {
         console.error("[WhatsApp Contact Block Rollback Error]:", rollbackError);

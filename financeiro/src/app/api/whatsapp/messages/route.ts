@@ -3,6 +3,8 @@ import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
 import { phoneLookupKey } from "@/lib/phone";
+import { whatsappConversationJid } from "@/lib/whatsapp/chat-action-identifiers";
+import { editEvolutionChatMessage } from "@/lib/whatsapp/evolution-chat-actions";
 import { signPrivateMediaUrls } from "@/lib/whatsapp/media-storage";
 
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
@@ -360,28 +362,6 @@ async function callEvolutionCandidates(candidates: Array<{ method: string; path:
   throw new Error(`Evolution API não confirmou a ação: ${JSON.stringify(lastError).slice(0, 500)}`);
 }
 
-async function editEvolutionMessage(params: {
-  instanceName: string;
-  phone: string;
-  remoteJid: string;
-  messageId: string;
-  text: string;
-}) {
-  const key = { remoteJid: params.remoteJid, fromMe: true, id: params.messageId };
-  return callEvolutionCandidates([
-    {
-      method: "POST",
-      path: `/message/updateMessage/${params.instanceName}`,
-      body: { number: params.phone, key, text: params.text },
-    },
-    {
-      method: "POST",
-      path: `/message/edit/${params.instanceName}`,
-      body: { number: params.phone, key, text: params.text },
-    },
-  ]);
-}
-
 async function deleteEvolutionMessage(params: {
   instanceName: string;
   phone: string;
@@ -515,10 +495,14 @@ export async function PATCH(req: Request) {
     }
 
     const phone = message.conversation.contact.phone;
-    await editEvolutionMessage({
+    const remoteJid = whatsappConversationJid(message.conversation.lastKnownJid, phone);
+    if (!remoteJid) {
+      return NextResponse.json({ error: "Conversa sem identificador válido para editar a mensagem" }, { status: 400 });
+    }
+    await editEvolutionChatMessage({
       instanceName: message.conversation.instance.name,
       phone,
-      remoteJid: jidFromPhone(phone),
+      remoteJid,
       messageId: message.messageId,
       text: nextBody,
     });
