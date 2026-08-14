@@ -86,14 +86,12 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
 
     if (body.markAllRead) {
-      // UNIT GUARD: Only mark own notifications as read
-      const where: any = {
-        OR: [{ userId: guard.userId }, { userId: null }],
-      };
-      if (!guard.isAdmin) {
-        where.AND = [{ OR: [{ unit: guard.userUnit }, { unit: null }] }];
-      }
-      await prisma.notification.updateMany({ where, data: { isRead: true } });
+      // Avisos globais compartilham um único registro. Somente notificações
+      // individuais podem ser marcadas sem afetar a leitura de outra pessoa.
+      await prisma.notification.updateMany({
+        where: { userId: guard.userId, isRead: false },
+        data: { isRead: true },
+      });
       return NextResponse.json({ success: true });
     }
 

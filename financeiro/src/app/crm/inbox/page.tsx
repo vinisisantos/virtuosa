@@ -2742,6 +2742,7 @@ export default function InboxPage() {
   const [internalNotesOpen, setInternalNotesOpen] = useState(false);
   const [internalNotesLoading, setInternalNotesLoading] = useState(false);
   const [internalNotesError, setInternalNotesError] = useState<string | null>(null);
+  const [internalNotesLoadedConversationId, setInternalNotesLoadedConversationId] = useState<string | null>(null);
   const [internalNoteDraft, setInternalNoteDraft] = useState("");
   const [internalNoteMentionIds, setInternalNoteMentionIds] = useState<string[]>([]);
   const [isSavingInternalNote, setIsSavingInternalNote] = useState(false);
@@ -2800,6 +2801,9 @@ export default function InboxPage() {
   const conversationsRequestSeqRef = useRef(0);
   const messagesRequestSeqRef = useRef(0);
   const internalNotesRequestSeqRef = useRef(0);
+  const internalNotesDialogRef = useRef<HTMLElement>(null);
+  const internalNotesTriggerRef = useRef<HTMLButtonElement>(null);
+  const internalNoteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationsInFlightScopeRef = useRef<string | null>(null);
   const conversationsLastSyncRef = useRef<string | null>(null);
   const conversationsIncrementalPollsRef = useRef(0);
@@ -3143,11 +3147,11 @@ export default function InboxPage() {
   const inboxInstanceOptionsLoaded = canViewCollaborators ? collaboratorsLoaded : ownInstancesLoaded;
   const canSwitchInboxInstance = canViewCollaborators || ownInstances.length > 1;
   const canReplyToConversation = useCallback((conversation: Pick<Conversation, "instanceId"> | null | undefined) => {
-    if (!conversation?.instanceId) return isAdmin || !canViewCollaborators;
+    if (isAdmin) return true;
+    if (!inboxInstanceOptionsLoaded || !conversation?.instanceId) return false;
     const instance = inboxInstanceOptions.find((option) => option.id === conversation.instanceId);
-    if (instance) return instance.canReply !== false;
-    return isAdmin || !canViewCollaborators;
-  }, [canViewCollaborators, inboxInstanceOptions, isAdmin]);
+    return instance?.canReply !== false && Boolean(instance);
+  }, [inboxInstanceOptions, inboxInstanceOptionsLoaded, isAdmin]);
   const canReplyToSelectedConversation = canReplyToConversation(selectedConv);
   const selectedConversationNeedsStart = Boolean(
     selectedConv &&
@@ -3222,6 +3226,7 @@ export default function InboxPage() {
       if (requestSeq !== internalNotesRequestSeqRef.current) return;
       setInternalNotes(Array.isArray(data.notes) ? data.notes : []);
       setMentionableUsers(Array.isArray(data.mentionableUsers) ? data.mentionableUsers : []);
+      setInternalNotesLoadedConversationId(conversationId);
     } catch (error) {
       if (requestSeq !== internalNotesRequestSeqRef.current) return;
       setInternalNotesError(error instanceof Error ? error.message : "Não foi possível carregar as notas internas.");
@@ -3256,6 +3261,7 @@ export default function InboxPage() {
       setInternalNoteMentionIds([]);
       toast("Nota interna salva. Ela não foi enviada ao contato.", "success");
     } catch (error) {
+      if (selectedConvRef.current?.id !== conversationId) return;
       const message = error instanceof Error ? error.message : "Não foi possível salvar a nota interna.";
       setInternalNotesError(message);
       toast(message, "error");
@@ -3268,12 +3274,63 @@ export default function InboxPage() {
     internalNotesRequestSeqRef.current += 1;
     setInternalNotes([]);
     setMentionableUsers([]);
+    setInternalNotesLoadedConversationId(null);
     setInternalNotesError(null);
     setInternalNoteDraft("");
     setInternalNoteMentionIds([]);
+    setIsSavingInternalNote(false);
     setInternalNotesOpen(false);
-    if (selectedConversationId) void loadInternalNotes(selectedConversationId);
-  }, [loadInternalNotes, selectedConversationId]);
+  }, [selectedConversationId]);
+
+  useEffect(() => {
+    if (!internalNotesOpen || !selectedConversationId) return;
+    if (internalNotesLoadedConversationId === selectedConversationId) return;
+    void loadInternalNotes(selectedConversationId);
+  }, [internalNotesLoadedConversationId, internalNotesOpen, loadInternalNotes, selectedConversationId]);
+
+  useEffect(() => {
+    if (!internalNotesOpen) return;
+    const dialog = internalNotesDialogRef.current;
+    if (!dialog) return;
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : internalNotesTriggerRef.current;
+    window.requestAnimationFrame(() => (internalNoteTextareaRef.current || dialog).focus());
+
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !isSavingInternalNote) {
+        event.preventDefault();
+        setInternalNotesOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.offsetParent !== null);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleDialogKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleDialogKeyDown);
+      window.requestAnimationFrame(() => previouslyFocused?.focus());
+    };
+  }, [internalNotesOpen, isSavingInternalNote]);
 
   const leaveConversation = useCallback((extraParams?: Record<string, string>) => {
     dismissedDeepLinkConversationIdRef.current = selectedConversationIdRef.current || selectedConvRef.current?.id || null;
@@ -6466,11 +6523,9 @@ export default function InboxPage() {
                 )}
 
                 <button
+                  ref={internalNotesTriggerRef}
                   type="button"
-                  onClick={() => {
-                    setInternalNotesOpen(true);
-                    void loadInternalNotes(selectedConv.id);
-                  }}
+                  onClick={() => setInternalNotesOpen(true)}
                   className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-800 transition-colors hover:bg-amber-500/15 dark:text-amber-300 sm:h-8 sm:w-auto sm:gap-2 sm:px-3"
                   aria-label={`Abrir notas internas${internalNotes.length ? `, ${internalNotes.length} salvas` : ""}`}
                   title="Notas internas — visíveis somente para a equipe"
@@ -7289,6 +7344,8 @@ export default function InboxPage() {
           }}
         >
           <section
+            ref={internalNotesDialogRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="internal-notes-title"
@@ -7401,7 +7458,7 @@ export default function InboxPage() {
                               selected ? current.filter((id) => id !== user.id) : [...current, user.id].slice(0, 10)
                             ))}
                             aria-pressed={selected}
-                            className={`min-h-8 rounded-full border px-2.5 text-xs font-semibold transition-colors ${
+                            className={`min-h-11 rounded-full border px-3 text-xs font-semibold transition-colors sm:min-h-8 sm:px-2.5 ${
                               selected
                                 ? "border-primary bg-primary text-primary-foreground"
                                 : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -7418,6 +7475,7 @@ export default function InboxPage() {
                 <div className="flex items-end gap-2">
                   <div className="min-w-0 flex-1 rounded-xl border border-amber-500/25 bg-background px-3 py-2 focus-within:border-amber-500/60">
                     <textarea
+                      ref={internalNoteTextareaRef}
                       value={internalNoteDraft}
                       onChange={(event) => setInternalNoteDraft(event.target.value.slice(0, 2000))}
                       onKeyDown={(event) => {
