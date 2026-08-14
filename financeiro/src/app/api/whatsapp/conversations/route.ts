@@ -9,6 +9,10 @@ import {
   WHATSAPP_CALLBACK_LOST_STATUS,
   WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
 } from "@/lib/whatsapp/callbacks";
+import {
+  parseInboxSearchQuery,
+  type InboxSearchQuery,
+} from "@/lib/whatsapp/inbox-search";
 
 let whatsappPerformanceIndexesReady = false;
 let whatsappPerformanceIndexesPromise: Promise<void> | null = null;
@@ -157,37 +161,181 @@ function normalizePhoneSuffix(value?: string | null) {
   return (value || "").replace(/\D/g, "").slice(-8);
 }
 
-function normalizeSearchDigits(value?: string | null) {
-  return (value || "").replace(/\D/g, "");
+const EMPTY_SQL = Prisma.sql``;
+
+function fullSearchStatusSql(status: string, showArchived: boolean, requesterUserId: string) {
+  if ((status === "all" || !status) && showArchived) return EMPTY_SQL;
+  if (status === "all" || !status) {
+    return Prisma.sql`AND conversation."status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})`;
+  }
+  if (status === "open") {
+    return Prisma.sql`AND conversation."status" IN ('open', 'waiting_customer', 'waiting_response')`;
+  }
+  if (status === "unread") {
+    return Prisma.sql`
+      AND conversation."unreadCount" > 0
+      AND conversation."status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})
+    `;
+  }
+  if (status === "closed") {
+    return Prisma.sql`AND conversation."status" IN ('resolved', 'closed')`;
+  }
+  if (status === "callback") {
+    return Prisma.sql`
+      AND conversation."callbackTrackingStartedAt" IS NOT NULL
+      AND conversation."callbackDueAt" <= NOW()
+      AND conversation."callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
+      AND conversation."status" NOT IN ('closed', 'resolved', ${WHATSAPP_CALLBACK_LOST_STATUS})
+    `;
+  }
+  if (status === "followup") {
+    return Prisma.sql`
+      AND EXISTS (
+        SELECT 1
+        FROM "WhatsAppConversationFollowUp" follow_up
+        WHERE follow_up."conversationId" = conversation."id"
+          AND follow_up."status" = 'scheduled'
+          AND follow_up."scheduledAt" <= NOW()
+          AND follow_up."assignedTo" = ${requesterUserId}
+      )
+      AND conversation."status" NOT IN ('closed', 'resolved', ${WHATSAPP_CALLBACK_LOST_STATUS})
+    `;
+  }
+  return Prisma.sql`AND conversation."status" = ${status}`;
 }
 
-function phoneSearchFragments(value: string) {
-  const digits = normalizeSearchDigits(value);
-  if (!digits) return [];
-
-  return [...new Set([
-    digits,
-    digits.slice(-11),
-    digits.slice(-10),
-    digits.slice(-9),
-    digits.slice(-8),
-  ].filter((fragment) => fragment.length >= 4))];
-}
-
-function buildConversationSearchFilter(search: string) {
-  const query = search.trim();
-  if (!query) return null;
-
-  const phoneFragments = phoneSearchFragments(query);
-  const OR: any[] = [
-    { contact: { name: { contains: query, mode: "insensitive" } } },
-  ];
-
-  for (const fragment of phoneFragments) {
-    OR.push({ contact: { phone: { contains: fragment } } });
+function fullSearchMatchSql(search: InboxSearchQuery) {
+  const textPredicates: Prisma.Sql[] = [];
+  if (search.textPattern) {
+    const pattern = search.textPattern;
+    textPredicates.push(
+      Prisma.sql`LOWER(COALESCE(contact."name", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}`,
+      Prisma.sql`LOWER(COALESCE(conversation."assignedToName", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}`,
+      Prisma.sql`EXISTS (
+        SELECT 1
+        FROM "WhatsAppMessage" message
+        WHERE message."conversationId" = conversation."id"
+          AND LOWER(COALESCE(message."body", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}
+      )`,
+      Prisma.sql`EXISTS (
+        SELECT 1
+        FROM "WhatsAppConversationInternalNote" internal_note
+        WHERE internal_note."conversationId" = conversation."id"
+          AND LOWER(COALESCE(internal_note."content", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}
+      )`,
+      Prisma.sql`EXISTS (
+        SELECT 1
+        FROM "Client" client
+        WHERE LENGTH(REGEXP_REPLACE(COALESCE(contact."phone", ''), '[^0-9]', '', 'g')) >= 8
+          AND RIGHT(REGEXP_REPLACE(COALESCE(client."phone", ''), '[^0-9]', '', 'g'), 8)
+            = RIGHT(REGEXP_REPLACE(COALESCE(contact."phone", ''), '[^0-9]', '', 'g'), 8)
+          AND (
+            instance."unit" IS NULL
+            OR instance."unit" = 'Todas'
+            OR client."originUnit" = instance."unit"
+            OR client."unit" = instance."unit"
+          )
+          AND (
+            LOWER(COALESCE(client."campaignName", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}
+            OR EXISTS (
+              SELECT 1
+              FROM "SalesPipeline" pipeline
+              WHERE pipeline."clientId" = client."id"
+                AND (instance."unit" IS NULL OR instance."unit" = 'Todas' OR pipeline."unit" = instance."unit")
+                AND LOWER(COALESCE(pipeline."notes", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}
+            )
+          )
+      )`,
+    );
   }
 
-  return { OR };
+  if (search.digitsPattern) {
+    textPredicates.push(Prisma.sql`
+      REGEXP_REPLACE(COALESCE(contact."phone", ''), '[^0-9]', '', 'g')
+        LIKE ${search.digitsPattern} ESCAPE ${"\\"}
+    `);
+  }
+
+  return Prisma.sql`AND (${Prisma.join(textPredicates, " OR ")})`;
+}
+
+async function findFullSearchConversationIds(params: {
+  search: InboxSearchQuery;
+  instanceIds: string[];
+  status: string;
+  showArchived: boolean;
+  requesterUserId: string;
+  updatedSince: Date | null;
+  cursor: string | null;
+  limit: number;
+}) {
+  const {
+    search,
+    instanceIds,
+    status,
+    showArchived,
+    requesterUserId,
+    updatedSince,
+    cursor,
+    limit,
+  } = params;
+  const archiveSql = showArchived
+    ? Prisma.sql`AND conversation."archivedAt" IS NOT NULL`
+    : Prisma.sql`AND conversation."archivedAt" IS NULL`;
+  const updatedSinceSql = updatedSince
+    ? Prisma.sql`
+        AND (
+          conversation."updatedAt" >= ${updatedSince}
+          OR conversation."lastMessageAt" >= ${updatedSince}
+        )
+      `
+    : EMPTY_SQL;
+  const cursorJoinSql = cursor
+    ? Prisma.sql`
+        INNER JOIN "WhatsAppConversation" cursor_conversation
+          ON cursor_conversation."id" = ${cursor}
+          AND cursor_conversation."instanceId" IN (${Prisma.join(instanceIds)})
+      `
+    : EMPTY_SQL;
+  const cursorSql = !cursor
+    ? EMPTY_SQL
+    : status === "callback"
+      ? Prisma.sql`
+          AND (conversation."callbackDueAt", conversation."id")
+            < (cursor_conversation."callbackDueAt", cursor_conversation."id")
+        `
+      : Prisma.sql`
+          AND (
+            COALESCE(conversation."lastMessageAt", 'infinity'::timestamptz),
+            conversation."id"
+          ) < (
+            COALESCE(cursor_conversation."lastMessageAt", 'infinity'::timestamptz),
+            cursor_conversation."id"
+          )
+        `;
+  const orderSql = updatedSince
+    ? Prisma.sql`conversation."updatedAt" DESC, conversation."id" DESC`
+    : status === "callback"
+      ? Prisma.sql`conversation."callbackDueAt" DESC, conversation."id" DESC`
+      : Prisma.sql`conversation."lastMessageAt" DESC, conversation."id" DESC`;
+
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT conversation."id"
+    FROM "WhatsAppConversation" conversation
+    INNER JOIN "WhatsAppContact" contact ON contact."id" = conversation."contactId"
+    INNER JOIN "WhatsAppInstance" instance ON instance."id" = conversation."instanceId"
+    ${cursorJoinSql}
+    WHERE conversation."instanceId" IN (${Prisma.join(instanceIds)})
+      ${archiveSql}
+      ${fullSearchStatusSql(status, showArchived, requesterUserId)}
+      ${updatedSinceSql}
+      ${cursorSql}
+      ${fullSearchMatchSql(search)}
+    ORDER BY ${orderSql}
+    LIMIT ${updatedSince ? limit : limit + 1}
+  `);
+
+  return rows.map((row) => row.id);
 }
 
 function ensureWhatsappPerformanceIndexes() {
@@ -233,7 +381,8 @@ export async function GET(req: Request) {
     const search = (searchParams.get("search") || "").trim();
     const includeCampaigns = searchParams.get("includeCampaigns") !== "0";
     const showArchived = searchParams.get("archived") === "1";
-    const searchFilter = buildConversationSearchFilter(search);
+    const fullSearch = parseInboxSearchQuery(search);
+    const searchTooShort = Boolean(search) && !fullSearch;
     const serverTime = new Date().toISOString();
     const isIncremental = Boolean(updatedSince);
 
@@ -248,6 +397,7 @@ export async function GET(req: Request) {
         hasMore: false,
         nextCursor: null,
         serverTime,
+        searchTooShort,
         queueCounts: { open: 0, unread: 0, callback: 0, followup: 0, lost: 0 },
       });
     }
@@ -319,10 +469,6 @@ export async function GET(req: Request) {
           ...followUpOwnerFilter,
           ...archiveFilter,
         };
-    const conversationWhere = searchFilter
-      ? { AND: [baseConversationWhere, searchFilter] }
-      : baseConversationWhere;
-
     const conversationSelect = {
       id: true,
       instanceId: true,
@@ -377,31 +523,71 @@ export async function GET(req: Request) {
       },
     } as const;
 
-    let conversations = await prisma.whatsAppConversation.findMany({
-      where: conversationWhere,
-      select: conversationSelect,
-      orderBy: updatedSince
-        ? { updatedAt: "desc" as const }
-        : status === "callback"
-          ? [
-              { callbackDueAt: "desc" as const },
-              { id: "desc" as const },
-            ]
-          : [
-              { lastMessageAt: "desc" as const },
-              { id: "desc" as const },
-            ],
-      take: updatedSince ? limit : limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
+    type ConversationResult = Prisma.WhatsAppConversationGetPayload<{
+      select: typeof conversationSelect;
+    }>;
+    let conversations: ConversationResult[];
+    let hasMore = false;
 
-    const hasMore = !updatedSince && conversations.length > limit;
-    if (hasMore) {
-      conversations = conversations.slice(0, limit);
+    if (searchTooShort) {
+      conversations = [];
+    } else if (fullSearch) {
+      const matchedIds = await findFullSearchConversationIds({
+        search: fullSearch,
+        instanceIds,
+        status,
+        showArchived,
+        requesterUserId,
+        updatedSince,
+        cursor,
+        limit,
+      });
+      hasMore = !updatedSince && matchedIds.length > limit;
+      const pageIds = hasMore ? matchedIds.slice(0, limit) : matchedIds;
+      const hydratedConversations = pageIds.length
+        ? await prisma.whatsAppConversation.findMany({
+            where: { id: { in: pageIds } },
+            select: conversationSelect,
+          })
+        : [];
+      const conversationById = new Map(hydratedConversations.map((conversation) => [conversation.id, conversation]));
+      conversations = pageIds.flatMap((id) => {
+        const conversation = conversationById.get(id);
+        return conversation ? [conversation] : [];
+      });
+    } else {
+      conversations = await prisma.whatsAppConversation.findMany({
+        where: baseConversationWhere,
+        select: conversationSelect,
+        orderBy: updatedSince
+          ? { updatedAt: "desc" as const }
+          : status === "callback"
+            ? [
+                { callbackDueAt: "desc" as const },
+                { id: "desc" as const },
+              ]
+            : [
+                { lastMessageAt: "desc" as const },
+                { id: "desc" as const },
+              ],
+        take: updatedSince ? limit : limit + 1,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      hasMore = !updatedSince && conversations.length > limit;
+      if (hasMore) {
+        conversations = conversations.slice(0, limit);
+      }
     }
     const nextCursor = hasMore ? conversations.at(-1)?.id || null : null;
 
-    if (requestedConversationId && !updatedSince && !cursor && !conversations.some((c) => c.id === requestedConversationId)) {
+    if (
+      requestedConversationId
+      && !fullSearch
+      && !searchTooShort
+      && !updatedSince
+      && !cursor
+      && !conversations.some((c) => c.id === requestedConversationId)
+    ) {
       const requestedConversation = await prisma.whatsAppConversation.findFirst({
         where: {
           id: requestedConversationId,
@@ -556,6 +742,7 @@ export async function GET(req: Request) {
       nextCursor,
       removedConversationIds,
       serverTime,
+      searchTooShort,
       queueCounts: { open: openCount, unread: unreadCount, callback: callbackCount, followup: followupCount, lost: lostCount },
     });
   } catch (error: any) {

@@ -30,7 +30,6 @@ import {
   buildLocalDateTime,
   buildVisibleMessageItems,
   campaignTagStyle,
-  conversationMatchesSearch,
   documentMessageMeta,
   extensionFromMimeType,
   fetchProfilePicCached,
@@ -2716,6 +2715,7 @@ export default function InboxPage() {
   }, [selectedConversationId]);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [conversationSearchTooShort, setConversationSearchTooShort] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null);
@@ -3596,7 +3596,9 @@ export default function InboxPage() {
     );
     const phase = options?.phase || "refresh";
     const isPage = phase === "page" && !incremental;
-    const replacesFilteredQueue = ["callback", "followup", "lost"].includes(serverConversationStatus) && !isPage;
+    const replacesFilteredQueue = (
+      Boolean(conversationSearch) || ["callback", "followup", "lost"].includes(serverConversationStatus)
+    ) && !isPage;
     const requestKind = incremental ? "delta" : isPage ? `page:${options?.cursor || "none"}` : phase;
     const requestKey = `${conversationListScopeKey}:${requestKind}`;
     conversationsInFlightScopeRef.current = requestKey;
@@ -3705,6 +3707,7 @@ export default function InboxPage() {
             lost: Number(data.queueCounts.lost || 0),
           });
         }
+        setConversationSearchTooShort(Boolean(data.searchTooShort));
       }
       return true;
     } catch (e) {
@@ -3970,6 +3973,7 @@ export default function InboxPage() {
     setNextConversationCursor(cachedConversations.at(-1)?.id || null);
     setIsLoadingMoreConversations(false);
     setConversationLoadError(null);
+    setConversationSearchTooShort(false);
   }, [conversationListScopeKey]);
 
   useEffect(() => {
@@ -5405,9 +5409,7 @@ export default function InboxPage() {
     if (tab === "lost" && c.status !== "lost") return false;
     // Tag (campanha) filter
     if (tagFilter.length > 0 && !tagFilter.includes(c.campaignName || "")) return false;
-    // Search filter
-    if (!search.trim()) return true;
-    return conversationMatchesSearch(c, search);
+    return true;
   });
   const activeInstanceChannel = getInstanceChannel(selectedCollaborator);
   const selectedInstanceConnection = getInstanceConnectionPresentation(selectedCollaborator?.status);
@@ -6119,8 +6121,10 @@ export default function InboxPage() {
                 )}
               </div>
               <p className="text-sm text-muted-foreground">
-                {search || tagFilter.length > 0
-                  ? "Nenhuma conversa encontrada"
+                {conversationSearchTooShort
+                  ? "Digite ao menos 3 letras ou 4 números"
+                  : search || tagFilter.length > 0
+                    ? "Nenhuma conversa encontrada"
                   : tab === "archived"
                     ? "Nenhuma conversa arquivada"
                     : "Nenhuma conversa ainda"}
