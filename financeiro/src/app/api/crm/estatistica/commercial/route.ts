@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { displayCampaignName } from "@/lib/campaign-labels";
-import { buildCommercialIndicators } from "@/lib/crm/commercial-indicators";
+import {
+  attachPipelineDealsToCommercialLeads,
+  buildCommercialIndicators,
+  isCancelledCommercialAppointmentStatus,
+} from "@/lib/crm/commercial-indicators";
 import { canViewCrmStatistics } from "@/lib/crm-statistics";
 import { parseDateTimeRange, saoPauloDayRange } from "@/lib/date-filter";
 import { prisma } from "@/lib/db";
-import { normalizeEvaluationStatus } from "@/lib/evaluation-status";
 import { getPipelineDealIdFromEvaluationNotes } from "@/lib/evaluation-scheduling";
 import { requireUnitGuard } from "@/lib/unit-guard";
 import { getQualifiedWhatsappLeads } from "@/lib/whatsapp/qualified-leads";
@@ -49,11 +52,12 @@ export async function GET(req: NextRequest) {
         ? prisma.whatsAppMessage.findMany({
             where: {
               conversationId: { in: conversationIds },
-              timestamp: { gte: minimumReceivedAt },
+              timestamp: { gte: minimumReceivedAt, lte: end },
             },
             select: {
               conversationId: true,
               fromMe: true,
+              respondedByName: true,
               timestamp: true,
             },
             orderBy: { timestamp: "asc" },
@@ -64,20 +68,35 @@ export async function GET(req: NextRequest) {
             where: {
               clientId: { in: clientIds },
               ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
+              createdAt: { lte: end },
             },
-            select: { id: true, clientId: true },
+            select: {
+              id: true,
+              clientId: true,
+              createdAt: true,
+              campaignNameSnapshot: true,
+            },
           })
         : Promise.resolve([]),
     ]);
 
     const dealIds = new Set(pipelineDeals.map((deal) => deal.id));
     const clientIdByDealId = new Map(pipelineDeals.map((deal) => [deal.id, deal.clientId]));
-    const appointmentCandidates = qualifiedLeads.length > 0 && minimumReceivedAt
-      ? await prisma.agendamento.findMany({
+    let appointmentCandidates: Array<{
+      notes: string | null;
+      status: string;
+      createdAt: Date;
+      updatedAt: Date;
+    }> = [];
+    let appointmentsWithoutMarker = 0;
+    if (qualifiedLeads.length > 0 && minimumReceivedAt) {
+      [appointmentCandidates, appointmentsWithoutMarker] = await Promise.all([
+        prisma.agendamento.findMany({
           where: {
             procedimento: { contains: "avalia", mode: "insensitive" },
             ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
-            createdAt: { gte: minimumReceivedAt },
+            createdAt: { gte: minimumReceivedAt, lte: end },
+            notes: { contains: "[pipelineDealId:" },
           },
           select: {
             notes: true,
@@ -85,34 +104,44 @@ export async function GET(req: NextRequest) {
             createdAt: true,
             updatedAt: true,
           },
-        })
-      : [];
+        }),
+        prisma.agendamento.count({
+          where: {
+            procedimento: { contains: "avalia", mode: "insensitive" },
+            ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
+            createdAt: { gte: start, lte: end },
+            OR: [
+              { notes: null },
+              { NOT: { notes: { contains: "[pipelineDealId:" } } },
+            ],
+          },
+        }),
+      ]);
+    }
 
     let appointmentsWithMarker = 0;
-    let appointmentsWithoutMarker = 0;
     let appointmentsLinkedToCohort = 0;
     const linkedAppointments = appointmentCandidates.flatMap((appointment) => {
       const dealId = getPipelineDealIdFromEvaluationNotes(appointment.notes);
-      const createdInSelectedRange = appointment.createdAt >= start && appointment.createdAt <= end;
-      if (!dealId) {
-        if (createdInSelectedRange) appointmentsWithoutMarker += 1;
-        return [];
-      }
-      if (createdInSelectedRange) appointmentsWithMarker += 1;
+      if (!dealId) return [];
+      appointmentsWithMarker += 1;
       if (!dealIds.has(dealId)) return [];
       const clientId = clientIdByDealId.get(dealId);
       if (!clientId) return [];
-      appointmentsLinkedToCohort += 1;
+      if (!isCancelledCommercialAppointmentStatus(appointment.status)) {
+        appointmentsLinkedToCohort += 1;
+      }
       return [{
         clientId,
-        status: normalizeEvaluationStatus(appointment.status),
+        pipelineDealId: dealId,
+        status: appointment.status,
         createdAt: appointment.createdAt,
         updatedAt: appointment.updatedAt,
       }];
     });
 
-    const indicators = buildCommercialIndicators({
-      leads: qualifiedLeads.map((lead) => ({
+    const commercialLeads = attachPipelineDealsToCommercialLeads(
+      qualifiedLeads.map((lead) => ({
         key: `${lead.conversationId}:${lead.receivedAt.toISOString()}:${lead.client.id}`,
         clientId: lead.client.id,
         conversationId: lead.conversationId,
@@ -120,8 +149,20 @@ export async function GET(req: NextRequest) {
         campaignLabel: displayCampaignName(lead.client.campaignName),
         assigneeLabel: lead.assignedToName || (lead.assignedTo ? "Responsável sem nome" : "Sem responsável"),
       })),
+      pipelineDeals.map((deal) => ({
+        id: deal.id,
+        clientId: deal.clientId,
+        createdAt: deal.createdAt,
+        campaignLabelSnapshot: deal.campaignNameSnapshot
+          ? displayCampaignName(deal.campaignNameSnapshot)
+          : null,
+      })),
+    );
+    const indicators = buildCommercialIndicators({
+      leads: commercialLeads,
       messages,
       appointments: linkedAppointments,
+      periodEnd: end,
     });
 
     return NextResponse.json(

@@ -135,8 +135,12 @@ export async function getQualifiedWhatsappLeads(params: {
   const clients = await prisma.client.findMany({
     where: {
       isActive: true,
-      OR: phones.map((phone) => ({ phone: { contains: phone.slice(-8) } })),
-      ...(params.unit ? { unit: params.unit } : {}),
+      AND: [
+        { OR: phones.map((phone) => ({ phone: { contains: phone.slice(-8) } })) },
+        ...(params.unit
+          ? [{ OR: [{ unit: params.unit }, { originUnit: params.unit }] }]
+          : []),
+      ],
     },
     select: {
       id: true,

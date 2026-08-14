@@ -1,3 +1,5 @@
+import { normalizeEvaluationStatus } from "#lib/evaluation-status";
+
 export type CommercialIndicatorLead = {
   key: string;
   clientId: string;
@@ -5,19 +7,29 @@ export type CommercialIndicatorLead = {
   receivedAt: Date | string;
   campaignLabel: string;
   assigneeLabel: string;
+  pipelineDealIds?: readonly string[];
 };
 
 export type CommercialIndicatorMessage = {
   conversationId: string;
   fromMe: boolean;
+  respondedByName?: string | null;
   timestamp: Date | string;
 };
 
 export type CommercialIndicatorAppointment = {
   clientId: string;
+  pipelineDealId?: string | null;
   status: string;
   createdAt: Date | string;
   updatedAt: Date | string;
+};
+
+export type CommercialIndicatorPipelineDeal = {
+  id: string;
+  clientId: string;
+  createdAt: Date | string;
+  campaignLabelSnapshot?: string | null;
 };
 
 export type AuditedRate = {
@@ -74,8 +86,34 @@ type LeadFact = CommercialIndicatorLead & {
 };
 
 const ATTENDED_STATUSES = new Set(["compareceu", "fechou_pacote", "nao_fechou"]);
+const CANCELLED_APPOINTMENT_STATUSES = new Set([
+  "cancelado",
+  "cancelada",
+  "canceled",
+  "cancelled",
+  "desmarcado",
+  "desmarcada",
+]);
 const UNCLASSIFIED_CAMPAIGN = "Sem campanha classificada";
 const UNASSIGNED = "Sem responsável";
+
+function normalizedStatusKey(value?: string | null) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[\s-]+/g, "_");
+}
+
+export function isCancelledCommercialAppointmentStatus(value?: string | null) {
+  return CANCELLED_APPOINTMENT_STATUSES.has(normalizedStatusKey(value));
+}
+
+export function isAutomatedCommercialMessage(respondedByName?: string | null) {
+  const sender = normalizedStatusKey(respondedByName);
+  return sender === "automacao" || sender.startsWith("automacao_");
+}
 
 function timestamp(value: Date | string) {
   const date = value instanceof Date ? value : new Date(value);
@@ -166,15 +204,63 @@ function groupedBreakdown(facts: LeadFact[], labelFor: (fact: LeadFact) => strin
     .sort((first, second) => second.received - first.received || first.label.localeCompare(second.label, "pt-BR"));
 }
 
+export function attachPipelineDealsToCommercialLeads(
+  leads: CommercialIndicatorLead[],
+  pipelineDeals: CommercialIndicatorPipelineDeal[],
+) {
+  const normalizedLeads = leads.map((lead) => ({
+    ...lead,
+    pipelineDealIds: [...(lead.pipelineDealIds || [])],
+  }));
+  const leadsByClient = new Map<string, Array<typeof normalizedLeads[number] & { time: number }>>();
+
+  for (const lead of normalizedLeads) {
+    const time = timestamp(lead.receivedAt);
+    if (time === null) continue;
+    const values = leadsByClient.get(lead.clientId) || [];
+    values.push({ ...lead, time });
+    leadsByClient.set(lead.clientId, values);
+  }
+  for (const values of leadsByClient.values()) {
+    values.sort((first, second) => first.time - second.time);
+  }
+
+  const dealIdsByLeadKey = new Map(normalizedLeads.map((lead) => [lead.key, new Set(lead.pipelineDealIds)]));
+  const campaignSnapshotByLeadKey = new Map<string, string>();
+  const orderedDeals = [...pipelineDeals].sort((first, second) => (
+    (timestamp(first.createdAt) ?? Number.MAX_SAFE_INTEGER)
+    - (timestamp(second.createdAt) ?? Number.MAX_SAFE_INTEGER)
+  ));
+  for (const deal of orderedDeals) {
+    const dealTime = timestamp(deal.createdAt);
+    const clientLeads = leadsByClient.get(deal.clientId) || [];
+    if (dealTime === null || clientLeads.length === 0) continue;
+    const targetLead = clientLeads.filter((lead) => lead.time <= dealTime).at(-1) || clientLeads[0];
+    dealIdsByLeadKey.get(targetLead.key)?.add(deal.id);
+    const campaignSnapshot = deal.campaignLabelSnapshot?.trim();
+    if (campaignSnapshot && !campaignSnapshotByLeadKey.has(targetLead.key)) {
+      campaignSnapshotByLeadKey.set(targetLead.key, campaignSnapshot);
+    }
+  }
+
+  return normalizedLeads.map((lead) => ({
+    ...lead,
+    campaignLabel: campaignSnapshotByLeadKey.get(lead.key) || lead.campaignLabel,
+    pipelineDealIds: [...(dealIdsByLeadKey.get(lead.key) || [])],
+  }));
+}
+
 function factsFrom(params: {
   leads: CommercialIndicatorLead[];
   messages: CommercialIndicatorMessage[];
   appointments: CommercialIndicatorAppointment[];
+  periodEnd?: Date | string;
 }) {
+  const periodEnd = params.periodEnd === undefined ? null : timestamp(params.periodEnd);
   const messagesByConversation = new Map<string, Array<CommercialIndicatorMessage & { time: number }>>();
   for (const message of params.messages) {
     const time = timestamp(message.timestamp);
-    if (time === null) continue;
+    if (time === null || (periodEnd !== null && time > periodEnd)) continue;
     const values = messagesByConversation.get(message.conversationId) || [];
     values.push({ ...message, time });
     messagesByConversation.set(message.conversationId, values);
@@ -200,16 +286,47 @@ function factsFrom(params: {
     values.sort((first, second) => first.time - second.time);
   }
 
-  const appointmentsByLead = new Map<string, Array<CommercialIndicatorAppointment & { time: number }>>();
+  const leadByPipelineDealId = new Map<string, CommercialIndicatorLead & { time: number }>();
+  for (const leads of leadsByClient.values()) {
+    for (const lead of leads) {
+      for (const dealId of lead.pipelineDealIds || []) {
+        leadByPipelineDealId.set(dealId, lead);
+      }
+    }
+  }
+
+  const latestAppointmentByDealId = new Map<
+    string,
+    CommercialIndicatorAppointment & { time: number; updatedTime: number }
+  >();
+  const appointmentsWithoutDealId: Array<CommercialIndicatorAppointment & { time: number }> = [];
   for (const appointment of params.appointments) {
+    const time = timestamp(appointment.createdAt);
+    if (time === null || (periodEnd !== null && time > periodEnd)) continue;
+    if (!appointment.pipelineDealId) {
+      appointmentsWithoutDealId.push({ ...appointment, time });
+      continue;
+    }
+    const updatedTime = timestamp(appointment.updatedAt) ?? time;
+    const current = latestAppointmentByDealId.get(appointment.pipelineDealId);
+    if (!current || time > current.time || (time === current.time && updatedTime > current.updatedTime)) {
+      latestAppointmentByDealId.set(appointment.pipelineDealId, { ...appointment, time, updatedTime });
+    }
+  }
+
+  const appointmentsByLead = new Map<string, Array<CommercialIndicatorAppointment & { time: number }>>();
+  for (const appointment of [...appointmentsWithoutDealId, ...latestAppointmentByDealId.values()]) {
+    if (isCancelledCommercialAppointmentStatus(appointment.status)) continue;
     // O ciclo comercial é definido pelo momento em que a avaliação foi criada.
     // Uma mudança posterior de status não pode atribuí-la a um lead mais recente.
-    const effectiveTime = timestamp(appointment.createdAt);
-    if (effectiveTime === null) continue;
-    const eligibleLeads = (leadsByClient.get(appointment.clientId) || [])
-      .filter((lead) => lead.time <= effectiveTime);
-    const targetLead = eligibleLeads.at(-1);
-    if (!targetLead) continue;
+    const effectiveTime = appointment.time;
+    const linkedLead = appointment.pipelineDealId
+      ? leadByPipelineDealId.get(appointment.pipelineDealId)
+      : null;
+    const targetLead = linkedLead || (!appointment.pipelineDealId
+      ? (leadsByClient.get(appointment.clientId) || []).filter((lead) => lead.time <= effectiveTime).at(-1)
+      : null);
+    if (!targetLead || targetLead.clientId !== appointment.clientId || targetLead.time > effectiveTime) continue;
     const values = appointmentsByLead.get(targetLead.key) || [];
     values.push({ ...appointment, time: effectiveTime });
     appointmentsByLead.set(targetLead.key, values);
@@ -223,7 +340,9 @@ function factsFrom(params: {
     const nextLeadAt = position >= 0 ? conversationLeads[position + 1]?.time : undefined;
     const messageWindow = (messagesByConversation.get(lead.conversationId) || [])
       .filter((message) => message.time >= receivedAt && (nextLeadAt === undefined || message.time < nextLeadAt));
-    const firstOutbound = messageWindow.find((message) => message.fromMe);
+    const firstOutbound = messageWindow.find((message) => (
+      message.fromMe && !isAutomatedCommercialMessage(message.respondedByName)
+    ));
     const firstInboundAfterOutbound = firstOutbound
       ? messageWindow.find((message) => !message.fromMe && message.time > firstOutbound.time)
       : undefined;
@@ -239,7 +358,9 @@ function factsFrom(params: {
       firstResponseMinutes: firstOutbound
         ? Math.max(0, (firstOutbound.time - receivedAt) / 60_000)
         : null,
-      appointmentStatus: leadAppointments[0]?.status || null,
+      appointmentStatus: leadAppointments[0]
+        ? normalizeEvaluationStatus(leadAppointments[0].status)
+        : null,
     }];
   });
 }
@@ -248,6 +369,7 @@ export function buildCommercialIndicators(params: {
   leads: CommercialIndicatorLead[];
   messages: CommercialIndicatorMessage[];
   appointments: CommercialIndicatorAppointment[];
+  periodEnd?: Date | string;
 }): CommercialIndicators {
   const facts = factsFrom(params);
   const campaignClassified = facts.filter((fact) => fact.campaignLabel !== UNCLASSIFIED_CAMPAIGN).length;

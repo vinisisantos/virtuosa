@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildCommercialIndicators } from "../src/lib/crm/commercial-indicators.ts";
+import {
+  attachPipelineDealsToCommercialLeads,
+  buildCommercialIndicators,
+  isAutomatedCommercialMessage,
+} from "../src/lib/crm/commercial-indicators.ts";
 
 const BASE = new Date("2026-08-14T13:00:00.000Z");
 const atMinutes = (minutes) => new Date(BASE.getTime() + minutes * 60_000);
@@ -18,12 +22,13 @@ function lead(key, overrides = {}) {
   };
 }
 
-function appointment(clientId, status, minutes = 60) {
+function appointment(clientId, status, minutes = 60, overrides = {}) {
   return {
     clientId,
     status,
     createdAt: atMinutes(minutes),
     updatedAt: atMinutes(minutes),
+    ...overrides,
   };
 }
 
@@ -102,6 +107,56 @@ test("resposta do lead só conta depois do primeiro outbound e dentro do ciclo r
   });
 });
 
+test("automação de recepção não encerra o SLA comercial humano", () => {
+  const leads = [lead("humano")];
+  const messages = [
+    {
+      conversationId: "conversation-humano",
+      fromMe: true,
+      respondedByName: "Automação Meta",
+      timestamp: atMinutes(1),
+    },
+    {
+      conversationId: "conversation-humano",
+      fromMe: false,
+      timestamp: atMinutes(2),
+    },
+    {
+      conversationId: "conversation-humano",
+      fromMe: true,
+      respondedByName: "Claudenice",
+      timestamp: atMinutes(8),
+    },
+    {
+      conversationId: "conversation-humano",
+      fromMe: false,
+      timestamp: atMinutes(9),
+    },
+  ];
+
+  const result = buildCommercialIndicators({ leads, messages, appointments: [] }).totals;
+
+  assert.equal(isAutomatedCommercialMessage("Automação de agenda"), true);
+  assert.equal(isAutomatedCommercialMessage("Claudenice"), false);
+  assert.equal(result.contacted, 1);
+  assert.equal(result.responded, 1);
+  assert.equal(result.firstResponseMinutes.average, 8);
+});
+
+test("snapshot do negócio preserva a campanha histórica do ciclo", () => {
+  const leads = attachPipelineDealsToCommercialLeads(
+    [lead("snapshot", { campaignLabel: "Campanha atual do cadastro" })],
+    [{
+      id: "deal-snapshot",
+      clientId: "client-snapshot",
+      createdAt: atMinutes(1),
+      campaignLabelSnapshot: "Campanha histórica do negócio",
+    }],
+  );
+
+  assert.equal(leads[0].campaignLabel, "Campanha histórica do negócio");
+});
+
 test("atribui agendamento ao ciclo mais recente e usa o status mais atualizado", () => {
   const leads = [
     lead("antigo", { clientId: "client-shared", campaignLabel: "Campanha antiga" }),
@@ -139,6 +194,97 @@ test("mudança tardia de status não transfere o agendamento para um ciclo novo"
   assert.equal(result.byCampaign.find((row) => row.label === "Campanha antiga")?.scheduled, 1);
   assert.equal(result.byCampaign.find((row) => row.label === "Campanha nova")?.scheduled, 0);
   assert.equal(result.totals.closed, 1);
+});
+
+test("vínculo explícito do pipeline prevalece sobre a proximidade temporal", () => {
+  const baseLeads = [
+    lead("antigo", { clientId: "client-shared", campaignLabel: "Campanha antiga" }),
+    lead("novo", { clientId: "client-shared", campaignLabel: "Campanha nova", receivedAt: atMinutes(120) }),
+  ];
+  const leads = attachPipelineDealsToCommercialLeads(baseLeads, [
+    { id: "deal-antigo", clientId: "client-shared", createdAt: atMinutes(20) },
+  ]);
+  const appointments = [
+    appointment("client-shared", "fechou_pacote", 180, { pipelineDealId: "deal-antigo" }),
+  ];
+
+  const result = buildCommercialIndicators({ leads, messages: [], appointments });
+
+  assert.equal(result.byCampaign.find((row) => row.label === "Campanha antiga")?.scheduled, 1);
+  assert.equal(result.byCampaign.find((row) => row.label === "Campanha antiga")?.closed, 1);
+  assert.equal(result.byCampaign.find((row) => row.label === "Campanha nova")?.scheduled, 0);
+});
+
+test("não atribui marcador de pipeline que não pertence a nenhum ciclo da coorte", () => {
+  const leads = [lead("unico", { clientId: "client-shared" })];
+  const appointments = [
+    appointment("client-shared", "pendente", 60, { pipelineDealId: "deal-fora-da-coorte" }),
+  ];
+
+  const result = buildCommercialIndicators({ leads, messages: [], appointments });
+
+  assert.equal(result.totals.scheduled, 0);
+});
+
+test("agendamento cancelado não compõe o funil comercial", () => {
+  const leads = attachPipelineDealsToCommercialLeads(
+    [lead("cancelado")],
+    [{ id: "deal-cancelado", clientId: "client-cancelado", createdAt: atMinutes(10) }],
+  );
+  const appointments = [
+    appointment("client-cancelado", "Cancelado", 60, { pipelineDealId: "deal-cancelado" }),
+  ];
+
+  const result = buildCommercialIndicators({ leads, messages: [], appointments });
+
+  assert.equal(result.totals.scheduled, 0);
+  assert.equal(result.totals.attended, 0);
+  assert.equal(result.totals.closed, 0);
+});
+
+test("cancelamento mais recente invalida registro anterior do mesmo negócio", () => {
+  const leads = attachPipelineDealsToCommercialLeads(
+    [lead("cancelamento-posterior")],
+    [{ id: "deal-cancelamento-posterior", clientId: "client-cancelamento-posterior", createdAt: atMinutes(10) }],
+  );
+  const appointments = [
+    appointment("client-cancelamento-posterior", "pendente", 30, {
+      pipelineDealId: "deal-cancelamento-posterior",
+    }),
+    appointment("client-cancelamento-posterior", "cancelado", 60, {
+      pipelineDealId: "deal-cancelamento-posterior",
+    }),
+  ];
+
+  const result = buildCommercialIndicators({ leads, messages: [], appointments });
+
+  assert.equal(result.totals.scheduled, 0);
+});
+
+test("ignora mensagens e agendamentos posteriores ao fim do período", () => {
+  const leads = attachPipelineDealsToCommercialLeads(
+    [lead("periodo")],
+    [{ id: "deal-periodo", clientId: "client-periodo", createdAt: atMinutes(10) }],
+  );
+  const messages = [
+    { conversationId: "conversation-periodo", fromMe: true, timestamp: atMinutes(61) },
+    { conversationId: "conversation-periodo", fromMe: false, timestamp: atMinutes(62) },
+  ];
+  const appointments = [
+    appointment("client-periodo", "fechou_pacote", 61, { pipelineDealId: "deal-periodo" }),
+  ];
+
+  const result = buildCommercialIndicators({
+    leads,
+    messages,
+    appointments,
+    periodEnd: atMinutes(60),
+  });
+
+  assert.equal(result.totals.contacted, 0);
+  assert.equal(result.totals.responded, 0);
+  assert.equal(result.totals.scheduled, 0);
+  assert.equal(result.totals.closed, 0);
 });
 
 test("mantém linhas sem campanha e sem responsável e zera taxas sem denominador", () => {
