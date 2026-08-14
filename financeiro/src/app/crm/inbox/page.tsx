@@ -361,6 +361,7 @@ function formatMessageDateLabel(dateString: string) {
 const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MESSAGE_DELETE_WINDOW_MS = 60 * 60 * 1000;
 const ATTACHMENT_DOCUMENT_EXTENSION = /\.(pdf|doc|docx|xls|xlsx)$/i;
+const ATTACHMENT_AUDIO_EXTENSION = /\.(aac|flac|m4a|mp3|oga|ogg|opus|wav|webm)$/i;
 
 type PendingAttachmentStatus = "ready" | "uploading" | "sending" | "error";
 
@@ -423,9 +424,32 @@ function visibleMediaBody(message: Message) {
 
 function attachmentKind(file: File) {
   if (file.type.startsWith("image/")) return "image";
-  if (file.type.startsWith("audio/")) return "audio";
+  if (file.type.startsWith("audio/") || ATTACHMENT_AUDIO_EXTENSION.test(file.name)) return "audio";
   if (file.type === "application/pdf" || ATTACHMENT_DOCUMENT_EXTENSION.test(file.name)) return "document";
   return null;
+}
+
+function attachmentMessageType(attachment: PendingAttachment) {
+  return attachment.type === "audio" ? "ptt" : attachment.type;
+}
+
+function audioFilesFromClipboard(clipboardData: DataTransfer) {
+  const candidates = [
+    ...Array.from(clipboardData.files || []),
+    ...Array.from(clipboardData.items || [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => Boolean(file)),
+  ];
+  const uniqueFiles = new Map<string, File>();
+
+  candidates.forEach((file) => {
+    if (attachmentKind(file) !== "audio") return;
+    const key = `${file.name}|${file.type}|${file.size}|${file.lastModified}`;
+    if (!uniqueFiles.has(key)) uniqueFiles.set(key, file);
+  });
+
+  return Array.from(uniqueFiles.values());
 }
 
 function formatAttachmentSize(bytes: number) {
@@ -2789,9 +2813,11 @@ export default function InboxPage() {
 
   // ─── Gravação de áudio ─────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
+  const [isRecordingPaused, setIsRecordingPaused] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingConversationRef = useRef<Conversation | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
   const messagesViewportRef = useRef<HTMLDivElement>(null);
@@ -2915,6 +2941,34 @@ export default function InboxPage() {
   useEffect(() => () => {
     attachmentsRef.current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
   }, []);
+
+  useEffect(() => () => {
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    const mediaRecorder = mediaRecorderRef.current;
+    if (!mediaRecorder) return;
+
+    mediaRecorder.onstop = null;
+    if (mediaRecorder.state !== "inactive") mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+  }, []);
+
+  useEffect(() => {
+    const mediaRecorder = mediaRecorderRef.current;
+    const recordingConversation = recordingConversationRef.current;
+    if (!mediaRecorder || !recordingConversation || recordingConversation.id === selectedConversationId) return;
+
+    mediaRecorder.onstop = null;
+    if (mediaRecorder.state !== "inactive") mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+    mediaRecorderRef.current = null;
+    recordingConversationRef.current = null;
+    audioChunksRef.current = [];
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+    setIsRecording(false);
+    setIsRecordingPaused(false);
+    setRecordingTime(0);
+  }, [selectedConversationId]);
 
   useEffect(() => () => {
     if (messageHighlightTimerRef.current !== null) {
@@ -4297,6 +4351,20 @@ export default function InboxPage() {
     e.target.value = "";
   };
 
+  const handleComposerPaste = useCallback((event: React.ClipboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const audioFiles = audioFilesFromClipboard(event.clipboardData);
+    if (!audioFiles.length) return;
+
+    event.preventDefault();
+    loadAttachments(audioFiles);
+    toast(
+      audioFiles.length === 1
+        ? "Áudio colado. Revise e toque em enviar."
+        : `${audioFiles.length} áudios colados. Revise e toque em enviar.`,
+      "success",
+    );
+  }, [loadAttachments]);
+
   const dragContainsFiles = (event: React.DragEvent<HTMLElement>) =>
     Array.from(event.dataTransfer.types).includes("Files");
 
@@ -4332,6 +4400,26 @@ export default function InboxPage() {
     const files = event.dataTransfer.files ? Array.from(event.dataTransfer.files) : [];
     if (files.length) loadAttachments(files);
   };
+
+  const uploadConversationMedia = useCallback(async (
+    file: File,
+    conversationId: string,
+    onProgress?: (percentage: number) => void,
+  ) => {
+    const uploadQuery = waParams();
+    return upload(
+      `whatsapp/${conversationId}/${Date.now()}-${safeAttachmentPathName(file.name)}`,
+      file,
+      {
+        access: "private",
+        handleUploadUrl: `/api/whatsapp/media/upload${uploadQuery ? `?${uploadQuery}` : ""}`,
+        clientPayload: JSON.stringify({ conversationId }),
+        contentType: file.type || "application/octet-stream",
+        multipart: file.size > 20 * 1024 * 1024,
+        onUploadProgress: ({ percentage }) => onProgress?.(Math.round(percentage)),
+      },
+    );
+  }, [waParams]);
 
   // ─── Send message ─────────────────────────────────────────
   const handleSendMessage = async (e: React.FormEvent | React.KeyboardEvent) => {
@@ -4418,41 +4506,34 @@ export default function InboxPage() {
         applyCallbackTrackingSnapshot(sendConversation.id, data.callbackTracking);
         sentCount = 1;
       } else {
+        let attachmentCaptionSent = false;
         for (let index = 0; index < queuedAttachments.length; index += 1) {
           const pendingAttachment = queuedAttachments[index];
           activePendingAttachment = pendingAttachment;
-          const caption = index === 0 ? tempMsg : "";
+          const caption = !attachmentCaptionSent && pendingAttachment.type !== "audio" ? tempMsg : "";
+          if (caption) attachmentCaptionSent = true;
           const currentReply = index === 0 ? replyTarget : null;
           let blobUrl = pendingAttachment.blobUrl;
 
           if (!blobUrl) {
             updateAttachment(pendingAttachment.id, { status: "uploading", progress: 0, error: undefined });
-            const uploadQuery = waParams();
-            const uploadResult = await upload(
-              `whatsapp/${sendConversation.id}/${Date.now()}-${safeAttachmentPathName(pendingAttachment.file.name)}`,
+            const uploadResult = await uploadConversationMedia(
               pendingAttachment.file,
-              {
-                access: "private",
-                handleUploadUrl: `/api/whatsapp/media/upload${uploadQuery ? `?${uploadQuery}` : ""}`,
-                clientPayload: JSON.stringify({ conversationId: sendConversation.id }),
-                contentType: pendingAttachment.file.type || "application/octet-stream",
-                multipart: pendingAttachment.file.size > 20 * 1024 * 1024,
-                onUploadProgress: ({ percentage }) => {
-                  updateAttachment(pendingAttachment.id, { progress: Math.round(percentage) });
-                },
-              },
+              sendConversation.id,
+              (percentage) => updateAttachment(pendingAttachment.id, { progress: percentage }),
             );
             blobUrl = uploadResult.url;
             updateAttachment(pendingAttachment.id, { blobUrl, progress: 100 });
           }
 
           updateAttachment(pendingAttachment.id, { status: "sending", progress: 100, error: undefined });
+          const messageType = attachmentMessageType(pendingAttachment);
           const tempId = `temp_${Date.now()}_${index}`;
           if (selectedConversationIdRef.current === sendConversation.id) {
             setMessages((prev) => [...prev, {
               id: tempId,
               body: caption,
-              type: pendingAttachment.type,
+              type: messageType,
               mediaUrl: pendingAttachment.previewUrl,
               mediaFileName: pendingAttachment.file.name,
               mediaMimeType: pendingAttachment.file.type || null,
@@ -4467,7 +4548,7 @@ export default function InboxPage() {
             }]);
           }
 
-          const payload = buildPayload(caption, pendingAttachment.type);
+          const payload = buildPayload(caption, messageType);
           const imageBatch = imageBatchAssignments.get(pendingAttachment.id);
           payload.file = blobUrl;
           payload.docName = pendingAttachment.file.name;
@@ -4520,10 +4601,12 @@ export default function InboxPage() {
           removeAttachment(pendingAttachment.id, true);
           sentCount += 1;
 
-          if (index === 0) {
+          if (caption) {
             setNewMessage("");
-            setReplyingTo(null);
             if (textareaRef.current) textareaRef.current.style.height = "auto";
+          }
+          if (index === 0) {
+            setReplyingTo(null);
           }
         }
       }
@@ -4760,9 +4843,29 @@ export default function InboxPage() {
   };
 
   // ─── Gravação de áudio ────────────────────────────────────
+  const clearRecordingTimer = () => {
+    if (!recordingTimerRef.current) return;
+    clearInterval(recordingTimerRef.current);
+    recordingTimerRef.current = null;
+  };
+
+  const startRecordingTimer = () => {
+    clearRecordingTimer();
+    recordingTimerRef.current = setInterval(() => {
+      setRecordingTime((previous) => previous + 1);
+    }, 1000);
+  };
+
   const startRecording = async () => {
+    const recordingConversation = selectedConvRef.current;
+    if (!recordingConversation || isRecording || isSending) return;
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (selectedConversationIdRef.current !== recordingConversation.id) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       // Usa webm/opus se disponível, senão fallback para o default
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
@@ -4771,6 +4874,7 @@ export default function InboxPage() {
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
+      recordingConversationRef.current = recordingConversation;
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
@@ -4781,25 +4885,63 @@ export default function InboxPage() {
         const audioBlob = new Blob(audioChunksRef.current, {
           type: mediaRecorder.mimeType || "audio/webm",
         });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const base64 = reader.result as string;
-          sendAudioMessage(base64);
-        };
-        reader.readAsDataURL(audioBlob);
-        // Liberar microfone
         stream.getTracks().forEach((t) => t.stop());
+        mediaRecorderRef.current = null;
+        audioChunksRef.current = [];
+
+        if (!audioBlob.size) {
+          toast("A gravação ficou vazia. Tente novamente.", "error");
+          return;
+        }
+
+        const extension = extensionFromMimeType(audioBlob.type || "audio/webm");
+        const audioFile = new File(
+          [audioBlob],
+          `audio-gravado-${Date.now()}.${extension}`,
+          { type: audioBlob.type || "audio/webm", lastModified: Date.now() },
+        );
+        await sendAudioMessage(audioFile, recordingConversation);
+      };
+
+      mediaRecorder.onerror = (event) => {
+        console.error("Erro durante gravação do áudio:", event);
+        toast("A gravação foi interrompida. Tente novamente.", "error");
+        mediaRecorder.onstop = null;
+        clearRecordingTimer();
+        stream.getTracks().forEach((track) => track.stop());
+        mediaRecorderRef.current = null;
+        recordingConversationRef.current = null;
+        audioChunksRef.current = [];
+        setIsRecording(false);
+        setIsRecordingPaused(false);
       };
 
       mediaRecorder.start();
       setIsRecording(true);
+      setIsRecordingPaused(false);
       setRecordingTime(0);
-      recordingTimerRef.current = setInterval(() => {
-        setRecordingTime((prev) => prev + 1);
-      }, 1000);
+      startRecordingTimer();
     } catch (err) {
       console.error("Erro ao acessar microfone:", err);
       toast("Permita o acesso ao microfone para gravar áudio", "error");
+    }
+  };
+
+  const toggleRecordingPause = () => {
+    const mediaRecorder = mediaRecorderRef.current;
+    if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+
+    if (mediaRecorder.state === "recording") {
+      mediaRecorder.pause();
+      setIsRecordingPaused(true);
+      clearRecordingTimer();
+      return;
+    }
+
+    if (mediaRecorder.state === "paused") {
+      mediaRecorder.resume();
+      setIsRecordingPaused(false);
+      startRecordingTimer();
     }
   };
 
@@ -4808,10 +4950,8 @@ export default function InboxPage() {
       mediaRecorderRef.current.stop();
     }
     setIsRecording(false);
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
+    setIsRecordingPaused(false);
+    clearRecordingTimer();
   };
 
   const cancelRecording = () => {
@@ -4824,31 +4964,39 @@ export default function InboxPage() {
       }
     }
     audioChunksRef.current = [];
+    mediaRecorderRef.current = null;
+    recordingConversationRef.current = null;
     setIsRecording(false);
+    setIsRecordingPaused(false);
     setRecordingTime(0);
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
+    clearRecordingTimer();
   };
 
-  const sendAudioMessage = async (base64: string) => {
-    if (!selectedConv) return;
-    if (!canReplyToConversation(selectedConv)) {
+  const sendAudioMessage = async (audioFile: File, sendConversation: Conversation) => {
+    if (!canReplyToConversation(sendConversation)) {
       toast("Esta conta está disponível somente para consulta.", "error");
       return;
     }
+    if (sendConversation.blockedAt) {
+      toast("Este contato está bloqueado. Desbloqueie-o antes de enviar mensagens.", "error");
+      return;
+    }
+
     setIsSending(true);
     try {
+      const uploadResult = await uploadConversationMedia(audioFile, sendConversation.id);
       const payload: Record<string, any> = {
-        conversationId: selectedConv.id,
-        contactId: selectedConv.contact.phone,
+        conversationId: sendConversation.id,
+        contactId: sendConversation.contact.phone,
         body: "",
-        type: "audio",
-        file: base64,
+        type: "ptt",
+        file: uploadResult.url,
+        docName: audioFile.name,
+        mimeType: audioFile.type || "audio/webm",
+        fileSize: audioFile.size,
       };
-      if (selectedConv.instanceId || targetInstanceId) {
-        payload.instanceId = selectedConv.instanceId || targetInstanceId;
+      if (sendConversation.instanceId || targetInstanceId) {
+        payload.instanceId = sendConversation.instanceId || targetInstanceId;
       } else if (targetUserId) {
         payload.targetUserId = targetUserId;
       }
@@ -4861,8 +5009,10 @@ export default function InboxPage() {
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
-        applyCallbackTrackingSnapshot(selectedConv.id, data.callbackTracking);
-        fetchMessages(selectedConv.id, isConversationInService(selectedConv));
+        applyCallbackTrackingSnapshot(sendConversation.id, data.callbackTracking);
+        if (selectedConversationIdRef.current === sendConversation.id) {
+          fetchMessages(sendConversation.id, isConversationInService(sendConversation));
+        }
         fetchConversations({ incremental: true });
       } else {
         const err = await res.json().catch(() => ({}));
@@ -4873,6 +5023,7 @@ export default function InboxPage() {
       console.error(e);
       toast("Erro ao enviar áudio", "error");
     } finally {
+      recordingConversationRef.current = null;
       setIsSending(false);
     }
   };
@@ -6994,6 +7145,27 @@ export default function InboxPage() {
                 <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3 sm:p-6">
                   {activeAttachment.type === "image" ? (
                     <img src={activeAttachment.previewUrl} alt="Prévia do anexo" className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
+                  ) : activeAttachment.type === "audio" ? (
+                    <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-xl sm:p-7">
+                      <span className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 text-primary">
+                        <Mic className="h-9 w-9" />
+                      </span>
+                      <div className="min-w-0 text-center">
+                        <h3 className="max-w-[75vw] truncate text-base font-semibold text-foreground sm:max-w-sm sm:text-lg">
+                          {activeAttachment.file.name || "Áudio colado"}
+                        </h3>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Será enviado como mensagem de voz · {formatAttachmentSize(activeAttachment.file.size)}
+                        </p>
+                      </div>
+                      <audio
+                        src={activeAttachment.previewUrl}
+                        controls
+                        preload="metadata"
+                        className="w-full"
+                        aria-label={`Prévia de ${activeAttachment.file.name || "áudio colado"}`}
+                      />
+                    </div>
                   ) : activeAttachment.file.type === "application/pdf" || activeAttachment.file.name.toLowerCase().endsWith(".pdf") ? (
                     <embed src={activeAttachment.previewUrl} type="application/pdf" className="h-full w-full max-w-4xl rounded-lg bg-white shadow-xl" />
                   ) : (
@@ -7023,6 +7195,8 @@ export default function InboxPage() {
                           >
                             {item.type === "image" ? (
                               <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
+                            ) : item.type === "audio" ? (
+                              <Mic className="h-7 w-7 text-primary" />
                             ) : (
                               <FileText className="h-7 w-7 text-muted-foreground" />
                             )}
@@ -7071,16 +7245,23 @@ export default function InboxPage() {
                       </div>
                     )}
                     <div className="inbox-composer-field flex min-h-12 items-center rounded-xl px-2 shadow-sm">
-                      <div className="flex flex-1 items-center px-2 py-2">
-                      <input
-                        className="min-w-0 flex-1 bg-transparent text-[15px] text-inherit outline-none placeholder:text-[#667781] dark:placeholder:text-[#8696a0]"
-                        placeholder="Adicione uma legenda"
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(e as any); } }}
-                        disabled={isSending}
-                        autoFocus
-                      />
+                      <div className="flex min-w-0 flex-1 items-center px-2 py-2">
+                      {attachments.some((item) => item.type !== "audio") ? (
+                        <input
+                          className="min-w-0 flex-1 bg-transparent text-[15px] text-inherit outline-none placeholder:text-[#667781] dark:placeholder:text-[#8696a0]"
+                          placeholder="Adicione uma legenda"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onPaste={handleComposerPaste}
+                          onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendMessage(e as any); } }}
+                          disabled={isSending}
+                          autoFocus
+                        />
+                      ) : (
+                        <p className="truncate text-xs text-muted-foreground">
+                          Mensagem de voz sem legenda{newMessage.trim() ? " · seu texto continuará salvo" : ""}
+                        </p>
+                      )}
                       </div>
                       <button
                         type="button"
@@ -7221,28 +7402,47 @@ export default function InboxPage() {
                 /* UI de gravação de áudio */
                 <div className="inbox-composer-field flex min-h-12 items-center gap-2 rounded-xl px-1.5 shadow-sm">
                   <button
+                    type="button"
                     onClick={cancelRecording}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10 sm:h-10 sm:w-10"
                     title="Cancelar gravação"
+                    aria-label="Cancelar gravação"
                   >
                     <X className="h-5 w-5" />
                   </button>
-                  <div className="flex-1 flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                    <span className="font-mono text-sm text-red-700 dark:text-red-400">
+                  <button
+                    type="button"
+                    onClick={toggleRecordingPause}
+                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors sm:h-10 sm:w-10 ${
+                      isRecordingPaused
+                        ? "bg-primary/15 text-primary hover:bg-primary/20"
+                        : "text-[#54656f] hover:bg-black/5 hover:text-[#111b21] dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef]"
+                    }`}
+                    title={isRecordingPaused ? "Continuar gravação" : "Pausar gravação"}
+                    aria-label={isRecordingPaused ? "Continuar gravação" : "Pausar gravação"}
+                  >
+                    {isRecordingPaused ? <Play className="ml-0.5 h-5 w-5" /> : <Pause className="h-5 w-5" />}
+                  </button>
+                  <div className="flex min-w-0 flex-1 items-center gap-2" aria-live="polite">
+                    <div className={`h-2 w-2 shrink-0 rounded-full ${isRecordingPaused ? "bg-amber-500" : "animate-pulse bg-red-500"}`} />
+                    <span className={`font-mono text-sm ${isRecordingPaused ? "text-amber-700 dark:text-amber-400" : "text-red-700 dark:text-red-400"}`}>
                       {Math.floor(recordingTime / 60)
                         .toString()
                         .padStart(2, "0")}
                       :
                       {(recordingTime % 60).toString().padStart(2, "0")}
                     </span>
-                    <span className="text-xs text-muted-foreground">Gravando...</span>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {isRecordingPaused ? "Pausado" : "Gravando..."}
+                    </span>
                   </div>
                   <button
+                    type="button"
                     onClick={stopRecording}
                     disabled={isSending}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#06a17f] disabled:opacity-50"
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#06a17f] disabled:opacity-50 sm:h-10 sm:w-10"
                     title="Enviar áudio"
+                    aria-label="Enviar áudio"
                   >
                     {isSending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
@@ -7356,6 +7556,7 @@ export default function InboxPage() {
                       ));
                     }}
                     onKeyDown={handleComposerKeyDown}
+                    onPaste={handleComposerPaste}
                     onBlur={() => window.setTimeout(() => setSavedReplyTrigger(null), 100)}
                     placeholder="Digite uma mensagem"
                     lang="pt-BR"
