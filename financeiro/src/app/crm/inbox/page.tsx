@@ -47,6 +47,7 @@ import {
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
 import { preserveActiveAudioMediaUrl } from "@/lib/whatsapp/audio-playback";
+import { inboxSlaSnapshot } from "@/lib/whatsapp/inbox-sla";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import {
   hasWhatsAppTextFormatting,
@@ -2462,6 +2463,17 @@ function ConversationItem({
   const callbackDue = isConversationCallbackDue(conv);
   const callbackStreakCount = conv.callbackStreakCount || 0;
   const followUpDue = isWhatsAppFollowUpDue(conv.activeFollowUp);
+  const sla = inboxSlaSnapshot({
+    lastInboundAt: conv.lastInboundAt,
+    lastOutboundAt: conv.lastOutboundAt,
+  });
+  const compactSlaLabel = sla.minutes === null
+    ? ""
+    : sla.minutes < 1
+      ? "agora"
+      : sla.minutes < 60
+        ? `${sla.minutes}m`
+        : `${Math.floor(sla.minutes / 60)}h${sla.minutes % 60 ? ` ${sla.minutes % 60}m` : ""}`;
 
   return (
     <button
@@ -2531,6 +2543,22 @@ function ConversationItem({
           </p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Status badges */}
+            {sla.state === "waiting" && ["open", "waiting_response"].includes(conv.status) && (
+              <span
+                className={`inline-flex max-w-[6rem] items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
+                  sla.level === "overdue"
+                    ? "bg-red-500/15 text-red-700 dark:text-red-300"
+                    : sla.level === "attention"
+                      ? "bg-amber-500/15 text-amber-800 dark:text-amber-300"
+                      : "bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+                }`}
+                title={`${sla.label}. Meta de resposta: até 15 minutos.`}
+                aria-label={`${sla.label}. ${sla.level === "overdue" ? "SLA atrasado" : "Dentro do SLA"}.`}
+              >
+                <Clock3 className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
+                <span className="truncate">{compactSlaLabel}</span>
+              </span>
+            )}
             {conv.activeFollowUp && (
               <span
                 className={`max-w-[8rem] truncate rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
