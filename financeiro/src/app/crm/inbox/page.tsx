@@ -2466,6 +2466,7 @@ function ConversationItem({
   selectionMode,
   isSelected,
   channel,
+  slaClockNow,
   onClick,
   onToggleSelection,
 }: {
@@ -2474,6 +2475,7 @@ function ConversationItem({
   selectionMode: boolean;
   isSelected: boolean;
   channel: InstanceChannel;
+  slaClockNow: number;
   onClick: () => void;
   onToggleSelection: () => void;
 }) {
@@ -2484,6 +2486,7 @@ function ConversationItem({
   const sla = inboxSlaSnapshot({
     lastInboundAt: conv.lastInboundAt,
     lastOutboundAt: conv.lastOutboundAt,
+    now: new Date(slaClockNow),
   });
   const compactSlaLabel = sla.minutes === null
     ? ""
@@ -2751,6 +2754,9 @@ export default function InboxPage() {
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
   const [conversationLoadError, setConversationLoadError] = useState<string | null>(null);
+  const [conversationListLoading, setConversationListLoading] = useState(true);
+  const [conversationListError, setConversationListError] = useState<string | null>(null);
+  const [slaClockNow, setSlaClockNow] = useState(() => Date.now());
   const [conversationQueueCounts, setConversationQueueCounts] = useState({
     open: 0,
     unread: 0,
@@ -3597,6 +3603,16 @@ export default function InboxPage() {
   }, [search]);
 
   useEffect(() => {
+    const updateClock = () => setSlaClockNow(Date.now());
+    const interval = window.setInterval(updateClock, 30_000);
+    document.addEventListener("visibilitychange", updateClock);
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", updateClock);
+    };
+  }, []);
+
+  useEffect(() => {
     selectedConvRef.current = selectedConv;
   }, [selectedConv]);
 
@@ -3629,6 +3645,10 @@ export default function InboxPage() {
     conversationsInFlightScopeRef.current = requestKey;
     const requestSeq = ++conversationsRequestSeqRef.current;
     const scopeAtRequestStart = conversationListScopeKey;
+    if (!incremental && !isPage) {
+      setConversationListError(null);
+      if (phase === "initial") setConversationListLoading(true);
+    }
     try {
       const qs = waParams({
         limit: String(incremental ? INBOX_FULL_CONVERSATION_LIMIT : INBOX_INITIAL_CONVERSATION_LIMIT),
@@ -3733,6 +3753,7 @@ export default function InboxPage() {
           });
         }
         setConversationSearchTooShort(Boolean(data.searchTooShort));
+        if (!incremental && !isPage) setConversationListError(null);
       }
       return true;
     } catch (e) {
@@ -3740,10 +3761,20 @@ export default function InboxPage() {
         console.error(e);
         if (isPage) {
           setConversationLoadError(e instanceof Error ? e.message : "Não foi possível carregar mais conversas.");
+        } else if (!incremental) {
+          setConversationListError(e instanceof Error ? e.message : "Não foi possível carregar as conversas.");
         }
       }
       return false;
     } finally {
+      if (
+        !incremental
+        && !isPage
+        && requestSeq === conversationsRequestSeqRef.current
+        && scopeAtRequestStart === activeConversationListScopeRef.current
+      ) {
+        setConversationListLoading(false);
+      }
       if (conversationsInFlightScopeRef.current === requestKey) {
         conversationsInFlightScopeRef.current = null;
       }
@@ -3994,6 +4025,8 @@ export default function InboxPage() {
     skipNextConversationCacheWriteRef.current = true;
     const cachedConversations = readConversationListMemoryCache(conversationListScopeKey) || [];
     setConversations(cachedConversations);
+    setConversationListLoading(cachedConversations.length === 0);
+    setConversationListError(null);
     setHasMoreConversations(cachedConversations.length >= INBOX_INITIAL_CONVERSATION_LIMIT);
     setNextConversationCursor(cachedConversations.at(-1)?.id || null);
     setIsLoadingMoreConversations(false);
@@ -6136,7 +6169,25 @@ export default function InboxPage() {
           className="flex-1 overflow-y-auto"
           onScroll={handleConversationListScroll}
         >
-          {filtered.length === 0 ? (
+          {conversationListLoading && filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 px-4 py-16 text-center text-sm text-muted-foreground" role="status" aria-live="polite">
+              <Loader2 className="h-6 w-6 animate-spin text-primary" aria-hidden="true" />
+              <span>{conversationSearch ? "Buscando em todas as conversas…" : "Carregando conversas…"}</span>
+            </div>
+          ) : conversationListError && filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 px-4 py-16 text-center" role="alert">
+              <XCircle className="h-7 w-7 text-red-500" aria-hidden="true" />
+              <p className="max-w-xs text-sm text-red-700 dark:text-red-400">{conversationListError}</p>
+              <button
+                type="button"
+                onClick={() => void fetchConversations({ phase: "initial" })}
+                className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border bg-card px-4 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                Tentar novamente
+              </button>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted mb-3">
                 {tab === "archived" ? (
@@ -6165,12 +6216,27 @@ export default function InboxPage() {
                   selectionMode={bulkSelectionMode}
                   isSelected={bulkSelectedConversationIds.includes(conv.id)}
                   channel={activeInstanceChannel}
+                  slaClockNow={slaClockNow}
                   onClick={() => {
                     selectConversation(conv);
                   }}
                   onToggleSelection={() => toggleBulkConversation(conv.id)}
                 />
               ))}
+            </div>
+          )}
+
+          {conversationListError && filtered.length > 0 && (
+            <div className="mx-4 my-3 flex items-center justify-between gap-3 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-400" role="alert">
+              <span className="min-w-0 flex-1">{conversationListError}</span>
+              <button
+                type="button"
+                onClick={() => void fetchConversations({ phase: "refresh" })}
+                className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-md border border-red-500/25 px-2.5 font-semibold transition-colors hover:bg-red-500/10"
+              >
+                <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+                Tentar novamente
+              </button>
             </div>
           )}
 

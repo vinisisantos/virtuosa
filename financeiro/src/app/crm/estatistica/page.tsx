@@ -86,7 +86,35 @@ function CommercialBreakdownTable({
         <span className="material-symbols-outlined text-[17px] text-primary">{icon}</span>
         {title}
       </h4>
-      <div className="overflow-x-auto [scrollbar-width:thin]">
+      <div className="space-y-2 sm:hidden">
+        {rows.map((row) => (
+          <article key={row.label} className="rounded-xl border border-border/40 bg-card/60 p-3">
+            <h5 className="break-words text-sm font-black text-foreground">{row.label}</h5>
+            <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+              {[
+                { label: 'Recebidos', value: row.received },
+                { label: 'Contatados', value: row.contacted },
+                { label: 'Responderam', value: row.responded },
+                { label: 'Taxa de resposta', value: `${row.rates.response.percentage}%`, accent: true },
+                { label: 'Agendados', value: row.scheduled },
+                { label: 'Compareceram', value: row.attended },
+                { label: 'Fechou', value: row.closed, success: true },
+              ].map((metric) => (
+                <div key={metric.label} className="min-w-0 rounded-lg border border-border/30 bg-background/55 px-2.5 py-2">
+                  <dt className="text-[0.62rem] font-semibold uppercase tracking-wide text-muted-foreground">{metric.label}</dt>
+                  <dd className={`mt-0.5 text-sm font-black ${metric.success ? 'text-emerald-500' : metric.accent ? 'text-primary' : 'text-foreground'}`}>
+                    {metric.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </article>
+        ))}
+      </div>
+      <p className="mb-2 hidden text-[0.65rem] font-medium text-muted-foreground sm:block lg:hidden">
+        Deslize a tabela para o lado para ver todos os indicadores.
+      </p>
+      <div className="hidden overflow-x-auto [scrollbar-width:thin] sm:block" tabIndex={0} aria-label={`${title}: tabela com rolagem horizontal`}>
         <table className="w-full min-w-[650px] border-separate border-spacing-0 text-left text-[0.7rem]">
           <thead>
             <tr className="text-[0.6rem] uppercase tracking-wide text-muted-foreground">
