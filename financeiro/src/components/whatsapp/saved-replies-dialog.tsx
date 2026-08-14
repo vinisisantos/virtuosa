@@ -32,6 +32,8 @@ import {
   SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH,
   SAVED_REPLY_MAX_PER_USER,
   SAVED_REPLY_TITLE_MAX_LENGTH,
+  filterSavedRepliesByCampaign,
+  savedReplyCategoryIdsForCampaign,
   savedReplyIsAvailableInCategory,
 } from "@/lib/whatsapp/saved-replies";
 import type {
@@ -44,11 +46,12 @@ type Props = {
   open: boolean;
   draftText: string;
   library: WhatsAppSavedRepliesLibrary;
+  campaignName?: string | null;
   onOpenChange: (open: boolean) => void;
   onSelect: (content: string) => void;
 };
 
-export function SavedRepliesDialog({ open, draftText, library, onOpenChange, onSelect }: Props) {
+export function SavedRepliesDialog({ open, draftText, library, campaignName, onOpenChange, onSelect }: Props) {
   const {
     replies,
     categories,
@@ -100,31 +103,48 @@ export function SavedRepliesDialog({ open, draftText, library, onOpenChange, onS
     [categories],
   );
 
+  const campaignCategoryIds = useMemo(
+    () => savedReplyCategoryIdsForCampaign(campaignName, categories),
+    [campaignName, categories],
+  );
+
+  const visibleCategories = useMemo(() => {
+    if (campaignCategoryIds === null) return categories;
+    const allowedCategoryIds = new Set(campaignCategoryIds);
+    return categories.filter((category) => allowedCategoryIds.has(category.id));
+  }, [campaignCategoryIds, categories]);
+
   const filteredReplies = useMemo(() => {
+    const scopedReplies = filterSavedRepliesByCampaign(replies, campaignName, categories);
     const term = search.trim().toLocaleLowerCase("pt-BR");
-    if (!term) return replies;
-    return replies.filter((reply) => {
+    if (!term) return scopedReplies;
+    return scopedReplies.filter((reply) => {
       const categoryTitle = reply.categoryId
         ? categoryTitleById.get(reply.categoryId) || ""
         : `Todas as categorias ${categories.map((category) => category.title).join(" ")}`;
       return `${categoryTitle}\n${reply.title}\n${reply.content}`.toLocaleLowerCase("pt-BR").includes(term);
     });
-  }, [categories, categoryTitleById, replies, search]);
+  }, [campaignName, categories, categoryTitleById, replies, search]);
 
   const groupedReplies = useMemo(() => {
-    const groups: Array<{ id: string; title: string; category: SavedReplyCategory | null; replies: SavedReply[] }> = categories.length > 0
-      ? categories.map((category) => ({
+    const groups: Array<{ id: string; title: string; category: SavedReplyCategory | null; replies: SavedReply[] }> = visibleCategories.length > 0
+      ? visibleCategories.map((category) => ({
           id: category.id,
           title: category.title,
           category,
           replies: filteredReplies.filter((reply) => savedReplyIsAvailableInCategory(reply.categoryId, category.id)),
         }))
-      : [{ id: "all-categories", title: "Todas as categorias", category: null, replies: filteredReplies }];
+      : [{
+          id: campaignCategoryIds === null ? "all-categories" : "global-replies",
+          title: campaignCategoryIds === null ? "Todas as categorias" : "Respostas gerais",
+          category: null,
+          replies: filteredReplies,
+        }];
 
     const term = search.trim().toLocaleLowerCase("pt-BR");
     if (!term) return groups;
     return groups.filter((group) => group.title.toLocaleLowerCase("pt-BR").includes(term) || group.replies.length > 0);
-  }, [categories, filteredReplies, search]);
+  }, [campaignCategoryIds, filteredReplies, search, visibleCategories]);
 
   const beginCreate = (nextCategoryId: string | null = null) => {
     setEditingId(null);
@@ -312,7 +332,7 @@ export function SavedRepliesDialog({ open, draftText, library, onOpenChange, onS
               </button>
               <button
                 type="button"
-                onClick={() => beginCreate()}
+                onClick={() => beginCreate(visibleCategories.length === 1 ? visibleCategories[0].id : null)}
                 disabled={replies.length >= SAVED_REPLY_MAX_PER_USER}
                 aria-label="Nova resposta rápida"
                 className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 sm:px-4"

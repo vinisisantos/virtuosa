@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH,
+  filterSavedRepliesByCampaign,
   normalizeSavedReplyCategoryTitle,
+  savedReplyCategoryIdsForCampaign,
   savedReplyIsAvailableInCategory,
   validateSavedReplyCategoryInput,
   validateSavedReplyInput,
@@ -46,4 +48,50 @@ test("resposta sem categoria específica fica disponível em todas as categorias
   assert.equal(savedReplyIsAvailableInCategory(null, "facial"), true);
   assert.equal(savedReplyIsAvailableInCategory("gluteos", "gluteos"), true);
   assert.equal(savedReplyIsAvailableInCategory("gluteos", "facial"), false);
+});
+
+test("associa campanhas às categorias equivalentes apesar de acentos e plural", () => {
+  const categories = [
+    { id: "perfeito", title: "Glúteos Perfeito" },
+    { id: "harmonizacao", title: "Harmonização de Glúteo" },
+    { id: "barriga", title: "Barriga Trincada" },
+  ];
+
+  assert.deepEqual(
+    savedReplyCategoryIdsForCampaign("GLÚTEOS PERFEITOS - CONTA SECUNDÁRIA", categories),
+    ["perfeito"],
+  );
+  assert.deepEqual(
+    savedReplyCategoryIdsForCampaign("Harmonização dos Glúteos", categories),
+    ["harmonizacao"],
+  );
+  assert.deepEqual(
+    savedReplyCategoryIdsForCampaign("VIM PELO BARRIGA TRINCADA", categories),
+    ["barriga"],
+  );
+});
+
+test("filtra pela campanha e preserva somente respostas globais quando a categoria não existe", () => {
+  const categories = [
+    { id: "perfeito", title: "Glúteos Perfeito" },
+    { id: "barriga", title: "Barriga Trincada" },
+  ];
+  const replies = [
+    { id: "global", categoryId: null },
+    { id: "perfeito", categoryId: "perfeito" },
+    { id: "barriga", categoryId: "barriga" },
+  ];
+
+  assert.deepEqual(
+    filterSavedRepliesByCampaign(replies, "Glúteo Perfeito", categories).map((reply) => reply.id),
+    ["global", "perfeito"],
+  );
+  assert.deepEqual(
+    filterSavedRepliesByCampaign(replies, "Harmonização de Glúteos", categories).map((reply) => reply.id),
+    ["global"],
+  );
+  assert.deepEqual(
+    filterSavedRepliesByCampaign(replies, null, categories).map((reply) => reply.id),
+    ["global", "perfeito", "barriga"],
+  );
 });

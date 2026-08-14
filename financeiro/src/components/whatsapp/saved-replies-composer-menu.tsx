@@ -3,6 +3,7 @@
 import { Loader2, MessageSquareText, Settings2 } from "lucide-react";
 
 import type { SavedReply, SavedReplyCategory } from "@/hooks/use-whatsapp-saved-replies";
+import { filterSavedRepliesByCampaign } from "@/lib/whatsapp/saved-replies";
 
 export type SavedReplyTrigger = {
   start: number;
@@ -37,13 +38,15 @@ export function filterSavedReplies(
   replies: SavedReply[],
   query: string,
   categories: SavedReplyCategory[] = [],
+  campaignName?: string | null,
 ) {
+  const scopedReplies = filterSavedRepliesByCampaign(replies, campaignName, categories);
   const normalizedQuery = normalizeSearch(query).replace(/^\//, "");
-  if (!normalizedQuery) return replies.slice(0, 6);
+  if (!normalizedQuery) return scopedReplies.slice(0, 6);
 
   const categoryTitleById = new Map(categories.map((category) => [category.id, category.title]));
 
-  return replies
+  return scopedReplies
     .filter((reply) => {
       const categoryTitle = reply.categoryId
         ? categoryTitleById.get(reply.categoryId) || ""
@@ -59,6 +62,7 @@ type Props = {
   query: string;
   replies: SavedReply[];
   categories: SavedReplyCategory[];
+  campaignName?: string | null;
   loading: boolean;
   error?: string | null;
   activeIndex: number;
@@ -72,6 +76,7 @@ export function SavedRepliesComposerMenu({
   query,
   replies,
   categories,
+  campaignName,
   loading,
   error,
   activeIndex,
@@ -81,7 +86,7 @@ export function SavedRepliesComposerMenu({
 }: Props) {
   if (!open) return null;
 
-  const filteredReplies = filterSavedReplies(replies, query, categories);
+  const filteredReplies = filterSavedReplies(replies, query, categories, campaignName);
   const categoryTitleById = new Map(categories.map((category) => [category.id, category.title]));
 
   return (

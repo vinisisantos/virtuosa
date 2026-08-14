@@ -22,6 +22,53 @@ export function savedReplyIsAvailableInCategory(
   return !replyCategoryId || replyCategoryId === categoryId;
 }
 
+function savedReplyProcedureKey(value: string) {
+  const normalized = normalizeSavedReplyCategoryTitle(value)
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+
+  if (/\bharmonizacao\b/.test(normalized) && /\bgluteos?\b/.test(normalized)) {
+    return "harmonizacao-gluteos";
+  }
+  if (/\bgluteos?\b/.test(normalized) && /\bperfeit[oa]s?\b/.test(normalized)) {
+    return "gluteos-perfeito";
+  }
+  if (/\bbarriga\b/.test(normalized) && /\btrincad[ao]s?\b/.test(normalized)) {
+    return "barriga-trincada";
+  }
+  if (/\bpreenchimento\b/.test(normalized) && /\bfacial\b/.test(normalized)) {
+    return "preenchimento-facial";
+  }
+  if (/\bbotox\b/.test(normalized)) return "botox";
+  if (/\bmonji\s*fast\b/.test(normalized)) return "monjifast";
+
+  return normalized;
+}
+
+export function savedReplyCategoryIdsForCampaign(
+  campaignName: string | null | undefined,
+  categories: Array<{ id: string; title: string }>,
+) {
+  if (!campaignName?.trim()) return null;
+
+  const campaignKey = savedReplyProcedureKey(campaignName);
+  return categories
+    .filter((category) => savedReplyProcedureKey(category.title) === campaignKey)
+    .map((category) => category.id);
+}
+
+export function filterSavedRepliesByCampaign<T extends { categoryId: string | null }>(
+  replies: T[],
+  campaignName: string | null | undefined,
+  categories: Array<{ id: string; title: string }>,
+) {
+  const categoryIds = savedReplyCategoryIdsForCampaign(campaignName, categories);
+  if (categoryIds === null) return replies;
+
+  const allowedCategoryIds = new Set(categoryIds);
+  return replies.filter((reply) => !reply.categoryId || allowedCategoryIds.has(reply.categoryId));
+}
+
 export function validateSavedReplyCategoryInput(input: unknown) {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const title = typeof record.title === "string" ? record.title.trim().replace(/\s+/g, " ") : "";

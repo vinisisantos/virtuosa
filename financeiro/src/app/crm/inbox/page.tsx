@@ -2895,9 +2895,14 @@ export default function InboxPage() {
   const savedReplyMenuOpen = Boolean(savedReplyTrigger);
   const savedReplyMatches = useMemo(
     () => savedReplyTrigger
-      ? filterSavedReplies(savedReplies, savedReplyTrigger.query, savedReplyCategories)
+      ? filterSavedReplies(
+          savedReplies,
+          savedReplyTrigger.query,
+          savedReplyCategories,
+          selectedConv?.campaignName,
+        )
       : [],
-    [savedReplies, savedReplyCategories, savedReplyTrigger],
+    [savedReplies, savedReplyCategories, savedReplyTrigger, selectedConv?.campaignName],
   );
 
   useEffect(() => {
@@ -7459,6 +7464,7 @@ export default function InboxPage() {
                     query={savedReplyTrigger?.query || ""}
                     replies={savedReplies}
                     categories={savedReplyCategories}
+                    campaignName={selectedConv?.campaignName}
                     loading={savedRepliesLoading}
                     error={savedRepliesMenuError}
                     activeIndex={savedReplyActiveIndex}
@@ -8372,6 +8378,7 @@ export default function InboxPage() {
         open={showSavedRepliesDialog}
         draftText={savedReplyDialogTarget === "bulk" ? bulkFollowUpDraft : newMessage}
         library={savedRepliesLibrary}
+        campaignName={savedReplyDialogTarget === "bulk" ? null : selectedConv?.campaignName}
         onOpenChange={(open) => {
           setShowSavedRepliesDialog(open);
           if (!open) setSavedReplyDialogTarget("single");
