@@ -127,6 +127,7 @@ export async function POST(
       conversationId: id,
       instanceId: conversation.instanceId,
       instanceUnit: conversation.instance.unit,
+      archivedAt: conversation.archivedAt,
     });
 
     const note = await prisma.$transaction(async (tx) => {

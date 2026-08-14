@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
+import { notificationWithViewerReadState } from '@/lib/notification-read-state';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
 /* GET — List notifications for a user */
@@ -10,31 +12,30 @@ export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url);
     const unreadOnly = url.searchParams.get('unreadOnly') === 'true';
-    const limit = parseInt(url.searchParams.get('limit') || '20');
+    const parsedLimit = Number.parseInt(url.searchParams.get('limit') || '20', 10);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 100) : 20;
 
-    // UNIT GUARD: Show notifications for this user in their unit (or global)
-    const where: any = {
-      OR: [
-        { userId: guard.userId },
-        { userId: null }, // global notifications
-      ],
-    };
-    // Also filter by unit: show only notifications for user's unit or without unit (global)
-    if (!guard.isAdmin) {
-      where.AND = [
-        { OR: [{ unit: guard.userUnit }, { unit: null }] },
-      ];
-    }
-    if (unreadOnly) where.isRead = false;
+    const globalScope: Prisma.NotificationWhereInput = guard.isAdmin
+      ? { userId: null }
+      : {
+          userId: null,
+          OR: [{ unit: guard.userUnit }, { unit: null }],
+        };
+    const where: Prisma.NotificationWhereInput = unreadOnly
+      ? { userId: guard.userId, isRead: false }
+      : { OR: [{ userId: guard.userId }, globalScope] };
 
-    const notifications = await prisma.notification.findMany({
+    const rows = await prisma.notification.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
+    const notifications = rows.map(notificationWithViewerReadState);
 
     const unreadCount = await prisma.notification.count({
-      where: { ...where, isRead: false },
+      // O estado de avisos globais é compartilhado e não representa leitura
+      // individual; somente notificações próprias entram neste contador.
+      where: { userId: guard.userId, isRead: false },
     });
 
     return NextResponse.json({ notifications, unreadCount });

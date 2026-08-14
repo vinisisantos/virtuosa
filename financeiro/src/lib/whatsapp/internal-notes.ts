@@ -50,6 +50,7 @@ export function whatsappInternalNoteNotificationLink(input: {
   conversationId: string;
   instanceId: string;
   instanceUnit?: string | null;
+  archivedAt?: Date | string | null;
 }) {
   const params = new URLSearchParams();
   if (input.instanceUnit && input.instanceUnit !== "Todas") {
@@ -57,5 +58,6 @@ export function whatsappInternalNoteNotificationLink(input: {
   }
   params.set("targetInstanceId", input.instanceId);
   params.set("conversationId", input.conversationId);
+  if (input.archivedAt) params.set("archived", "1");
   return `/crm/inbox?${params.toString()}`;
 }

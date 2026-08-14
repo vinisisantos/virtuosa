@@ -53,4 +53,10 @@ test("gera link exato para a conversa preservando instância e unidade", () => {
     instanceId: "instance-shared",
     instanceUnit: "Todas",
   }), "/crm/inbox?targetInstanceId=instance-shared&conversationId=conversation-2");
+  assert.equal(whatsappInternalNoteNotificationLink({
+    conversationId: "conversation-3",
+    instanceId: "instance-scs",
+    instanceUnit: "SCS",
+    archivedAt: "2026-08-14T03:00:00.000Z",
+  }), "/crm/inbox?unit=SCS&targetInstanceId=instance-scs&conversationId=conversation-3&archived=1");
 });

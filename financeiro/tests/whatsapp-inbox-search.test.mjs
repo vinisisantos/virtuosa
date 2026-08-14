@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   escapePostgresLikePattern,
+  normalizeInboxSearchText,
   parseInboxSearchQuery,
 } from "../src/lib/whatsapp/inbox-search.ts";
 
@@ -14,9 +15,14 @@ test("aceita busca textual a partir de três caracteres", () => {
   assert.deepEqual(parseInboxSearchQuery("  Maria   Silva "), {
     text: "Maria Silva",
     digits: "",
-    textPattern: "%Maria Silva%",
+    textPattern: "%maria silva%",
     digitsPattern: null,
   });
+});
+
+test("normaliza maiúsculas e acentos no padrão textual", () => {
+  assert.equal(normalizeInboxSearchText("João CÉZAR"), "joao cezar");
+  assert.equal(parseInboxSearchQuery("João")?.textPattern, "%joao%");
 });
 
 test("aceita telefone a partir de quatro dígitos", () => {

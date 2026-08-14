@@ -44,6 +44,10 @@ if (process.env.VERCEL_ENV === "production") {
       // O SQL idempotente usa o Supavisor em modo sessão (5432); o runtime mantém 6543.
     });
   }
+  run(process.execPath, ["scripts/ensure-whatsapp-full-search-indexes.mjs"], {
+    ...process.env,
+    DATABASE_URL: migrationUrl,
+  });
 }
 
 run("npm", ["run", "build"]);

@@ -209,19 +209,19 @@ function fullSearchMatchSql(search: InboxSearchQuery) {
   if (search.textPattern) {
     const pattern = search.textPattern;
     textPredicates.push(
-      Prisma.sql`LOWER(COALESCE(contact."name", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}`,
-      Prisma.sql`LOWER(COALESCE(conversation."assignedToName", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}`,
+      Prisma.sql`public.virtuosa_search_normalize(COALESCE(contact."name", '')) LIKE ${pattern} ESCAPE ${"\\"}`,
+      Prisma.sql`public.virtuosa_search_normalize(COALESCE(conversation."assignedToName", '')) LIKE ${pattern} ESCAPE ${"\\"}`,
       Prisma.sql`EXISTS (
         SELECT 1
         FROM "WhatsAppMessage" message
         WHERE message."conversationId" = conversation."id"
-          AND LOWER(COALESCE(message."body", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}
+          AND public.virtuosa_search_normalize(COALESCE(message."body", '')) LIKE ${pattern} ESCAPE ${"\\"}
       )`,
       Prisma.sql`EXISTS (
         SELECT 1
         FROM "WhatsAppConversationInternalNote" internal_note
         WHERE internal_note."conversationId" = conversation."id"
-          AND LOWER(COALESCE(internal_note."content", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}
+          AND public.virtuosa_search_normalize(COALESCE(internal_note."content", '')) LIKE ${pattern} ESCAPE ${"\\"}
       )`,
       Prisma.sql`EXISTS (
         SELECT 1
@@ -236,13 +236,13 @@ function fullSearchMatchSql(search: InboxSearchQuery) {
             OR client."unit" = instance."unit"
           )
           AND (
-            LOWER(COALESCE(client."campaignName", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}
+            public.virtuosa_search_normalize(COALESCE(client."campaignName", '')) LIKE ${pattern} ESCAPE ${"\\"}
             OR EXISTS (
               SELECT 1
               FROM "SalesPipeline" pipeline
               WHERE pipeline."clientId" = client."id"
                 AND (instance."unit" IS NULL OR instance."unit" = 'Todas' OR pipeline."unit" = instance."unit")
-                AND LOWER(COALESCE(pipeline."notes", '')) LIKE LOWER(${pattern}) ESCAPE ${"\\"}
+                AND public.virtuosa_search_normalize(COALESCE(pipeline."notes", '')) LIKE ${pattern} ESCAPE ${"\\"}
             )
           )
       )`,
@@ -409,7 +409,7 @@ export async function GET(req: Request) {
     const archiveFilter = getArchiveFilter(showArchived);
 
     if (summary === "unread") {
-      const [conversations, followUps, notifications] = await Promise.all([
+      const [conversations, followUps, notifications, notificationUnreadCount] = await Promise.all([
         prisma.whatsAppConversation.findMany({
           where: {
             instanceId: { in: instanceIds },
@@ -467,13 +467,18 @@ export async function GET(req: Request) {
               take: 15,
             })
           : Promise.resolve([]),
+        requesterUserId
+          ? prisma.notification.count({
+              where: { userId: requesterUserId, isRead: false },
+            })
+          : Promise.resolve(0),
       ]);
 
       return NextResponse.json({
         conversations,
         followUps,
         notifications,
-        notificationUnreadCount: notifications.length,
+        notificationUnreadCount,
         count: conversations.length,
         serverTime,
       });
@@ -617,7 +622,6 @@ export async function GET(req: Request) {
         where: {
           id: requestedConversationId,
           instanceId: { in: instanceIds },
-          ...archiveFilter,
         },
         select: conversationSelect,
       });

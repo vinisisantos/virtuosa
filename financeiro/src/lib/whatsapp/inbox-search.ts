@@ -13,6 +13,13 @@ function normalizeWhitespace(value: string) {
   return value.trim().replace(/\s+/g, " ");
 }
 
+export function normalizeInboxSearchText(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("pt-BR");
+}
+
 export function escapePostgresLikePattern(value: string) {
   return value.replace(/[\\%_]/g, (character) => `\\${character}`);
 }
@@ -30,7 +37,9 @@ export function parseInboxSearchQuery(value?: string | null): InboxSearchQuery |
   return {
     text,
     digits,
-    textPattern: canSearchText ? `%${escapePostgresLikePattern(text)}%` : null,
+    textPattern: canSearchText
+      ? `%${escapePostgresLikePattern(normalizeInboxSearchText(text))}%`
+      : null,
     digitsPattern: canSearchPhone ? `%${escapePostgresLikePattern(digits)}%` : null,
   };
 }
