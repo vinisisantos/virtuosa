@@ -46,6 +46,7 @@ import {
   writeConversationListMemoryCache,
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
+import { preserveActiveAudioMediaUrl } from "@/lib/whatsapp/audio-playback";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import {
   hasWhatsAppTextFormatting,
@@ -1807,11 +1808,13 @@ function VoiceMessagePlayer({
   isMe,
   avatarContact,
   avatarFetchUrl,
+  onPlaybackChange,
 }: {
   msg: Message;
   isMe: boolean;
   avatarContact: Contact;
   avatarFetchUrl?: string;
+  onPlaybackChange: (messageId: string, isPlaying: boolean) => void;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -1822,6 +1825,10 @@ function VoiceMessagePlayer({
     [msg.id, msg.mediaUrl, msg.messageId],
   );
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+
+  useEffect(() => () => {
+    onPlaybackChange(msg.id, false);
+  }, [msg.id, onPlaybackChange]);
 
   const togglePlayback = async () => {
     const audio = audioRef.current;
@@ -1911,12 +1918,20 @@ function VoiceMessagePlayer({
         onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
         onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-        onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPlay={() => {
+          setIsPlaying(true);
+          onPlaybackChange(msg.id, true);
+        }}
+        onPause={() => {
+          setIsPlaying(false);
+          onPlaybackChange(msg.id, false);
+        }}
         onEnded={() => {
           setIsPlaying(false);
           setCurrentTime(0);
+          onPlaybackChange(msg.id, false);
         }}
+        onError={() => onPlaybackChange(msg.id, false)}
         className="hidden"
       />
     </div>
@@ -1937,6 +1952,7 @@ function MessageBubble({
   showTail,
   audioAvatarContact,
   audioAvatarFetchUrl,
+  onAudioPlaybackChange,
   quotedContactLabel,
   domId,
   isHighlighted,
@@ -1953,6 +1969,7 @@ function MessageBubble({
   showTail: boolean;
   audioAvatarContact: Contact;
   audioAvatarFetchUrl?: string;
+  onAudioPlaybackChange: (messageId: string, isPlaying: boolean) => void;
   quotedContactLabel?: string | null;
   domId: string;
   isHighlighted: boolean;
@@ -2338,6 +2355,7 @@ function MessageBubble({
               isMe={isMe}
               avatarContact={audioAvatarContact}
               avatarFetchUrl={audioAvatarFetchUrl}
+              onPlaybackChange={onAudioPlaybackChange}
             />
           )}
 
@@ -2719,6 +2737,7 @@ export default function InboxPage() {
   const conversationsRef = useRef<Conversation[]>([]);
   const selectedConvRef = useRef<Conversation | null>(null);
   const selectedConversationIdRef = useRef<string | null>(null);
+  const activeAudioMessageIdRef = useRef<string | null>(null);
   const dismissedDeepLinkConversationIdRef = useRef<string | null>(null);
   const [tab, setTab] = useState<InboxTab>(
     searchParams.get("archived") === "1" ? "archived" : "all",
@@ -3540,7 +3559,11 @@ export default function InboxPage() {
         }
 
         loadedMessagesConversationIdRef.current = convId;
-        setMessages(data.messages);
+        setMessages((currentMessages) => preserveActiveAudioMediaUrl(
+          currentMessages,
+          data.messages!,
+          activeAudioMessageIdRef.current,
+        ));
         setMessageLoadError(null);
         setLoadingMessages(false);
         if (markAsRead && data.markedAsRead === true) {
@@ -3748,12 +3771,23 @@ export default function InboxPage() {
       : 0;
 
     const currentConversation = selectedConvRef.current;
-    if (currentConversation) {
+    if (currentConversation && !activeAudioMessageIdRef.current) {
       fetchMessages(currentConversation.id, isConversationInService(currentConversation));
     }
   }, [fetchConversations, fetchMessages, isConversationInService]);
 
   useVisiblePolling(refreshVisibleInbox, INBOX_POLL_INTERVAL_MS, { runImmediately: false });
+
+  const handleAudioPlaybackChange = useCallback((messageId: string, isPlaying: boolean) => {
+    if (isPlaying) {
+      activeAudioMessageIdRef.current = messageId;
+      return;
+    }
+
+    if (activeAudioMessageIdRef.current === messageId) {
+      activeAudioMessageIdRef.current = null;
+    }
+  }, []);
 
   // Load messages only when the user opens another conversation. Polling updates
   // the same conversation silently so the chat does not flash a loading state.
@@ -6517,6 +6551,7 @@ export default function InboxPage() {
                         showTail={showMessageTail}
                         audioAvatarContact={audioAvatarContact}
                         audioAvatarFetchUrl={audioAvatarFetchUrl}
+                        onAudioPlaybackChange={handleAudioPlaybackChange}
                         quotedContactLabel={selectedConv.contact.name || selectedConv.contact.phone}
                         domId={messageDomId(item.id)}
                         isHighlighted={highlightedMessageItemId === item.id}
