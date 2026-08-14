@@ -33,6 +33,7 @@ import {
   PackageCheck,
   PencilLine,
   TrendingUp,
+  Tag,
   UserCheck,
   UserRound,
   UserX,
@@ -106,6 +107,7 @@ type Evaluation = {
   pipelineValue?: number | null;
   pipelineProcedureName?: string | null;
   pipelineProcedureNames?: string[];
+  campaignProcedureName?: string | null;
   pipelineSaleItems?: PipelineSaleItemView[];
   pipelineStage?: string | null;
   pipelineClosedAt?: string | null;
@@ -460,6 +462,13 @@ function EvaluationCardButton({
         </span>
         <span className="min-w-0">
           <span className="block truncate font-semibold text-foreground">{evaluation.clientName}</span>
+          <span
+            className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-foreground/80"
+            title={evaluation.campaignProcedureName || "Sem procedimento categorizado"}
+          >
+            <Tag className="h-3 w-3 shrink-0 text-primary" />
+            <span className="truncate">{evaluation.campaignProcedureName || "Sem procedimento categorizado"}</span>
+          </span>
           <span className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
             <UserRound className="h-3 w-3 shrink-0" />
             <span className="truncate">{evaluation.profissional?.name || "Sem responsável"}</span>
@@ -503,6 +512,13 @@ function EvaluationCardButton({
         )}
       </div>
       <div className="mt-0.5 truncate text-foreground">{evaluation.clientName}</div>
+      <div
+        className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-foreground/80"
+        title={evaluation.campaignProcedureName || "Sem procedimento categorizado"}
+      >
+        <Tag className="h-3 w-3 shrink-0 text-primary" />
+        <span className="truncate">{evaluation.campaignProcedureName || "Sem procedimento categorizado"}</span>
+      </div>
       <div className="mt-1 flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
           <UserRound className="h-3 w-3 shrink-0" />
@@ -1625,6 +1641,12 @@ export default function AvaliacoesAgendaPage() {
                       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Responsável</div>
                       <div className="mt-1 font-semibold text-foreground">
                         {selectedEvaluation.profissional?.name || "Sem responsável"}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Procedimento</div>
+                      <div className="mt-1 font-semibold text-foreground">
+                        {selectedEvaluation.campaignProcedureName || "Sem procedimento categorizado"}
                       </div>
                     </div>
                     <div>

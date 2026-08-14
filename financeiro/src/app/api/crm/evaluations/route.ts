@@ -103,9 +103,11 @@ async function enrichEvaluationsWithPipelineData<
           where: { id: { in: dealIds } },
           select: {
             id: true,
+            clientId: true,
             value: true,
             stage: true,
             closedAt: true,
+            campaignNameSnapshot: true,
             pipelineStage: { select: { name: true } },
           },
         })
@@ -125,6 +127,14 @@ async function enrichEvaluationsWithPipelineData<
     getPipelineSaleItems(prisma, dealIds),
   ]);
   const dealById = new Map(deals.map((deal) => [deal.id, deal]));
+  const clientIds = [...new Set(deals.map((deal) => deal.clientId).filter(Boolean))];
+  const clients = clientIds.length
+    ? await prisma.client.findMany({
+        where: { id: { in: clientIds } },
+        select: { id: true, campaignName: true },
+      })
+    : [];
+  const clientCampaignById = new Map(clients.map((client) => [client.id, client.campaignName]));
   const latestOutcomeByEvaluation = new Map<string, EvaluationAuditDetails>();
 
   for (const log of evaluationAuditLogs) {
@@ -155,6 +165,10 @@ async function enrichEvaluationsWithPipelineData<
       pipelineValue: pipelineDeal?.value || outcomeAudit?.saleValue || 0,
       pipelineProcedureNames: procedureNames,
       pipelineProcedureName: formatProcedureNames(procedureNames) || null,
+      campaignProcedureName:
+        (pipelineDeal?.clientId ? clientCampaignById.get(pipelineDeal.clientId) : null) ||
+        pipelineDeal?.campaignNameSnapshot ||
+        null,
       pipelineSaleItems,
       pipelineStage: pipelineDeal?.pipelineStage?.name || pipelineDeal?.stage || null,
       pipelineClosedAt: pipelineDeal?.closedAt || null,
