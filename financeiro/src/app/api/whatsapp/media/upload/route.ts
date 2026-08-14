@@ -9,6 +9,7 @@ import { WHATSAPP_MEDIA_MAX_FILE_BYTES } from "@/lib/whatsapp/media-constraints"
 
 const ALLOWED_CONTENT_TYPES = [
   "image/*",
+  "video/*",
   "audio/*",
   "application/pdf",
   "application/msword",

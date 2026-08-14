@@ -107,6 +107,7 @@ import {
   Volume2,
   VolumeX,
   Clock3,
+  Video,
 } from "lucide-react";
 import {
   isWhatsAppFollowUpDue,
@@ -362,13 +363,14 @@ const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MESSAGE_DELETE_WINDOW_MS = 60 * 60 * 1000;
 const ATTACHMENT_DOCUMENT_EXTENSION = /\.(pdf|doc|docx|xls|xlsx)$/i;
 const ATTACHMENT_AUDIO_EXTENSION = /\.(aac|flac|m4a|mp3|oga|ogg|opus|wav|webm)$/i;
+const ATTACHMENT_VIDEO_EXTENSION = /\.(m4v|mov|mp4|webm)$/i;
 
 type PendingAttachmentStatus = "ready" | "uploading" | "sending" | "error";
 
 interface PendingAttachment {
   id: string;
   file: File;
-  type: "image" | "audio" | "document";
+  type: "image" | "video" | "audio" | "document";
   previewUrl: string;
   blobUrl?: string;
   progress: number;
@@ -424,7 +426,10 @@ function visibleMediaBody(message: Message) {
 
 function attachmentKind(file: File) {
   if (file.type.startsWith("image/")) return "image";
-  if (file.type.startsWith("audio/") || ATTACHMENT_AUDIO_EXTENSION.test(file.name)) return "audio";
+  if (file.type.startsWith("video/")) return "video";
+  if (file.type.startsWith("audio/")) return "audio";
+  if (ATTACHMENT_VIDEO_EXTENSION.test(file.name)) return "video";
+  if (ATTACHMENT_AUDIO_EXTENSION.test(file.name)) return "audio";
   if (file.type === "application/pdf" || ATTACHMENT_DOCUMENT_EXTENSION.test(file.name)) return "document";
   return null;
 }
@@ -4329,7 +4334,7 @@ export default function InboxPage() {
     if (files.length > availableSlots) {
       toast(`Somente os primeiros ${availableSlots} arquivos foram adicionados.`, "error");
     } else if (unsupportedFiles.length) {
-      toast("Alguns formatos não são suportados. Envie imagem, áudio, PDF, Word ou Excel.", "error");
+      toast("Alguns formatos não são suportados. Envie imagem, vídeo, áudio, PDF, Word ou Excel.", "error");
     } else if (oversizedFiles.length) {
       toast("Alguns arquivos ultrapassam o limite de 100 MB.", "error");
     }
@@ -7100,7 +7105,7 @@ export default function InboxPage() {
                   <div>
                     <p className="text-base font-semibold text-foreground">Solte os arquivos para anexar</p>
                     <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      Imagens, áudios, PDFs e documentos
+                      Imagens, vídeos, áudios, PDFs e documentos
                     </p>
                   </div>
                 </div>
@@ -7150,6 +7155,15 @@ export default function InboxPage() {
                 <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-3 sm:p-6">
                   {activeAttachment.type === "image" ? (
                     <img src={activeAttachment.previewUrl} alt="Prévia do anexo" className="max-h-full max-w-full rounded-lg object-contain shadow-2xl" />
+                  ) : activeAttachment.type === "video" ? (
+                    <video
+                      src={activeAttachment.previewUrl}
+                      controls
+                      preload="metadata"
+                      playsInline
+                      className="max-h-full max-w-full rounded-lg bg-black object-contain shadow-2xl"
+                      aria-label={`Prévia de ${activeAttachment.file.name || "vídeo"}`}
+                    />
                   ) : activeAttachment.type === "audio" ? (
                     <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-2xl border border-border bg-card p-5 shadow-xl sm:p-7">
                       <span className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 text-primary">
@@ -7200,6 +7214,8 @@ export default function InboxPage() {
                           >
                             {item.type === "image" ? (
                               <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
+                            ) : item.type === "video" ? (
+                              <Video className="h-7 w-7 text-primary" />
                             ) : item.type === "audio" ? (
                               <Mic className="h-7 w-7 text-primary" />
                             ) : (
@@ -7489,7 +7505,7 @@ export default function InboxPage() {
                     className="hidden"
                     ref={fileInputRef}
                     onChange={handleFileSelect}
-                    accept="image/*,audio/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                    accept="image/*,video/*,audio/*,application/pdf,.mp4,.mov,.m4v,.webm,.doc,.docx,.xls,.xlsx"
                     multiple
                   />
 
