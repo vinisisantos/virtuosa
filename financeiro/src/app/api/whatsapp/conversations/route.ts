@@ -382,10 +382,15 @@ export async function GET(req: Request) {
       select: conversationSelect,
       orderBy: updatedSince
         ? { updatedAt: "desc" as const }
-        : [
-            { lastMessageAt: "desc" as const },
-            { id: "desc" as const },
-          ],
+        : status === "callback"
+          ? [
+              { callbackDueAt: "desc" as const },
+              { id: "desc" as const },
+            ]
+          : [
+              { lastMessageAt: "desc" as const },
+              { id: "desc" as const },
+            ],
       take: updatedSince ? limit : limit + 1,
       ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });

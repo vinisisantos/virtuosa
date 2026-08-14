@@ -163,6 +163,16 @@ type EvaluationConfirmationAvailability = {
   eligibleAt?: string;
 };
 
+type CallbackTrackingSnapshot = {
+  updatedAt?: string | null;
+  lastOutboundAt?: string | null;
+  callbackDueAt?: string | null;
+  callbackTrackingStartedAt?: string | null;
+  callbackStreakCount?: number;
+  callbackTotalCount?: number;
+  attemptCounted?: boolean;
+};
+
 interface ConversationListAnchor {
   conversationId: string;
   offsetTop: number;
@@ -241,6 +251,15 @@ function sortConversationsByFollowUpSchedule(conversations: Conversation[]) {
     new Date(a.activeFollowUp?.scheduledAt || 0).getTime()
     - new Date(b.activeFollowUp?.scheduledAt || 0).getTime()
   ));
+}
+
+function sortConversationsByCallbackSchedule(conversations: Conversation[]) {
+  return [...conversations].sort((a, b) => {
+    const dueDifference = new Date(b.callbackDueAt || 0).getTime()
+      - new Date(a.callbackDueAt || 0).getTime();
+    if (dueDifference !== 0) return dueDifference;
+    return (b.id || "").localeCompare(a.id || "");
+  });
 }
 
 function formatMessageTime(dateString: string) {
@@ -3395,6 +3414,7 @@ export default function InboxPage() {
     );
     const phase = options?.phase || "refresh";
     const isPage = phase === "page" && !incremental;
+    const replacesFilteredQueue = ["callback", "followup", "lost"].includes(serverConversationStatus) && !isPage;
     const requestKind = incremental ? "delta" : isPage ? `page:${options?.cursor || "none"}` : phase;
     const requestKey = `${conversationListScopeKey}:${requestKind}`;
     conversationsInFlightScopeRef.current = requestKey;
@@ -3459,16 +3479,21 @@ export default function InboxPage() {
           }
         } else {
           setConversations((previous) => {
-            if (["callback", "followup", "lost"].includes(serverConversationStatus) && !isPage) {
+            if (replacesFilteredQueue) {
               return serverConversationStatus === "followup"
                 ? sortConversationsByFollowUpSchedule(incoming)
-                : sortConversationsByActivity(incoming);
+                : serverConversationStatus === "callback"
+                  ? sortConversationsByCallbackSchedule(incoming)
+                  : sortConversationsByActivity(incoming);
             }
             const byId = new Map(previous.map((conversation) => [conversation.id, conversation]));
             incoming.forEach((conversation) => {
               byId.set(conversation.id, mergeConversation(byId.get(conversation.id), conversation));
             });
-            return sortConversationsByActivity(Array.from(byId.values()));
+            const merged = Array.from(byId.values());
+            return serverConversationStatus === "callback"
+              ? sortConversationsByCallbackSchedule(merged)
+              : sortConversationsByActivity(merged);
           });
           conversationsIncrementalPollsRef.current = 0;
         }
@@ -3479,7 +3504,12 @@ export default function InboxPage() {
 
         const responseHasMore = Boolean(data.hasMore);
         const responseCursor = typeof data.nextCursor === "string" ? data.nextCursor : null;
-        if (phase === "initial" || isPage || (phase === "enrich" && conversationsRef.current.length <= INBOX_INITIAL_CONVERSATION_LIMIT)) {
+        if (
+          phase === "initial"
+          || isPage
+          || replacesFilteredQueue
+          || (phase === "enrich" && conversationsRef.current.length <= INBOX_INITIAL_CONVERSATION_LIMIT)
+        ) {
           setHasMoreConversations(responseHasMore);
           setNextConversationCursor(responseCursor);
         }
@@ -3509,6 +3539,44 @@ export default function InboxPage() {
       }
     }
   }, [archivedView, conversationListScopeKey, conversationSearch, deepLinkConversationId, serverConversationStatus, waParams]);
+
+  const applyCallbackTrackingSnapshot = useCallback((
+    conversationId: string,
+    snapshot?: CallbackTrackingSnapshot | null,
+  ) => {
+    if (!snapshot) return;
+
+    const callbackFields: Partial<Conversation> = {
+      updatedAt: snapshot.updatedAt,
+      lastOutboundAt: snapshot.lastOutboundAt,
+      callbackDueAt: snapshot.callbackDueAt,
+      callbackTrackingStartedAt: snapshot.callbackTrackingStartedAt,
+      callbackStreakCount: snapshot.callbackStreakCount,
+      callbackTotalCount: snapshot.callbackTotalCount,
+    };
+
+    setConversations((current) => {
+      const updated = current.map((conversation) => (
+        conversation.id === conversationId ? { ...conversation, ...callbackFields } : conversation
+      ));
+      const visible = serverConversationStatus === "callback"
+        ? updated.filter((conversation) => isConversationCallbackDue(conversation))
+        : updated;
+      return serverConversationStatus === "callback"
+        ? sortConversationsByCallbackSchedule(visible)
+        : sortConversationsByActivity(visible);
+    });
+    setSelectedConv((current) => (
+      current?.id === conversationId ? { ...current, ...callbackFields } : current
+    ));
+
+    if (snapshot.attemptCounted) {
+      setConversationQueueCounts((current) => ({
+        ...current,
+        callback: Math.max(0, current.callback - 1),
+      }));
+    }
+  }, [serverConversationStatus]);
 
   useEffect(() => {
     if (!deepLinkConversationId) {
@@ -4103,6 +4171,7 @@ export default function InboxPage() {
         if (data.message) {
           setMessages((prev) => prev.map((message) => message.id === tempId ? data.message : message));
         }
+        applyCallbackTrackingSnapshot(sendConversation.id, data.callbackTracking);
         sentCount = 1;
       } else {
         for (let index = 0; index < queuedAttachments.length; index += 1) {
@@ -4183,6 +4252,7 @@ export default function InboxPage() {
           if (data.message && selectedConversationIdRef.current === sendConversation.id) {
             setMessages((prev) => prev.map((message) => message.id === tempId ? data.message : message));
           }
+          applyCallbackTrackingSnapshot(sendConversation.id, data.callbackTracking);
           if (imageBatch && typeof data.message?.messageId === "string") {
             const messageIds = sentImageBatchMessageIds.get(imageBatch.id) || Array<string | undefined>(imageBatch.size);
             messageIds[imageBatch.index] = data.message.messageId;
@@ -4546,6 +4616,8 @@ export default function InboxPage() {
         body: JSON.stringify(payload),
       });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        applyCallbackTrackingSnapshot(selectedConv.id, data.callbackTracking);
         fetchMessages(selectedConv.id, isConversationInService(selectedConv));
         fetchConversations({ incremental: true });
       } else {
@@ -5062,6 +5134,7 @@ export default function InboxPage() {
             throw new Error(data.error || "Não foi possível enviar a mensagem.");
           }
 
+          applyCallbackTrackingSnapshot(conversation.id, data.callbackTracking);
           sent += 1;
           const lastMessageAt = typeof data.message?.timestamp === "string"
             ? data.message.timestamp

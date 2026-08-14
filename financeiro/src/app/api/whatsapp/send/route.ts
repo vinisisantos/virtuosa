@@ -752,18 +752,32 @@ export async function POST(req: Request) {
       convUpdateData.unreadCount = 0;
     }
 
-    const message = await prisma.$transaction(async (tx) => {
+    const { message, callbackTracking } = await prisma.$transaction(async (tx) => {
       const savedMessage = await tx.whatsAppMessage.create({ data: messageData });
-      await recordOutboundForCallbackTracking(tx, conversation.id, sentAt);
-      await tx.whatsAppConversation.update({
+      const attemptCounted = await recordOutboundForCallbackTracking(tx, conversation.id, sentAt);
+      const updatedConversation = await tx.whatsAppConversation.update({
         where: { id: conversation.id },
         data: convUpdateData,
+        select: {
+          updatedAt: true,
+          lastOutboundAt: true,
+          callbackDueAt: true,
+          callbackTrackingStartedAt: true,
+          callbackStreakCount: true,
+          callbackTotalCount: true,
+        },
       });
-      return savedMessage;
+      return {
+        message: savedMessage,
+        callbackTracking: {
+          ...updatedConversation,
+          attemptCounted,
+        },
+      };
     });
 
     const [responseMessage] = await signPrivateMediaUrls([message]);
-    return NextResponse.json({ success: true, message: responseMessage });
+    return NextResponse.json({ success: true, message: responseMessage, callbackTracking });
 
   } catch (error: any) {
     console.error("[WhatsApp Send API Error]:", error);
