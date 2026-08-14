@@ -180,6 +180,25 @@ interface ConversationListAnchor {
   expiresAt: number;
 }
 
+interface InternalNoteMention {
+  userId: string;
+  name: string;
+}
+
+interface InternalNote {
+  id: string;
+  content: string;
+  mentions?: InternalNoteMention[] | null;
+  createdBy: string;
+  createdByName: string;
+  createdAt: string;
+}
+
+interface MentionableUser {
+  id: string;
+  name: string;
+}
+
 type MessageLoadResult =
   | { status: "applied" }
   | { status: "superseded" }
@@ -2718,6 +2737,14 @@ export default function InboxPage() {
   const [messageLoadError, setMessageLoadError] = useState<string | null>(null);
   const [messageReloadKey, setMessageReloadKey] = useState(0);
   const [highlightedMessageItemId, setHighlightedMessageItemId] = useState<string | null>(null);
+  const [internalNotes, setInternalNotes] = useState<InternalNote[]>([]);
+  const [mentionableUsers, setMentionableUsers] = useState<MentionableUser[]>([]);
+  const [internalNotesOpen, setInternalNotesOpen] = useState(false);
+  const [internalNotesLoading, setInternalNotesLoading] = useState(false);
+  const [internalNotesError, setInternalNotesError] = useState<string | null>(null);
+  const [internalNoteDraft, setInternalNoteDraft] = useState("");
+  const [internalNoteMentionIds, setInternalNoteMentionIds] = useState<string[]>([]);
+  const [isSavingInternalNote, setIsSavingInternalNote] = useState(false);
   const [hasMoreConversations, setHasMoreConversations] = useState(true);
   const [nextConversationCursor, setNextConversationCursor] = useState<string | null>(null);
   const [isLoadingMoreConversations, setIsLoadingMoreConversations] = useState(false);
@@ -2772,6 +2799,7 @@ export default function InboxPage() {
   const composerSelectionRef = useRef({ start: 0, end: 0 });
   const conversationsRequestSeqRef = useRef(0);
   const messagesRequestSeqRef = useRef(0);
+  const internalNotesRequestSeqRef = useRef(0);
   const conversationsInFlightScopeRef = useRef<string | null>(null);
   const conversationsLastSyncRef = useRef<string | null>(null);
   const conversationsIncrementalPollsRef = useRef(0);
@@ -3177,6 +3205,75 @@ export default function InboxPage() {
     },
     [effectiveUnit, targetInstanceId, targetUserId]
   );
+
+  const loadInternalNotes = useCallback(async (conversationId: string) => {
+    const requestSeq = ++internalNotesRequestSeqRef.current;
+    setInternalNotesLoading(true);
+    setInternalNotesError(null);
+    try {
+      const response = await fetch(
+        buildUrl(`/api/whatsapp/conversations/${conversationId}/internal-notes`),
+        { cache: "no-store" },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || "Não foi possível carregar as notas internas.");
+      }
+      if (requestSeq !== internalNotesRequestSeqRef.current) return;
+      setInternalNotes(Array.isArray(data.notes) ? data.notes : []);
+      setMentionableUsers(Array.isArray(data.mentionableUsers) ? data.mentionableUsers : []);
+    } catch (error) {
+      if (requestSeq !== internalNotesRequestSeqRef.current) return;
+      setInternalNotesError(error instanceof Error ? error.message : "Não foi possível carregar as notas internas.");
+    } finally {
+      if (requestSeq === internalNotesRequestSeqRef.current) {
+        setInternalNotesLoading(false);
+      }
+    }
+  }, [buildUrl]);
+
+  const saveInternalNote = useCallback(async () => {
+    const conversationId = selectedConversationId;
+    const content = internalNoteDraft.trim();
+    if (!conversationId || !content || isSavingInternalNote) return;
+
+    setIsSavingInternalNote(true);
+    setInternalNotesError(null);
+    try {
+      const response = await fetch(
+        buildUrl(`/api/whatsapp/conversations/${conversationId}/internal-notes`),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content, mentionedUserIds: internalNoteMentionIds }),
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível salvar a nota interna.");
+      if (selectedConvRef.current?.id !== conversationId) return;
+      if (data.note) setInternalNotes((current) => [...current, data.note]);
+      setInternalNoteDraft("");
+      setInternalNoteMentionIds([]);
+      toast("Nota interna salva. Ela não foi enviada ao contato.", "success");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Não foi possível salvar a nota interna.";
+      setInternalNotesError(message);
+      toast(message, "error");
+    } finally {
+      setIsSavingInternalNote(false);
+    }
+  }, [buildUrl, internalNoteDraft, internalNoteMentionIds, isSavingInternalNote, selectedConversationId]);
+
+  useEffect(() => {
+    internalNotesRequestSeqRef.current += 1;
+    setInternalNotes([]);
+    setMentionableUsers([]);
+    setInternalNotesError(null);
+    setInternalNoteDraft("");
+    setInternalNoteMentionIds([]);
+    setInternalNotesOpen(false);
+    if (selectedConversationId) void loadInternalNotes(selectedConversationId);
+  }, [loadInternalNotes, selectedConversationId]);
 
   const leaveConversation = useCallback((extraParams?: Record<string, string>) => {
     dismissedDeepLinkConversationIdRef.current = selectedConversationIdRef.current || selectedConvRef.current?.id || null;
@@ -6368,6 +6465,25 @@ export default function InboxPage() {
                   </button>
                 )}
 
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInternalNotesOpen(true);
+                    void loadInternalNotes(selectedConv.id);
+                  }}
+                  className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-800 transition-colors hover:bg-amber-500/15 dark:text-amber-300 sm:h-8 sm:w-auto sm:gap-2 sm:px-3"
+                  aria-label={`Abrir notas internas${internalNotes.length ? `, ${internalNotes.length} salvas` : ""}`}
+                  title="Notas internas — visíveis somente para a equipe"
+                >
+                  <MessageSquareText className="h-4 w-4" />
+                  <span className="hidden sm:inline">Notas</span>
+                  {internalNotes.length > 0 && (
+                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-black sm:static sm:h-4">
+                      {internalNotes.length > 99 ? "99+" : internalNotes.length}
+                    </span>
+                  )}
+                </button>
+
                 {selectedConv?.campaignUrl && (
                   <a
                     href={selectedConv.campaignUrl}
@@ -7162,6 +7278,178 @@ export default function InboxPage() {
             />
           </div>
         </>
+      )}
+
+      {internalNotesOpen && selectedConv && (
+        <div
+          className="fixed inset-0 z-[85] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isSavingInternalNote) setInternalNotesOpen(false);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="internal-notes-title"
+            className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-amber-500/25 bg-card shadow-2xl sm:max-h-[82vh] sm:max-w-2xl sm:rounded-2xl"
+          >
+            <header className="flex shrink-0 items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-5">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/12 text-amber-700 dark:text-amber-300">
+                    <MessageSquareText className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <h2 id="internal-notes-title" className="truncate text-base font-semibold text-foreground">
+                      Notas internas
+                    </h2>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {displayContactName(selectedConv.contact)} · somente equipe
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setInternalNotesOpen(false)}
+                disabled={isSavingInternalNote}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                aria-label="Fechar notas internas"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+              {internalNotesError && (
+                <div className="mb-3 flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/8 px-3 py-2.5 text-xs text-destructive">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span className="min-w-0 flex-1 leading-5">{internalNotesError}</span>
+                  <button
+                    type="button"
+                    onClick={() => void loadInternalNotes(selectedConv.id)}
+                    className="shrink-0 font-semibold underline underline-offset-2"
+                  >
+                    Tentar novamente
+                  </button>
+                </div>
+              )}
+
+              {internalNotesLoading && internalNotes.length === 0 ? (
+                <div className="flex min-h-40 items-center justify-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Carregando notas...
+                </div>
+              ) : internalNotes.length === 0 ? (
+                <div className="flex min-h-40 flex-col items-center justify-center rounded-2xl border border-dashed border-border bg-muted/25 px-5 text-center">
+                  <MessageSquareText className="h-7 w-7 text-amber-600/70" />
+                  <p className="mt-3 text-sm font-semibold text-foreground">Nenhuma nota interna ainda</p>
+                  <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
+                    Registre contexto para a equipe sem enviar qualquer mensagem ao contato.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {internalNotes.map((note) => {
+                    const mentions = Array.isArray(note.mentions) ? note.mentions : [];
+                    return (
+                      <article key={note.id} className="rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] p-3.5 sm:p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-[11px] font-bold text-amber-800 dark:text-amber-200">
+                              {note.createdByName.trim().charAt(0).toUpperCase() || "N"}
+                            </span>
+                            <span className="truncate text-xs font-semibold text-foreground">{note.createdByName}</span>
+                          </div>
+                          <time dateTime={note.createdAt} className="shrink-0 text-[10px] text-muted-foreground">
+                            {formatFollowUpSchedule(note.createdAt)}
+                          </time>
+                        </div>
+                        <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{note.content}</p>
+                        {mentions.length > 0 && (
+                          <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Pessoas mencionadas">
+                            {mentions.map((mention) => (
+                              <span key={mention.userId} className="rounded-full bg-primary/10 px-2 py-1 text-[10px] font-semibold text-primary">
+                                @{mention.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {canReplyToSelectedConversation && (
+              <footer className="shrink-0 border-t border-border bg-card px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-4">
+                {mentionableUsers.length > 0 && (
+                  <div className="mb-2.5">
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Mencionar equipe
+                    </p>
+                    <div className="flex max-h-20 flex-wrap gap-1.5 overflow-y-auto">
+                      {mentionableUsers.map((user) => {
+                        const selected = internalNoteMentionIds.includes(user.id);
+                        return (
+                          <button
+                            key={user.id}
+                            type="button"
+                            onClick={() => setInternalNoteMentionIds((current) => (
+                              selected ? current.filter((id) => id !== user.id) : [...current, user.id].slice(0, 10)
+                            ))}
+                            aria-pressed={selected}
+                            className={`min-h-8 rounded-full border px-2.5 text-xs font-semibold transition-colors ${
+                              selected
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                            }`}
+                          >
+                            @{user.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-end gap-2">
+                  <div className="min-w-0 flex-1 rounded-xl border border-amber-500/25 bg-background px-3 py-2 focus-within:border-amber-500/60">
+                    <textarea
+                      value={internalNoteDraft}
+                      onChange={(event) => setInternalNoteDraft(event.target.value.slice(0, 2000))}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                          event.preventDefault();
+                          void saveInternalNote();
+                        }
+                      }}
+                      placeholder="Escreva uma nota visível somente para a equipe..."
+                      rows={2}
+                      maxLength={2000}
+                      className="max-h-32 min-h-12 w-full resize-none border-0 bg-transparent p-0 text-sm leading-5 text-foreground outline-none placeholder:text-muted-foreground focus:ring-0"
+                    />
+                    <div className="mt-1 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                      <span>Ctrl/⌘ + Enter para salvar</span>
+                      <span>{internalNoteDraft.length}/2000</span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void saveInternalNote()}
+                    disabled={!internalNoteDraft.trim() || isSavingInternalNote}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-500 text-black transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50"
+                    aria-label="Salvar nota interna"
+                  >
+                    {isSavingInternalNote ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  </button>
+                </div>
+              </footer>
+            )}
+          </section>
+        </div>
       )}
 
       {imagePreview && (

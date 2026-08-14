@@ -54,9 +54,20 @@ export async function POST(req: NextRequest) {
     const { userId, type, title, message, icon, link } = body;
 
     if (!title || !message) return NextResponse.json({ error: 'Título e mensagem obrigatórios' }, { status: 400 });
+    if (userId && userId !== guard.userId && !guard.isAdmin) {
+      return NextResponse.json({ error: 'Você não pode criar notificações para outro usuário' }, { status: 403 });
+    }
 
     const notification = await prisma.notification.create({
-      data: { userId, type: type || 'info', title, message, icon: icon || 'notifications', link, unit: guard.createUnit() },
+      data: {
+        userId: userId || (guard.isAdmin ? null : guard.userId),
+        type: type || 'info',
+        title,
+        message,
+        icon: icon || 'notifications',
+        link,
+        unit: guard.createUnit(),
+      },
     });
 
     return NextResponse.json({ success: true, notification });
@@ -87,7 +98,16 @@ export async function PUT(req: NextRequest) {
     }
 
     if (body.id) {
-      await prisma.notification.update({ where: { id: body.id }, data: { isRead: true } });
+      const result = await prisma.notification.updateMany({
+        // Avisos globais usam um único registro compartilhado. Marcá-los
+        // aqui apagaria o aviso para toda a equipe; somente avisos próprios
+        // possuem leitura individual.
+        where: { id: body.id, userId: guard.userId },
+        data: { isRead: true },
+      });
+      if (!result.count) {
+        return NextResponse.json({ error: 'Notificação não encontrada' }, { status: 404 });
+      }
       return NextResponse.json({ success: true });
     }
 
