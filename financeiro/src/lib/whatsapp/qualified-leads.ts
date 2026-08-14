@@ -28,6 +28,9 @@ type QualifiedLeadClient = {
 export type QualifiedWhatsappLead = {
   receivedAt: Date;
   phoneKey: string;
+  conversationId: string;
+  assignedTo: string | null;
+  assignedToName: string | null;
   client: QualifiedLeadClient;
 };
 
@@ -67,7 +70,10 @@ export async function getQualifiedWhatsappLeads(params: {
         instance: qualifiedLeadInstanceFilter(params.unit),
       },
       select: {
+        id: true,
         createdAt: true,
+        assignedTo: true,
+        assignedToName: true,
         contact: { select: { phone: true } },
       },
       orderBy: { createdAt: "asc" },
@@ -85,7 +91,14 @@ export async function getQualifiedWhatsappLeads(params: {
       select: {
         body: true,
         timestamp: true,
-        conversation: { select: { contact: { select: { phone: true } } } },
+        conversation: {
+          select: {
+            id: true,
+            assignedTo: true,
+            assignedToName: true,
+            contact: { select: { phone: true } },
+          },
+        },
       },
       orderBy: { timestamp: "asc" },
     }),
@@ -94,13 +107,23 @@ export async function getQualifiedWhatsappLeads(params: {
   const directFormEvents = directFormMessages.flatMap((message) => {
     const phone = message.conversation.contact.phone;
     return extractDirectFormLeadName(message.body, phone)
-      ? [{ receivedAt: message.timestamp, phone, isDirectFormLead: true }]
+      ? [{
+          receivedAt: message.timestamp,
+          phone,
+          conversationId: message.conversation.id,
+          assignedTo: message.conversation.assignedTo,
+          assignedToName: message.conversation.assignedToName,
+          isDirectFormLead: true,
+        }]
       : [];
   });
   const leadEvents = [
     ...conversations.map((conversation) => ({
       receivedAt: conversation.createdAt,
       phone: conversation.contact.phone,
+      conversationId: conversation.id,
+      assignedTo: conversation.assignedTo,
+      assignedToName: conversation.assignedToName,
       isDirectFormLead: false,
     })),
     ...directFormEvents,
@@ -158,7 +181,14 @@ export async function getQualifiedWhatsappLeads(params: {
     const dedupeKey = `${spDateKey(event.receivedAt)}:${phoneKey}`;
     if (countedKeys.has(dedupeKey)) continue;
     countedKeys.add(dedupeKey);
-    leads.push({ receivedAt: event.receivedAt, phoneKey, client });
+    leads.push({
+      receivedAt: event.receivedAt,
+      phoneKey,
+      conversationId: event.conversationId,
+      assignedTo: event.assignedTo,
+      assignedToName: event.assignedToName,
+      client,
+    });
   }
 
   return leads;

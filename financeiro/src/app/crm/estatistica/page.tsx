@@ -3,6 +3,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { DatePicker } from '@/components/ui/date-picker';
 import { isGenericCampaignName } from '@/lib/campaign-labels';
+import type {
+  CommercialIndicatorBreakdown,
+  CommercialIndicators,
+} from '@/lib/crm/commercial-indicators';
 
 function todayDateInputFrom(input = new Date()) {
   const date = input;
@@ -36,6 +40,14 @@ interface LeadCountAdjustment {
   count: number;
 }
 
+interface CommercialIndicatorsResponse extends CommercialIndicators {
+  coverage: CommercialIndicators['coverage'] & {
+    appointmentsWithMarker: number;
+    appointmentsWithoutMarker: number;
+    appointmentsLinkedToCohort: number;
+  };
+}
+
 const DEFAULT_STAGES = [
   { key: 'entrada', label: 'Entrada', color: '#6366f1' },
   { key: 'em_andamento', label: 'Em Andamento', color: '#f59e0b' },
@@ -50,6 +62,63 @@ const cardS: React.CSSProperties = {
   background: 'var(--card-bg)', borderRadius: 18, border: '1px solid var(--border)',
   boxShadow: 'var(--shadow-sm)', padding: '16px 14px',
 };
+
+const formatMinutes = (value: number | null) => {
+  if (value === null) return '—';
+  if (value < 60) return `${value.toLocaleString('pt-BR', { maximumFractionDigits: 1 })} min`;
+  const hours = Math.floor(value / 60);
+  const minutes = Math.round(value % 60);
+  return minutes > 0 ? `${hours}h ${minutes}min` : `${hours}h`;
+};
+
+function CommercialBreakdownTable({
+  title,
+  icon,
+  rows,
+}: {
+  title: string;
+  icon: string;
+  rows: CommercialIndicatorBreakdown[];
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-border/50 bg-background/50 p-3">
+      <h4 className="mb-3 flex items-center gap-2 text-sm font-black text-foreground">
+        <span className="material-symbols-outlined text-[17px] text-primary">{icon}</span>
+        {title}
+      </h4>
+      <div className="overflow-x-auto [scrollbar-width:thin]">
+        <table className="w-full min-w-[650px] border-separate border-spacing-0 text-left text-[0.7rem]">
+          <thead>
+            <tr className="text-[0.6rem] uppercase tracking-wide text-muted-foreground">
+              <th className="border-b border-border/50 px-2 py-2">Origem</th>
+              <th className="border-b border-border/50 px-2 py-2 text-right">Recebidos</th>
+              <th className="border-b border-border/50 px-2 py-2 text-right">Contatados</th>
+              <th className="border-b border-border/50 px-2 py-2 text-right">Responderam</th>
+              <th className="border-b border-border/50 px-2 py-2 text-right">Taxa resp.</th>
+              <th className="border-b border-border/50 px-2 py-2 text-right">Agendados</th>
+              <th className="border-b border-border/50 px-2 py-2 text-right">Compareceram</th>
+              <th className="border-b border-border/50 px-2 py-2 text-right">Fechou</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label} className="text-foreground">
+                <td className="max-w-[220px] truncate border-b border-border/30 px-2 py-2.5 font-bold" title={row.label}>{row.label}</td>
+                <td className="border-b border-border/30 px-2 py-2.5 text-right font-bold">{row.received}</td>
+                <td className="border-b border-border/30 px-2 py-2.5 text-right">{row.contacted}</td>
+                <td className="border-b border-border/30 px-2 py-2.5 text-right">{row.responded}</td>
+                <td className="border-b border-border/30 px-2 py-2.5 text-right font-bold text-primary">{row.rates.response.percentage}%</td>
+                <td className="border-b border-border/30 px-2 py-2.5 text-right">{row.scheduled}</td>
+                <td className="border-b border-border/30 px-2 py-2.5 text-right">{row.attended}</td>
+                <td className="border-b border-border/30 px-2 py-2.5 text-right font-bold text-emerald-500">{row.closed}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
 const leadDate = (client: Pick<Client, 'arrivedAt' | 'createdAt'>) => new Date(client.arrivedAt || client.createdAt);
 const isGenericCampaign = (value?: string | null) => isGenericCampaignName(value);
@@ -79,6 +148,9 @@ export default function CrmEstatisticaPage() {
   const [notLeadEntries, setNotLeadEntries] = useState<NotLeadEntry[]>([]);
   const [scheduledEvaluations, setScheduledEvaluations] = useState<number | null>(null);
   const [scheduledEvaluationsLoading, setScheduledEvaluationsLoading] = useState(true);
+  const [commercialIndicators, setCommercialIndicators] = useState<CommercialIndicatorsResponse | null>(null);
+  const [commercialIndicatorsLoading, setCommercialIndicatorsLoading] = useState(true);
+  const [commercialIndicatorsError, setCommercialIndicatorsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [stages, setStages] = useState(DEFAULT_STAGES);
   
@@ -167,8 +239,31 @@ export default function CrmEstatisticaPage() {
     }
   }, [endDate, globalUnit, showTime, startDate, startTime, endTime]);
 
+  const fetchCommercialIndicators = useCallback(async () => {
+    setCommercialIndicatorsLoading(true);
+    setCommercialIndicatorsError(null);
+    try {
+      const params = new URLSearchParams({ startDate, endDate });
+      if (globalUnit) params.set('unit', globalUnit);
+      if (showTime) {
+        params.set('startTime', startTime);
+        params.set('endTime', endTime);
+      }
+      const response = await fetch(`/api/crm/estatistica/commercial?${params}`);
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Erro ao carregar indicadores comerciais');
+      setCommercialIndicators(data);
+    } catch (error) {
+      setCommercialIndicators(null);
+      setCommercialIndicatorsError(error instanceof Error ? error.message : 'Erro ao carregar indicadores comerciais');
+    } finally {
+      setCommercialIndicatorsLoading(false);
+    }
+  }, [endDate, globalUnit, showTime, startDate, startTime, endTime]);
+
   useEffect(() => { fetchClients(); fetchMonthlyLeads(); }, [fetchClients, fetchMonthlyLeads]);
   useEffect(() => { fetchScheduledEvaluations(); }, [fetchScheduledEvaluations]);
+  useEffect(() => { fetchCommercialIndicators(); }, [fetchCommercialIndicators]);
 
   // Refina por horário (client-side) sobre os leads já filtrados por data no servidor
   const leads = showTime
@@ -439,6 +534,117 @@ export default function CrmEstatisticaPage() {
                 </span>
               </div>
             )}
+
+            {/* ── Indicadores comerciais — coorte de leads qualificados ── */}
+            <section className="mb-4 rounded-xl border border-border/50 bg-card p-3 shadow-sm sm:p-4">
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="m-0 flex items-center gap-2 text-[0.95rem] font-black text-foreground">
+                    <span className="material-symbols-outlined text-[19px] text-primary">monitoring</span>
+                    Indicadores comerciais
+                  </h3>
+                  <p className="mt-1 text-[0.7rem] font-medium text-muted-foreground">
+                    Coorte de leads qualificados recebidos no período. As mensagens são consolidadas com segurança no servidor.
+                  </p>
+                </div>
+                <span className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[0.64rem] font-bold text-primary">
+                  Atualiza com período e unidade
+                </span>
+              </div>
+
+              {commercialIndicatorsLoading ? (
+                <div className="flex min-h-32 items-center justify-center gap-2 rounded-xl border border-border/40 bg-background/40 text-sm text-muted-foreground">
+                  <span className="material-symbols-outlined animate-spin text-[20px]">progress_activity</span>
+                  Calculando indicadores…
+                </div>
+              ) : commercialIndicatorsError ? (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-5 text-sm font-semibold text-red-500">
+                  {commercialIndicatorsError}
+                </div>
+              ) : commercialIndicators ? (
+                <>
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
+                    {[
+                      { label: 'Recebidos', value: commercialIndicators.totals.received, icon: 'person_add', color: '#6366f1' },
+                      { label: 'Contatados', value: commercialIndicators.totals.contacted, icon: 'outgoing_mail', color: '#0ea5e9' },
+                      { label: 'Responderam', value: commercialIndicators.totals.responded, icon: 'forum', color: '#14b8a6' },
+                      { label: 'Agendados', value: commercialIndicators.totals.scheduled, icon: 'event_available', color: '#8b5cf6' },
+                      { label: 'Compareceram', value: commercialIndicators.totals.attended, icon: 'how_to_reg', color: '#10b981' },
+                      { label: 'Faltaram', value: commercialIndicators.totals.missed, icon: 'event_busy', color: '#f59e0b' },
+                      { label: 'Fechou', value: commercialIndicators.totals.closed, icon: 'verified', color: '#10b981' },
+                      { label: 'Não fechou', value: commercialIndicators.totals.notClosed, icon: 'close', color: '#ef4444' },
+                    ].map((metric) => (
+                      <div key={metric.label} className="rounded-xl border border-border/40 bg-background/50 p-3">
+                        <div className="mb-2 flex items-center gap-1.5 text-[0.58rem] font-bold uppercase tracking-wide text-muted-foreground">
+                          <span className="material-symbols-outlined text-[15px]" style={{ color: metric.color }}>{metric.icon}</span>
+                          {metric.label}
+                        </div>
+                        <div className="text-xl font-black text-foreground">{metric.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                    {[
+                      { label: '1ª resposta média', value: formatMinutes(commercialIndicators.totals.firstResponseMinutes.average) },
+                      { label: 'Mediana', value: formatMinutes(commercialIndicators.totals.firstResponseMinutes.median) },
+                      { label: 'P90', value: formatMinutes(commercialIndicators.totals.firstResponseMinutes.p90) },
+                      { label: 'SLA até 15 min', value: `${commercialIndicators.totals.rates.sla15.percentage}%` },
+                    ].map((metric) => (
+                      <div key={metric.label} className="rounded-xl border border-primary/15 bg-primary/5 px-3 py-2.5">
+                        <div className="text-[0.62rem] font-bold uppercase tracking-wide text-muted-foreground">{metric.label}</div>
+                        <div className="mt-1 text-base font-black text-primary">{metric.value}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                    {[
+                      { label: 'Taxa de resposta', rate: commercialIndicators.totals.rates.response, detail: 'responderam / contatados' },
+                      { label: 'Taxa de agendamento', rate: commercialIndicators.totals.rates.scheduling, detail: 'agendados / recebidos' },
+                      { label: 'Taxa de comparecimento', rate: commercialIndicators.totals.rates.attendance, detail: 'compareceram / desfechos de presença' },
+                      { label: 'Taxa de fechamento', rate: commercialIndicators.totals.rates.closing, detail: 'fechou / desfechos comerciais' },
+                      { label: 'SLA de 15 minutos', rate: commercialIndicators.totals.rates.sla15, detail: '1ª resposta no SLA / contatados' },
+                    ].map(({ label, rate, detail }) => (
+                      <div key={label} className="rounded-xl border border-border/40 bg-background/50 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[0.68rem] font-bold text-foreground">{label}</span>
+                          <strong className="text-sm text-primary">{rate.percentage}%</strong>
+                        </div>
+                        <div className="mt-1 text-[0.6rem] text-muted-foreground">
+                          {rate.numerator}/{rate.denominator} · {detail}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2 rounded-xl border border-border/40 bg-background/40 px-3 py-2 text-[0.64rem] font-semibold text-muted-foreground">
+                    <span>Campanha classificada: <strong className="text-foreground">{commercialIndicators.coverage.campaignClassified}</strong></span>
+                    <span>· Sem campanha: <strong className="text-foreground">{commercialIndicators.coverage.campaignUnclassified}</strong></span>
+                    <span>· Com responsável: <strong className="text-foreground">{commercialIndicators.coverage.assigned}</strong></span>
+                    <span>· Sem responsável: <strong className="text-foreground">{commercialIndicators.coverage.unassigned}</strong></span>
+                    <span title="Somente estes registros podem alimentar o funil de agenda">
+                      · Agendamentos vinculados à coorte: <strong className="text-foreground">{commercialIndicators.coverage.appointmentsLinkedToCohort}</strong>
+                    </span>
+                    <span>· Avaliações criadas no período com marcador: <strong className="text-foreground">{commercialIndicators.coverage.appointmentsWithMarker}</strong></span>
+                    <span title="Avaliações criadas no período sem o marcador [pipelineDealId] ficam fora das conversões">
+                      · Criadas sem marcador: <strong className="text-foreground">{commercialIndicators.coverage.appointmentsWithoutMarker}</strong>
+                    </span>
+                  </div>
+
+                  {commercialIndicators.totals.received === 0 ? (
+                    <div className="mt-3 rounded-xl border border-border/40 bg-background/40 px-4 py-8 text-center text-sm text-muted-foreground">
+                      Nenhum lead qualificado encontrado no período selecionado.
+                    </div>
+                  ) : (
+                    <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                      <CommercialBreakdownTable title="Por campanha" icon="campaign" rows={commercialIndicators.byCampaign} />
+                      <CommercialBreakdownTable title="Por responsável atual" icon="support_agent" rows={commercialIndicators.byAssignee} />
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </section>
 
             {/* ── Campanhas + Gráfico — 1 coluna em mobile ── */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
