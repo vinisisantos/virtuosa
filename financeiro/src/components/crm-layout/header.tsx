@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { ModeToggle } from "./mode-toggle";
 import { useGlobalUnit } from "@/contexts/UnitContext";
+import { NotificationBell } from "@/components/notification-bell";
 
 const pageTitles: Record<string, string> = {
   "/crm": "Dashboard",
@@ -154,6 +155,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
         )}
 
 
+        <NotificationBell passive />
         <ModeToggle />
 
         <DropdownMenu>

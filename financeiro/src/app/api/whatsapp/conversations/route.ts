@@ -409,7 +409,7 @@ export async function GET(req: Request) {
     const archiveFilter = getArchiveFilter(showArchived);
 
     if (summary === "unread") {
-      const [conversations, followUps] = await Promise.all([
+      const [conversations, followUps, notifications] = await Promise.all([
         prisma.whatsAppConversation.findMany({
           where: {
             instanceId: { in: instanceIds },
@@ -450,9 +450,33 @@ export async function GET(req: Request) {
               take: 100,
             })
           : Promise.resolve([]),
+        requesterUserId
+          ? prisma.notification.findMany({
+              where: { userId: requesterUserId, isRead: false },
+              select: {
+                id: true,
+                type: true,
+                title: true,
+                message: true,
+                icon: true,
+                link: true,
+                isRead: true,
+                createdAt: true,
+              },
+              orderBy: { createdAt: "desc" },
+              take: 15,
+            })
+          : Promise.resolve([]),
       ]);
 
-      return NextResponse.json({ conversations, followUps, count: conversations.length, serverTime });
+      return NextResponse.json({
+        conversations,
+        followUps,
+        notifications,
+        notificationUnreadCount: notifications.length,
+        count: conversations.length,
+        serverTime,
+      });
     }
 
     const baseConversationWhere = updatedSince
@@ -479,6 +503,7 @@ export async function GET(req: Request) {
       lastMessage: true,
       lastMessageAt: true,
       updatedAt: true,
+      internalNotesUpdatedAt: true,
       resolution: true,
       closedAt: true,
       closedByName: true,

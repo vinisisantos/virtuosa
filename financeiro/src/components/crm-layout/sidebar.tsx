@@ -52,6 +52,10 @@ import {
   type WhatsAppFollowUpNotificationCandidate,
 } from "@/lib/whatsapp/notification-scope";
 import { toast } from "@/components/toast";
+import {
+  CRM_NOTIFICATION_SNAPSHOT_EVENT,
+  type CrmNotificationSnapshotItem,
+} from "@/lib/crm-notification-snapshot";
 
 interface NavItem {
   href: string;
@@ -331,6 +335,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
         }
         seenFollowUpKeysRef.current = dueWhatsAppFollowUpKeys(followUps);
         followUpBaselineLoadedRef.current = true;
+      }
+      if (Array.isArray(data.notifications)) {
+        window.dispatchEvent(new CustomEvent(CRM_NOTIFICATION_SNAPSHOT_EVENT, {
+          detail: {
+            notifications: data.notifications as CrmNotificationSnapshotItem[],
+            unreadCount: Number(data.notificationUnreadCount || 0),
+          },
+        }));
       }
     } catch {
     } finally {

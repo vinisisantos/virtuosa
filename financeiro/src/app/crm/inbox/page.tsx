@@ -2743,6 +2743,7 @@ export default function InboxPage() {
   const [internalNotesLoading, setInternalNotesLoading] = useState(false);
   const [internalNotesError, setInternalNotesError] = useState<string | null>(null);
   const [internalNotesLoadedConversationId, setInternalNotesLoadedConversationId] = useState<string | null>(null);
+  const [internalNotesLoadedVersion, setInternalNotesLoadedVersion] = useState<string | null>(null);
   const [internalNoteDraft, setInternalNoteDraft] = useState("");
   const [internalNoteMentionIds, setInternalNoteMentionIds] = useState<string[]>([]);
   const [isSavingInternalNote, setIsSavingInternalNote] = useState(false);
@@ -3227,6 +3228,7 @@ export default function InboxPage() {
       setInternalNotes(Array.isArray(data.notes) ? data.notes : []);
       setMentionableUsers(Array.isArray(data.mentionableUsers) ? data.mentionableUsers : []);
       setInternalNotesLoadedConversationId(conversationId);
+      setInternalNotesLoadedVersion(typeof data.internalNotesUpdatedAt === "string" ? data.internalNotesUpdatedAt : null);
     } catch (error) {
       if (requestSeq !== internalNotesRequestSeqRef.current) return;
       setInternalNotesError(error instanceof Error ? error.message : "Não foi possível carregar as notas internas.");
@@ -3257,6 +3259,17 @@ export default function InboxPage() {
       if (!response.ok) throw new Error(data.error || "Não foi possível salvar a nota interna.");
       if (selectedConvRef.current?.id !== conversationId) return;
       if (data.note) setInternalNotes((current) => [...current, data.note]);
+      if (typeof data.internalNotesUpdatedAt === "string") {
+        setInternalNotesLoadedVersion(data.internalNotesUpdatedAt);
+        setConversations((current) => current.map((conversation) => (
+          conversation.id === conversationId
+            ? { ...conversation, internalNotesUpdatedAt: data.internalNotesUpdatedAt }
+            : conversation
+        )));
+        setSelectedConv((current) => current?.id === conversationId
+          ? { ...current, internalNotesUpdatedAt: data.internalNotesUpdatedAt }
+          : current);
+      }
       setInternalNoteDraft("");
       setInternalNoteMentionIds([]);
       toast("Nota interna salva. Ela não foi enviada ao contato.", "success");
@@ -3275,6 +3288,7 @@ export default function InboxPage() {
     setInternalNotes([]);
     setMentionableUsers([]);
     setInternalNotesLoadedConversationId(null);
+    setInternalNotesLoadedVersion(null);
     setInternalNotesError(null);
     setInternalNoteDraft("");
     setInternalNoteMentionIds([]);
@@ -3284,9 +3298,20 @@ export default function InboxPage() {
 
   useEffect(() => {
     if (!internalNotesOpen || !selectedConversationId) return;
-    if (internalNotesLoadedConversationId === selectedConversationId) return;
+    const selectedVersion = selectedConv?.internalNotesUpdatedAt || null;
+    if (
+      internalNotesLoadedConversationId === selectedConversationId
+      && (!selectedVersion || selectedVersion === internalNotesLoadedVersion)
+    ) return;
     void loadInternalNotes(selectedConversationId);
-  }, [internalNotesLoadedConversationId, internalNotesOpen, loadInternalNotes, selectedConversationId]);
+  }, [
+    internalNotesLoadedConversationId,
+    internalNotesLoadedVersion,
+    internalNotesOpen,
+    loadInternalNotes,
+    selectedConversationId,
+    selectedConv?.internalNotesUpdatedAt,
+  ]);
 
   useEffect(() => {
     if (!internalNotesOpen) return;

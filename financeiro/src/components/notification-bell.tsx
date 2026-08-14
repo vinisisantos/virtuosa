@@ -1,12 +1,17 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useVisiblePolling } from '@/hooks/use-visible-polling';
+import {
+  CRM_NOTIFICATION_SNAPSHOT_EVENT,
+  type CrmNotificationSnapshot,
+  type CrmNotificationSnapshotItem,
+} from '@/lib/crm-notification-snapshot';
 
-interface NotificationItem { id: string; type: string; title: string; message: string; icon: string; link: string | null; isRead: boolean; createdAt: string; }
+type NotificationItem = CrmNotificationSnapshotItem;
 
 const TYPE_COLORS: Record<string, string> = { alert: '#ef4444', reminder: '#f59e0b', info: '#3b82f6', success: '#10b981', warning: '#f97316' };
 
-export function NotificationBell() {
+export function NotificationBell({ passive = false }: { passive?: boolean }) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
@@ -29,7 +34,19 @@ export function NotificationBell() {
     }
   }, []);
 
-  useVisiblePolling(fetchNotifications, 30000);
+  useVisiblePolling(fetchNotifications, 30000, { enabled: !passive });
+
+  useEffect(() => {
+    if (!passive) return;
+    const applySnapshot = (event: Event) => {
+      const snapshot = (event as CustomEvent<CrmNotificationSnapshot>).detail;
+      if (!snapshot || !Array.isArray(snapshot.notifications)) return;
+      setNotifications(snapshot.notifications);
+      setUnreadCount(Number(snapshot.unreadCount || 0));
+    };
+    window.addEventListener(CRM_NOTIFICATION_SNAPSHOT_EVENT, applySnapshot);
+    return () => window.removeEventListener(CRM_NOTIFICATION_SNAPSHOT_EVENT, applySnapshot);
+  }, [passive]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setIsOpen(false); };
@@ -38,14 +55,16 @@ export function NotificationBell() {
   }, []);
 
   const markRead = async (id: string) => {
-    await fetch('/api/notifications', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).catch(() => {});
+    const response = await fetch('/api/notifications', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }).catch(() => null);
+    if (!response?.ok) return;
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
     setUnreadCount(c => Math.max(0, c - 1));
   };
 
   const markAllRead = async () => {
     const user = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('virtuosa_user') || '{}') : {};
-    await fetch('/api/notifications', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markAllRead: true, userId: user?.id }) }).catch(() => {});
+    const response = await fetch('/api/notifications', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markAllRead: true, userId: user?.id }) }).catch(() => null);
+    if (!response?.ok) return;
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
     setUnreadCount(0);
   };
@@ -58,7 +77,7 @@ export function NotificationBell() {
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <button onClick={() => setIsOpen(!isOpen)} style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', padding: 6, borderRadius: 10, transition: 'background 0.15s' }}
+      <button aria-label={`Notificações${unreadCount ? `, ${unreadCount} não lidas` : ''}`} onClick={() => setIsOpen(!isOpen)} style={{ background: 'none', border: 'none', cursor: 'pointer', position: 'relative', padding: 6, borderRadius: 10, transition: 'background 0.15s' }}
         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
         onMouseLeave={e => e.currentTarget.style.background = 'none'}
       >
@@ -72,7 +91,7 @@ export function NotificationBell() {
 
       {isOpen && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 360, maxHeight: 440,
+          position: 'absolute', top: 'calc(100% + 8px)', right: 0, width: 'min(360px, calc(100vw - 24px))', maxHeight: 440,
           background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 18,
           boxShadow: '0 20px 60px rgba(0,0,0,0.3)', zIndex: 1000, overflow: 'hidden',
         }}>

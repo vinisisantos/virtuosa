@@ -17,6 +17,7 @@ export interface Conversation {
   lastMessage?: string | null;
   lastMessageAt?: string | null;
   updatedAt?: string | null;
+  internalNotesUpdatedAt?: string | null;
   contact: Contact;
   assignedTo?: string | null;
   assignedToName?: string | null;
