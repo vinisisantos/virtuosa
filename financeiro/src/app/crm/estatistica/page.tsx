@@ -36,17 +36,6 @@ interface LeadCountAdjustment {
   count: number;
 }
 
-interface SurveyStats {
-  totalSurveys: number; totalSent: number; totalAnswered: number;
-  responseRate: string; avgRating: string;
-  distribution: Record<number, number>;
-}
-interface SurveyRecent {
-  id: string; clientName: string; procedimento: string; profissional: string | null;
-  rating: number | null; comment: string | null; status: string; unit: string;
-  sentAt: string | null; answeredAt: string | null; createdAt: string;
-}
-
 const DEFAULT_STAGES = [
   { key: 'entrada', label: 'Entrada', color: '#6366f1' },
   { key: 'em_andamento', label: 'Em Andamento', color: '#f59e0b' },
@@ -62,20 +51,6 @@ const cardS: React.CSSProperties = {
   boxShadow: 'var(--shadow-sm)', padding: '16px 14px',
 };
 
-// Star rating display
-const StarRating = ({ rating, size = 16 }: { rating: number; size?: number }) => {
-  const stars = [];
-  for (let i = 1; i <= 5; i++) {
-    stars.push(
-      <span key={i} style={{ fontSize: size, color: i <= rating ? '#f59e0b' : 'var(--border)' }}>
-        ★
-      </span>
-    );
-  }
-  return <span style={{ display: 'inline-flex', gap: 1 }}>{stars}</span>;
-};
-
-const ratingColor = (r: number) => r >= 4 ? '#10b981' : r === 3 ? '#f59e0b' : '#ef4444';
 const leadDate = (client: Pick<Client, 'arrivedAt' | 'createdAt'>) => new Date(client.arrivedAt || client.createdAt);
 const isGenericCampaign = (value?: string | null) => isGenericCampaignName(value);
 const parseDateInput = (value: string) => {
@@ -105,10 +80,6 @@ export default function CrmEstatisticaPage() {
   const [scheduledEvaluations, setScheduledEvaluations] = useState<number | null>(null);
   const [scheduledEvaluationsLoading, setScheduledEvaluationsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
-  // Survey stats
-  const [surveyStats, setSurveyStats] = useState<SurveyStats | null>(null);
-  const [surveyRecent, setSurveyRecent] = useState<SurveyRecent[]>([]);
-  const [surveyLoading, setSurveyLoading] = useState(true);
   const [stages, setStages] = useState(DEFAULT_STAGES);
   
   const [startDate, setStartDate] = useState(todayDateInput);
@@ -196,23 +167,7 @@ export default function CrmEstatisticaPage() {
     }
   }, [endDate, globalUnit, showTime, startDate, startTime, endTime]);
 
-  const fetchSurveys = useCallback(async () => {
-    setSurveyLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (globalUnit) params.set('unit', globalUnit);
-      const res = await fetch(`/api/surveys?${params}`);
-      const data = await res.json();
-      setSurveyStats(data.stats || null);
-      setSurveyRecent(data.recent || []);
-    } catch {
-      setSurveyStats(null);
-      setSurveyRecent([]);
-    }
-    finally { setSurveyLoading(false); }
-  }, [globalUnit]);
-
-  useEffect(() => { fetchClients(); fetchMonthlyLeads(); fetchSurveys(); }, [fetchClients, fetchMonthlyLeads, fetchSurveys]);
+  useEffect(() => { fetchClients(); fetchMonthlyLeads(); }, [fetchClients, fetchMonthlyLeads]);
   useEffect(() => { fetchScheduledEvaluations(); }, [fetchScheduledEvaluations]);
 
   // Refina por horário (client-side) sobre os leads já filtrados por data no servidor
@@ -538,26 +493,6 @@ export default function CrmEstatisticaPage() {
                   ))}
                 </div>
               </div>
-            </div>
-
-            {/* ── Avaliações de Atendimento — Link para página dedicada ── */}
-            <div style={{ marginBottom: 12 }}>
-              <a href="/crm/avaliacoes" style={{ textDecoration: 'none', color: 'inherit' }}>
-                <div className="flex items-center justify-between cursor-pointer transition-colors border border-border/50 hover:border-border rounded-xl bg-card p-4 shadow-sm">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(245,158,11,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#f59e0b' }}>reviews</span>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: '0.92rem', fontWeight: 800 }}>Avaliações de Atendimento</div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
-                        {surveyLoading ? 'Carregando...' : !surveyStats || surveyStats.totalSurveys === 0 ? 'Nenhuma avaliação ainda' : `${surveyStats.totalAnswered} respondida${surveyStats.totalAnswered !== 1 ? 's' : ''} · Nota média: ${surveyStats.avgRating} ★`}
-                      </div>
-                    </div>
-                  </div>
-                  <span className="material-symbols-outlined" style={{ fontSize: 20, color: 'var(--text-muted)' }}>arrow_forward</span>
-                </div>
-              </a>
             </div>
 
             {/* ── Horários de maior receptividade ── */}
