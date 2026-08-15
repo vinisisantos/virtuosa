@@ -48,13 +48,6 @@ interface CommercialIndicatorsResponse extends CommercialIndicators {
   };
 }
 
-const DEFAULT_STAGES = [
-  { key: 'entrada', label: 'Entrada', color: '#6366f1' },
-  { key: 'em_andamento', label: 'Em Andamento', color: '#f59e0b' },
-  { key: 'avaliacao', label: 'Avaliação', color: '#8b5cf6' },
-  { key: 'venda', label: 'Venda', color: '#10b981' },
-  { key: 'nao_venda', label: 'Não Venda', color: '#ef4444' },
-];
 const fmt = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
 // Mobile-first card style — compact padding
@@ -168,7 +161,7 @@ const dateKey = (date: Date) => {
 };
 
 export default function CrmEstatisticaPage() {
-  const { units: UNITS, globalUnit } = useGlobalUnit();
+  const { globalUnit } = useGlobalUnit();
   const [ctwaLeads, setCtwaLeads] = useState<Client[]>([]);
   const [monthlyCtwaLeads, setMonthlyCtwaLeads] = useState<Client[]>([]);
   const [leadAdjustments, setLeadAdjustments] = useState<LeadCountAdjustment[]>([]);
@@ -180,7 +173,6 @@ export default function CrmEstatisticaPage() {
   const [commercialIndicatorsLoading, setCommercialIndicatorsLoading] = useState(true);
   const [commercialIndicatorsError, setCommercialIndicatorsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stages, setStages] = useState(DEFAULT_STAGES);
   
   const [startDate, setStartDate] = useState(todayDateInput);
   const [endDate, setEndDate] = useState(todayDateInput);
@@ -188,14 +180,6 @@ export default function CrmEstatisticaPage() {
   const [startTime, setStartTime] = useState('00:00');
   const [endTime, setEndTime] = useState('23:59');
   const [showTime, setShowTime] = useState(true);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('virtuosa_crm_stages');
-    if (saved) {
-      try { setStages(JSON.parse(saved)); } catch (e) { console.error(e); }
-    }
-
-  }, []);
 
   const fetchClients = useCallback(async () => {
     setLoading(true);
@@ -315,37 +299,17 @@ export default function CrmEstatisticaPage() {
   // Stats
   const manualAdjustmentTotal = leadAdjustments.reduce((sum, adjustment) => sum + adjustment.count, 0);
   const total = leads.length + manualAdjustmentTotal;
-  const byStage = stages.map(s => ({ ...s, count: leads.filter(c => (c.stage || 'entrada') === s.key).length }));
-  const funnelStages = manualAdjustmentTotal > 0
-    ? [...byStage, { key: 'ajuste_manual', label: 'Ajustes manuais', color: '#0ea5e9', count: manualAdjustmentTotal }]
-    : byStage;
-  const vendas = byStage.find(s => s.key === 'venda')?.count || 0;
-  const naoVendas = byStage.find(s => s.key === 'nao_venda')?.count || 0;
+  const vendas = leads.filter(c => (c.stage || 'entrada') === 'venda').length;
+  const naoVendas = leads.filter(c => (c.stage || 'entrada') === 'nao_venda').length;
   const taxaConversao = total > 0 ? ((vendas / total) * 100).toFixed(1) : '0';
   const totalFaturado = leads.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0);
   const ticketMedio = vendas > 0 ? totalFaturado / vendas : 0;
-  const totalVisitas = leads.reduce((s, c) => s + c.visitCount, 0);
   const historicalLeadMap = new Map<string, Client>();
   [...monthlyCtwaLeads, ...leads].forEach((lead) => {
     const key = lead.conversationId || `${lead.id}:${leadDate(lead).toISOString()}`;
     if (!historicalLeadMap.has(key)) historicalLeadMap.set(key, lead);
   });
   const historicalLeads = Array.from(historicalLeadMap.values());
-
-  // By unit
-  const visibleUnits = globalUnit ? [globalUnit] : UNITS.filter(Boolean);
-  const byUnit = visibleUnits.map(u => {
-    const uc = leads.filter(c => c.unit === u);
-    const unitAdjustments = leadAdjustments
-      .filter(adjustment => adjustment.unit === u)
-      .reduce((sum, adjustment) => sum + adjustment.count, 0);
-    const unitTotal = uc.length + unitAdjustments;
-    const uVendas = uc.filter(c => (c.stage || 'entrada') === 'venda').length;
-    return { unit: u, total: unitTotal, vendas: uVendas, taxa: unitTotal > 0 ? ((uVendas / unitTotal) * 100).toFixed(1) : '0', faturado: uc.filter(c => (c.stage || 'entrada') === 'venda').reduce((s, c) => s + c.totalSpent, 0) };
-  });
-
-  // Top clients by spending
-  const topClients = [...leads].sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 10);
 
   // Monthly new leads (last 6 months)
   const now = new Date();
@@ -391,11 +355,6 @@ export default function CrmEstatisticaPage() {
     .map(([name, stats]) => ({ name, ...stats }))
     .sort((a, b) => b.leads - a.leads);
   const maxCampaignLeads = Math.max(...topCampaigns.map(c => c.leads), 1);
-
-  // Tags distribution
-  const tagCounts: Record<string, number> = {};
-  leads.forEach(c => { if (c.tags) c.tags.split(',').forEach(t => { const tag = t.trim(); if (tag) tagCounts[tag] = (tagCounts[tag] || 0) + 1; }); });
-  const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 8);
 
   // Horários com maior receptividade por dia do mês selecionado.
   const selectedMonthAnchor = parseDateInput(startDate);
@@ -793,52 +752,6 @@ export default function CrmEstatisticaPage() {
               )}
             </div>
 
-            {/* ── Performance + Tags — 1 coluna em mobile ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginBottom: 12 }}>
-              {/* Performance by Unit */}
-              <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
-                <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>leaderboard</span>
-                  Performance por Unidade
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {byUnit.map(u => (
-                    <div key={u.unit} style={{ background: 'var(--bg)', borderRadius: 10, padding: '10px 12px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ fontSize: '0.85rem', fontWeight: 800 }}>{u.unit}</span>
-                        <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#10b981' }}>{u.taxa}% conv.</span>
-                      </div>
-                      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>📊 {u.total} leads</span>
-                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>✅ {u.vendas}</span>
-                        <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>💰 {fmt(u.faturado)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Tags distribution */}
-              <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
-                <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>label</span>
-                  Tags Mais Usadas
-                </h3>
-                {topTags.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhuma tag registrada</div>
-                ) : (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
-                    {topTags.map(([tag, count]) => (
-                      <div key={tag} style={{ padding: '6px 12px', borderRadius: 9, background: 'rgba(139,92,246,0.08)', border: '1px solid rgba(139,92,246,0.2)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#8b5cf6' }}>{tag}</span>
-                        <span style={{ fontSize: '0.62rem', fontWeight: 800, padding: '1px 5px', borderRadius: 4, background: '#8b5cf6', color: '#fff' }}>{count}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* ── Meta Ads Campaigns ── */}
             <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm mb-3">
               <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -882,132 +795,6 @@ export default function CrmEstatisticaPage() {
               )}
             </div>
 
-            {/* ── Funil de Vendas ── */}
-            <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm mb-3">
-              <h3 style={{ margin: '0 0 14px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>filter_alt</span>
-                Funil de Vendas
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                {funnelStages.map(s => {
-                  const pct = total > 0 ? (s.count / total) * 100 : 0;
-                  const width = Math.max(pct, 8);
-                  return (
-                    <div key={s.key}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700 }}>{s.label}</span>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 800, color: s.color }}>{s.count} ({pct.toFixed(0)}%)</span>
-                      </div>
-                      <div style={{ height: 24, background: 'var(--bg)', borderRadius: 7, overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${width}%`, background: `linear-gradient(90deg, ${s.color}, ${s.color}99)`, borderRadius: 7, transition: 'width 0.5s ease', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          {pct > 15 && <span style={{ fontSize: '0.62rem', fontWeight: 800, color: '#fff' }}>{s.count}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* ── Top Clients ── */}
-            <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm mb-3">
-              <h3 style={{ margin: '0 0 12px', fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#e600a0' }}>star</span>
-                Top 10 Clientes por Faturamento
-              </h3>
-              {topClients.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum dado disponível</div>
-              ) : (
-                <div style={{ display: 'grid', gap: 6 }}>
-                  {topClients.map((c, i) => {
-                    const podiumColors = ['#f59e0b', '#94a3b8', '#cd7f32'];
-                    const stg = stages.find(s => s.key === (c.stage || 'entrada'));
-                    return (
-                      <div key={c.id} className="flex items-center gap-3 rounded-lg border border-border/50 bg-background p-3 shadow-sm transition-all hover:bg-muted/30">
-                        <div style={{ width: 26, height: 26, borderRadius: 7, background: i < 3 ? podiumColors[i] : 'var(--card-bg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: '0.7rem', color: i < 3 ? '#fff' : 'var(--text-muted)', flexShrink: 0 }}>
-                          {i + 1}
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '0.83rem', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
-                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{c.unit} · {c.visitCount} visita{c.visitCount !== 1 ? 's' : ''}</div>
-                        </div>
-                        <span style={{ padding: '2px 7px', borderRadius: 5, background: `${stg?.color || '#6366f1'}14`, color: stg?.color || '#6366f1', fontSize: '0.6rem', fontWeight: 700, flexShrink: 0 }}>
-                          {stg?.label || 'Entrada'}
-                        </span>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 900, color: '#10b981', minWidth: 80, textAlign: 'right', flexShrink: 0 }}>
-                          {fmt(c.totalSpent)}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* ── Leads do Período ── */}
-            <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm mb-3">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 900, display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#8b5cf6' }}>person_add</span>
-                  Leads CTWA do Período ({leads.length})
-                </h3>
-              </div>
-              {leads.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '32px 0', color: 'var(--text-muted)', fontSize: '0.82rem' }}>Nenhum lead Click-to-WhatsApp encontrado neste período</div>
-              ) : (
-                <div style={{ display: 'grid', gap: 6, maxHeight: '400px', overflowY: 'auto', paddingRight: 4 }}>
-                  {leads.slice().sort((a, b) => leadDate(b).getTime() - leadDate(a).getTime()).map(c => {
-                    const date = leadDate(c);
-                    const isAds = c.source === 'facebook_ad' || !!c.campaignName;
-                    return (
-                      <div key={c.conversationId || c.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-border/50 bg-background p-3 shadow-sm transition-all hover:bg-muted/30">
-                        <div className="flex min-w-0 flex-1 flex-col">
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: c.source === 'facebook_ad' ? '#3b82f6' : '#10b981' }} />
-                            <div className="truncate text-[0.85rem] font-bold text-foreground">{c.name}</div>
-                          </div>
-                          <div className="mt-1 flex items-center gap-1">
-                            <span className="material-symbols-outlined text-[12px] text-muted-foreground">call</span>
-                            <span className="text-[0.7rem] text-muted-foreground">{c.phone || 'Sem telefone'}</span>
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                          <span style={{ fontSize: '0.65rem', fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: isAds ? '#3b82f620' : 'var(--card-bg)', color: isAds ? '#3b82f6' : 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                            {isAds && <span className="material-symbols-outlined" style={{ fontSize: 11 }}>campaign</span>}
-                            {isAds ? (c.campaignName || 'Meta Ads') : (c.source || 'WhatsApp')}
-                          </span>
-                          <span style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', background: 'var(--card-bg)', padding: '2px 6px', borderRadius: 4 }}>
-                            {c.unit}
-                          </span>
-                          <div style={{ fontSize: '0.65rem', fontWeight: 700, color: 'var(--text-muted)', minWidth: 70, textAlign: 'right' }}>
-                            {date.toLocaleDateString('pt-BR')} {date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* ── Extra stats — auto-fit ── */}
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-              <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-4 text-center transition-all hover:shadow-md">
-                <span className="material-symbols-outlined mb-2 text-[24px] text-[#6366f1] opacity-80">visibility</span>
-                <div className="text-[1.1rem] font-bold text-foreground">{totalVisitas}</div>
-                <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Total Visitas</div>
-              </div>
-              <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-4 text-center transition-all hover:shadow-md">
-                <span className="material-symbols-outlined mb-2 text-[24px] text-[#10b981] opacity-80">avg_pace</span>
-                <div className="text-[1.1rem] font-bold text-foreground">{total > 0 ? (totalVisitas / total).toFixed(1) : '0'}</div>
-                <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Média Visitas/Lead</div>
-              </div>
-              <div className="flex flex-col items-center justify-center rounded-xl border border-border/50 bg-card p-4 text-center transition-all hover:shadow-md">
-                <span className="material-symbols-outlined mb-2 text-[24px] text-[#f59e0b] opacity-80">monetization_on</span>
-                <div className="text-[1.1rem] font-bold text-foreground truncate w-full">{fmt(leads.reduce((s, c) => s + c.totalSpent, 0))}</div>
-                <div className="mt-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">Faturamento Total</div>
-              </div>
-            </div>
           </>
         )}
       </div>
