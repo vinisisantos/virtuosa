@@ -40,6 +40,13 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+  MAX_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+  MIN_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+  isValidEvaluationConfirmationWindowHours,
+  normalizeEvaluationConfirmationWindowHours,
+} from "@/lib/whatsapp/evaluation-confirmation-window";
 
 // ─── Types ────────────────────────────────────────────────────
 interface AutomationStep {
@@ -73,7 +80,7 @@ interface CallBlockSettings {
 const TRIGGER_TYPES = [
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
   { key: "evaluation_scheduled", label: "AGENDA · Agendamento", desc: "Confirmação após agendamento", icon: CalendarDays },
-  { key: "evaluation_confirmation_request", label: "AGENDA · Confirmação 48h", desc: "Confirmação de presença nas 48h anteriores", icon: CalendarDays },
+  { key: "evaluation_confirmation_request", label: "AGENDA · Confirmação", desc: "Janela configurável para confirmar presença", icon: CalendarDays },
   { key: "new_message", label: "Nova Mensagem Recebida", desc: "Qualquer mensagem recebida", icon: MessageSquare },
   { key: "keyword", label: "Palavra-chave", desc: "Mensagem contém palavras específicas", icon: Tag },
   { key: "new_contact", label: "Novo Contato", desc: "Quando um contato é criado", icon: Users },
@@ -185,6 +192,9 @@ function AutomationCard({
     "evaluation_confirmation_request",
   ].includes(automation.triggerType);
   const messagePreview = isEvaluationAgendaAutomation ? automationMessagePreview(automation) : null;
+  const confirmationWindowHours = automation.triggerType === "evaluation_confirmation_request"
+    ? normalizeEvaluationConfirmationWindowHours(automation.triggerConfig?.windowHours)
+    : null;
 
   return (
     <div className="rounded-xl border border-border bg-card transition-colors hover:border-primary/30">
@@ -215,6 +225,11 @@ function AutomationCard({
             </span>
             <span className="tabular-nums">{automation.executionCount} execuções</span>
             <span>· {automation.steps?.length || 0} ações</span>
+            {confirmationWindowHours !== null && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                {confirmationWindowHours}h antes
+              </span>
+            )}
           </div>
         </button>
 
@@ -438,6 +453,11 @@ function AutomationBuilder({
     "evaluation_scheduled",
     "evaluation_confirmation_request",
   ].includes(initial?.triggerType || "");
+  const confirmationWindowHours = Number(
+    triggerConfig.windowHours ?? DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+  );
+  const hasValidConfirmationWindow = triggerType !== "evaluation_confirmation_request"
+    || isValidEvaluationConfirmationWindowHours(confirmationWindowHours);
 
   // Load initial data
   useEffect(() => {
@@ -482,7 +502,7 @@ function AutomationBuilder({
   }
 
   async function handleSave() {
-    if (!name.trim() || steps.length === 0) return;
+    if (!name.trim() || steps.length === 0 || !hasValidConfirmationWindow) return;
     setSaving(true);
     const data: Record<string, unknown> = {
       name: name.trim(),
@@ -496,7 +516,7 @@ function AutomationBuilder({
     setSaving(false);
   }
 
-  const isValid = name.trim().length > 0 && steps.length > 0;
+  const isValid = name.trim().length > 0 && steps.length > 0 && hasValidConfirmationWindow;
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v && !saving) onClose(); }}>
@@ -588,6 +608,32 @@ function AutomationBuilder({
                   <option value="venda">Venda</option>
                   <option value="nao_venda">Não Venda</option>
                 </select>
+              </div>
+            )}
+
+            {triggerType === "evaluation_confirmation_request" && (
+              <div className="rounded-lg border border-border bg-card p-3">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Antecedência para liberar o envio
+                </label>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Input
+                    type="number"
+                    min={MIN_EVALUATION_CONFIRMATION_WINDOW_HOURS}
+                    max={MAX_EVALUATION_CONFIRMATION_WINDOW_HOURS}
+                    step={1}
+                    value={confirmationWindowHours}
+                    onChange={(event) => setTriggerConfig({
+                      ...triggerConfig,
+                      windowHours: Number(event.target.value),
+                    })}
+                    className="w-28 bg-background text-foreground"
+                  />
+                  <span className="text-sm font-medium text-foreground">horas antes</span>
+                </div>
+                <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+                  Entre {MIN_EVALUATION_CONFIRMATION_WINDOW_HOURS} e {MAX_EVALUATION_CONFIRMATION_WINDOW_HOURS} horas. Nesse período, o botão Confirmar fica disponível no Inbox; o envio continua sendo feito pela equipe.
+                </p>
               </div>
             )}
           </div>

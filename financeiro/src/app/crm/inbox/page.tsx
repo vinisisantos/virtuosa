@@ -162,6 +162,7 @@ type EvaluationConfirmationAvailability = {
   appointmentId?: string;
   startTime?: string;
   eligibleAt?: string;
+  windowHours?: number;
 };
 
 type CallbackTrackingSnapshot = {

@@ -11,8 +11,10 @@ import {
   shouldSendLeadsOsascoScheduleConfirmation,
 } from "../src/lib/whatsapp/evaluation-schedule-confirmation-message.ts";
 import {
+  DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
   EVALUATION_CONFIRMATION_WINDOW_MS,
   evaluationConfirmationWindow,
+  normalizeEvaluationConfirmationWindowHours,
 } from "../src/lib/whatsapp/evaluation-confirmation-window.ts";
 
 test("confirmação mantém os parágrafos e formata a agenda de Osasco", () => {
@@ -112,4 +114,27 @@ test("janela de confirmação abre exatamente 48h antes e fecha no horário", ()
     now: new Date(startTime.getTime() - 1),
   }).state, "available");
   assert.equal(evaluationConfirmationWindow({ startTime, now: startTime }).state, "expired");
+});
+
+test("janela de confirmação respeita a antecedência configurada", () => {
+  const startTime = new Date("2026-08-12T13:30:00.000Z");
+  const eligibleAt = new Date(startTime.getTime() - 24 * 60 * 60 * 1000);
+
+  assert.equal(evaluationConfirmationWindow({
+    startTime,
+    windowHours: 24,
+    now: new Date(eligibleAt.getTime() - 1),
+  }).state, "too_early");
+  assert.equal(evaluationConfirmationWindow({
+    startTime,
+    windowHours: 24,
+    now: eligibleAt,
+  }).state, "available");
+});
+
+test("antecedência inválida volta ao padrão seguro de 48h", () => {
+  assert.equal(normalizeEvaluationConfirmationWindowHours(undefined), DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS);
+  assert.equal(normalizeEvaluationConfirmationWindowHours("inválido"), DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS);
+  assert.equal(normalizeEvaluationConfirmationWindowHours(0), 1);
+  assert.equal(normalizeEvaluationConfirmationWindowHours(500), 168);
 });

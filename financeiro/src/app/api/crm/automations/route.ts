@@ -10,6 +10,10 @@ import {
   getEvaluationScheduleAutomationMessage,
 } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import { ensureEvaluationConfirmationRequestAutomation } from "@/lib/whatsapp/evaluation-confirmation-automation";
+import {
+  DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+  isValidEvaluationConfirmationWindowHours,
+} from "@/lib/whatsapp/evaluation-confirmation-window";
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
 const NATIVE_AUTOMATION_TRIGGERS = new Set([
@@ -17,6 +21,12 @@ const NATIVE_AUTOMATION_TRIGGERS = new Set([
   EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
 ]);
+
+function jsonObject(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? { ...(value as Record<string, unknown>) }
+    : {};
+}
 
 async function ensureCtwaWelcomeAutomation(createdBy?: string | null) {
   const existing = await prisma.automation.findFirst({
@@ -176,10 +186,34 @@ export async function PUT(req: NextRequest) {
     const existing = await prisma.automation.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Automação não encontrada" }, { status: 404 });
     if (NATIVE_AUTOMATION_TRIGGERS.has(existing.triggerType)) {
+      const requestedTriggerConfig = jsonObject(data.triggerConfig);
       delete data.triggerType;
       delete data.triggerConfig;
       delete data.unit;
       delete data.createdBy;
+
+      if (existing.triggerType === EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER) {
+        const existingTriggerConfig = jsonObject(existing.triggerConfig);
+        const requestedWindowHours = requestedTriggerConfig.windowHours
+          ?? existingTriggerConfig.windowHours
+          ?? DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS;
+
+        if (!isValidEvaluationConfirmationWindowHours(requestedWindowHours)) {
+          return NextResponse.json(
+            { error: "A antecedência deve ser um número inteiro entre 1 e 168 horas." },
+            { status: 400 },
+          );
+        }
+
+        data.triggerConfig = {
+          ...existingTriggerConfig,
+          topic: "AGENDA",
+          units: [LEADS_OSASCO_UNIT],
+          instanceIds: [LEADS_OSASCO_INSTANCE_ID],
+          manualAction: true,
+          windowHours: Number(requestedWindowHours),
+        };
+      }
     }
     if (
       [

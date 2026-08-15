@@ -7,8 +7,22 @@ import {
   LEADS_OSASCO_INSTANCE_ID,
   LEADS_OSASCO_UNIT,
 } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
+import {
+  DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+  normalizeEvaluationConfirmationWindowHours,
+} from "@/lib/whatsapp/evaluation-confirmation-window";
 
 type EvaluationConfirmationAutomationDatabase = Pick<Prisma.TransactionClient, "automation">;
+
+export function getEvaluationConfirmationWindowHours(triggerConfig: unknown) {
+  if (!triggerConfig || typeof triggerConfig !== "object" || Array.isArray(triggerConfig)) {
+    return DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS;
+  }
+
+  return normalizeEvaluationConfirmationWindowHours(
+    (triggerConfig as Record<string, unknown>).windowHours,
+  );
+}
 
 export async function findEvaluationConfirmationRequestAutomation(
   database: EvaluationConfirmationAutomationDatabase = prisma,
@@ -38,7 +52,7 @@ export async function ensureEvaluationConfirmationRequestAutomation(
         topic: "AGENDA",
         units: [LEADS_OSASCO_UNIT],
         instanceIds: [LEADS_OSASCO_INSTANCE_ID],
-        windowHours: 48,
+        windowHours: DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
         manualAction: true,
       },
       steps: [

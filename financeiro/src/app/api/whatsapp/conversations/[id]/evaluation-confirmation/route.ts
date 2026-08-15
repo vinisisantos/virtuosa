@@ -3,7 +3,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getPipelineDealIdFromEvaluationNotes } from "@/lib/evaluation-scheduling";
 import { phoneLookupKey } from "@/lib/phone";
-import { ensureEvaluationConfirmationRequestAutomation, findEvaluationConfirmationRequestAutomation } from "@/lib/whatsapp/evaluation-confirmation-automation";
+import {
+  ensureEvaluationConfirmationRequestAutomation,
+  findEvaluationConfirmationRequestAutomation,
+  getEvaluationConfirmationWindowHours,
+} from "@/lib/whatsapp/evaluation-confirmation-automation";
 import { evaluationConfirmationWindow } from "@/lib/whatsapp/evaluation-confirmation-window";
 import {
   DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
@@ -152,7 +156,11 @@ export async function GET(
     const automation = await findEvaluationConfirmationRequestAutomation();
     if (automation && !automation.isActive) return hiddenConfirmation("automation_inactive");
 
-    const window = evaluationConfirmationWindow({ startTime: context.appointment.startTime });
+    const windowHours = getEvaluationConfirmationWindowHours(automation?.triggerConfig);
+    const window = evaluationConfirmationWindow({
+      startTime: context.appointment.startTime,
+      windowHours,
+    });
     const alreadySent = automation
       ? await confirmationWasSent(automation.id, context.appointment.id)
       : false;
@@ -164,6 +172,7 @@ export async function GET(
       appointmentId: context.appointment.id,
       startTime: context.appointment.startTime.toISOString(),
       eligibleAt: window.eligibleAt.toISOString(),
+      windowHours,
     });
   } catch (error) {
     console.error("[Evaluation Confirmation Eligibility API Error]:", error);
@@ -185,20 +194,27 @@ export async function POST(
       return NextResponse.json({ error: "Não há uma avaliação agendada para confirmar nesta conversa." }, { status: 409 });
     }
 
-    const window = evaluationConfirmationWindow({ startTime: context.appointment.startTime });
+    automation = await ensureEvaluationConfirmationRequestAutomation(
+      req.headers.get("x-user-name") || "Sistema",
+    );
+    if (!automation.isActive) {
+      return NextResponse.json({ error: "A automação de confirmação está desativada." }, { status: 409 });
+    }
+
+    const windowHours = getEvaluationConfirmationWindowHours(automation.triggerConfig);
+    const window = evaluationConfirmationWindow({
+      startTime: context.appointment.startTime,
+      windowHours,
+    });
     if (window.state !== "available") {
-      return NextResponse.json({ error: "A confirmação só pode ser enviada nas 48 horas anteriores à avaliação." }, { status: 409 });
+      return NextResponse.json({
+        error: `A confirmação só pode ser enviada nas ${windowHours} hora${windowHours === 1 ? "" : "s"} anteriores à avaliação.`,
+      }, { status: 409 });
     }
     if (context.instance.status !== "connected") {
       return NextResponse.json({ error: "A instância Leads Osasco não está conectada." }, { status: 409 });
     }
 
-    automation = await ensureEvaluationConfirmationRequestAutomation(
-      req.headers.get("x-user-name") || "Sistema",
-    );
-    if (!automation.isActive) {
-      return NextResponse.json({ error: "A automação de confirmação em 48h está desativada." }, { status: 409 });
-    }
     if (await confirmationWasSent(automation.id, context.appointment.id)) {
       return NextResponse.json({
         status: "already_sent",
