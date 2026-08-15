@@ -39,7 +39,32 @@ export interface Conversation {
   callbackStreakCount?: number;
   callbackTotalCount?: number;
   callbackPipelineSyncedAt?: string | null;
+  callbackQueueStatus?: "inactive" | "waiting_response" | "responded" | string;
+  callbackContext?: WhatsAppCallbackContext | null;
+  lastCallbackAttempt?: WhatsAppCallbackAttempt | null;
   activeFollowUp?: WhatsAppConversationFollowUp | null;
+}
+
+export interface WhatsAppCallbackAttempt {
+  id: string;
+  attemptNumber: number;
+  historicalNumber: number;
+  status: "waiting_response" | "responded" | "resumed" | "no_response" | string;
+  sentAt: string;
+  sentByName?: string | null;
+  respondedAt?: string | null;
+  resumedAt?: string | null;
+  resumedByName?: string | null;
+}
+
+export interface WhatsAppCallbackContext {
+  state: "due" | "waiting_response" | "responded";
+  attemptNumber: number;
+  nextAttemptNumber: number;
+  historicalNumber: number;
+  sentAt?: string | null;
+  sentByName?: string | null;
+  respondedAt?: string | null;
 }
 
 export interface WhatsAppConversationFollowUp {

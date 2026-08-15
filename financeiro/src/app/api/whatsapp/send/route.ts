@@ -754,7 +754,11 @@ export async function POST(req: Request) {
 
     const { message, callbackTracking } = await prisma.$transaction(async (tx) => {
       const savedMessage = await tx.whatsAppMessage.create({ data: messageData });
-      const attemptCounted = await recordOutboundForCallbackTracking(tx, conversation.id, sentAt);
+      const attemptCounted = await recordOutboundForCallbackTracking(tx, conversation.id, sentAt, {
+        messageId: savedMessage.id,
+        userId: messageData.respondedBy,
+        userName: messageData.respondedByName,
+      });
       const updatedConversation = await tx.whatsAppConversation.update({
         where: { id: conversation.id },
         data: convUpdateData,
@@ -765,12 +769,29 @@ export async function POST(req: Request) {
           callbackTrackingStartedAt: true,
           callbackStreakCount: true,
           callbackTotalCount: true,
+          callbackQueueStatus: true,
+          callbackAttempts: {
+            where: { status: { in: ["waiting_response", "responded"] } },
+            select: {
+              id: true,
+              attemptNumber: true,
+              historicalNumber: true,
+              status: true,
+              sentAt: true,
+              sentByName: true,
+              respondedAt: true,
+            },
+            orderBy: { sentAt: "desc" },
+            take: 1,
+          },
         },
       });
+      const { callbackAttempts, ...callbackConversation } = updatedConversation;
       return {
         message: savedMessage,
         callbackTracking: {
-          ...updatedConversation,
+          ...callbackConversation,
+          activeCallbackAttempt: callbackAttempts[0] || null,
           attemptCounted,
         },
       };

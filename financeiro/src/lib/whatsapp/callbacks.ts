@@ -3,15 +3,32 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { phoneLookupKey } from "@/lib/phone";
 import { isDiscardPipelineStage, pipelineStageKeyFromName } from "@/lib/pipeline/stages";
+import {
+  WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
+  WHATSAPP_CALLBACK_QUEUE_STATUS,
+} from "@/lib/whatsapp/callback-queue";
 
 export const WHATSAPP_CALLBACK_INTERVAL_MS = 12 * 60 * 60 * 1000;
-export const WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS = 6;
+export { WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS } from "@/lib/whatsapp/callback-queue";
 export const WHATSAPP_CALLBACK_LOST_STATUS = "lost";
 export const WHATSAPP_CALLBACK_LOST_RESOLUTION = "callback_exhausted";
+
+export const WHATSAPP_CALLBACK_ATTEMPT_STATUS = {
+  waitingResponse: "waiting_response",
+  responded: "responded",
+  resumed: "resumed",
+  noResponse: "no_response",
+} as const;
 
 const CLOSED_CONVERSATION_STATUSES = ["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS];
 
 type CallbackTransaction = Prisma.TransactionClient;
+
+type CallbackMessageContext = {
+  messageId?: string | null;
+  userId?: string | null;
+  userName?: string | null;
+};
 
 export function nextWhatsAppCallbackDueAt(sentAt: Date) {
   return new Date(sentAt.getTime() + WHATSAPP_CALLBACK_INTERVAL_MS);
@@ -21,7 +38,28 @@ export async function recordInboundForCallbackTracking(
   tx: CallbackTransaction,
   conversationId: string,
   receivedAt: Date,
+  context: CallbackMessageContext = {},
 ) {
+  const activeAttempt = await tx.whatsAppCallbackAttempt.findFirst({
+    where: {
+      conversationId,
+      status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.waitingResponse,
+    },
+    select: { id: true },
+    orderBy: { sentAt: "desc" },
+  });
+
+  if (activeAttempt) {
+    await tx.whatsAppCallbackAttempt.update({
+      where: { id: activeAttempt.id },
+      data: {
+        status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.responded,
+        respondedAt: receivedAt,
+        inboundMessageId: context.messageId || null,
+      },
+    });
+  }
+
   await tx.whatsAppConversation.update({
     where: { id: conversationId },
     data: {
@@ -30,6 +68,9 @@ export async function recordInboundForCallbackTracking(
       callbackTrackingStartedAt: receivedAt,
       callbackStreakCount: 0,
       callbackPipelineSyncedAt: null,
+      callbackQueueStatus: activeAttempt
+        ? WHATSAPP_CALLBACK_QUEUE_STATUS.responded
+        : WHATSAPP_CALLBACK_QUEUE_STATUS.inactive,
     },
   });
 
@@ -55,6 +96,7 @@ export async function recordOutboundForCallbackTracking(
   tx: CallbackTransaction,
   conversationId: string,
   sentAt: Date,
+  context: CallbackMessageContext = {},
 ) {
   const callbackDueAt = nextWhatsAppCallbackDueAt(sentAt);
 
@@ -85,6 +127,40 @@ export async function recordOutboundForCallbackTracking(
         status: { notIn: CLOSED_CONVERSATION_STATUSES },
       },
       data: { lastOutboundAt: sentAt, callbackDueAt },
+    });
+  } else {
+    const updatedConversation = await tx.whatsAppConversation.findUniqueOrThrow({
+      where: { id: conversationId },
+      select: {
+        callbackStreakCount: true,
+        callbackTotalCount: true,
+      },
+    });
+
+    await tx.whatsAppCallbackAttempt.updateMany({
+      where: {
+        conversationId,
+        status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.waitingResponse,
+      },
+      data: { status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.noResponse },
+    });
+
+    await tx.whatsAppCallbackAttempt.create({
+      data: {
+        conversationId,
+        attemptNumber: updatedConversation.callbackStreakCount,
+        historicalNumber: updatedConversation.callbackTotalCount,
+        status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.waitingResponse,
+        sentAt,
+        sentBy: context.userId || null,
+        sentByName: context.userName || null,
+        outboundMessageId: context.messageId || null,
+      },
+    });
+
+    await tx.whatsAppConversation.update({
+      where: { id: conversationId },
+      data: { callbackQueueStatus: WHATSAPP_CALLBACK_QUEUE_STATUS.waitingResponse },
     });
   }
 
@@ -162,9 +238,18 @@ export async function processExpiredWhatsAppCallbacks(
           closedAt: now,
           closedByName: "Sistema · Rechamada",
           callbackDueAt: null,
+          callbackQueueStatus: WHATSAPP_CALLBACK_QUEUE_STATUS.inactive,
         },
       });
       if (claimed.count === 0) return { processed: false, pipelineUpdated: false };
+
+      await tx.whatsAppCallbackAttempt.updateMany({
+        where: {
+          conversationId: conversation.id,
+          status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.waitingResponse,
+        },
+        data: { status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.noResponse },
+      });
 
       const phoneKey = phoneLookupKey(conversation.contact.phone);
       const targetUnit = conversation.instance.unit && conversation.instance.unit !== "Todas"

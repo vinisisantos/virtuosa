@@ -2315,9 +2315,13 @@ async function processMessage(
     await prisma.$transaction(async (tx) => {
       if (isSendablePhone) {
         if (isFromMe) {
-          await recordOutboundForCallbackTracking(tx, conversation.id, timestamp);
+          await recordOutboundForCallbackTracking(tx, conversation.id, timestamp, {
+            messageId: persistedMessageDbId,
+          });
         } else {
-          await recordInboundForCallbackTracking(tx, conversation.id, timestamp);
+          await recordInboundForCallbackTracking(tx, conversation.id, timestamp, {
+            messageId: persistedMessageDbId,
+          });
         }
       }
 
