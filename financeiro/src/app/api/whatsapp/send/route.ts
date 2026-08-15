@@ -21,6 +21,7 @@ import { WHATSAPP_MEDIA_MAX_FILE_BYTES } from "@/lib/whatsapp/media-constraints"
 import { recordOutboundForCallbackTracking } from "@/lib/whatsapp/callbacks";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
+import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -522,12 +523,11 @@ export async function POST(req: Request) {
       }
     } else if (isAudio && providerMediaReference) {
       // Evolution API v2: POST /message/sendWhatsAppAudio/{instanceName}
-      const audioPayload = {
+      const audioPayload = buildEvolutionAudioPayload({
         number: sendTarget,
         audio: providerMediaReference,
-        encoding: !usesPrivateBlob,
-        ...(replyid ? { quoted: { key: { id: replyid } } } : {}),
-      };
+        replyId: replyid,
+      });
 
       const sendRes = await fetch(`${url}/message/sendWhatsAppAudio/${instanceName}`, {
         method: "POST",
