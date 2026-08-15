@@ -46,6 +46,7 @@ import {
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
 import { preserveActiveAudioMediaUrl } from "@/lib/whatsapp/audio-playback";
+import { findQuotedImagePreviewTarget } from "@/lib/whatsapp/quoted-media";
 import {
   fixRecordedWebmDuration,
   pauseRecordingDurationClock,
@@ -5698,6 +5699,16 @@ export default function InboxPage() {
       behavior: "smooth",
       block: "center",
     });
+
+    const quotedImage = findQuotedImagePreviewTarget(visibleMessageItems, quotedMessageId);
+    if (quotedImage) {
+      setImagePreview({
+        sources: quotedImage.sources,
+        index: quotedImage.index,
+        title: selectedConv?.contact?.name || selectedConv?.contact?.phone || "Imagem",
+      });
+    }
+
     setHighlightedMessageItemId(targetItem.id);
     if (messageHighlightTimerRef.current !== null) {
       window.clearTimeout(messageHighlightTimerRef.current);
@@ -5706,7 +5717,7 @@ export default function InboxPage() {
       setHighlightedMessageItemId((current) => current === targetItem.id ? null : current);
       messageHighlightTimerRef.current = null;
     }, 1800);
-  }, [visibleMessageItems]);
+  }, [selectedConv?.contact?.name, selectedConv?.contact?.phone, visibleMessageItems]);
   const activeAttachment = attachments.find((item) => item.id === activeAttachmentId) || attachments[0] || null;
   const toggleInstanceNotificationMute = useCallback(async (instance: CollaboratorInstance) => {
     const nextMuted = !mutedInstanceIdSet.has(instance.id);
