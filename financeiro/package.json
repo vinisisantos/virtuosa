@@ -32,6 +32,7 @@
     "docxtemplater": "^3.68.3",
     "dompurify": "^3.3.3",
     "dotenv": "^17.3.1",
+    "fix-webm-duration": "^1.0.6",
     "framer-motion": "^12.38.0",
     "html2canvas": "^1.4.1",
     "html2pdf.js": "^0.14.0",

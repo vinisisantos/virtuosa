@@ -46,6 +46,14 @@ import {
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
 import { preserveActiveAudioMediaUrl } from "@/lib/whatsapp/audio-playback";
+import {
+  fixRecordedWebmDuration,
+  pauseRecordingDurationClock,
+  recordingDurationMs,
+  resumeRecordingDurationClock,
+  startRecordingDurationClock,
+  type RecordingDurationClock,
+} from "@/lib/whatsapp/recording-duration";
 import { inboxSlaSnapshot } from "@/lib/whatsapp/inbox-sla";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import {
@@ -2825,6 +2833,10 @@ export default function InboxPage() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingConversationRef = useRef<Conversation | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const recordingDurationClockRef = useRef<RecordingDurationClock>({
+    elapsedMs: 0,
+    activeSinceMs: null,
+  });
 
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const messageHighlightTimerRef = useRef<number | null>(null);
@@ -4893,16 +4905,25 @@ export default function InboxPage() {
       };
 
       mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunksRef.current, {
+        const durationMs = recordingDurationMs(recordingDurationClockRef.current, performance.now());
+        const rawAudioBlob = new Blob(audioChunksRef.current, {
           type: mediaRecorder.mimeType || "audio/webm",
         });
         stream.getTracks().forEach((t) => t.stop());
         mediaRecorderRef.current = null;
         audioChunksRef.current = [];
+        recordingDurationClockRef.current = { elapsedMs: 0, activeSinceMs: null };
 
-        if (!audioBlob.size) {
+        if (!rawAudioBlob.size) {
           toast("A gravação ficou vazia. Tente novamente.", "error");
           return;
+        }
+
+        let audioBlob = rawAudioBlob;
+        try {
+          audioBlob = await fixRecordedWebmDuration(rawAudioBlob, durationMs);
+        } catch (error) {
+          console.warn("Não foi possível corrigir a duração WebM antes do envio:", error);
         }
 
         const extension = extensionFromMimeType(audioBlob.type || "audio/webm");
@@ -4923,11 +4944,13 @@ export default function InboxPage() {
         mediaRecorderRef.current = null;
         recordingConversationRef.current = null;
         audioChunksRef.current = [];
+        recordingDurationClockRef.current = { elapsedMs: 0, activeSinceMs: null };
         setIsRecording(false);
         setIsRecordingPaused(false);
       };
 
       mediaRecorder.start();
+      recordingDurationClockRef.current = startRecordingDurationClock(performance.now());
       setIsRecording(true);
       setIsRecordingPaused(false);
       setRecordingTime(0);
@@ -4943,6 +4966,10 @@ export default function InboxPage() {
     if (!mediaRecorder || mediaRecorder.state === "inactive") return;
 
     if (mediaRecorder.state === "recording") {
+      recordingDurationClockRef.current = pauseRecordingDurationClock(
+        recordingDurationClockRef.current,
+        performance.now(),
+      );
       mediaRecorder.pause();
       setIsRecordingPaused(true);
       clearRecordingTimer();
@@ -4951,6 +4978,10 @@ export default function InboxPage() {
 
     if (mediaRecorder.state === "paused") {
       mediaRecorder.resume();
+      recordingDurationClockRef.current = resumeRecordingDurationClock(
+        recordingDurationClockRef.current,
+        performance.now(),
+      );
       setIsRecordingPaused(false);
       startRecordingTimer();
     }
@@ -4958,6 +4989,10 @@ export default function InboxPage() {
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      recordingDurationClockRef.current = pauseRecordingDurationClock(
+        recordingDurationClockRef.current,
+        performance.now(),
+      );
       mediaRecorderRef.current.stop();
     }
     setIsRecording(false);
@@ -4977,6 +5012,7 @@ export default function InboxPage() {
     audioChunksRef.current = [];
     mediaRecorderRef.current = null;
     recordingConversationRef.current = null;
+    recordingDurationClockRef.current = { elapsedMs: 0, activeSinceMs: null };
     setIsRecording(false);
     setIsRecordingPaused(false);
     setRecordingTime(0);
