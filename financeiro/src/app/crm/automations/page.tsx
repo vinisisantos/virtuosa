@@ -72,8 +72,8 @@ interface CallBlockSettings {
 // ─── Constants ───────────────────────────────────────────────
 const TRIGGER_TYPES = [
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
-  { key: "evaluation_scheduled", label: "AGENDA", desc: "Confirmação após agendamento", icon: CalendarDays },
-  { key: "evaluation_confirmation_request", label: "AGENDA", desc: "Confirmação de presença nas 48h anteriores", icon: CalendarDays },
+  { key: "evaluation_scheduled", label: "AGENDA · Agendamento", desc: "Confirmação após agendamento", icon: CalendarDays },
+  { key: "evaluation_confirmation_request", label: "AGENDA · Confirmação 48h", desc: "Confirmação de presença nas 48h anteriores", icon: CalendarDays },
   { key: "new_message", label: "Nova Mensagem Recebida", desc: "Qualquer mensagem recebida", icon: MessageSquare },
   { key: "keyword", label: "Palavra-chave", desc: "Mensagem contém palavras específicas", icon: Tag },
   { key: "new_contact", label: "Novo Contato", desc: "Quando um contato é criado", icon: Users },
@@ -158,6 +158,12 @@ function TriggerIcon({ type }: { type: string }) {
   return <Icon className="h-4 w-4" />;
 }
 
+function automationMessagePreview(automation: Automation) {
+  const messageStep = automation.steps?.find((step) => step.type === "send_message");
+  const message = messageStep?.config?.message;
+  return typeof message === "string" && message.trim() ? message.trim() : null;
+}
+
 // ─── Automation Card ──────────────────────────────────────────
 function AutomationCard({
   automation,
@@ -174,6 +180,11 @@ function AutomationCard({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const isNativeAutomation = NATIVE_TRIGGER_TYPES.has(automation.triggerType);
+  const isEvaluationAgendaAutomation = [
+    "evaluation_scheduled",
+    "evaluation_confirmation_request",
+  ].includes(automation.triggerType);
+  const messagePreview = isEvaluationAgendaAutomation ? automationMessagePreview(automation) : null;
 
   return (
     <div className="rounded-xl border border-border bg-card transition-colors hover:border-primary/30">
@@ -254,6 +265,23 @@ function AutomationCard({
           </div>
         </div>
       </div>
+
+      {messagePreview && (
+        <button
+          type="button"
+          onClick={onEdit}
+          className="mx-4 mb-4 block w-[calc(100%-2rem)] rounded-lg border border-primary/15 bg-primary/[0.04] p-3 text-left transition-colors hover:border-primary/35 hover:bg-primary/[0.07]"
+        >
+          <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-primary">
+            <MessageSquare className="h-3.5 w-3.5" />
+            Mensagem de confirmação
+          </span>
+          <span className="mt-2 line-clamp-4 whitespace-pre-line break-words text-xs leading-5 text-muted-foreground sm:text-sm">
+            {messagePreview}
+          </span>
+          <span className="mt-2 block text-xs font-semibold text-primary">Editar mensagem</span>
+        </button>
+      )}
     </div>
   );
 }
