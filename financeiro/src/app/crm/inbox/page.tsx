@@ -47,12 +47,6 @@ import {
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
 import { preserveActiveAudioMediaUrl } from "@/lib/whatsapp/audio-playback";
 import { inboxSlaSnapshot } from "@/lib/whatsapp/inbox-sla";
-import {
-  isWhatsAppConversationInCallbackQueue,
-  WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
-  whatsAppCallbackQueueView,
-  type WhatsAppCallbackQueueView,
-} from "@/lib/whatsapp/callback-queue";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import {
   hasWhatsAppTextFormatting,
@@ -145,6 +139,7 @@ type InstanceChannel = "whatsapp" | "instagram";
 const MAX_BULK_FOLLOW_UP_CONVERSATIONS = 10;
 const BULK_FOLLOW_UP_SEND_INTERVAL_MS = 1000;
 const BULK_FOLLOW_UP_MEDIA_SEND_INTERVAL_MS = 2000;
+const CALLBACK_MAX_TEAM_ATTEMPTS = 6;
 const MESSAGE_LOAD_RETRY_DELAYS_MS = [350, 1000] as const;
 
 type InboxTab = "all" | "open" | "unread" | "closed" | "archived" | "callback" | "followup" | "lost";
@@ -177,12 +172,8 @@ type CallbackTrackingSnapshot = {
   callbackTrackingStartedAt?: string | null;
   callbackStreakCount?: number;
   callbackTotalCount?: number;
-  callbackQueueStatus?: string | null;
-  activeCallbackAttempt?: Conversation["lastCallbackAttempt"];
   attemptCounted?: boolean;
 };
-
-type CallbackQueueFilter = "all" | Exclude<WhatsAppCallbackQueueView, null>;
 
 interface ConversationListAnchor {
   conversationId: string;
@@ -247,7 +238,13 @@ function displayContactName(contact: Pick<Contact, "name" | "phone">) {
 }
 
 function isConversationCallbackDue(conversation: Conversation, now = Date.now()) {
-  return whatsAppCallbackQueueView(conversation, now) === "due";
+  const dueAt = conversation.callbackDueAt ? new Date(conversation.callbackDueAt).getTime() : Number.POSITIVE_INFINITY;
+  return Boolean(
+    conversation.callbackTrackingStartedAt
+    && dueAt <= now
+    && (conversation.callbackStreakCount || 0) < CALLBACK_MAX_TEAM_ATTEMPTS
+    && !["closed", "resolved", "lost"].includes(conversation.status),
+  );
 }
 
 function formatFollowUpSchedule(value?: string | null, now = new Date()) {
@@ -279,23 +276,9 @@ function sortConversationsByFollowUpSchedule(conversations: Conversation[]) {
 
 function sortConversationsByCallbackSchedule(conversations: Conversation[]) {
   return [...conversations].sort((a, b) => {
-    const queueRank = { responded: 0, due: 1, waiting_response: 2 } as const;
-    const aState = whatsAppCallbackQueueView(a) || "waiting_response";
-    const bState = whatsAppCallbackQueueView(b) || "waiting_response";
-    const stateDifference = queueRank[aState] - queueRank[bState];
-    if (stateDifference !== 0) return stateDifference;
-    const aTime = a.callbackContext?.respondedAt
-      || a.callbackDueAt
-      || a.callbackContext?.sentAt
-      || a.lastMessageAt
-      || 0;
-    const bTime = b.callbackContext?.respondedAt
-      || b.callbackDueAt
-      || b.callbackContext?.sentAt
-      || b.lastMessageAt
-      || 0;
-    const activityDifference = new Date(bTime).getTime() - new Date(aTime).getTime();
-    if (activityDifference !== 0) return activityDifference;
+    const dueDifference = new Date(b.callbackDueAt || 0).getTime()
+      - new Date(a.callbackDueAt || 0).getTime();
+    if (dueDifference !== 0) return dueDifference;
     return (b.id || "").localeCompare(a.id || "");
   });
 }
@@ -1814,16 +1797,6 @@ function ContactSidebar({
                   <span className="text-muted-foreground">Rechamadas no histórico</span>
                   <span className="font-semibold text-foreground">{conversation.callbackTotalCount || 0}</span>
                 </div>
-                {whatsAppCallbackQueueView(conversation) === "responded" && (
-                  <div className="flex items-center justify-between gap-3 text-xs">
-                    <span className="text-muted-foreground">Origem da resposta</span>
-                    <span className="text-right font-semibold text-emerald-700 dark:text-emerald-300">
-                      {conversation.callbackContext?.attemptNumber
-                        ? `${conversation.callbackContext.attemptNumber}º rechame`
-                        : "Rechame"}
-                    </span>
-                  </div>
-                )}
                 {conversation.callbackDueAt && conversation.status !== "lost" && (
                   <div className="flex items-center justify-between gap-3 text-xs">
                     <span className="text-muted-foreground">
@@ -2537,12 +2510,8 @@ function ConversationItem({
   onToggleSelection: () => void;
 }) {
   const isSecondaryMetaAccount = conv.campaignAccountOrigin === "secondary";
-  const callbackQueueView = whatsAppCallbackQueueView(conv, slaClockNow);
-  const callbackAttemptNumber = conv.callbackContext?.attemptNumber || conv.callbackStreakCount || 1;
-  const nextCallbackAttemptNumber = Math.min(
-    (conv.callbackStreakCount || 0) + 1,
-    WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
-  );
+  const callbackDue = isConversationCallbackDue(conv);
+  const callbackStreakCount = conv.callbackStreakCount || 0;
   const followUpDue = isWhatsAppFollowUpDue(conv.activeFollowUp);
   const sla = inboxSlaSnapshot({
     lastInboundAt: conv.lastInboundAt,
@@ -2653,22 +2622,16 @@ function ConversationItem({
                 {followUpDue ? "Retorno atrasado" : formatFollowUpSchedule(conv.activeFollowUp.scheduledAt)}
               </span>
             )}
-            {callbackQueueView && conv.status !== "lost" && (
+            {(callbackDue || callbackStreakCount > 0) && conv.status !== "lost" && (
               <span
                 className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
-                  callbackQueueView === "responded"
-                    ? "bg-emerald-500/15 text-emerald-800 dark:text-emerald-300"
-                    : callbackQueueView === "due"
+                  callbackDue
                     ? "bg-amber-500/15 text-amber-800 dark:text-amber-300"
                     : "bg-sky-500/10 text-sky-700 dark:text-sky-300"
                 }`}
                 title={`${conv.callbackTotalCount || 0} rechamada(s) no histórico`}
               >
-                {callbackQueueView === "responded"
-                  ? `Respondeu ao ${callbackAttemptNumber}º rechame`
-                  : callbackQueueView === "due"
-                    ? `Rechame ${nextCallbackAttemptNumber}/${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}`
-                    : `Aguardando ${callbackAttemptNumber}/${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}`}
+                {callbackDue ? "Rechamada" : "Aguardando"} {callbackStreakCount}/{CALLBACK_MAX_TEAM_ATTEMPTS}
               </span>
             )}
             {conv.status === "lost" && (
@@ -2831,8 +2794,6 @@ export default function InboxPage() {
     followup: 0,
     lost: 0,
   });
-  const [callbackQueueFilter, setCallbackQueueFilter] = useState<CallbackQueueFilter>("all");
-  const [isResumingCallback, setIsResumingCallback] = useState(false);
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
   const [showSavedRepliesDialog, setShowSavedRepliesDialog] = useState(false);
   const savedRepliesLibrary = useWhatsAppSavedReplies();
@@ -3264,22 +3225,10 @@ export default function InboxPage() {
     return instance?.canReply !== false && Boolean(instance);
   }, [inboxInstanceOptions, inboxInstanceOptionsLoaded, isAdmin]);
   const canReplyToSelectedConversation = canReplyToConversation(selectedConv);
-  const selectedCallbackQueueView = selectedConv
-    ? whatsAppCallbackQueueView(selectedConv)
-    : null;
-  const selectedCallbackAttemptLabel = selectedConv?.callbackContext?.attemptNumber
-    ? `${selectedConv.callbackContext.attemptNumber}º`
-    : "último";
-  const selectedConversationRequiresCallbackResume = Boolean(
-    selectedConv
-    && selectedCallbackQueueView === "responded"
-    && canReplyToSelectedConversation,
-  );
   const selectedConversationNeedsStart = Boolean(
     selectedConv &&
     !selectedConv.blockedAt &&
     canReplyToSelectedConversation &&
-    !selectedConversationRequiresCallbackResume &&
     (!selectedConv.assignedTo || selectedConv.status === "waiting_response")
   );
   const activeScopeCanReply = selectedCollaborator
@@ -3910,47 +3859,29 @@ export default function InboxPage() {
       callbackTrackingStartedAt: snapshot.callbackTrackingStartedAt,
       callbackStreakCount: snapshot.callbackStreakCount,
       callbackTotalCount: snapshot.callbackTotalCount,
-      callbackQueueStatus: snapshot.callbackQueueStatus || undefined,
-      lastCallbackAttempt: snapshot.activeCallbackAttempt || undefined,
-    };
-
-    const withCallbackContext = (conversation: Conversation) => {
-      const updated = { ...conversation, ...callbackFields };
-      const state = whatsAppCallbackQueueView(updated);
-      const attempt = snapshot.activeCallbackAttempt || updated.lastCallbackAttempt;
-      return {
-        ...updated,
-        callbackContext: state
-          ? {
-              state,
-              attemptNumber: attempt?.attemptNumber
-                || Math.min((updated.callbackStreakCount || 0) + 1, WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS),
-              nextAttemptNumber: Math.min(
-                (updated.callbackStreakCount || 0) + 1,
-                WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
-              ),
-              historicalNumber: attempt?.historicalNumber || updated.callbackTotalCount || 0,
-              sentAt: attempt?.sentAt || null,
-              sentByName: attempt?.sentByName || null,
-              respondedAt: attempt?.respondedAt || null,
-            }
-          : null,
-      } satisfies Conversation;
     };
 
     setConversations((current) => {
       const updated = current.map((conversation) => (
-        conversation.id === conversationId ? withCallbackContext(conversation) : conversation
+        conversation.id === conversationId ? { ...conversation, ...callbackFields } : conversation
       ));
+      const visible = serverConversationStatus === "callback"
+        ? updated.filter((conversation) => isConversationCallbackDue(conversation))
+        : updated;
       return serverConversationStatus === "callback"
-        ? sortConversationsByCallbackSchedule(
-            updated.filter((conversation) => isWhatsAppConversationInCallbackQueue(conversation)),
-          )
-        : sortConversationsByActivity(updated);
+        ? sortConversationsByCallbackSchedule(visible)
+        : sortConversationsByActivity(visible);
     });
     setSelectedConv((current) => (
-      current?.id === conversationId ? withCallbackContext(current) : current
+      current?.id === conversationId ? { ...current, ...callbackFields } : current
     ));
+
+    if (snapshot.attemptCounted) {
+      setConversationQueueCounts((current) => ({
+        ...current,
+        callback: Math.max(0, current.callback - 1),
+      }));
+    }
   }, [serverConversationStatus]);
 
   useEffect(() => {
@@ -3968,11 +3899,7 @@ export default function InboxPage() {
   }, [conversations, deepLinkConversationId, selectConversation]);
 
   const isConversationInService = useCallback((conv?: Conversation | null) => {
-    return Boolean(
-      conv?.assignedTo
-      && conv.status !== "waiting_response"
-      && whatsAppCallbackQueueView(conv) !== "responded",
-    );
+    return !!conv?.assignedTo && conv.status !== "waiting_response";
   }, []);
 
   const fetchMessages = useCallback((convId: string, markAsRead = false): Promise<MessageLoadResult> => {
@@ -5300,66 +5227,6 @@ export default function InboxPage() {
     }
   };
 
-  const handleResumeCallbackConversation = async () => {
-    if (!selectedConv || !currentUser || selectedCallbackQueueView !== "responded") return;
-    if (!canReplyToConversation(selectedConv)) return;
-
-    setIsResumingCallback(true);
-    try {
-      const targetParam = targetInstanceId
-        ? `?targetInstanceId=${targetInstanceId}`
-        : targetUserId
-          ? `?targetUserId=${targetUserId}`
-          : "";
-      const res = await fetch(`/api/whatsapp/conversations/${selectedConv.id}/callback${targetParam}`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "x-user-id": currentUser.id,
-          "x-user-name": currentUser.name || "",
-        },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data.error || "Não foi possível retomar o atendimento.");
-      }
-
-      const previousUnreadCount = selectedConv.unreadCount || 0;
-      const updatedConversation: Conversation = {
-        ...selectedConv,
-        ...data.conversation,
-        callbackContext: null,
-        lastCallbackAttempt: selectedConv.lastCallbackAttempt
-          ? {
-              ...selectedConv.lastCallbackAttempt,
-              status: "resumed",
-              resumedAt: new Date().toISOString(),
-              resumedByName: currentUser.name || "Operador",
-            }
-          : selectedConv.lastCallbackAttempt,
-      };
-      setSelectedConv(updatedConversation);
-      setConversations((current) => current.map((conversation) => (
-        conversation.id === updatedConversation.id ? updatedConversation : conversation
-      )));
-      setConversationQueueCounts((current) => ({
-        ...current,
-        open: current.open + 1,
-        unread: Math.max(0, current.unread - (previousUnreadCount > 0 ? 1 : 0)),
-        callback: Math.max(0, current.callback - 1),
-      }));
-      setCallbackQueueFilter("all");
-      setTab("open");
-      await fetchMessages(updatedConversation.id, true);
-      const resumedAttemptLabel = data.attemptNumber ? `${data.attemptNumber}º` : "último";
-      toast(`Atendimento retomado após o ${resumedAttemptLabel} rechame.`, "success");
-    } catch (error) {
-      toast(error instanceof Error ? error.message : "Erro ao retomar o atendimento", "error");
-    } finally {
-      setIsResumingCallback(false);
-    }
-  };
-
   // Iniciar atendimento — atribui operador e altera status da conversa para 'open'
   const handleStartService = async () => {
     if (!selectedConv || !currentUser) return;
@@ -5753,17 +5620,11 @@ export default function InboxPage() {
 
   const filtered = conversations.filter((c) => {
     // Tab filter
-    if ((tab === "all" || tab === "open") && isWhatsAppConversationInCallbackQueue(c)) return false;
     if (tab === "open" && !["open", "waiting_customer", "waiting_response"].includes(c.status)) return false;
     if (tab === "unread" && c.unreadCount === 0) return false;
     if (tab === "closed" && c.status !== "closed") return false;
     if (tab === "archived" && !c.archivedAt) return false;
-    if (tab === "callback" && !isWhatsAppConversationInCallbackQueue(c)) return false;
-    if (
-      tab === "callback"
-      && callbackQueueFilter !== "all"
-      && whatsAppCallbackQueueView(c) !== callbackQueueFilter
-    ) return false;
+    if (tab === "callback" && !isConversationCallbackDue(c)) return false;
     if (tab === "followup" && !isWhatsAppFollowUpDue(c.activeFollowUp)) return false;
     if (tab === "lost" && c.status !== "lost") return false;
     // Tag (campanha) filter
@@ -6413,37 +6274,6 @@ export default function InboxPage() {
             )}
           </div>
 
-          {tab === "callback" && (
-            <div className="flex items-center gap-2 overflow-x-auto border-t border-border/50 px-4 py-2 scrollbar-none">
-              {([
-                { key: "all" as const, label: "Todos" },
-                { key: "due" as const, label: "Pendentes" },
-                { key: "waiting_response" as const, label: "Aguardando resposta" },
-                { key: "responded" as const, label: "Responderam" },
-              ]).map(({ key, label }) => {
-                const active = callbackQueueFilter === key;
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => {
-                      setCallbackQueueFilter(key);
-                      setBulkSelectedConversationIds([]);
-                    }}
-                    aria-pressed={active}
-                    className={`min-h-10 shrink-0 rounded-lg border px-3 text-[11px] font-semibold transition-colors sm:min-h-8 ${
-                      active
-                        ? "border-primary/30 bg-primary/12 text-primary"
-                        : "border-border/70 bg-background/40 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                  >
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-
           {/* Filtro por etiqueta (campanha) */}
           {availableTags.length > 0 && tagFilterOpen && (
             <div className="relative z-50 h-0">
@@ -6920,32 +6750,6 @@ export default function InboxPage() {
                   <span className="hidden h-8 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium text-amber-700 dark:text-amber-300 sm:flex">
                     <Eye className="h-3.5 w-3.5" />
                     Somente consulta
-                  </span>
-                )}
-
-                {selectedCallbackQueueView && (
-                  <span
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-xs font-semibold sm:h-8 sm:w-auto sm:gap-2 sm:px-3 ${
-                      selectedCallbackQueueView === "responded"
-                        ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                        : selectedCallbackQueueView === "due"
-                          ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300"
-                          : "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300"
-                    }`}
-                    title={selectedCallbackQueueView === "responded"
-                      ? `Respondeu ao ${selectedCallbackAttemptLabel} rechame`
-                      : selectedCallbackQueueView === "due"
-                        ? "Rechame pendente"
-                        : "Aguardando resposta do rechame"}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    <span className="hidden sm:inline">
-                      {selectedCallbackQueueView === "responded"
-                        ? `Veio do rechame ${selectedConv.callbackContext?.attemptNumber || ""}`.trim()
-                        : selectedCallbackQueueView === "due"
-                          ? "Rechame pendente"
-                          : "Aguardando rechame"}
-                    </span>
                   </span>
                 )}
 
@@ -7496,37 +7300,6 @@ export default function InboxPage() {
               </div>
             )}
 
-            {selectedConversationRequiresCallbackResume && (
-              <div className="shrink-0 border-t border-emerald-500/25 bg-emerald-500/[0.07] p-3 sm:p-4">
-                <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-foreground">
-                      Cliente respondeu ao {selectedCallbackAttemptLabel} rechame
-                    </p>
-                    <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                      {selectedConv.callbackContext?.sentByName
-                        ? `Tentativa enviada por ${selectedConv.callbackContext.sentByName}. `
-                        : ""}
-                      Retome o atendimento para devolver esta conversa à fila principal.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleResumeCallbackConversation()}
-                    disabled={isResumingCallback}
-                    className="inline-flex min-h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                  >
-                    {isResumingCallback ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RotateCcw className="h-4 w-4" />
-                    )}
-                    {isResumingCallback ? "Retomando..." : "Retomar atendimento"}
-                  </button>
-                </div>
-              </div>
-            )}
-
             {/* Botão Iniciar Atendimento — se a conversa não tem atendente */}
             {selectedConversationNeedsStart && (
               <div className="shrink-0 border-t border-border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
@@ -7610,7 +7383,7 @@ export default function InboxPage() {
                   </div>
                 </div>
               </div>
-            ) : selectedConversationNeedsStart || selectedConversationRequiresCallbackResume ? null : (
+            ) : selectedConversationNeedsStart ? null : (
             <div className="inbox-thread-composer shrink-0 border-t px-2 py-1.5 sm:px-3 sm:py-2.5">
               {composerHasFormatting && !isRecording && (
                 <div

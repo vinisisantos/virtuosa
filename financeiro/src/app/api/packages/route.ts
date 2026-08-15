@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
+import { suppressWhatsAppCallbacksForClosedPackage } from '@/lib/whatsapp/callback-suppression';
+
+const CLOSED_PACKAGE_RECORD_STATUSES = new Set(['ativo', 'concluido']);
 
 /* GET — List packages with filters */
 export async function GET(req: NextRequest) {
@@ -45,21 +48,31 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const pkg = await (prisma as any).package.create({
-      data: {
-        clientName: body.clientName,
-        clientId: body.clientId || null,
-        services: typeof body.services === 'string' ? body.services : JSON.stringify(body.services),
-        totalValue: parseFloat(body.totalValue),
-        paidValue: parseFloat(body.paidValue || '0'),
-        paymentMethod: body.paymentMethod || 'pix',
-        installments: parseInt(body.installments || '1'),
-        totalSessions: parseInt(body.totalSessions || '1'),
-        completedSessions: parseInt(body.completedSessions || '0'),
-        status: body.status || 'ativo',
-        unit: guard.createUnit(body.unit), // UNIT GUARD: Force JWT unit
-        notes: body.notes || null,
-      },
+    const pkg = await prisma.$transaction(async (tx) => {
+      const created = await tx.package.create({
+        data: {
+          clientName: body.clientName,
+          clientId: body.clientId || null,
+          services: typeof body.services === 'string' ? body.services : JSON.stringify(body.services),
+          totalValue: parseFloat(body.totalValue),
+          paidValue: parseFloat(body.paidValue || '0'),
+          paymentMethod: body.paymentMethod || 'pix',
+          installments: parseInt(body.installments || '1'),
+          totalSessions: parseInt(body.totalSessions || '1'),
+          completedSessions: parseInt(body.completedSessions || '0'),
+          status: body.status || 'ativo',
+          unit: guard.createUnit(body.unit), // UNIT GUARD: Force JWT unit
+          notes: body.notes || null,
+        },
+      });
+      if (created.clientId && CLOSED_PACKAGE_RECORD_STATUSES.has(created.status)) {
+        await suppressWhatsAppCallbacksForClosedPackage({
+          db: tx,
+          clientId: created.clientId,
+          unit: created.unit,
+        });
+      }
+      return created;
     });
     return NextResponse.json({ success: true, package: pkg });
   } catch (err) {
@@ -95,7 +108,17 @@ export async function PUT(req: NextRequest) {
     // UNIT GUARD: Don't allow unit change for non-admins
     if (!guard.isAdmin) delete data.unit;
 
-    const pkg = await (prisma as any).package.update({ where: { id }, data });
+    const pkg = await prisma.$transaction(async (tx) => {
+      const updated = await tx.package.update({ where: { id }, data });
+      if (updated.clientId && CLOSED_PACKAGE_RECORD_STATUSES.has(updated.status)) {
+        await suppressWhatsAppCallbacksForClosedPackage({
+          db: tx,
+          clientId: updated.clientId,
+          unit: updated.unit,
+        });
+      }
+      return updated;
+    });
     return NextResponse.json({ success: true, package: pkg });
   } catch (err) {
     console.error('Packages PUT error:', err);

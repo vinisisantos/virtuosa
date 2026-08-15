@@ -10,11 +10,6 @@ import {
   WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
 } from "@/lib/whatsapp/callbacks";
 import {
-  isWhatsAppConversationInCallbackQueue,
-  WHATSAPP_CALLBACK_QUEUE_STATUS,
-  whatsAppCallbackQueueView,
-} from "@/lib/whatsapp/callback-queue";
-import {
   parseInboxSearchQuery,
   type InboxSearchQuery,
 } from "@/lib/whatsapp/inbox-search";
@@ -25,23 +20,6 @@ let whatsappPerformanceIndexesPromise: Promise<void> | null = null;
 const DEFAULT_CONVERSATION_LIMIT = 120;
 const MAX_CONVERSATION_LIMIT = 200;
 const CAMPAIGN_PHONE_LOOKUP_TAKE = 8;
-const ACTIVE_CALLBACK_QUEUE_STATUSES = [
-  WHATSAPP_CALLBACK_QUEUE_STATUS.waitingResponse,
-  WHATSAPP_CALLBACK_QUEUE_STATUS.responded,
-];
-
-function callbackQueueFilter(now = new Date()) {
-  return {
-    OR: [
-      { callbackQueueStatus: { in: ACTIVE_CALLBACK_QUEUE_STATUSES } },
-      {
-        callbackTrackingStartedAt: { not: null },
-        callbackDueAt: { lte: now },
-        callbackStreakCount: { lt: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
-      },
-    ],
-  };
-}
 
 function parseLimit(value: string | null) {
   const parsed = Number.parseInt(value || "", 10);
@@ -61,17 +39,11 @@ function parseUpdatedSince(value: string | null) {
 
 function getStatusFilter(status: string) {
   if (status === "all" || !status) {
-    return {
-      status: { notIn: ["closed", WHATSAPP_CALLBACK_LOST_STATUS] },
-      NOT: callbackQueueFilter(),
-    };
+    return { status: { notIn: ["closed", WHATSAPP_CALLBACK_LOST_STATUS] } };
   }
 
   if (status === "open") {
-    return {
-      status: { in: ["open", "waiting_customer", "waiting_response"] },
-      NOT: callbackQueueFilter(),
-    };
+    return { status: { in: ["open", "waiting_customer", "waiting_response"] } };
   }
 
   if (status === "unread") {
@@ -87,7 +59,9 @@ function getStatusFilter(status: string) {
 
   if (status === "callback") {
     return {
-      ...callbackQueueFilter(),
+      callbackTrackingStartedAt: { not: null },
+      callbackDueAt: { lte: new Date() },
+      callbackStreakCount: { lt: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
       status: { notIn: ["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS] },
     };
   }
@@ -138,7 +112,6 @@ function isConversationVisibleForRequest(
     callbackTrackingStartedAt?: Date | string | null;
     callbackDueAt?: Date | string | null;
     callbackStreakCount?: number | null;
-    callbackQueueStatus?: string | null;
     followUps?: Array<{ status?: string | null; scheduledAt?: Date | string | null }>;
   },
   requestedStatus: string,
@@ -148,16 +121,10 @@ function isConversationVisibleForRequest(
 
   const conversationStatus = conversation.status;
   if (requestedStatus === "all" || !requestedStatus) {
-    return showArchived || (
-      !["closed", WHATSAPP_CALLBACK_LOST_STATUS].includes(conversationStatus || "")
-      && !isWhatsAppConversationInCallbackQueue(conversation)
-    );
+    return showArchived || conversationStatus !== "closed";
   }
   if (requestedStatus === "open") {
-    return Boolean(
-      ["open", "waiting_customer", "waiting_response"].includes(conversationStatus || "")
-      && !isWhatsAppConversationInCallbackQueue(conversation),
-    );
+    return ["open", "waiting_customer", "waiting_response"].includes(conversationStatus || "");
   }
   if (requestedStatus === "unread") {
     return Boolean(
@@ -169,7 +136,13 @@ function isConversationVisibleForRequest(
     return ["resolved", "closed"].includes(conversationStatus || "");
   }
   if (requestedStatus === "callback") {
-    return isWhatsAppConversationInCallbackQueue(conversation);
+    const dueAt = conversation.callbackDueAt ? new Date(conversation.callbackDueAt).getTime() : Number.POSITIVE_INFINITY;
+    return Boolean(
+      conversation.callbackTrackingStartedAt
+      && dueAt <= Date.now()
+      && (conversation.callbackStreakCount || 0) < WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS
+      && !["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS].includes(conversationStatus || ""),
+    );
   }
   if (requestedStatus === "followup") {
     return Boolean(
@@ -190,33 +163,13 @@ function normalizePhoneSuffix(value?: string | null) {
 
 const EMPTY_SQL = Prisma.sql``;
 
-function callbackQueueSql() {
-  return Prisma.sql`(
-    conversation."callbackQueueStatus" IN (
-      ${WHATSAPP_CALLBACK_QUEUE_STATUS.waitingResponse},
-      ${WHATSAPP_CALLBACK_QUEUE_STATUS.responded}
-    )
-    OR (
-      conversation."callbackTrackingStartedAt" IS NOT NULL
-      AND conversation."callbackDueAt" <= NOW()
-      AND conversation."callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
-    )
-  )`;
-}
-
 function fullSearchStatusSql(status: string, showArchived: boolean, requesterUserId: string) {
   if ((status === "all" || !status) && showArchived) return EMPTY_SQL;
   if (status === "all" || !status) {
-    return Prisma.sql`
-      AND conversation."status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})
-      AND NOT ${callbackQueueSql()}
-    `;
+    return Prisma.sql`AND conversation."status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})`;
   }
   if (status === "open") {
-    return Prisma.sql`
-      AND conversation."status" IN ('open', 'waiting_customer', 'waiting_response')
-      AND NOT ${callbackQueueSql()}
-    `;
+    return Prisma.sql`AND conversation."status" IN ('open', 'waiting_customer', 'waiting_response')`;
   }
   if (status === "unread") {
     return Prisma.sql`
@@ -229,7 +182,9 @@ function fullSearchStatusSql(status: string, showArchived: boolean, requesterUse
   }
   if (status === "callback") {
     return Prisma.sql`
-      AND ${callbackQueueSql()}
+      AND conversation."callbackTrackingStartedAt" IS NOT NULL
+      AND conversation."callbackDueAt" <= NOW()
+      AND conversation."callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
       AND conversation."status" NOT IN ('closed', 'resolved', ${WHATSAPP_CALLBACK_LOST_STATUS})
     `;
   }
@@ -344,18 +299,25 @@ async function findFullSearchConversationIds(params: {
     : EMPTY_SQL;
   const cursorSql = !cursor
     ? EMPTY_SQL
-    : Prisma.sql`
-        AND (
-          COALESCE(conversation."lastMessageAt", 'infinity'::timestamptz),
-          conversation."id"
-        ) < (
-          COALESCE(cursor_conversation."lastMessageAt", 'infinity'::timestamptz),
-          cursor_conversation."id"
-        )
-      `;
+    : status === "callback"
+      ? Prisma.sql`
+          AND (conversation."callbackDueAt", conversation."id")
+            < (cursor_conversation."callbackDueAt", cursor_conversation."id")
+        `
+      : Prisma.sql`
+          AND (
+            COALESCE(conversation."lastMessageAt", 'infinity'::timestamptz),
+            conversation."id"
+          ) < (
+            COALESCE(cursor_conversation."lastMessageAt", 'infinity'::timestamptz),
+            cursor_conversation."id"
+          )
+        `;
   const orderSql = updatedSince
     ? Prisma.sql`conversation."updatedAt" DESC, conversation."id" DESC`
-    : Prisma.sql`conversation."lastMessageAt" DESC, conversation."id" DESC`;
+    : status === "callback"
+      ? Prisma.sql`conversation."callbackDueAt" DESC, conversation."id" DESC`
+      : Prisma.sql`conversation."lastMessageAt" DESC, conversation."id" DESC`;
 
   const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
     SELECT conversation."id"
@@ -452,7 +414,7 @@ export async function GET(req: Request) {
           where: {
             instanceId: { in: instanceIds },
             unreadCount: { gt: 0 },
-            status: { notIn: ["closed", WHATSAPP_CALLBACK_LOST_STATUS] },
+            ...statusFilter,
             ...archiveFilter,
           },
           select: {
@@ -558,22 +520,6 @@ export async function GET(req: Request) {
       callbackStreakCount: true,
       callbackTotalCount: true,
       callbackPipelineSyncedAt: true,
-      callbackQueueStatus: true,
-      callbackAttempts: {
-        orderBy: { sentAt: "desc" as const },
-        take: 1,
-        select: {
-          id: true,
-          attemptNumber: true,
-          historicalNumber: true,
-          status: true,
-          sentAt: true,
-          sentByName: true,
-          respondedAt: true,
-          resumedAt: true,
-          resumedByName: true,
-        },
-      },
       followUps: {
         where: { status: "scheduled" },
         select: {
@@ -645,10 +591,15 @@ export async function GET(req: Request) {
         select: conversationSelect,
         orderBy: updatedSince
           ? { updatedAt: "desc" as const }
-          : [
-              { lastMessageAt: "desc" as const },
-              { id: "desc" as const },
-            ],
+          : status === "callback"
+            ? [
+                { callbackDueAt: "desc" as const },
+                { id: "desc" as const },
+              ]
+            : [
+                { lastMessageAt: "desc" as const },
+                { id: "desc" as const },
+              ],
         take: updatedSince ? limit : limit + 1,
         ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       });
@@ -752,29 +703,11 @@ export async function GET(req: Request) {
       });
     }
     const conversationsWithTags = visibleConversations.map((c) => {
-      const { followUps, callbackAttempts, ...conversation } = c;
+      const { followUps, ...conversation } = c;
       const campaign = campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone));
-      const callbackQueueView = whatsAppCallbackQueueView(c);
-      const latestCallbackAttempt = callbackAttempts[0] || null;
       return {
         ...conversation,
         activeFollowUp: followUps[0] || null,
-        callbackContext: callbackQueueView
-          ? {
-              state: callbackQueueView,
-              attemptNumber: latestCallbackAttempt?.attemptNumber
-                || Math.min((c.callbackStreakCount || 0) + 1, WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS),
-              nextAttemptNumber: Math.min(
-                (c.callbackStreakCount || 0) + 1,
-                WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
-              ),
-              historicalNumber: latestCallbackAttempt?.historicalNumber || c.callbackTotalCount || 0,
-              sentAt: latestCallbackAttempt?.sentAt || null,
-              sentByName: latestCallbackAttempt?.sentByName || null,
-              respondedAt: latestCallbackAttempt?.respondedAt || null,
-            }
-          : null,
-        lastCallbackAttempt: latestCallbackAttempt,
         ...(includeCampaigns ? {
           campaignName: campaign?.name || null,
           campaignUrl: campaign?.url || null,
@@ -782,28 +715,9 @@ export async function GET(req: Request) {
         } : {}),
       };
     }).sort((a, b) => {
-      if (status === "followup") {
-        return new Date(a.activeFollowUp?.scheduledAt || 0).getTime()
-          - new Date(b.activeFollowUp?.scheduledAt || 0).getTime();
-      }
-      if (status === "callback") {
-        const queueRank = { responded: 0, due: 1, waiting_response: 2 } as const;
-        const stateDifference = queueRank[a.callbackContext?.state || "waiting_response"]
-          - queueRank[b.callbackContext?.state || "waiting_response"];
-        if (stateDifference !== 0) return stateDifference;
-        const aTime = a.callbackContext?.respondedAt
-          || a.callbackDueAt
-          || a.callbackContext?.sentAt
-          || a.lastMessageAt
-          || 0;
-        const bTime = b.callbackContext?.respondedAt
-          || b.callbackDueAt
-          || b.callbackContext?.sentAt
-          || b.lastMessageAt
-          || 0;
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
-      }
-      return 0;
+      if (status !== "followup") return 0;
+      return new Date(a.activeFollowUp?.scheduledAt || 0).getTime()
+        - new Date(b.activeFollowUp?.scheduledAt || 0).getTime();
     });
 
     const [queueCountRow] = await prisma.$queryRaw<Array<{
@@ -816,34 +730,15 @@ export async function GET(req: Request) {
       SELECT
         COUNT(*) FILTER (
           WHERE "status" IN ('open', 'waiting_customer', 'waiting_response')
-            AND NOT (
-              "callbackQueueStatus" IN (
-                ${WHATSAPP_CALLBACK_QUEUE_STATUS.waitingResponse},
-                ${WHATSAPP_CALLBACK_QUEUE_STATUS.responded}
-              )
-              OR (
-                "callbackTrackingStartedAt" IS NOT NULL
-                AND "callbackDueAt" <= NOW()
-                AND "callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
-              )
-            )
         ) AS "openCount",
         COUNT(*) FILTER (
           WHERE "unreadCount" > 0
             AND "status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})
         ) AS "unreadCount",
         COUNT(*) FILTER (
-          WHERE (
-              "callbackQueueStatus" IN (
-                ${WHATSAPP_CALLBACK_QUEUE_STATUS.waitingResponse},
-                ${WHATSAPP_CALLBACK_QUEUE_STATUS.responded}
-              )
-              OR (
-                "callbackTrackingStartedAt" IS NOT NULL
-                AND "callbackDueAt" <= NOW()
-                AND "callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
-              )
-            )
+          WHERE "callbackTrackingStartedAt" IS NOT NULL
+            AND "callbackDueAt" <= NOW()
+            AND "callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
             AND "status" NOT IN ('closed', 'resolved', ${WHATSAPP_CALLBACK_LOST_STATUS})
         ) AS "callbackCount",
         COUNT(*) FILTER (

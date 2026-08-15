@@ -4,6 +4,7 @@ export const WHATSAPP_CALLBACK_QUEUE_STATUS = {
   inactive: "inactive",
   waitingResponse: "waiting_response",
   responded: "responded",
+  suppressedClosedPackage: "suppressed_closed_package",
 } as const;
 
 export type WhatsAppCallbackQueueStatus =
@@ -26,10 +27,7 @@ export function whatsAppCallbackQueueView(
   now = Date.now(),
 ): WhatsAppCallbackQueueView {
   if (CLOSED_CONVERSATION_STATUSES.has(conversation.status || "")) return null;
-
-  if (conversation.callbackQueueStatus === WHATSAPP_CALLBACK_QUEUE_STATUS.responded) {
-    return "responded";
-  }
+  if (conversation.callbackQueueStatus === WHATSAPP_CALLBACK_QUEUE_STATUS.suppressedClosedPackage) return null;
 
   const dueAt = conversation.callbackDueAt
     ? new Date(conversation.callbackDueAt).getTime()
@@ -40,10 +38,6 @@ export function whatsAppCallbackQueueView(
     && (conversation.callbackStreakCount || 0) < WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
   );
   if (isDue) return "due";
-
-  if (conversation.callbackQueueStatus === WHATSAPP_CALLBACK_QUEUE_STATUS.waitingResponse) {
-    return "waiting_response";
-  }
 
   return null;
 }

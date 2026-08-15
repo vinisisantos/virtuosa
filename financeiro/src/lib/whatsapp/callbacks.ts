@@ -7,6 +7,7 @@ import {
   WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
   WHATSAPP_CALLBACK_QUEUE_STATUS,
 } from "@/lib/whatsapp/callback-queue";
+import { WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE } from "@/lib/whatsapp/callback-suppression";
 
 export const WHATSAPP_CALLBACK_INTERVAL_MS = 12 * 60 * 60 * 1000;
 export { WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS } from "@/lib/whatsapp/callback-queue";
@@ -40,14 +41,26 @@ export async function recordInboundForCallbackTracking(
   receivedAt: Date,
   context: CallbackMessageContext = {},
 ) {
-  const activeAttempt = await tx.whatsAppCallbackAttempt.findFirst({
-    where: {
-      conversationId,
-      status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.waitingResponse,
+  const conversation = await tx.whatsAppConversation.findUnique({
+    where: { id: conversationId },
+    select: {
+      callbackQueueStatus: true,
+      callbackAttempts: {
+        where: { status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.waitingResponse },
+        select: { id: true },
+        orderBy: { sentAt: "desc" },
+        take: 1,
+      },
     },
-    select: { id: true },
-    orderBy: { sentAt: "desc" },
   });
+  if (conversation?.callbackQueueStatus === WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE) {
+    await tx.whatsAppConversation.update({
+      where: { id: conversationId },
+      data: { lastInboundAt: receivedAt },
+    });
+    return;
+  }
+  const activeAttempt = conversation?.callbackAttempts[0] || null;
 
   if (activeAttempt) {
     await tx.whatsAppCallbackAttempt.update({
@@ -109,6 +122,7 @@ export async function recordOutboundForCallbackTracking(
       callbackTrackingStartedAt: { not: null },
       callbackDueAt: { lte: sentAt },
       callbackStreakCount: { lt: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
+      callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
       status: { notIn: CLOSED_CONVERSATION_STATUSES },
     },
     data: {
@@ -124,6 +138,7 @@ export async function recordOutboundForCallbackTracking(
       where: {
         id: conversationId,
         callbackTrackingStartedAt: { not: null },
+        callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
         status: { notIn: CLOSED_CONVERSATION_STATUSES },
       },
       data: { lastOutboundAt: sentAt, callbackDueAt },
@@ -203,6 +218,7 @@ export async function processExpiredWhatsAppCallbacks(
       callbackDueAt: { lte: now },
       callbackStreakCount: { gte: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
       callbackPipelineSyncedAt: null,
+      callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
       status: { notIn: CLOSED_CONVERSATION_STATUSES },
     },
     select: {
@@ -229,6 +245,7 @@ export async function processExpiredWhatsAppCallbacks(
           callbackDueAt: { lte: now },
           callbackStreakCount: { gte: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
           callbackPipelineSyncedAt: null,
+          callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
           status: { notIn: CLOSED_CONVERSATION_STATUSES },
         },
         data: {

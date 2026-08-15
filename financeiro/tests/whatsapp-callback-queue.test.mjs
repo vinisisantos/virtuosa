@@ -28,14 +28,14 @@ test("move para pendentes quando a janela de rechame vence", () => {
   }, now), "due");
 });
 
-test("mantém tentativa enviada em aguardando resposta", () => {
+test("mantém a conversa na fila principal enquanto aguarda resposta", () => {
   assert.equal(whatsAppCallbackQueueView({
     status: "open",
     callbackTrackingStartedAt: "2026-08-14T10:00:00.000Z",
     callbackDueAt: "2026-08-16T03:00:00.000Z",
     callbackStreakCount: 2,
     callbackQueueStatus: "waiting_response",
-  }, now), "waiting_response");
+  }, now), null);
 });
 
 test("prioriza pendência quando uma nova tentativa já venceu", () => {
@@ -48,7 +48,7 @@ test("prioriza pendência quando uma nova tentativa já venceu", () => {
   }, now), "due");
 });
 
-test("preserva a origem da resposta até a retomada manual", () => {
+test("mantém a resposta na fila principal sem exigir retomada manual", () => {
   const conversation = {
     status: "open",
     callbackTrackingStartedAt: "2026-08-15T14:30:00.000Z",
@@ -56,8 +56,20 @@ test("preserva a origem da resposta até a retomada manual", () => {
     callbackStreakCount: 0,
     callbackQueueStatus: "responded",
   };
-  assert.equal(whatsAppCallbackQueueView(conversation, now), "responded");
-  assert.equal(isWhatsAppConversationInCallbackQueue(conversation, now), true);
+  assert.equal(whatsAppCallbackQueueView(conversation, now), null);
+  assert.equal(isWhatsAppConversationInCallbackQueue(conversation, now), false);
+});
+
+test("não contabiliza cliente com pacote fechado mesmo se houver prazo vencido", () => {
+  const conversation = {
+    status: "open",
+    callbackTrackingStartedAt: "2026-08-14T10:00:00.000Z",
+    callbackDueAt: "2026-08-15T14:00:00.000Z",
+    callbackStreakCount: 2,
+    callbackQueueStatus: "suppressed_closed_package",
+  };
+  assert.equal(whatsAppCallbackQueueView(conversation, now), null);
+  assert.equal(isWhatsAppConversationInCallbackQueue(conversation, now), false);
 });
 
 test("não reabre fila para conversa encerrada", () => {

@@ -43,6 +43,7 @@ import {
   resolveCampaignOfferForClient,
 } from '@/lib/campaign-offer';
 import { sendEvaluationScheduleConfirmation } from '@/lib/whatsapp/evaluation-schedule-confirmation';
+import { suppressWhatsAppCallbacksForClosedPackage } from '@/lib/whatsapp/callback-suppression';
 
 type EvaluationScheduleConflict = NonNullable<Awaited<ReturnType<typeof findEvaluationScheduleConflict>>>;
 
@@ -564,6 +565,14 @@ export async function POST(req: NextRequest) {
           });
         }
 
+        if (effectiveStage === 'fechado') {
+          await suppressWhatsAppCallbacksForClosedPackage({
+            db: tx,
+            clientId: saved.clientId,
+            unit: saved.unit,
+          });
+        }
+
         return { saved, appointment };
       });
 
@@ -648,6 +657,14 @@ export async function POST(req: NextRequest) {
           stage: effectiveStage,
           clientName: saved.clientName,
           source: 'pipeline-post',
+        });
+      }
+
+      if (effectiveStage === 'fechado') {
+        await suppressWhatsAppCallbacksForClosedPackage({
+          db: tx,
+          clientId: saved.clientId,
+          unit: saved.unit,
         });
       }
 
@@ -909,6 +926,14 @@ export async function PUT(req: NextRequest) {
             details: `Oportunidade "${saved.clientName}" movida para estágio: ${effectiveStage}`,
             unit: saved.unit,
           },
+        });
+      }
+
+      if (targetStage === 'fechado') {
+        await suppressWhatsAppCallbacksForClosedPackage({
+          db: tx,
+          clientId: saved.clientId,
+          unit: saved.unit,
         });
       }
 

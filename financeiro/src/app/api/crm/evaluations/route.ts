@@ -32,6 +32,7 @@ import {
 } from "@/lib/campaign-offer";
 import { pipelineStageKeyFromName, pipelineToClientStage } from "@/lib/pipeline/stages";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
+import { suppressWhatsAppCallbacksForClosedPackage } from "@/lib/whatsapp/callback-suppression";
 
 function monthRange(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -314,6 +315,14 @@ async function syncPipelineFromEvaluationStatus(params: {
         : {}),
     },
   });
+
+  if (params.status === "fechou_pacote") {
+    await suppressWhatsAppCallbacksForClosedPackage({
+      db: params.db,
+      clientId: updatedDeal.clientId,
+      unit: updatedDeal.unit,
+    });
+  }
 
   if (params.status === "fechou_pacote" && classifiedSaleItems) {
     await replacePipelineSaleItems(params.db, updatedDeal.id, classifiedSaleItems);
