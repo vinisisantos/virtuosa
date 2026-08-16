@@ -45,6 +45,7 @@ import {
   writeConversationListMemoryCache,
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
+import { resolveInboxConversationUnit } from "@/lib/whatsapp/conversation-unit";
 import { preserveActiveAudioMediaUrl } from "@/lib/whatsapp/audio-playback";
 import { findQuotedImagePreviewTarget } from "@/lib/whatsapp/quoted-media";
 import {
@@ -841,6 +842,7 @@ function PipelineStageSelector({
           // 3. Encontrar o deal pelo telefone, com clientId como reforço quando existir.
           const dealParams = new URLSearchParams({ phone: contactPhone });
           if (unit) dealParams.set("unit", unit);
+          if (whatsappInstanceId) dealParams.set("targetInstanceId", whatsappInstanceId);
           const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`);
           const deals = await dRes.json();
           const clientDeal = client
@@ -856,7 +858,7 @@ function PipelineStageSelector({
       }
     }
     load();
-  }, [contactPhone, refreshTrigger, unit]);
+  }, [contactPhone, refreshTrigger, unit, whatsappInstanceId]);
 
   // Abre a modal de evolução quando o menu "⋯" do header dispara o sinal.
   useEffect(() => {
@@ -1548,6 +1550,7 @@ function CampaignAttributeControl({ contactPhone, contactName, unit }: {
 // ─── Contact Sidebar ─────────────────────────────────────────
 function ContactSidebar({
   conversation,
+  unit,
   onClose,
   pipelineRefreshKey,
   profilePicUrl,
@@ -1557,6 +1560,7 @@ function ContactSidebar({
   onPipelineChanged,
 }: {
   conversation: Conversation;
+  unit?: string | null;
   onClose: () => void;
   pipelineRefreshKey: number;
   profilePicUrl?: string;
@@ -1566,6 +1570,7 @@ function ContactSidebar({
   onPipelineChanged?: () => void;
 }) {
   const { contact } = conversation;
+  const operationalUnit = unit || contact.unit || "";
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState(contact.name || contact.phone);
   const [savingName, setSavingName] = useState(false);
@@ -1706,10 +1711,10 @@ function ContactSidebar({
             <Phone className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
             <span className="text-xs font-mono text-foreground select-all">{contact.phone}</span>
           </div>
-          {contact.unit && (
+          {operationalUnit && (
             <div className="flex items-center gap-3">
               <Info className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-              <span className="text-xs text-foreground">{contact.unit}</span>
+              <span className="text-xs text-foreground">{operationalUnit}</span>
             </div>
           )}
           {tags.length > 0 && (
@@ -1732,7 +1737,7 @@ function ContactSidebar({
           <CampaignAttributeControl
             contactPhone={contact.phone}
             contactName={contact.name}
-            unit={contact.unit}
+            unit={operationalUnit}
           />
         </div>
 
@@ -1742,7 +1747,7 @@ function ContactSidebar({
           <PipelineStageSelector
             contactPhone={contact.phone}
             contactName={contact.name || undefined}
-            unit={contact.unit}
+            unit={operationalUnit}
             whatsappConversationId={conversation.id}
             whatsappInstanceId={conversation.instanceId}
             layout="sidebar"
@@ -3230,6 +3235,17 @@ export default function InboxPage() {
 
   const inboxInstanceOptions = canViewCollaborators ? collaborators : ownInstances;
   const inboxInstanceOptionsLoaded = canViewCollaborators ? collaboratorsLoaded : ownInstancesLoaded;
+  const selectedConversationInstance = selectedConv?.instanceId
+    ? inboxInstanceOptions.find((instance) => instance.id === selectedConv.instanceId)
+    : null;
+  const selectedConversationUnit = resolveInboxConversationUnit(
+    selectedConversationInstance?.unit
+      || (selectedCollaborator && selectedCollaborator.id === selectedConv?.instanceId
+        ? selectedCollaborator.unit
+        : null),
+    effectiveUnit,
+    selectedConv?.contact.unit,
+  );
   const canSwitchInboxInstance = canViewCollaborators || ownInstances.length > 1;
   const canReplyToConversation = useCallback((conversation: Pick<Conversation, "instanceId"> | null | undefined) => {
     if (isAdmin) return true;
@@ -7689,6 +7705,7 @@ export default function InboxPage() {
           <div className="inbox-contact-panel absolute inset-y-0 right-0 z-50 flex w-full max-w-none shadow-2xl sm:max-w-sm xl:relative xl:inset-auto xl:z-auto xl:w-auto xl:shadow-none">
             <ContactSidebar
               conversation={selectedConv}
+              unit={selectedConversationUnit}
               onClose={() => setContactSidebarOpen(false)}
               pipelineRefreshKey={pipelineRefreshKey}
               profilePicUrl={profilePicUrlFor(selectedConv.contact.phone)}
