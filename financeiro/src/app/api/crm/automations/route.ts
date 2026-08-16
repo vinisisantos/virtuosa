@@ -3,13 +3,12 @@ import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import {
   EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
-  DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
+  EVALUATION_SCHEDULE_UNIT_CONFIGS,
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
-  LEADS_OSASCO_INSTANCE_ID,
-  LEADS_OSASCO_UNIT,
+  getEvaluationScheduleUnitConfigByUnit,
   getEvaluationScheduleAutomationMessage,
 } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
-import { ensureEvaluationConfirmationRequestAutomation } from "@/lib/whatsapp/evaluation-confirmation-automation";
+import { ensureEvaluationConfirmationRequestAutomations } from "@/lib/whatsapp/evaluation-confirmation-automation";
 import {
   DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
   isValidEvaluationConfirmationWindowHours,
@@ -66,36 +65,41 @@ async function ensureCtwaWelcomeAutomation(createdBy?: string | null) {
   });
 }
 
-async function ensureEvaluationScheduledAutomation(createdBy?: string | null) {
-  const existing = await prisma.automation.findFirst({
+async function ensureEvaluationScheduledAutomations(createdBy?: string | null) {
+  const units = EVALUATION_SCHEDULE_UNIT_CONFIGS.map((config) => config.unit);
+  const existing = await prisma.automation.findMany({
     where: {
       triggerType: EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
-      unit: LEADS_OSASCO_UNIT,
+      unit: { in: units },
     },
   });
-  if (existing) return existing;
-
-  return prisma.automation.create({
-    data: {
-      name: "Confirmação de avaliação agendada",
-      description: "Envia os dados da avaliação assim que o agendamento é confirmado na Leads Osasco.",
-      triggerType: EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
-      triggerConfig: {
-        topic: "AGENDA",
-        units: [LEADS_OSASCO_UNIT],
-        instanceIds: [LEADS_OSASCO_INSTANCE_ID],
-      },
-      steps: [
-        {
-          type: "send_message",
-          config: { message: DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE },
+  const existingUnits = new Set(existing.map((automation) => automation.unit));
+  const created = await Promise.all(
+    EVALUATION_SCHEDULE_UNIT_CONFIGS
+      .filter((config) => !existingUnits.has(config.unit))
+      .map((config) => prisma.automation.create({
+        data: {
+          name: `Confirmação de avaliação agendada — ${config.unit}`,
+          description: `Envia os dados da avaliação assim que o agendamento é confirmado na ${config.instanceDisplayName}.`,
+          triggerType: EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
+          triggerConfig: {
+            topic: "AGENDA",
+            units: [config.unit],
+            instanceIds: [config.instanceId],
+          },
+          steps: [
+            {
+              type: "send_message",
+              config: { message: config.scheduledTemplate },
+            },
+          ],
+          isActive: true,
+          createdBy: createdBy || "Sistema",
+          unit: config.unit,
         },
-      ],
-      isActive: true,
-      createdBy: createdBy || "Sistema",
-      unit: LEADS_OSASCO_UNIT,
-    },
-  });
+      })),
+  );
+  return [...existing, ...created];
 }
 
 // GET /api/crm/automations — listar automações
@@ -108,8 +112,8 @@ export async function GET(req: NextRequest) {
     const unit = searchParams.get("unit");
     await ensureCtwaWelcomeAutomation(auth.user.name || auth.user.email);
     await Promise.all([
-      ensureEvaluationScheduledAutomation(auth.user.name || auth.user.email),
-      ensureEvaluationConfirmationRequestAutomation(auth.user.name || auth.user.email),
+      ensureEvaluationScheduledAutomations(auth.user.name || auth.user.email),
+      ensureEvaluationConfirmationRequestAutomations(auth.user.name || auth.user.email),
     ]);
 
     const where: Record<string, unknown> = {};
@@ -193,6 +197,10 @@ export async function PUT(req: NextRequest) {
       delete data.createdBy;
 
       if (existing.triggerType === EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER) {
+        const unitConfig = getEvaluationScheduleUnitConfigByUnit(existing.unit);
+        if (!unitConfig) {
+          return NextResponse.json({ error: "Unidade inválida para a automação de agenda." }, { status: 400 });
+        }
         const existingTriggerConfig = jsonObject(existing.triggerConfig);
         const requestedWindowHours = requestedTriggerConfig.windowHours
           ?? existingTriggerConfig.windowHours
@@ -208,8 +216,8 @@ export async function PUT(req: NextRequest) {
         data.triggerConfig = {
           ...existingTriggerConfig,
           topic: "AGENDA",
-          units: [LEADS_OSASCO_UNIT],
-          instanceIds: [LEADS_OSASCO_INSTANCE_ID],
+          units: [unitConfig.unit],
+          instanceIds: [unitConfig.instanceId],
           manualAction: true,
           windowHours: Number(requestedWindowHours),
         };

@@ -3,11 +3,10 @@ import { phoneLookupKey } from "@/lib/phone";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
 import {
-  DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
-  buildLeadsOsascoScheduleConfirmationMessage,
+  buildEvaluationScheduleConfirmationMessage,
+  getEvaluationScheduleUnitConfig,
   getEvaluationScheduleAutomationMessage,
-  shouldSendLeadsOsascoScheduleConfirmation,
 } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 
 export type EvaluationScheduleConfirmationResult = {
@@ -23,10 +22,11 @@ export async function sendEvaluationScheduleConfirmation(params: {
   clientPhone?: string | null;
   startTime: Date;
 }): Promise<EvaluationScheduleConfirmationResult> {
-  if (!shouldSendLeadsOsascoScheduleConfirmation({
+  const unitConfig = getEvaluationScheduleUnitConfig({
     unit: params.unit,
     instanceId: params.instanceId,
-  })) {
+  });
+  if (!unitConfig) {
     return { status: "not_applicable" };
   }
 
@@ -59,7 +59,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
 
     const messageTemplate = automation
       ? getEvaluationScheduleAutomationMessage(automation.steps)
-      : DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE;
+      : unitConfig.scheduledTemplate;
     if (!messageTemplate) {
       console.error("[Pipeline] Automação de agenda sem mensagem configurada.");
       return { status: "failed" };
@@ -99,7 +99,8 @@ export async function sendEvaluationScheduleConfirmation(params: {
       conversationId: conversation.id,
       contactPhone: conversation.contact.phone,
       lastKnownJid: conversation.lastKnownJid,
-      message: buildLeadsOsascoScheduleConfirmationMessage({
+      message: buildEvaluationScheduleConfirmationMessage({
+        unit: unitConfig.unit,
         clientName: params.clientName,
         startTime: params.startTime,
         template: messageTemplate,

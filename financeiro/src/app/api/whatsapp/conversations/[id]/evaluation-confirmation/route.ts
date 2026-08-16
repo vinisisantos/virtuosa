@@ -10,12 +10,11 @@ import {
 } from "@/lib/whatsapp/evaluation-confirmation-automation";
 import { evaluationConfirmationWindow } from "@/lib/whatsapp/evaluation-confirmation-window";
 import {
-  DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
   EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
-  LEADS_OSASCO_INSTANCE_ID,
-  LEADS_OSASCO_UNIT,
-  buildLeadsOsascoEvaluationConfirmationRequestMessage,
+  buildEvaluationConfirmationRequestMessage,
+  getEvaluationScheduleUnitConfig,
   getEvaluationScheduleAutomationMessage,
+  type EvaluationScheduleUnitConfig,
 } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
@@ -24,8 +23,10 @@ type AccessibleInstance = Awaited<ReturnType<typeof getInstancesForRequest>>["in
 
 type EvaluationConfirmationContext = {
   instance: AccessibleInstance;
+  unitConfig: EvaluationScheduleUnitConfig;
   conversation: {
     id: string;
+    instanceId: string;
     lastKnownJid: string | null;
     contact: { phone: string; name: string | null };
   };
@@ -57,35 +58,44 @@ async function resolveEvaluationConfirmationContext(
   conversationId: string,
 ): Promise<EvaluationConfirmationContext | null> {
   const { instances } = await getInstancesForRequest(req);
-  const instance = instances.find((candidate) => (
-    candidate.id === LEADS_OSASCO_INSTANCE_ID
-    && candidate.unit === LEADS_OSASCO_UNIT
-    && candidate.canReply === true
+  const eligibleInstances = instances.filter((candidate) => (
+    candidate.canReply === true
+    && Boolean(getEvaluationScheduleUnitConfig({
+      unit: candidate.unit,
+      instanceId: candidate.id,
+    }))
   ));
-  if (!instance) return null;
+  if (eligibleInstances.length === 0) return null;
 
   const conversation = await prisma.whatsAppConversation.findFirst({
     where: {
       id: conversationId,
-      instanceId: instance.id,
+      instanceId: { in: eligibleInstances.map((instance) => instance.id) },
     },
     select: {
       id: true,
+      instanceId: true,
       lastKnownJid: true,
       contact: { select: { phone: true, name: true } },
     },
   });
   if (!conversation) return null;
+  const instance = eligibleInstances.find((candidate) => candidate.id === conversation.instanceId);
+  const unitConfig = getEvaluationScheduleUnitConfig({
+    unit: instance?.unit,
+    instanceId: instance?.id,
+  });
+  if (!instance || !unitConfig) return null;
 
   const phoneKey = phoneLookupKey(conversation.contact.phone);
   const phoneSuffix = phoneKey?.slice(-8) || "";
   if (phoneSuffix.length < 8) {
-    return { instance, conversation, appointment: null };
+    return { instance, unitConfig, conversation, appointment: null };
   }
 
   const appointmentCandidates = await prisma.agendamento.findMany({
     where: {
-      unit: LEADS_OSASCO_UNIT,
+      unit: unitConfig.unit,
       clientPhone: { contains: phoneSuffix },
       procedimento: { contains: "avalia", mode: "insensitive" },
       status: "pendente",
@@ -109,13 +119,13 @@ async function resolveEvaluationConfirmationContext(
     .map((appointment) => getPipelineDealIdFromEvaluationNotes(appointment.notes))
     .filter((dealId): dealId is string => Boolean(dealId));
   if (dealIds.length === 0) {
-    return { instance, conversation, appointment: null };
+    return { instance, unitConfig, conversation, appointment: null };
   }
 
   const scheduledDeals = await prisma.salesPipeline.findMany({
     where: {
       id: { in: dealIds },
-      unit: LEADS_OSASCO_UNIT,
+      unit: unitConfig.unit,
       stage: "agendado",
     },
     select: { id: true },
@@ -128,6 +138,7 @@ async function resolveEvaluationConfirmationContext(
 
   return {
     instance,
+    unitConfig,
     conversation,
     appointment: appointment
       ? {
@@ -153,7 +164,7 @@ export async function GET(
     if (!context) return hiddenConfirmation("not_applicable");
     if (!context.appointment) return hiddenConfirmation("not_scheduled");
 
-    const automation = await findEvaluationConfirmationRequestAutomation();
+    const automation = await findEvaluationConfirmationRequestAutomation(context.unitConfig.unit);
     if (automation && !automation.isActive) return hiddenConfirmation("automation_inactive");
 
     const windowHours = getEvaluationConfirmationWindowHours(automation?.triggerConfig);
@@ -195,6 +206,7 @@ export async function POST(
     }
 
     automation = await ensureEvaluationConfirmationRequestAutomation(
+      context.unitConfig.unit,
       req.headers.get("x-user-name") || "Sistema",
     );
     if (!automation.isActive) {
@@ -212,7 +224,9 @@ export async function POST(
       }, { status: 409 });
     }
     if (context.instance.status !== "connected") {
-      return NextResponse.json({ error: "A instância Leads Osasco não está conectada." }, { status: 409 });
+      return NextResponse.json({
+        error: `A instância ${context.unitConfig.instanceDisplayName} não está conectada.`,
+      }, { status: 409 });
     }
 
     if (await confirmationWasSent(automation.id, context.appointment.id)) {
@@ -224,8 +238,9 @@ export async function POST(
     }
 
     const messageTemplate = getEvaluationScheduleAutomationMessage(automation.steps)
-      || DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE;
-    const message = buildLeadsOsascoEvaluationConfirmationRequestMessage({
+      || context.unitConfig.confirmationRequestTemplate;
+    const message = buildEvaluationConfirmationRequestMessage({
+      unit: context.unitConfig.unit,
       clientName: context.appointment.clientName,
       startTime: context.appointment.startTime,
       template: messageTemplate,
@@ -260,7 +275,7 @@ export async function POST(
               appointmentId: context.appointment.id,
               conversationId: context.conversation.id,
               instanceId: context.instance.id,
-              unit: LEADS_OSASCO_UNIT,
+              unit: context.unitConfig.unit,
               startTime: context.appointment.startTime.toISOString(),
             },
             result: "success",
@@ -290,7 +305,7 @@ export async function POST(
             appointmentId: context?.appointment?.id || null,
             conversationId: context?.conversation.id || null,
             instanceId: context?.instance.id || null,
-            unit: LEADS_OSASCO_UNIT,
+            unit: context?.unitConfig.unit || null,
             startTime: context?.appointment?.startTime.toISOString() || null,
           },
           result: "failed",

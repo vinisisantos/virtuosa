@@ -67,7 +67,7 @@ import {
   WHATSAPP_MEDIA_MAX_BATCH_FILES,
   WHATSAPP_MEDIA_MAX_FILE_BYTES,
 } from "@/lib/whatsapp/media-constraints";
-import { LEADS_OSASCO_INSTANCE_ID } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
+import { isEvaluationScheduleInstanceId } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
@@ -3988,7 +3988,7 @@ export default function InboxPage() {
 
     if (
       !selectedConversationId
-      || selectedConv?.instanceId !== LEADS_OSASCO_INSTANCE_ID
+      || !isEvaluationScheduleInstanceId(selectedConv?.instanceId)
       || !canReplyToSelectedConversation
     ) {
       return;
