@@ -2,6 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   ArrowLeft,
   ChevronDown,
   ChevronRight,
@@ -9,6 +26,7 @@ import {
   Folder,
   FolderCog,
   FolderPlus,
+  GripVertical,
   Loader2,
   MessageSquareText,
   Pencil,
@@ -33,6 +51,7 @@ import {
   SAVED_REPLY_MAX_PER_USER,
   SAVED_REPLY_TITLE_MAX_LENGTH,
   filterSavedRepliesByCampaign,
+  reorderSavedRepliesByVisibleIds,
   savedReplyCategoryIdsForCampaign,
   savedReplyIsAvailableInCategory,
 } from "@/lib/whatsapp/saved-replies";
@@ -56,11 +75,13 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
     replies,
     categories,
     loading,
+    reordering,
     load,
     save,
     remove,
     saveCategory,
     removeCategory,
+    reorder,
   } = library;
   const [saving, setSaving] = useState(false);
   const [savingCategory, setSavingCategory] = useState(false);
@@ -76,6 +97,10 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
   const [categoryTitle, setCategoryTitle] = useState("");
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -261,6 +286,26 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
     }
   };
 
+  const moveReply = async (groupReplies: SavedReply[], event: DragEndEvent) => {
+    if (reordering || !event.over || event.active.id === event.over.id) return;
+    const previousIndex = groupReplies.findIndex((reply) => reply.id === event.active.id);
+    const nextIndex = groupReplies.findIndex((reply) => reply.id === event.over?.id);
+    if (previousIndex < 0 || nextIndex < 0) return;
+
+    const orderedVisibleReplies = arrayMove(groupReplies, previousIndex, nextIndex);
+    const nextReplies = reorderSavedRepliesByVisibleIds(
+      replies,
+      orderedVisibleReplies.map((reply) => reply.id),
+    );
+
+    setError(null);
+    try {
+      await reorder(nextReplies.map((reply) => reply.id));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Não foi possível salvar a ordem das respostas rápidas.");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
@@ -377,38 +422,33 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
                         </div>
 
                         {!collapsed && (
-                          <div className="space-y-2 p-2">
-                            {group.replies.length > 0 ? group.replies.map((reply) => (
-                              <div key={reply.id} className="group flex items-stretch gap-1 rounded-xl border border-border bg-background p-1 transition-colors hover:border-primary/30 hover:bg-muted/40">
-                                <button
-                                  type="button"
-                                  onClick={() => onSelect(reply.content)}
-                                  className="min-w-0 flex-1 rounded-lg px-3 py-2.5 text-left"
+                          <div className="p-2">
+                            {group.replies.length > 0 ? (
+                              <DndContext
+                                sensors={sensors}
+                                collisionDetection={closestCenter}
+                                onDragEnd={(event) => void moveReply(group.replies, event)}
+                              >
+                                <SortableContext
+                                  items={group.replies.map((reply) => reply.id)}
+                                  strategy={verticalListSortingStrategy}
                                 >
-                                  <span className="block truncate text-sm font-semibold text-foreground">{reply.title}</span>
-                                  <span className="mt-1 line-clamp-2 block whitespace-pre-line text-xs leading-5 text-muted-foreground">{reply.content}</span>
-                                </button>
-                                <div className="flex shrink-0 items-center gap-0.5 pr-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => beginEdit(reply)}
-                                    className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                                    aria-label={`Editar ${reply.title}`}
-                                  >
-                                    <Pencil className="h-4 w-4" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void deleteReply(reply)}
-                                    disabled={deletingId === reply.id}
-                                    className="flex h-10 w-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                                    aria-label={`Excluir ${reply.title}`}
-                                  >
-                                    {deletingId === reply.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                                  </button>
-                                </div>
-                              </div>
-                            )) : (
+                                  <div className="space-y-2">
+                                    {group.replies.map((reply) => (
+                                      <SortableSavedReplyRow
+                                        key={reply.id}
+                                        reply={reply}
+                                        disabled={reordering}
+                                        deleting={deletingId === reply.id}
+                                        onSelect={() => onSelect(reply.content)}
+                                        onEdit={() => beginEdit(reply)}
+                                        onDelete={() => void deleteReply(reply)}
+                                      />
+                                    ))}
+                                  </div>
+                                </SortableContext>
+                              </DndContext>
+                            ) : (
                               <div className="flex min-h-20 items-center justify-center px-4 text-center text-xs text-muted-foreground">
                                 Nenhuma resposta nesta categoria.
                               </div>
@@ -438,7 +478,7 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
 
             <div className="flex items-center justify-between border-t border-border bg-muted/30 px-4 py-3 text-[11px] text-muted-foreground sm:px-5">
               <span>{replies.length}/{SAVED_REPLY_MAX_PER_USER} respostas · {categories.length}/{SAVED_REPLY_CATEGORY_MAX_PER_USER} categorias</span>
-              <span className="hidden sm:inline">Toque para inserir no campo</span>
+              <span className="hidden sm:inline">Arraste pelo puxador para reorganizar</span>
             </div>
           </>
         ) : mode === "form" ? (
@@ -615,5 +655,78 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SortableSavedReplyRow({
+  reply,
+  disabled,
+  deleting,
+  onSelect,
+  onEdit,
+  onDelete,
+}: {
+  reply: SavedReply;
+  disabled: boolean;
+  deleting: boolean;
+  onSelect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: reply.id,
+    disabled,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.65 : 1,
+        zIndex: isDragging ? 20 : undefined,
+      }}
+      className="group relative flex items-stretch gap-1 rounded-xl border border-border bg-background p-1 transition-colors hover:border-primary/30 hover:bg-muted/40"
+    >
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        disabled={disabled}
+        className="flex h-11 w-9 shrink-0 cursor-grab touch-none items-center justify-center self-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:cursor-grabbing disabled:cursor-wait disabled:opacity-50 sm:w-10"
+        aria-label={`Mover ${reply.title}`}
+        title="Arraste para reorganizar"
+      >
+        {disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <GripVertical className="h-4 w-4" />}
+      </button>
+      <button
+        type="button"
+        onClick={onSelect}
+        className="min-w-0 flex-1 rounded-lg px-2 py-2.5 text-left sm:px-3"
+      >
+        <span className="block truncate text-sm font-semibold text-foreground">{reply.title}</span>
+        <span className="mt-1 line-clamp-2 block whitespace-pre-line text-xs leading-5 text-muted-foreground">{reply.content}</span>
+      </button>
+      <div className="flex shrink-0 items-center gap-0.5 pr-1">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex h-10 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary sm:w-10"
+          aria-label={`Editar ${reply.title}`}
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          className="flex h-10 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50 sm:w-10"
+          aria-label={`Excluir ${reply.title}`}
+        >
+          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+        </button>
+      </div>
+    </div>
   );
 }

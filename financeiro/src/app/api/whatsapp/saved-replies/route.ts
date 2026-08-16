@@ -40,10 +40,11 @@ export async function GET(req: Request) {
           categoryId: true,
           title: true,
           content: true,
+          position: true,
           createdAt: true,
           updatedAt: true,
         },
-        orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        orderBy: [{ position: "asc" }, { updatedAt: "desc" }, { id: "desc" }],
         take: SAVED_REPLY_MAX_PER_USER,
       }),
       prisma.whatsAppSavedReplyCategory.findMany({
@@ -79,7 +80,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Categoria não encontrada" }, { status: 404 });
     }
 
-    const replyCount = await prisma.whatsAppSavedReply.count({ where: { userId } });
+    const [replyCount, maximumPosition] = await withSavedReplyCategorySchema(() => Promise.all([
+      prisma.whatsAppSavedReply.count({ where: { userId } }),
+      prisma.whatsAppSavedReply.aggregate({
+        where: { userId },
+        _max: { position: true },
+      }),
+    ]));
     if (replyCount >= SAVED_REPLY_MAX_PER_USER) {
       return NextResponse.json({
         error: `Você pode salvar até ${SAVED_REPLY_MAX_PER_USER} respostas rápidas`,
@@ -87,12 +94,17 @@ export async function POST(req: Request) {
     }
 
     const reply = await withSavedReplyCategorySchema(() => prisma.whatsAppSavedReply.create({
-      data: { userId, ...parsed.value },
+      data: {
+        userId,
+        ...parsed.value,
+        position: (maximumPosition._max.position ?? -1) + 1,
+      },
       select: {
         id: true,
         categoryId: true,
         title: true,
         content: true,
+        position: true,
         createdAt: true,
         updatedAt: true,
       },

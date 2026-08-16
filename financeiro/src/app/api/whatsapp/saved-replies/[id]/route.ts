@@ -44,17 +44,18 @@ export async function PATCH(
       return NextResponse.json({ error: "Resposta rápida não encontrada" }, { status: 404 });
     }
 
-    const reply = await prisma.whatsAppSavedReply.findFirst({
+    const reply = await withSavedReplyCategorySchema(() => prisma.whatsAppSavedReply.findFirst({
       where: { id, userId },
       select: {
         id: true,
         categoryId: true,
         title: true,
         content: true,
+        position: true,
         createdAt: true,
         updatedAt: true,
       },
-    });
+    }));
 
     return NextResponse.json({ reply });
   } catch (error) {

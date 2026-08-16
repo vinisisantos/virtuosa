@@ -4,6 +4,41 @@ export const SAVED_REPLY_MAX_PER_USER = 100;
 export const SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH = 60;
 export const SAVED_REPLY_CATEGORY_MAX_PER_USER = 30;
 
+export function validateSavedReplyOrderInput(input: unknown) {
+  const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const ids = Array.isArray(record.ids)
+    ? record.ids.filter((id): id is string => typeof id === "string").map((id) => id.trim()).filter(Boolean)
+    : [];
+
+  if (ids.length === 0) return { error: "Informe a ordem das respostas rápidas" } as const;
+  if (ids.length > SAVED_REPLY_MAX_PER_USER) {
+    return { error: `A ordem pode conter até ${SAVED_REPLY_MAX_PER_USER} respostas` } as const;
+  }
+  if (new Set(ids).size !== ids.length) {
+    return { error: "A ordem contém respostas repetidas" } as const;
+  }
+
+  return { value: { ids } } as const;
+}
+
+export function reorderSavedRepliesByVisibleIds<T extends { id: string }>(
+  replies: T[],
+  orderedVisibleIds: string[],
+) {
+  const replyById = new Map(replies.map((reply) => [reply.id, reply]));
+  const visibleIds = new Set(orderedVisibleIds);
+  if (visibleIds.size !== orderedVisibleIds.length) return replies;
+  if (orderedVisibleIds.some((id) => !replyById.has(id))) return replies;
+
+  let visibleIndex = 0;
+  return replies.map((reply) => {
+    if (!visibleIds.has(reply.id)) return reply;
+    const nextReply = replyById.get(orderedVisibleIds[visibleIndex]);
+    visibleIndex += 1;
+    return nextReply || reply;
+  });
+}
+
 export function normalizeSavedReplyTitle(value: string) {
   return value
     .normalize("NFKD")

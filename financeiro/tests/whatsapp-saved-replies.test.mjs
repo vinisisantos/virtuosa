@@ -5,11 +5,29 @@ import {
   SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH,
   filterSavedRepliesByCampaign,
   normalizeSavedReplyCategoryTitle,
+  reorderSavedRepliesByVisibleIds,
   savedReplyCategoryIdsForCampaign,
   savedReplyIsAvailableInCategory,
   validateSavedReplyCategoryInput,
   validateSavedReplyInput,
+  validateSavedReplyOrderInput,
 } from "../src/lib/whatsapp/saved-replies.ts";
+
+test("valida uma ordem completa sem IDs repetidos", () => {
+  assert.deepEqual(validateSavedReplyOrderInput({ ids: [" resposta-1 ", "resposta-2"] }), {
+    value: { ids: ["resposta-1", "resposta-2"] },
+  });
+  assert.equal(validateSavedReplyOrderInput({ ids: ["resposta-1", "resposta-1"] }).error, "A ordem contém respostas repetidas");
+  assert.equal(validateSavedReplyOrderInput({ ids: [] }).error, "Informe a ordem das respostas rápidas");
+});
+
+test("reordena somente as respostas visíveis e preserva as demais posições", () => {
+  const replies = ["a", "oculta-1", "b", "oculta-2"].map((id) => ({ id }));
+  assert.deepEqual(
+    reorderSavedRepliesByVisibleIds(replies, ["b", "a"]).map((reply) => reply.id),
+    ["b", "oculta-1", "a", "oculta-2"],
+  );
+});
 
 test("normaliza categorias sem diferenciar acentos, caixa ou espaços", () => {
   assert.equal(normalizeSavedReplyCategoryTitle("  Harmonização   de GLÚTEO "), "harmonizacao de gluteo");
