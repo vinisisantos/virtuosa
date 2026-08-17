@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { evaluationScheduleMinuteRange } from "@/lib/evaluation-schedule-conflict";
+import { isAdminRole } from "@/lib/role-access";
 
 const UNIT_PERMISSION_KEY: Record<string, string> = {
   Osasco: "unitOsasco",
@@ -80,6 +81,16 @@ export function userCanUseEvaluationUnit(user: UserLike, unit: string) {
   );
 }
 
+export function userCanReceiveEvaluation(user: UserLike, unit: string) {
+  const permissions = permissionsRecord(user.permissions);
+  const canAccessCrm =
+    isAdminRole(user.role) ||
+    permissions.admin === true ||
+    permissions.crm === true;
+
+  return canAccessCrm && userCanUseEvaluationUnit(user, unit);
+}
+
 function userMatchesName(user: UserLike, token: string) {
   const normalizedToken = normalizeEvaluationText(token);
   return (
@@ -98,7 +109,7 @@ export async function getEvaluationAssigneeUsers(
     orderBy: { name: "asc" },
   });
 
-  return users.filter((user) => user.role !== "ADMINISTRADOR" && userCanUseEvaluationUnit(user, unit));
+  return users.filter((user) => userCanReceiveEvaluation(user, unit));
 }
 
 export async function resolveEvaluationAssignee(
@@ -111,7 +122,7 @@ export async function resolveEvaluationAssignee(
       where: { id: assigneeUserId, isActive: true },
       select: { id: true, name: true, email: true, role: true, unit: true, permissions: true },
     });
-    if (!user || !userCanUseEvaluationUnit(user, unit)) {
+    if (!user || !userCanReceiveEvaluation(user, unit)) {
       throw new EvaluationSchedulingError("Responsável inválido para esta unidade");
     }
     return user;
@@ -124,6 +135,16 @@ export async function resolveEvaluationAssignee(
   }
 
   throw new EvaluationSchedulingError("Selecione a responsável pela avaliação");
+}
+
+export function replaceEvaluationAssignedUserMarker(notes: string | null | undefined, userId: string) {
+  const notesWithoutAssignment = (notes || "")
+    .replace(/\n?\[assignedUserId:[^\]]+\]/g, "")
+    .trim();
+
+  return [notesWithoutAssignment, evaluationAssignedUserMarker(userId)]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export async function ensureProfessionalForEvaluationUser(

@@ -73,7 +73,6 @@ import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
   Send,
-  User,
   Loader2,
   X,
   FileText,
@@ -1049,7 +1048,7 @@ function PipelineStageSelector({
       toast("Informe a data e o horário da avaliação", "error");
       return;
     }
-    if (!isOsascoSchedule && !scheduleAssigneeUserId) {
+    if (!scheduleAssigneeUserId) {
       toast("Selecione a responsável pela avaliação", "error");
       return;
     }
@@ -1125,8 +1124,6 @@ function PipelineStageSelector({
     </div>
   ) : null;
 
-  const defaultOsascoAssigneeId = pickDefaultAssignee(evaluationAssignees);
-  const selectedAssignee = evaluationAssignees.find((assignee) => assignee.id === (scheduleAssigneeUserId || defaultOsascoAssigneeId));
   const scheduleModal = scheduleModalOpen ? (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
@@ -1173,26 +1170,19 @@ function PipelineStageSelector({
 
           <div className="grid gap-1.5">
             <label className="text-sm font-medium text-foreground">Responsável</label>
-            {isOsascoSchedule && defaultOsascoAssigneeId ? (
-              <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
-                <User className="h-4 w-4 text-primary" />
-                {selectedAssignee?.name || "Larissa"}
-              </div>
-            ) : (
-              <select
-                value={scheduleAssigneeUserId}
-                onChange={(event) => setScheduleAssigneeUserId(event.target.value)}
-                disabled={loadingAssignees}
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-60"
-              >
-                <option value="">{loadingAssignees ? "Carregando..." : "Selecione a responsável"}</option>
-                {evaluationAssignees.map((assignee) => (
-                  <option key={assignee.id} value={assignee.id}>
-                    {assignee.name}
-                  </option>
-                ))}
-              </select>
-            )}
+            <select
+              value={scheduleAssigneeUserId}
+              onChange={(event) => setScheduleAssigneeUserId(event.target.value)}
+              disabled={loadingAssignees}
+              className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-60"
+            >
+              <option value="">{loadingAssignees ? "Carregando..." : "Selecione a responsável"}</option>
+              {evaluationAssignees.map((assignee) => (
+                <option key={assignee.id} value={assignee.id}>
+                  {assignee.name}
+                </option>
+              ))}
+            </select>
             <p className="text-xs text-muted-foreground">
               A lista mostra apenas pessoas da unidade selecionada.
             </p>

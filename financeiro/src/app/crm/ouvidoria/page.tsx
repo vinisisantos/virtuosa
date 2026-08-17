@@ -93,6 +93,13 @@ type Professional = {
   color: string;
 };
 
+type EvaluationAssignee = {
+  id: string;
+  name: string;
+  email?: string | null;
+  unit?: string | null;
+};
+
 type Evaluation = {
   id: string;
   clientName: string;
@@ -112,6 +119,7 @@ type Evaluation = {
   pipelineStage?: string | null;
   pipelineClosedAt?: string | null;
   outcomeReason?: string | null;
+  assignedUserId?: string | null;
 };
 
 type ChatLinkState = {
@@ -276,6 +284,15 @@ function normalizeStageName(value?: string | null) {
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .replace(/\s+/g, "_");
+}
+
+function normalizePersonName(value?: string | null) {
+  return (value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/\s+/g, " ");
 }
 
 function getEffectiveStatus(evaluation: Evaluation): EvaluationStatus {
@@ -643,6 +660,8 @@ export default function AvaliacoesAgendaPage() {
   const [newEvaluationsToday, setNewEvaluationsToday] = useState(0);
   const [currentDayKey, setCurrentDayKey] = useState(() => saoPauloDateKey());
   const [professionals, setProfessionals] = useState<Professional[]>([]);
+  const [evaluationAssignees, setEvaluationAssignees] = useState<EvaluationAssignee[]>([]);
+  const [loadingAssignees, setLoadingAssignees] = useState(false);
   const [professionalId, setProfessionalId] = useState("");
   const [filterDayKey, setFilterDayKey] = useState("");
   const [canViewAll, setCanViewAll] = useState(false);
@@ -659,6 +678,7 @@ export default function AvaliacoesAgendaPage() {
   } | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
+  const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [chatLink, setChatLink] = useState<ChatLinkState | null>(null);
   const [outcomeFlow, setOutcomeFlow] = useState<OutcomeFlow>(null);
@@ -749,6 +769,36 @@ export default function AvaliacoesAgendaPage() {
   }, [resolvedUnit]);
 
   useEffect(() => {
+    if (!canViewAll || !resolvedUnit) {
+      setEvaluationAssignees([]);
+      setLoadingAssignees(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingAssignees(true);
+    fetch(`/api/crm/evaluations/assignees?unit=${encodeURIComponent(resolvedUnit)}`)
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Erro ao carregar responsáveis");
+        if (!cancelled) setEvaluationAssignees(Array.isArray(data.assignees) ? data.assignees : []);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setEvaluationAssignees([]);
+          toast.error("Erro ao carregar responsáveis");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingAssignees(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [canViewAll, resolvedUnit]);
+
+  useEffect(() => {
     setProfessionalId("");
   }, [globalUnit]);
 
@@ -772,6 +822,7 @@ export default function AvaliacoesAgendaPage() {
     if (!selectedEvaluation) return;
     setScheduleDate(dateKey(selectedEvaluation.startTime));
     setScheduleTime(timeInputValue(selectedEvaluation.startTime));
+    setScheduleAssigneeUserId(selectedEvaluation.assignedUserId || "");
     setOutcomeFlow(null);
     setEditingClosedPackage(false);
     setOutcomeReason("");
@@ -781,6 +832,17 @@ export default function AvaliacoesAgendaPage() {
     setOutcomeDate(dateKey(selectedEvaluation.startTime));
     setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
   }, [selectedEvaluation]);
+
+  useEffect(() => {
+    if (!selectedEvaluation || selectedEvaluation.assignedUserId || scheduleAssigneeUserId) return;
+    const professionalName = normalizePersonName(selectedEvaluation.profissional?.name);
+    if (!professionalName) return;
+
+    const matchingAssignee = evaluationAssignees.find(
+      (assignee) => normalizePersonName(assignee.name) === professionalName,
+    );
+    if (matchingAssignee) setScheduleAssigneeUserId(matchingAssignee.id);
+  }, [evaluationAssignees, scheduleAssigneeUserId, selectedEvaluation]);
 
   useEffect(() => {
     if (outcomeFlow !== "closed") return;
@@ -914,13 +976,21 @@ export default function AvaliacoesAgendaPage() {
     };
   }, [displayedEvaluations]);
 
-  const updateEvaluationSchedule = async (evaluationId: string, startTime: Date) => {
+  const updateEvaluationSchedule = async (
+    evaluationId: string,
+    startTime: Date,
+    assigneeUserId?: string,
+  ) => {
     setSavingSchedule(true);
     try {
       const res = await fetch("/api/crm/evaluations", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: evaluationId, startTime: startTime.toISOString() }),
+        body: JSON.stringify({
+          id: evaluationId,
+          startTime: startTime.toISOString(),
+          ...(assigneeUserId ? { assigneeUserId } : {}),
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Erro ao reagendar avaliação");
@@ -932,7 +1002,14 @@ export default function AvaliacoesAgendaPage() {
           ? current.map((evaluation) => (evaluation.id === updated.id ? updated : evaluation))
           : current.filter((evaluation) => evaluation.id !== updated.id),
       );
-      toast.success("Avaliação reagendada");
+      if (updated.profissional) {
+        setProfessionals((current) =>
+          current.some((professional) => professional.id === updated.profissional?.id)
+            ? current
+            : [...current, updated.profissional as Professional].sort((left, right) => left.name.localeCompare(right.name)),
+        );
+      }
+      toast.success(assigneeUserId ? "Agendamento atualizado" : "Avaliação reagendada");
       return updated;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao reagendar avaliação");
@@ -987,7 +1064,16 @@ export default function AvaliacoesAgendaPage() {
       return;
     }
 
-    const updated = await updateEvaluationSchedule(selectedEvaluation.id, startTime);
+    if (canViewAll && !scheduleAssigneeUserId) {
+      toast.error("Selecione a responsável pela avaliação");
+      return;
+    }
+
+    const updated = await updateEvaluationSchedule(
+      selectedEvaluation.id,
+      startTime,
+      canViewAll ? scheduleAssigneeUserId : undefined,
+    );
     if (!updated) return;
 
     if (!isSameMonth(startTime, month)) {
@@ -1733,7 +1819,7 @@ export default function AvaliacoesAgendaPage() {
                 <div className="rounded-xl border border-border bg-muted/20 p-4">
                   <div className="mb-3 flex items-center gap-2">
                     <CalendarClock className="h-4 w-4 text-primary" />
-                    <div className="text-sm font-semibold text-foreground">Data da avaliação</div>
+                    <div className="text-sm font-semibold text-foreground">Agendamento</div>
                   </div>
                   <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
                     <div className="grid gap-2">
@@ -1755,6 +1841,30 @@ export default function AvaliacoesAgendaPage() {
                       />
                     </div>
                   </div>
+                  {canViewAll && (
+                    <div className="mt-3 grid gap-2">
+                      <Label htmlFor="evaluationScheduleAssignee">Responsável</Label>
+                      <select
+                        id="evaluationScheduleAssignee"
+                        value={scheduleAssigneeUserId}
+                        onChange={(event) => setScheduleAssigneeUserId(event.target.value)}
+                        disabled={loadingAssignees || savingSchedule || !!updatingStatus}
+                        className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-60"
+                      >
+                        <option value="">
+                          {loadingAssignees ? "Carregando..." : "Selecione a responsável"}
+                        </option>
+                        {evaluationAssignees.map((assignee) => (
+                          <option key={assignee.id} value={assignee.id}>
+                            {assignee.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        Apenas pessoas ativas com acesso ao CRM e à unidade {selectedEvaluation.unit}.
+                      </p>
+                    </div>
+                  )}
                   <Button
                     type="button"
                     className="mt-3 w-full sm:w-auto"
@@ -1766,7 +1876,7 @@ export default function AvaliacoesAgendaPage() {
                     ) : (
                       <CalendarCheck className="mr-2 h-4 w-4" />
                     )}
-                    Salvar data e horário
+                    {canViewAll ? "Salvar agendamento" : "Salvar data e horário"}
                   </Button>
                 </div>
 

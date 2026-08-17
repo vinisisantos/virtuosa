@@ -3,9 +3,13 @@ import type { Prisma } from "@prisma/client";
 
 import {
   evaluationAssignedUserMarker,
+  ensureProfessionalForEvaluationUser,
   getEvaluationAssignedUserIdFromNotes,
   getPipelineDealIdFromEvaluationNotes,
   normalizeEvaluationText,
+  replaceEvaluationAssignedUserMarker,
+  resolveEvaluationAssignee,
+  EvaluationSchedulingError,
 } from "@/lib/evaluation-scheduling";
 import {
   isClosedPackageEvaluationStatus,
@@ -161,6 +165,7 @@ async function enrichEvaluationsWithPipelineData<
         );
     return {
       ...evaluation,
+      assignedUserId: getEvaluationAssignedUserIdFromNotes(evaluation.notes),
       outcomeReason,
       pipelineDealId,
       pipelineValue: pipelineDeal?.value || outcomeAudit?.saleValue || 0,
@@ -465,6 +470,8 @@ export async function PATCH(req: NextRequest) {
     const status = hasStatus ? body.status : "";
     const hasStartTime = typeof body.startTime === "string";
     const requestedStartTime = hasStartTime ? new Date(body.startTime) : null;
+    const hasAssigneeUserId = typeof body.assigneeUserId === "string";
+    const assigneeUserId = hasAssigneeUserId ? body.assigneeUserId.trim() : "";
     const reason = typeof body.reason === "string" ? body.reason.trim() : "";
     let saleValue = typeof body.saleValue === "number" ? body.saleValue : null;
     let procedureNames = normalizeProcedureNames(body.procedureNames ?? body.procedureName);
@@ -477,11 +484,15 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Informe a avaliação." }, { status: 400 });
     }
 
-    if (!hasStatus && !hasStartTime) {
+    if (!hasStatus && !hasStartTime && !hasAssigneeUserId) {
       return NextResponse.json(
-        { error: "Informe o status ou a nova data da avaliação." },
+        { error: "Informe o status, a nova data ou a responsável pela avaliação." },
         { status: 400 },
       );
+    }
+
+    if (hasAssigneeUserId && !assigneeUserId) {
+      return NextResponse.json({ error: "Selecione a responsável pela avaliação." }, { status: 400 });
     }
 
     if (hasStatus && !isEvaluationStatus(status)) {
@@ -531,6 +542,13 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
+    if (hasAssigneeUserId && !canManageAllEvaluations(guard)) {
+      return NextResponse.json(
+        { error: "Você não tem permissão para alterar a responsável desta avaliação." },
+        { status: 403 },
+      );
+    }
+
     if (
       editingClosedPackage
       && (status !== "fechou_pacote" || !isClosedPackageEvaluationStatus(evaluation.status))
@@ -563,19 +581,29 @@ export async function PATCH(req: NextRequest) {
     }
 
     const persistedStatus = rescheduled ? "pendente" : status;
-    const updateData: Prisma.AgendamentoUpdateInput = {};
-
-    if (hasStatus) {
-      updateData.status = persistedStatus;
-    }
-    if (requestedStartTime) {
-      const currentDurationMs = evaluation.endTime.getTime() - evaluation.startTime.getTime();
-      const durationMs = currentDurationMs > 0 ? currentDurationMs : 60 * 60 * 1000;
-      updateData.startTime = requestedStartTime;
-      updateData.endTime = new Date(requestedStartTime.getTime() + durationMs);
-    }
 
     const updated = await prisma.$transaction(async (tx) => {
+      const updateData: Prisma.AgendamentoUpdateInput = {};
+
+      let assignedUserName: string | null = null;
+      if (hasAssigneeUserId) {
+        const assignee = await resolveEvaluationAssignee(evaluation.unit, assigneeUserId, tx);
+        const professional = await ensureProfessionalForEvaluationUser(assignee, evaluation.unit, tx);
+        updateData.profissional = { connect: { id: professional.id } };
+        updateData.notes = replaceEvaluationAssignedUserMarker(evaluation.notes, assignee.id);
+        assignedUserName = assignee.name;
+      }
+
+      if (hasStatus) {
+        updateData.status = persistedStatus;
+      }
+      if (requestedStartTime) {
+        const currentDurationMs = evaluation.endTime.getTime() - evaluation.startTime.getTime();
+        const durationMs = currentDurationMs > 0 ? currentDurationMs : 60 * 60 * 1000;
+        updateData.startTime = requestedStartTime;
+        updateData.endTime = new Date(requestedStartTime.getTime() + durationMs);
+      }
+
       const savedEvaluation = await tx.agendamento.update({
         where: { id },
         data: updateData,
@@ -599,7 +627,9 @@ export async function PATCH(req: NextRequest) {
         });
       }
 
-      const eventType = rescheduled
+      const eventType = hasAssigneeUserId && !hasStatus && !hasStartTime
+        ? "assignee_changed"
+        : rescheduled
         ? "no_show_rescheduled"
         : status === "fechou_pacote"
           ? (editingClosedPackage ? "closed_package_edited" : "closed_package")
@@ -636,6 +666,14 @@ export async function PATCH(req: NextRequest) {
                   endTimeTo: savedEvaluation.endTime.toISOString(),
                 }
               : {}),
+            ...(hasAssigneeUserId
+              ? {
+                  assigneeUserIdFrom: getEvaluationAssignedUserIdFromNotes(evaluation.notes),
+                  assigneeUserIdTo: assigneeUserId,
+                  profissionalFrom: evaluation.profissional?.name || null,
+                  profissionalTo: assignedUserName,
+                }
+              : {}),
             clientName: savedEvaluation.clientName,
             profissional: savedEvaluation.profissional?.name,
             updatedBy: guard.userId,
@@ -649,6 +687,9 @@ export async function PATCH(req: NextRequest) {
     const [enriched] = await enrichEvaluationsWithPipelineData([updated]);
     return NextResponse.json({ evaluation: enriched });
   } catch (error) {
+    if (error instanceof EvaluationSchedulingError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     if (error instanceof SaleItemValidationError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

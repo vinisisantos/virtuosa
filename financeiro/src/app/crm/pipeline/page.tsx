@@ -33,7 +33,7 @@ import {
   type CampaignOfferView,
   type SaleItemDraft,
 } from "@/lib/pipeline/sale-item-types";
-import { AlertTriangle, ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Search, Settings2, SlidersHorizontal, Trash2, UserRound, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, Building2, CalendarDays, Check, ChevronDown, Eye, EyeOff, Loader2, MapPin, MessageCircle, Phone, Plus, Search, Settings2, SlidersHorizontal, Trash2, X } from "lucide-react";
 
 type PipelineStageView = PipelineStage & {
   baseName?: string;
@@ -571,7 +571,7 @@ export default function PipelinePage() {
       toast.error("Informe a data e o horário da avaliação");
       return;
     }
-    if ((globalUnit || pipeline?.unit) !== "Osasco" && !scheduleAssigneeUserId) {
+    if (!scheduleAssigneeUserId) {
       toast.error("Selecione a responsável pela avaliação");
       return;
     }
@@ -680,7 +680,7 @@ export default function PipelinePage() {
       toast.error("Informe a data e o horário da avaliação");
       return;
     }
-    if (isScheduledStage && (globalUnit || pipeline.unit) !== "Osasco" && !addScheduleAssigneeUserId) {
+    if (isScheduledStage && !addScheduleAssigneeUserId) {
       toast.error("Selecione a responsável pela avaliação");
       return;
     }
@@ -811,9 +811,14 @@ export default function PipelinePage() {
       return;
     }
 
+    const evaluationStartTime = buildLocalDateTime(editEvaluationDate, editEvaluationTime);
+    if (evaluationStartTime && !editEvaluationAssigneeUserId) {
+      toast.error("Selecione a responsável pela avaliação");
+      return;
+    }
+
     setIsSaving(true);
     try {
-      const evaluationStartTime = buildLocalDateTime(editEvaluationDate, editEvaluationTime);
       const res = await fetch("/api/pipeline", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1412,26 +1417,19 @@ export default function PipelinePage() {
 
             <div className="grid gap-2">
               <Label>Responsável</Label>
-              {(globalUnit || pipeline?.unit) === "Osasco" && pickDefaultAssignee(evaluationAssignees) ? (
-                <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
-                  <UserRound className="h-4 w-4 text-primary" />
-                  {evaluationAssignees.find((assignee) => assignee.id === pickDefaultAssignee(evaluationAssignees))?.name || "Larissa"}
-                </div>
-              ) : (
-                <select
-                  value={scheduleAssigneeUserId}
-                  onChange={(event) => setScheduleAssigneeUserId(event.target.value)}
-                  disabled={loadingAssignees}
-                  className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
-                >
-                  <option value="">Selecione a responsável</option>
-                  {evaluationAssignees.map((assignee) => (
-                    <option key={assignee.id} value={assignee.id}>
-                      {assignee.name}
-                    </option>
-                  ))}
-                </select>
-              )}
+              <select
+                value={scheduleAssigneeUserId}
+                onChange={(event) => setScheduleAssigneeUserId(event.target.value)}
+                disabled={loadingAssignees}
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+              >
+                <option value="">{loadingAssignees ? "Carregando..." : "Selecione a responsável"}</option>
+                {evaluationAssignees.map((assignee) => (
+                  <option key={assignee.id} value={assignee.id}>
+                    {assignee.name}
+                  </option>
+                ))}
+              </select>
               <p className="text-xs text-muted-foreground">
                 A lista mostra apenas pessoas da unidade selecionada.
               </p>
@@ -1594,26 +1592,19 @@ export default function PipelinePage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Responsável</Label>
-                  {(globalUnit || pipeline?.unit) === "Osasco" && pickDefaultAssignee(evaluationAssignees) ? (
-                    <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
-                      <UserRound className="h-4 w-4 text-primary" />
-                      {evaluationAssignees.find((assignee) => assignee.id === pickDefaultAssignee(evaluationAssignees))?.name || "Larissa"}
-                    </div>
-                  ) : (
-                    <select
-                      value={addScheduleAssigneeUserId}
-                      onChange={(event) => setAddScheduleAssigneeUserId(event.target.value)}
-                      disabled={loadingAssignees}
-                      className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
-                    >
-                      <option value="">Selecione a responsável</option>
-                      {evaluationAssignees.map((assignee) => (
-                        <option key={assignee.id} value={assignee.id}>
-                          {assignee.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                  <select
+                    value={addScheduleAssigneeUserId}
+                    onChange={(event) => setAddScheduleAssigneeUserId(event.target.value)}
+                    disabled={loadingAssignees}
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                  >
+                    <option value="">{loadingAssignees ? "Carregando..." : "Selecione a responsável"}</option>
+                    {evaluationAssignees.map((assignee) => (
+                      <option key={assignee.id} value={assignee.id}>
+                        {assignee.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 {addScheduleConflict && <ScheduleConflictNotice conflict={addScheduleConflict} />}
               </div>
@@ -1818,26 +1809,19 @@ export default function PipelinePage() {
                 </div>
                 <div className="grid gap-2">
                   <Label>Responsável</Label>
-                  {(globalUnit || pipeline?.unit) === "Osasco" && pickDefaultAssignee(evaluationAssignees) ? (
-                    <div className="flex h-10 items-center gap-2 rounded-md border border-input bg-background px-3 text-sm text-foreground">
-                      <UserRound className="h-4 w-4 text-primary" />
-                      {evaluationAssignees.find((assignee) => assignee.id === pickDefaultAssignee(evaluationAssignees))?.name || "Larissa"}
-                    </div>
-                  ) : (
-                    <select
-                      value={editEvaluationAssigneeUserId}
-                      onChange={(event) => setEditEvaluationAssigneeUserId(event.target.value)}
-                      disabled={loadingAssignees}
-                      className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
-                    >
-                      <option value="">Selecione a responsável</option>
-                      {evaluationAssignees.map((assignee) => (
-                        <option key={assignee.id} value={assignee.id}>
-                          {assignee.name}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                  <select
+                    value={editEvaluationAssigneeUserId}
+                    onChange={(event) => setEditEvaluationAssigneeUserId(event.target.value)}
+                    disabled={loadingAssignees}
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                  >
+                    <option value="">{loadingAssignees ? "Carregando..." : "Selecione a responsável"}</option>
+                    {evaluationAssignees.map((assignee) => (
+                      <option key={assignee.id} value={assignee.id}>
+                        {assignee.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 {editScheduleConflict && <ScheduleConflictNotice conflict={editScheduleConflict} />}
               </div>
