@@ -2517,6 +2517,13 @@ function MessageBubble({
             </button>
           )}
 
+          {msg.mediaPayloadOmitted && !msg.mediaUrl && (
+            <div className="mb-1 flex max-w-[290px] items-center gap-2 rounded-lg bg-black/5 px-3 py-2 text-xs text-muted-foreground dark:bg-white/10">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>Mídia antiga preservada, mas não carregada neste histórico.</span>
+            </div>
+          )}
+
           {/* Text */}
           {visibleBody && (
             <div className={`break-words whitespace-pre-wrap ${isDeleted ? "italic opacity-70" : ""} ${hasVisualMedia ? "px-2 pb-0.5 pt-1" : ""}`}>

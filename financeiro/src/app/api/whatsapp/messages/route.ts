@@ -10,6 +10,7 @@ import {
   attachStoredMessageReactions,
   setStoredMessageReaction,
 } from "@/lib/whatsapp/message-reactions";
+import { constrainInlineMediaPayload } from "@/lib/whatsapp/message-payload";
 import {
   getInstanceProvider,
   sendWahaReaction,
@@ -503,7 +504,8 @@ export async function GET(req: Request) {
       markedAsRead = true;
     }
 
-    const signedMessages = await signPrivateMediaUrls([...handoffHistory, ...messages]);
+    const payloadSafeMessages = constrainInlineMediaPayload([...handoffHistory, ...messages]);
+    const signedMessages = await signPrivateMediaUrls(payloadSafeMessages);
     return NextResponse.json({ messages: signedMessages, limit, markedAsRead });
   } catch (error: any) {
     console.error("[WhatsApp Messages API Error]:", error);

@@ -90,6 +90,7 @@ export interface Message {
   mediaFileName?: string | null;
   mediaMimeType?: string | null;
   mediaSizeBytes?: number | null;
+  mediaPayloadOmitted?: boolean;
   quotedMessageId?: string | null;
   quotedMessageBody?: string | null;
   quotedMessageType?: string | null;
@@ -112,6 +113,7 @@ export type VisibleMessageItem =
 
 function messageHasVisibleContent(message: Message) {
   if ((message.body || "").trim()) return true;
+  if (message.mediaPayloadOmitted) return true;
   if (!message.mediaUrl) return false;
   if (message.mediaUrl.startsWith("data:image/")) return true;
   return ["image", "audio", "ptt", "video", "document", "sticker"].includes(message.type);
