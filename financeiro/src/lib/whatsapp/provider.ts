@@ -7,6 +7,7 @@ export const WAHA_PILOT_USERS_SETTING_KEY = "whatsapp_waha_pilot_user_ids";
 
 const WAHA_WEBHOOK_EVENTS = [
   "message.any",
+  "message.reaction",
   "message.ack",
   "message.waiting",
   "session.status",
@@ -330,6 +331,25 @@ export async function sendWahaText(params: {
 
   const res = await wahaRequest("/api/sendText", {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await readProviderPayload(res);
+  return { res, data, body };
+}
+
+export async function sendWahaReaction(params: {
+  sessionName: string;
+  messageId: string;
+  reaction: string;
+}) {
+  const body = {
+    session: params.sessionName,
+    messageId: params.messageId,
+    reaction: params.reaction,
+  };
+  const res = await wahaRequest("/api/reaction", {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });

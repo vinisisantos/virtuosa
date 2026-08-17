@@ -7,6 +7,7 @@ import {
   validateWhatsAppInternalNoteInput,
   whatsappInternalNoteNotificationLink,
 } from "@/lib/whatsapp/internal-notes";
+import { WHATSAPP_REACTION_NOTE_PREFIX } from "@/lib/whatsapp/message-reactions";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +59,10 @@ export async function GET(
 
     const [latestNotes, users] = await Promise.all([
       prisma.whatsAppConversationInternalNote.findMany({
-        where: { conversationId: id },
+        where: {
+          conversationId: id,
+          NOT: { content: { startsWith: WHATSAPP_REACTION_NOTE_PREFIX } },
+        },
         select: {
           id: true,
           content: true,

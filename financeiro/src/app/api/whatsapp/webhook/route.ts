@@ -42,6 +42,7 @@ import {
   toWahaChatId,
 } from "@/lib/whatsapp/provider";
 import { extractWhatsAppMessageBody } from "@/lib/whatsapp/message-content";
+import { setStoredMessageReaction } from "@/lib/whatsapp/message-reactions";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
 import {
   extractDirectFormLeadName,
@@ -1050,6 +1051,31 @@ async function handleWahaWebhook(payload: any, event: string | undefined, dbInst
     return handleWahaAck(payload, dbInstance);
   }
 
+  if (event === "message.reaction") {
+    const data = payload?.payload || payload?.data || payload;
+    const reaction = data?.reaction;
+    const targetMessageId = typeof reaction?.messageId === "string"
+      ? reaction.messageId
+      : extractWahaMessageId(reaction?.messageId);
+    const reactionText = reaction && typeof reaction.text === "string" ? reaction.text : null;
+    const actorFromMe = data?.fromMe === true;
+    const remoteJid = String(
+      (actorFromMe ? data?.to || data?.chatId || data?.from : data?.from || data?.chatId || data?.to) || "",
+    );
+    const resolvedContact = remoteJid ? resolveInboundContactIdentifier(data, remoteJid) : null;
+
+    if (targetMessageId && reactionText !== null && resolvedContact?.isSendablePhone) {
+      await processMessageReactionUpdate({
+        dbInstance,
+        contactPhone: resolvedContact.contactPhone,
+        targetMessageId,
+        actorFromMe,
+        reaction: reactionText,
+      });
+    }
+    return true;
+  }
+
   if (event === "message" || event === "message.any" || event === "message.waiting") {
     const msgPayload = payload?.payload || payload?.data || payload?.message || payload;
     if (!msgPayload) return true;
@@ -1273,6 +1299,25 @@ async function processMessage(
   const isFromMe = msg.key?.fromMe ?? msg.fromMe ?? false;
   const messageId = msg.key?.id || msg.messageid || msg.id;
   if (!messageId) return;
+
+  const reactionMessage = msg.message?.reactionMessage;
+  if (
+    reactionMessage &&
+    typeof reactionMessage === "object" &&
+    typeof reactionMessage.key?.id === "string" &&
+    typeof reactionMessage.text === "string"
+  ) {
+    if (isSendablePhone) {
+      await processMessageReactionUpdate({
+        dbInstance,
+        contactPhone,
+        targetMessageId: reactionMessage.key.id,
+        actorFromMe: Boolean(isFromMe),
+        reaction: reactionMessage.text,
+      });
+    }
+    return;
+  }
 
   // Atualizações de status chegam em grande volume e não carregam uma nova
   // conversa comercial. Processá-las pelo fluxo completo recriava toda a
@@ -2500,6 +2545,54 @@ async function processMessageStatusUpdate(params: {
       },
     }).catch(() => {});
   }
+}
+
+async function processMessageReactionUpdate(params: {
+  dbInstance: WebhookInstance;
+  contactPhone: string;
+  targetMessageId: string;
+  actorFromMe: boolean;
+  reaction: string;
+}) {
+  const contact = await prisma.whatsAppContact.findUnique({
+    where: { phone: params.contactPhone },
+    select: { id: true },
+  });
+  if (!contact) return;
+
+  const conversation = await prisma.whatsAppConversation.findUnique({
+    where: {
+      contactId_instanceId: {
+        contactId: contact.id,
+        instanceId: params.dbInstance.id,
+      },
+    },
+    select: { id: true },
+  });
+  if (!conversation) return;
+
+  // O ID do provedor só é único dentro da conversa.
+  const message = await prisma.whatsAppMessage.findUnique({
+    where: {
+      conversationId_messageId: {
+        conversationId: conversation.id,
+        messageId: params.targetMessageId,
+      },
+    },
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+  if (!message || message.status === "deleted") return;
+
+  const reaction = params.reaction.trim() || null;
+  await setStoredMessageReaction({
+    conversationId: conversation.id,
+    targetMessageId: params.targetMessageId,
+    actor: params.actorFromMe ? "own" : "contact",
+    reaction,
+  });
 }
 
 // ─── Helpers ────────────────────────────────────────────────────

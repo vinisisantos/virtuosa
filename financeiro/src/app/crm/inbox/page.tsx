@@ -10,6 +10,7 @@ import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
+import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
   SavedRepliesComposerMenu,
@@ -2014,7 +2015,9 @@ function VoiceMessagePlayer({
 function MessageBubble({
   msg,
   albumImages,
+  canReact,
   onReply,
+  onReact,
   onCopy,
   onEdit,
   onDelete,
@@ -2031,7 +2034,9 @@ function MessageBubble({
 }: {
   msg: Message;
   albumImages?: Message[];
+  canReact: boolean;
   onReply: (msg: Message) => void;
+  onReact: (msg: Message, reaction: string) => void;
   onCopy: (msg: Message) => void;
   onEdit: (msg: Message) => void;
   onDelete: (msg: Message) => void;
@@ -2048,6 +2053,7 @@ function MessageBubble({
 }) {
   const isMe = msg.fromMe;
   const [menuOpen, setMenuOpen] = useState(false);
+  const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPopupRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -2075,6 +2081,31 @@ function MessageBubble({
     ? albumImages?.map(visibleMediaBody).find(Boolean) || ""
     : visibleMediaBody(msg);
   const canReply = Boolean(msg.messageId && msg.status !== "deleted" && !msg.readOnly);
+  const reactionEnabled = canReact && canReply;
+  const reactionSummaries = useMemo(() => {
+    const reactions = (albumImages?.length ? albumImages : [msg]).flatMap((message) => [
+      ...(message.contactReaction ? [{ emoji: message.contactReaction, actor: "Cliente" }] : []),
+      ...(message.ownReaction ? [{ emoji: message.ownReaction, actor: "Clínica" }] : []),
+    ]);
+    const grouped = new Map<string, { emoji: string; count: number; actors: Set<string> }>();
+
+    for (const reaction of reactions) {
+      const current = grouped.get(reaction.emoji) || {
+        emoji: reaction.emoji,
+        count: 0,
+        actors: new Set<string>(),
+      };
+      current.count += 1;
+      current.actors.add(reaction.actor);
+      grouped.set(reaction.emoji, current);
+    }
+
+    return [...grouped.values()].map((reaction) => ({
+      emoji: reaction.emoji,
+      count: reaction.count,
+      label: [...reaction.actors].join(" e "),
+    }));
+  }, [albumImages, msg]);
 
   const menuButtonClass = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors";
 
@@ -2089,7 +2120,7 @@ function MessageBubble({
     const viewportWidth = visualViewport?.width || window.innerWidth;
     const viewportHeight = visualViewport?.height || window.innerHeight;
     const menuWidth = 168;
-    const menuHeight = 146;
+    const menuHeight = 182;
     const gap = 6;
     const margin = 8;
     const viewportRight = viewportLeft + viewportWidth;
@@ -2217,7 +2248,7 @@ function MessageBubble({
   };
 
   return (
-    <div id={domId} className={`relative flex w-full scroll-m-20 ${showTail ? "mt-1.5" : "mt-[2px]"} ${menuOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
+    <div id={domId} className={`relative flex w-full scroll-m-20 ${showTail ? "mt-1.5" : "mt-[2px]"} ${menuOpen || reactionPickerOpen ? "z-50" : "z-0"} ${isMe ? "justify-end" : "justify-start"}`}>
       <div className={`relative flex max-w-[88%] flex-col sm:max-w-[72%] lg:max-w-[65%] xl:max-w-[min(60%,760px)] ${isMe ? "items-end" : "items-start"}`}>
         {canReply && (
           <span
@@ -2263,6 +2294,7 @@ function MessageBubble({
               onClick={(e) => {
                 e.stopPropagation();
                 if (!menuOpen) updateMenuPosition();
+                setReactionPickerOpen(false);
                 setMenuOpen((v) => !v);
               }}
               className={`flex h-6 w-6 items-center justify-center rounded-full backdrop-blur transition-colors ${
@@ -2291,6 +2323,20 @@ function MessageBubble({
                 >
                   <Reply className="h-3.5 w-3.5" />
                   Responder
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!reactionEnabled}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setMenuOpen(false);
+                    if (reactionEnabled) setReactionPickerOpen(true);
+                  }}
+                  className={`${menuButtonClass} ${reactionEnabled ? "hover:bg-muted" : "cursor-not-allowed opacity-40"}`}
+                >
+                  <Smile className="h-3.5 w-3.5" />
+                  Reagir
                 </button>
                 <button
                   type="button"
@@ -2327,6 +2373,16 @@ function MessageBubble({
               document.body,
             )}
           </div>
+
+          {reactionPickerOpen && (
+            <ReactionPicker
+              open
+              anchorRef={menuButtonRef}
+              currentReaction={msg.ownReaction}
+              onClose={() => setReactionPickerOpen(false)}
+              onSelect={(reaction) => onReact(msg, reaction)}
+            />
+          )}
 
           {hasQuotedMessage && (
             <button
@@ -2476,6 +2532,26 @@ function MessageBubble({
             className="absolute bottom-1 right-2"
           />
         </div>
+        {reactionSummaries.length > 0 && (
+          <div
+            className={`relative z-10 -mt-1 flex max-w-full flex-wrap gap-1 px-2 ${isMe ? "justify-end" : "justify-start"}`}
+            aria-label="Reações da mensagem"
+          >
+            {reactionSummaries.map((reaction) => (
+              <span
+                key={reaction.emoji}
+                title={reaction.label}
+                className="inline-flex min-h-6 items-center gap-1 rounded-full border border-border bg-card px-2 text-sm shadow-sm"
+              >
+                <span aria-hidden="true">{reaction.emoji}</span>
+                {reaction.count > 1 && (
+                  <span className="text-[10px] font-semibold text-muted-foreground">{reaction.count}</span>
+                )}
+                <span className="sr-only">{reaction.label}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4678,6 +4754,50 @@ export default function InboxPage() {
     setReplyingTo(msg);
     requestAnimationFrame(() => textareaRef.current?.focus());
   };
+
+  const handleMessageReaction = useCallback(async (msg: Message, reaction: string) => {
+    const conversation = selectedConvRef.current;
+    if (!conversation || !canReplyToConversation(conversation) || msg.readOnly || msg.status === "deleted") return;
+
+    const previousReaction = msg.ownReaction || null;
+    const nextReaction = reaction || null;
+    setMessages((current) => current.map((message) => (
+      message.id === msg.id ? { ...message, ownReaction: nextReaction } : message
+    )));
+    setMessageActionId(msg.id);
+
+    try {
+      const qs = waParams();
+      const response = await fetch(`/api/whatsapp/messages${qs ? `?${qs}` : ""}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: msg.id, reaction }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error || data.details || "Não foi possível reagir à mensagem");
+      }
+
+      setMessages((current) => current.map((message) => (
+        message.id === msg.id
+          ? {
+              ...message,
+              ownReaction: data.message?.ownReaction ?? nextReaction,
+              contactReaction: data.message?.contactReaction ?? message.contactReaction,
+            }
+          : message
+      )));
+    } catch (error) {
+      setMessages((current) => current.map((message) => (
+        message.id === msg.id && message.ownReaction === nextReaction
+          ? { ...message, ownReaction: previousReaction }
+          : message
+      )));
+      toast(error instanceof Error ? error.message : "Não foi possível reagir à mensagem", "error");
+    } finally {
+      setMessageActionId(null);
+    }
+  }, [canReplyToConversation, waParams]);
 
   const handleSavedReplySelect = useCallback((content: string) => {
     if (savedReplyDialogTarget === "bulk") {
@@ -7106,7 +7226,9 @@ export default function InboxPage() {
                       <MessageBubble
                         msg={msg}
                         albumImages={item.kind === "album" ? item.images : undefined}
+                        canReact={canReplyToSelectedConversation}
                         onReply={handleReplyMessage}
+                        onReact={handleMessageReaction}
                         onCopy={handleCopyMessage}
                         onEdit={openEditMessage}
                         onDelete={deleteMessageForEveryone}

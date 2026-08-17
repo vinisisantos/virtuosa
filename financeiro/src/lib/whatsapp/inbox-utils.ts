@@ -94,6 +94,8 @@ export interface Message {
   quotedMessageBody?: string | null;
   quotedMessageType?: string | null;
   quotedMessageFromMe?: boolean | null;
+  contactReaction?: string | null;
+  ownReaction?: string | null;
   fromMe: boolean;
   status: string;
   timestamp: string;

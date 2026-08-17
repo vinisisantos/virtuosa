@@ -6,6 +6,15 @@ import { phoneLookupKey } from "@/lib/phone";
 import { whatsappConversationJid } from "@/lib/whatsapp/chat-action-identifiers";
 import { editEvolutionChatMessage } from "@/lib/whatsapp/evolution-chat-actions";
 import { signPrivateMediaUrls } from "@/lib/whatsapp/media-storage";
+import {
+  attachStoredMessageReactions,
+  setStoredMessageReaction,
+} from "@/lib/whatsapp/message-reactions";
+import {
+  getInstanceProvider,
+  sendWahaReaction,
+  summarizeProviderError,
+} from "@/lib/whatsapp/provider";
 
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 const DELETE_WINDOW_MS = 60 * 60 * 1000;
@@ -95,6 +104,8 @@ function serializeReadonlyHistoryMessage(message: {
   quotedMessageBody: string | null;
   quotedMessageType: string | null;
   quotedMessageFromMe: boolean | null;
+  contactReaction: string | null;
+  ownReaction: string | null;
   fromMe: boolean;
   status: string;
   timestamp: Date;
@@ -272,7 +283,7 @@ async function loadLarissaHandoffHistory(params: {
       createdAt: true,
     },
   });
-  const history = recentHistory.reverse();
+  const history = await attachStoredMessageReactions(recentHistory.reverse());
   if (!history.length) return [];
 
   const dividerTimestamp = history[0]?.timestamp || new Date();
@@ -291,6 +302,8 @@ async function loadLarissaHandoffHistory(params: {
       quotedMessageBody: null,
       quotedMessageType: null,
       quotedMessageFromMe: null,
+      contactReaction: null,
+      ownReaction: null,
       fromMe: false,
       status: "system",
       timestamp: dividerTimestamp.toISOString(),
@@ -380,6 +393,33 @@ async function deleteEvolutionMessage(params: {
   ]);
 }
 
+function isValidReaction(value: string) {
+  if (!value) return true;
+  const graphemes = [...new Intl.Segmenter("pt-BR", { granularity: "grapheme" }).segment(value)];
+  return graphemes.length === 1 && /\p{Extended_Pictographic}|\p{Emoji_Presentation}/u.test(value);
+}
+
+async function sendEvolutionReaction(params: {
+  instanceName: string;
+  remoteJid: string;
+  messageId: string;
+  targetFromMe: boolean;
+  reaction: string;
+}) {
+  return callEvolutionCandidates([{
+    method: "POST",
+    path: `/message/sendReaction/${encodeURIComponent(params.instanceName)}`,
+    body: {
+      key: {
+        id: params.messageId,
+        remoteJid: params.remoteJid,
+        fromMe: params.targetFromMe,
+      },
+      reaction: params.reaction,
+    },
+  }]);
+}
+
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -442,7 +482,7 @@ export async function GET(req: Request) {
         createdAt: true,
       },
     });
-    const messages = recentMessages.reverse();
+    const messages = await attachStoredMessageReactions(recentMessages.reverse());
     const handoffHistory = await loadLarissaHandoffHistory({ conversation, limit });
 
     // Só marca como lida quando o front pedir explicitamente e a conversa já
@@ -468,6 +508,71 @@ export async function GET(req: Request) {
   } catch (error: any) {
     console.error("[WhatsApp Messages API Error]:", error);
     return NextResponse.json({ error: "Erro interno", details: error.message }, { status: 500 });
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
+    const id = typeof body?.id === "string" ? body.id : "";
+    const reaction = typeof body?.reaction === "string" ? body.reaction.trim() : null;
+
+    if (!id || reaction === null) {
+      return NextResponse.json({ error: "Mensagem e reação são obrigatórias" }, { status: 400 });
+    }
+    if (!isValidReaction(reaction)) {
+      return NextResponse.json({ error: "Selecione apenas um emoji para reagir" }, { status: 400 });
+    }
+
+    const { message, error } = await getAuthorizedMessage(req, id, true);
+    if (error) return error;
+    if (!message) return NextResponse.json({ error: "Mensagem não encontrada" }, { status: 404 });
+    if (message.status === "deleted") {
+      return NextResponse.json({ error: "Mensagem apagada não pode receber reação" }, { status: 400 });
+    }
+
+    const phone = message.conversation.contact.phone;
+    const remoteJid = whatsappConversationJid(message.conversation.lastKnownJid, phone);
+    if (!remoteJid) {
+      return NextResponse.json({ error: "Conversa sem identificador válido para reagir" }, { status: 400 });
+    }
+
+    if (getInstanceProvider(message.conversation.instance) === "waha") {
+      const result = await sendWahaReaction({
+        sessionName: message.conversation.instance.name,
+        messageId: message.messageId,
+        reaction,
+      });
+      if (!result.res.ok) {
+        throw new Error(summarizeProviderError(result.data) || `WAHA não confirmou a reação (${result.res.status})`);
+      }
+    } else {
+      await sendEvolutionReaction({
+        instanceName: message.conversation.instance.name,
+        remoteJid,
+        messageId: message.messageId,
+        targetFromMe: message.fromMe,
+        reaction,
+      });
+    }
+
+    await setStoredMessageReaction({
+      conversationId: message.conversationId,
+      targetMessageId: message.messageId,
+      actor: "own",
+      reaction: reaction || null,
+    });
+
+    return NextResponse.json({
+      success: true,
+      message: { id: message.id, ownReaction: reaction || null },
+    });
+  } catch (error: unknown) {
+    console.error("[WhatsApp Messages Reaction Error]:", error);
+    return NextResponse.json({
+      error: "Erro ao reagir à mensagem",
+      details: error instanceof Error ? error.message : "Falha desconhecida",
+    }, { status: 500 });
   }
 }
 

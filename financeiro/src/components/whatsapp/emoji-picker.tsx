@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 
-const EMOJI_CATEGORIES = [
+export const WHATSAPP_EMOJI_CATEGORIES = [
   {
     id: "frequentes",
     label: "Frequentes",
@@ -37,11 +37,11 @@ type Props = {
 };
 
 export function EmojiPicker({ open, onClose, onSelect }: Props) {
-  const [activeCategory, setActiveCategory] = useState<(typeof EMOJI_CATEGORIES)[number]["id"]>("frequentes");
+  const [activeCategory, setActiveCategory] = useState<(typeof WHATSAPP_EMOJI_CATEGORIES)[number]["id"]>("frequentes");
 
   if (!open) return null;
 
-  const category = EMOJI_CATEGORIES.find((item) => item.id === activeCategory) || EMOJI_CATEGORIES[0];
+  const category = WHATSAPP_EMOJI_CATEGORIES.find((item) => item.id === activeCategory) || WHATSAPP_EMOJI_CATEGORIES[0];
 
   return (
     <div
@@ -62,7 +62,7 @@ export function EmojiPicker({ open, onClose, onSelect }: Props) {
       </div>
 
       <div className="flex gap-1 overflow-x-auto border-b border-border p-1.5" role="tablist" aria-label="Categorias de emojis">
-        {EMOJI_CATEGORIES.map((item) => (
+        {WHATSAPP_EMOJI_CATEGORIES.map((item) => (
           <button
             key={item.id}
             type="button"
