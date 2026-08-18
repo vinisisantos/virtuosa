@@ -7,6 +7,7 @@ import {
 } from "../src/lib/campaign-account-origin.ts";
 
 const NEW_OSASCO_BARRIGA_TRACK_ID = "120249500621590006";
+const OSASCO_GLUTEO_PERFEITO_SECONDARY_TRACK_ID = "120252124600900494";
 const OSASCO_SECONDARY_ACCOUNT_TRACK_IDS = [
   "120249500621580006",
   "120249502709450006",
@@ -31,6 +32,21 @@ test("identifica o novo anúncio de Barriga Trincada como conta secundária some
   assert.equal(campaignAccountOriginFromTrackId(NEW_OSASCO_BARRIGA_TRACK_ID, "Osasco"), "secondary");
   assert.equal(campaignAccountOriginFromTrackId(NEW_OSASCO_BARRIGA_TRACK_ID, "SBC"), null);
   assert.equal(campaignAccountOriginFromTrackId(NEW_OSASCO_BARRIGA_TRACK_ID, "SCS"), null);
+});
+
+test("identifica o conjunto confirmado de Glúteo Perfeito como conta secundária somente em Osasco", () => {
+  assert.equal(
+    campaignAccountOriginFromTrackId(OSASCO_GLUTEO_PERFEITO_SECONDARY_TRACK_ID, "Osasco"),
+    "secondary",
+  );
+  assert.equal(
+    campaignAccountOriginFromTrackId(OSASCO_GLUTEO_PERFEITO_SECONDARY_TRACK_ID, "SBC"),
+    null,
+  );
+  assert.equal(
+    campaignAccountOriginFromTrackId(OSASCO_GLUTEO_PERFEITO_SECONDARY_TRACK_ID, "SCS"),
+    null,
+  );
 });
 
 test("aplica o fallback de Barriga Trincada somente na unidade confirmada", () => {
