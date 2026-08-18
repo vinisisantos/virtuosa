@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -98,7 +99,8 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -387,7 +389,7 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
               </button>
             </div>
 
-            <div className="min-h-[240px] flex-1 overflow-y-auto overscroll-contain px-3 py-3 sm:max-h-[56dvh] sm:px-4">
+            <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-3 py-3 [-webkit-overflow-scrolling:touch] sm:max-h-[56dvh] sm:px-4">
               {loading ? (
                 <div className="flex min-h-[220px] items-center justify-center text-muted-foreground">
                   <Loader2 className="h-6 w-6 animate-spin" />
@@ -694,9 +696,9 @@ function SortableSavedReplyRow({
         {...attributes}
         {...listeners}
         disabled={disabled}
-        className="flex h-11 w-9 shrink-0 cursor-grab touch-none items-center justify-center self-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:cursor-grabbing disabled:cursor-wait disabled:opacity-50 sm:w-10"
-        aria-label={`Mover ${reply.title}`}
-        title="Arraste para reorganizar"
+        className="flex h-11 w-9 shrink-0 cursor-grab select-none items-center justify-center self-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:cursor-grabbing disabled:cursor-wait disabled:opacity-50 sm:w-10"
+        aria-label={`Pressione e arraste para mover ${reply.title}`}
+        title="Pressione e arraste para reorganizar"
       >
         {disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <GripVertical className="h-4 w-4" />}
       </button>
