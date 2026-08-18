@@ -36,6 +36,9 @@ const DEFAULT_SECONDARY_META_TRACK_IDS_BY_UNIT: Record<string, string[]> = {
     ...SHARED_GLUTEO_PERFEITO_SECONDARY_META_TRACK_IDS,
   ],
 };
+const DEFAULT_SECONDARY_META_INSTANCE_IDS_BY_UNIT: Record<string, string[]> = {
+  SBC: ["a6871ee7-8352-4b66-bfb2-b8dba9e4f8e3"],
+};
 const DEFAULT_OSASCO_BARRIGA_TRACK_IDS = [
   "120248887107550006",
   "120249500621590006",
@@ -48,10 +51,22 @@ const configuredSecondaryMetaTrackIds = new Set(
     .map((value) => value.trim())
     .filter(Boolean),
 );
+const configuredSecondaryMetaInstanceIds = new Set(
+  (process.env.META_SECONDARY_WHATSAPP_INSTANCE_IDS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
+);
 const secondaryMetaTrackIdsByUnit = new Map(
   Object.entries(DEFAULT_SECONDARY_META_TRACK_IDS_BY_UNIT).map(([unit, trackIds]) => [
     unit.toLowerCase(),
     new Set(trackIds),
+  ]),
+);
+const secondaryMetaInstanceIdsByUnit = new Map(
+  Object.entries(DEFAULT_SECONDARY_META_INSTANCE_IDS_BY_UNIT).map(([unit, instanceIds]) => [
+    unit.toLowerCase(),
+    new Set(instanceIds),
   ]),
 );
 const defaultSecondaryMetaTrackIds = new Set(
@@ -75,6 +90,21 @@ export function campaignAccountOriginFromTrackId(
   const isSecondary = normalizedUnit
     ? secondaryMetaTrackIdsByUnit.get(normalizedUnit)?.has(trackId)
     : defaultSecondaryMetaTrackIds.has(trackId);
+
+  return isSecondary ? "secondary" : null;
+}
+
+export function campaignAccountOriginFromInstance(
+  instanceId?: string | null,
+  unit?: string | null,
+): CampaignAccountOrigin | null {
+  if (!instanceId) return null;
+  if (configuredSecondaryMetaInstanceIds.has(instanceId)) return "secondary";
+
+  const normalizedUnit = unit?.trim().toLowerCase();
+  const isSecondary = normalizedUnit
+    ? secondaryMetaInstanceIdsByUnit.get(normalizedUnit)?.has(instanceId)
+    : false;
 
   return isSecondary ? "secondary" : null;
 }

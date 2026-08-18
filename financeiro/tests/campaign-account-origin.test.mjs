@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  campaignAccountOriginFromInstance,
   campaignAccountOriginFromTrackId,
   campaignNameFromAccountTrackId,
 } from "../src/lib/campaign-account-origin.ts";
@@ -15,6 +16,8 @@ const OSASCO_SECONDARY_ACCOUNT_TRACK_IDS = [
   "120249502294110006",
   NEW_OSASCO_BARRIGA_TRACK_ID,
 ];
+const SBC_LEADS_INSTANCE_ID = "a6871ee7-8352-4b66-bfb2-b8dba9e4f8e3";
+const SBC_COMMERCIAL_INSTANCE_ID = "b1977b09-5ce5-445c-8da8-11c805126a0c";
 
 test("identifica a campanha e os quatro anúncios como conta secundária somente em Osasco", () => {
   for (const trackId of OSASCO_SECONDARY_ACCOUNT_TRACK_IDS) {
@@ -58,4 +61,15 @@ test("aplica o fallback de Barriga Trincada somente na unidade confirmada", () =
 test("preserva o marcador histórico de Barriga Trincada de Osasco", () => {
   assert.equal(campaignAccountOriginFromTrackId("120248887107550006", "Osasco"), "secondary");
   assert.equal(campaignNameFromAccountTrackId("120248887107550006", "Osasco"), "Barriga Trincada");
+});
+
+test("identifica toda conversa da instância Leads SBC como conta secundária", () => {
+  assert.equal(campaignAccountOriginFromInstance(SBC_LEADS_INSTANCE_ID, "SBC"), "secondary");
+  assert.equal(campaignAccountOriginFromInstance(SBC_LEADS_INSTANCE_ID, "Osasco"), null);
+  assert.equal(campaignAccountOriginFromInstance(SBC_LEADS_INSTANCE_ID, "SCS"), null);
+});
+
+test("não altera a origem das conversas da instância Comercial SBC", () => {
+  assert.equal(campaignAccountOriginFromInstance(SBC_COMMERCIAL_INSTANCE_ID, "SBC"), null);
+  assert.equal(campaignAccountOriginFromInstance(null, "SBC"), null);
 });

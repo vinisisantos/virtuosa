@@ -3,7 +3,10 @@ import { Prisma } from "@prisma/client";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { campaignUrlFromClient, pickBestCampaignClient } from "@/lib/campaign-client-selection";
-import { campaignAccountOriginFromTrackId } from "@/lib/campaign-account-origin";
+import {
+  campaignAccountOriginFromInstance,
+  campaignAccountOriginFromTrackId,
+} from "@/lib/campaign-account-origin";
 import { prisma } from "@/lib/db";
 import {
   WHATSAPP_CALLBACK_LOST_STATUS,
@@ -403,6 +406,9 @@ export async function GET(req: Request) {
     }
 
     const instanceIds = dbInstances.map(i => i.id);
+    const instanceUnitById = new Map(
+      dbInstances.map((instance) => [instance.id, instance.unit || null]),
+    );
     const requesterUserId = req.headers.get("x-user-id") || "";
     const statusFilter = showArchived && status === "all" ? {} : getStatusFilter(status);
     const followUpOwnerFilter = assignedFollowUpFilter(status, requesterUserId);
@@ -705,13 +711,17 @@ export async function GET(req: Request) {
     const conversationsWithTags = visibleConversations.map((c) => {
       const { followUps, ...conversation } = c;
       const campaign = campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone));
+      const instanceAccountOrigin = campaignAccountOriginFromInstance(
+        c.instanceId,
+        instanceUnitById.get(c.instanceId),
+      );
       return {
         ...conversation,
         activeFollowUp: followUps[0] || null,
         ...(includeCampaigns ? {
           campaignName: campaign?.name || null,
           campaignUrl: campaign?.url || null,
-          campaignAccountOrigin: campaign?.accountOrigin || null,
+          campaignAccountOrigin: campaign?.accountOrigin || instanceAccountOrigin || null,
         } : {}),
       };
     }).sort((a, b) => {
