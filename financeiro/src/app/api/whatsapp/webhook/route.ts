@@ -41,7 +41,10 @@ import {
   sendWahaText,
   toWahaChatId,
 } from "@/lib/whatsapp/provider";
-import { extractWhatsAppMessageBody } from "@/lib/whatsapp/message-content";
+import {
+  extractWhatsAppMessageBody,
+  whatsAppConversationPreview,
+} from "@/lib/whatsapp/message-content";
 import { setStoredMessageReaction } from "@/lib/whatsapp/message-reactions";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
 import {
@@ -2373,7 +2376,7 @@ async function processMessage(
       await tx.whatsAppConversation.update({
         where: { id: conversation.id },
         data: {
-          lastMessage: messageBody,
+          lastMessage: whatsAppConversationPreview(messageBody, persistedMessageType || msgType),
           lastMessageAt: timestamp,
           unreadCount: isSendablePhone ? (isFromMe ? 0 : { increment: 1 }) : 0,
           ...(isFirstInboundMessage ? { status: "waiting_response" } : {}),

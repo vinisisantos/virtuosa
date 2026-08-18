@@ -22,6 +22,7 @@ import { recordOutboundForCallbackTracking } from "@/lib/whatsapp/callbacks";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
 import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
+import { whatsAppConversationPreview } from "@/lib/whatsapp/message-content";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -703,13 +704,7 @@ export async function POST(req: Request) {
     const mediaSizeBytes = verifiedMediaSizeBytes ?? parsedMedia.sizeBytes;
 
     // Texto de fallback para mensagens de mídia sem legenda
-    const displayBody = messageBody || (
-      isAudio ? "🎤 Áudio" :
-      type === "image" ? "📷 Imagem" :
-      type === "video" ? "🎬 Vídeo" :
-      type === "document" ? "📄 Documento" :
-      type === "sticker" ? "🏷️ Sticker" : ""
-    );
+    const displayBody = whatsAppConversationPreview(messageBody, type);
 
     // Quando admin envia de outra instância (proxy), registra quem respondeu
     const sentAt = new Date();

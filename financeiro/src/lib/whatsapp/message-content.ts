@@ -1,5 +1,22 @@
 type MessageRecord = Record<string, unknown>;
 
+const CONVERSATION_MEDIA_PREVIEW_BY_TYPE: Record<string, string> = {
+  image: "📷 Imagem",
+  imageMessage: "📷 Imagem",
+  video: "🎬 Vídeo",
+  videoMessage: "🎬 Vídeo",
+  videoplay: "🎬 Vídeo",
+  audio: "🎤 Áudio",
+  audioMessage: "🎤 Áudio",
+  ptt: "🎤 Áudio",
+  pttMessage: "🎤 Áudio",
+  voice: "🎤 Áudio",
+  document: "📄 Documento",
+  documentMessage: "📄 Documento",
+  sticker: "🏷️ Sticker",
+  stickerMessage: "🏷️ Sticker",
+};
+
 const MESSAGE_WRAPPER_KEYS = [
   "ephemeralMessage",
   "viewOnceMessage",
@@ -110,3 +127,11 @@ export function extractWhatsAppMessageBody(payload: unknown): string {
   );
 }
 
+export function whatsAppConversationPreview(
+  body?: string | null,
+  messageType?: string | null,
+): string {
+  if (body?.trim()) return body;
+  if (!messageType) return "";
+  return CONVERSATION_MEDIA_PREVIEW_BY_TYPE[messageType] || "";
+}
