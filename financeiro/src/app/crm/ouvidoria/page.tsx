@@ -128,8 +128,20 @@ type ChatLinkState = {
   loading: boolean;
   available: boolean;
   canCreate?: boolean;
+  conversationId?: string;
+  targetInstanceId?: string;
   url?: string;
   reason?: string;
+};
+
+type EvaluationConfirmationAvailability = {
+  visible: boolean;
+  alreadySent: boolean;
+  reason?: string;
+  appointmentId?: string;
+  startTime?: string;
+  eligibleAt?: string;
+  windowHours?: number;
 };
 
 type StatusUiConfig = {
@@ -277,6 +289,20 @@ function fullDateTimeLabel(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function evaluationConfirmationEndpoint(params: {
+  conversationId: string;
+  appointmentId: string;
+  targetInstanceId?: string;
+  unit: string;
+}) {
+  const searchParams = new URLSearchParams({
+    appointmentId: params.appointmentId,
+    unit: params.unit,
+  });
+  if (params.targetInstanceId) searchParams.set("targetInstanceId", params.targetInstanceId);
+  return `/api/whatsapp/conversations/${encodeURIComponent(params.conversationId)}/evaluation-confirmation?${searchParams.toString()}`;
 }
 
 function normalizeStageName(value?: string | null) {
@@ -697,6 +723,10 @@ export default function AvaliacoesAgendaPage() {
   const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
   const [savingSchedule, setSavingSchedule] = useState(false);
   const [chatLink, setChatLink] = useState<ChatLinkState | null>(null);
+  const [evaluationConfirmation, setEvaluationConfirmation] = useState<EvaluationConfirmationAvailability | null>(null);
+  const [evaluationConfirmationRefreshKey, setEvaluationConfirmationRefreshKey] = useState(0);
+  const [loadingEvaluationConfirmation, setLoadingEvaluationConfirmation] = useState(false);
+  const [sendingEvaluationConfirmation, setSendingEvaluationConfirmation] = useState(false);
   const [outcomeFlow, setOutcomeFlow] = useState<OutcomeFlow>(null);
   const [editingClosedPackage, setEditingClosedPackage] = useState(false);
   const [outcomeReason, setOutcomeReason] = useState("");
@@ -895,6 +925,8 @@ export default function AvaliacoesAgendaPage() {
           loading: false,
           available: !!data.available,
           canCreate: !!data.canCreate,
+          conversationId: data.conversationId,
+          targetInstanceId: data.targetInstanceId,
           url: data.url,
           reason: data.reason || (response.ok ? undefined : "Chat indisponível"),
         });
@@ -909,6 +941,63 @@ export default function AvaliacoesAgendaPage() {
       cancelled = true;
     };
   }, [selectedEvaluation]);
+
+  useEffect(() => {
+    setEvaluationConfirmation(null);
+    setLoadingEvaluationConfirmation(false);
+    setSendingEvaluationConfirmation(false);
+
+    if (!selectedEvaluation || !chatLink?.available || !chatLink.conversationId) return;
+
+    const controller = new AbortController();
+    let boundaryTimer: number | null = null;
+    const endpoint = evaluationConfirmationEndpoint({
+      conversationId: chatLink.conversationId,
+      appointmentId: selectedEvaluation.id,
+      targetInstanceId: chatLink.targetInstanceId,
+      unit: selectedEvaluation.unit,
+    });
+
+    setLoadingEvaluationConfirmation(true);
+    fetch(endpoint, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Não foi possível verificar a confirmação da avaliação");
+        return data as EvaluationConfirmationAvailability;
+      })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setEvaluationConfirmation(data);
+
+        const boundaryValue = data.visible ? data.startTime : data.reason === "too_early" ? data.eligibleAt : null;
+        const boundaryTime = boundaryValue ? new Date(boundaryValue).getTime() : Number.NaN;
+        if (Number.isFinite(boundaryTime)) {
+          const delay = Math.max(1000, boundaryTime - Date.now() + 1000);
+          boundaryTimer = window.setTimeout(
+            () => setEvaluationConfirmationRefreshKey((current) => current + 1),
+            Math.min(delay, 2_147_483_647),
+          );
+        }
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error(error);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingEvaluationConfirmation(false);
+      });
+
+    return () => {
+      controller.abort();
+      if (boundaryTimer !== null) window.clearTimeout(boundaryTimer);
+    };
+  }, [
+    chatLink?.available,
+    chatLink?.conversationId,
+    chatLink?.targetInstanceId,
+    evaluationConfirmationRefreshKey,
+    selectedEvaluation,
+  ]);
 
   const days = useMemo(() => buildCalendarDays(month), [month]);
   const displayedEvaluations = useMemo(
@@ -1297,12 +1386,52 @@ export default function AvaliacoesAgendaPage() {
         throw new Error(data.reason || "Falha ao iniciar conversa");
       }
 
-      setChatLink({ loading: false, available: true, url: data.url, reason: data.reason });
+      setChatLink({
+        loading: false,
+        available: true,
+        conversationId: data.conversationId,
+        targetInstanceId: data.targetInstanceId,
+        url: data.url,
+        reason: data.reason,
+      });
       router.push(data.url);
     } catch (error) {
       const reason = error instanceof Error ? error.message : "Falha ao iniciar conversa";
       setChatLink({ loading: false, available: false, reason });
       toast.error(reason);
+    }
+  };
+
+  const sendSelectedEvaluationConfirmation = async () => {
+    if (
+      !selectedEvaluation
+      || !chatLink?.conversationId
+      || !evaluationConfirmation?.visible
+      || evaluationConfirmation.alreadySent
+    ) return;
+
+    setSendingEvaluationConfirmation(true);
+    try {
+      const endpoint = evaluationConfirmationEndpoint({
+        conversationId: chatLink.conversationId,
+        appointmentId: selectedEvaluation.id,
+        targetInstanceId: chatLink.targetInstanceId,
+        unit: selectedEvaluation.unit,
+      });
+      const response = await fetch(endpoint, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível enviar a confirmação da avaliação");
+
+      setEvaluationConfirmation((current) => current ? { ...current, visible: true, alreadySent: true } : current);
+      toast.success(
+        data.status === "already_sent"
+          ? "A confirmação já havia sido enviada"
+          : "Confirmação enviada com sucesso",
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar a confirmação da avaliação");
+    } finally {
+      setSendingEvaluationConfirmation(false);
     }
   };
 
@@ -1316,6 +1445,13 @@ export default function AvaliacoesAgendaPage() {
     selectedEvaluation
       && isClosedPackageEvaluationStatus(getEffectiveStatus(selectedEvaluation))
       && (registeredSaleItems.length > 0 || registeredProcedureNames.length > 0 || Number(selectedEvaluation.pipelineValue || 0) > 0),
+  );
+  const scheduleHasUnsavedChanges = Boolean(
+    selectedEvaluation && (
+      scheduleDate !== dateKey(selectedEvaluation.startTime)
+      || scheduleTime !== timeInputValue(selectedEvaluation.startTime)
+      || (canViewAll && scheduleAssigneeUserId !== (selectedEvaluation.assignedUserId || ""))
+    ),
   );
   const monthIndex = month.getMonth();
   const handleFilterDayChange = (value: string) => {
@@ -1881,19 +2017,56 @@ export default function AvaliacoesAgendaPage() {
                       </p>
                     </div>
                   )}
-                  <Button
-                    type="button"
-                    className="mt-3 w-full sm:w-auto"
-                    onClick={saveSelectedEvaluationSchedule}
-                    disabled={savingSchedule || !!updatingStatus}
-                  >
-                    {savingSchedule ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <CalendarCheck className="mr-2 h-4 w-4" />
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                    <Button
+                      type="button"
+                      className="w-full sm:w-auto"
+                      onClick={saveSelectedEvaluationSchedule}
+                      disabled={savingSchedule || !!updatingStatus}
+                    >
+                      {savingSchedule ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <CalendarCheck className="mr-2 h-4 w-4" />
+                      )}
+                      {canViewAll ? "Salvar agendamento" : "Salvar data e horário"}
+                    </Button>
+
+                    {evaluationConfirmation?.visible && (
+                      <span
+                        className="inline-flex w-full sm:w-auto"
+                        title={
+                          scheduleHasUnsavedChanges
+                            ? "Salve as alterações do agendamento antes de enviar a confirmação"
+                            : evaluationConfirmation.alreadySent
+                              ? "Confirmação já enviada"
+                              : "Enviar confirmação da avaliação pelo WhatsApp"
+                        }
+                      >
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full gap-2 border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 sm:w-auto"
+                          onClick={() => void sendSelectedEvaluationConfirmation()}
+                          disabled={
+                            loadingEvaluationConfirmation
+                            || sendingEvaluationConfirmation
+                            || evaluationConfirmation.alreadySent
+                            || scheduleHasUnsavedChanges
+                          }
+                        >
+                          {sendingEvaluationConfirmation ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : evaluationConfirmation.alreadySent ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : (
+                            <MessageCircle className="h-4 w-4" />
+                          )}
+                          {evaluationConfirmation.alreadySent ? "Confirmação enviada" : "Confirmar pelo WhatsApp"}
+                        </Button>
+                      </span>
                     )}
-                    {canViewAll ? "Salvar agendamento" : "Salvar data e horário"}
-                  </Button>
+                  </div>
                 </div>
 
                 <div>

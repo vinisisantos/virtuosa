@@ -57,6 +57,7 @@ async function resolveEvaluationConfirmationContext(
   req: Request,
   conversationId: string,
 ): Promise<EvaluationConfirmationContext | null> {
+  const requestedAppointmentId = new URL(req.url).searchParams.get("appointmentId")?.trim() || null;
   const { instances } = await getInstancesForRequest(req);
   const eligibleInstances = instances.filter((candidate) => (
     candidate.canReply === true
@@ -95,6 +96,7 @@ async function resolveEvaluationConfirmationContext(
 
   const appointmentCandidates = await prisma.agendamento.findMany({
     where: {
+      ...(requestedAppointmentId ? { id: requestedAppointmentId } : {}),
       unit: unitConfig.unit,
       clientPhone: { contains: phoneSuffix },
       procedimento: { contains: "avalia", mode: "insensitive" },
