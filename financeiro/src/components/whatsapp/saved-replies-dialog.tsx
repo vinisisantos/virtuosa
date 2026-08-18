@@ -5,7 +5,6 @@ import {
   DndContext,
   KeyboardSensor,
   MouseSensor,
-  TouchSensor,
   closestCenter,
   useSensor,
   useSensors,
@@ -23,6 +22,7 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   FileText,
   Folder,
   FolderCog,
@@ -100,7 +100,6 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
   const [error, setError] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -288,11 +287,8 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
     }
   };
 
-  const moveReply = async (groupReplies: SavedReply[], event: DragEndEvent) => {
-    if (reordering || !event.over || event.active.id === event.over.id) return;
-    const previousIndex = groupReplies.findIndex((reply) => reply.id === event.active.id);
-    const nextIndex = groupReplies.findIndex((reply) => reply.id === event.over?.id);
-    if (previousIndex < 0 || nextIndex < 0) return;
+  const persistReplyMove = async (groupReplies: SavedReply[], previousIndex: number, nextIndex: number) => {
+    if (reordering || previousIndex < 0 || nextIndex < 0 || nextIndex >= groupReplies.length || previousIndex === nextIndex) return;
 
     const orderedVisibleReplies = arrayMove(groupReplies, previousIndex, nextIndex);
     const nextReplies = reorderSavedRepliesByVisibleIds(
@@ -306,6 +302,18 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Não foi possível salvar a ordem das respostas rápidas.");
     }
+  };
+
+  const moveReply = async (groupReplies: SavedReply[], event: DragEndEvent) => {
+    if (!event.over || event.active.id === event.over.id) return;
+    const previousIndex = groupReplies.findIndex((reply) => reply.id === event.active.id);
+    const nextIndex = groupReplies.findIndex((reply) => reply.id === event.over?.id);
+    await persistReplyMove(groupReplies, previousIndex, nextIndex);
+  };
+
+  const moveReplyByOffset = async (groupReplies: SavedReply[], replyId: string, offset: -1 | 1) => {
+    const previousIndex = groupReplies.findIndex((reply) => reply.id === replyId);
+    await persistReplyMove(groupReplies, previousIndex, previousIndex + offset);
   };
 
   return (
@@ -442,6 +450,10 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
                                         reply={reply}
                                         disabled={reordering}
                                         deleting={deletingId === reply.id}
+                                        canMoveUp={group.replies[0]?.id !== reply.id}
+                                        canMoveDown={group.replies[group.replies.length - 1]?.id !== reply.id}
+                                        onMoveUp={() => void moveReplyByOffset(group.replies, reply.id, -1)}
+                                        onMoveDown={() => void moveReplyByOffset(group.replies, reply.id, 1)}
                                         onSelect={() => onSelect(reply.content)}
                                         onEdit={() => beginEdit(reply)}
                                         onDelete={() => void deleteReply(reply)}
@@ -655,6 +667,17 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
             {error}
           </div>
         )}
+
+        <style jsx global>{`
+          @media (hover: none), (pointer: coarse) {
+            .saved-reply-drag-handle {
+              display: none !important;
+            }
+            .saved-reply-touch-order {
+              display: flex !important;
+            }
+          }
+        `}</style>
       </DialogContent>
     </Dialog>
   );
@@ -664,6 +687,10 @@ function SortableSavedReplyRow({
   reply,
   disabled,
   deleting,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
   onSelect,
   onEdit,
   onDelete,
@@ -671,6 +698,10 @@ function SortableSavedReplyRow({
   reply: SavedReply;
   disabled: boolean;
   deleting: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -696,12 +727,32 @@ function SortableSavedReplyRow({
         {...attributes}
         {...listeners}
         disabled={disabled}
-        className="flex h-11 w-9 shrink-0 cursor-grab select-none items-center justify-center self-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:cursor-grabbing disabled:cursor-wait disabled:opacity-50 sm:w-10"
-        aria-label={`Pressione e arraste para mover ${reply.title}`}
-        title="Pressione e arraste para reorganizar"
+        className="saved-reply-drag-handle flex h-11 w-9 shrink-0 cursor-grab select-none items-center justify-center self-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:cursor-grabbing disabled:cursor-wait disabled:opacity-50 sm:w-10"
+        aria-label={`Arraste para mover ${reply.title}`}
+        title="Arraste para reorganizar"
       >
         {disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <GripVertical className="h-4 w-4" />}
       </button>
+      <div className="saved-reply-touch-order hidden shrink-0 flex-col justify-center gap-1 self-center">
+        <button
+          type="button"
+          onClick={onMoveUp}
+          disabled={disabled || !canMoveUp}
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-primary/15 active:text-primary disabled:opacity-25"
+          aria-label={`Mover ${reply.title} para cima`}
+        >
+          <ChevronUp className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={onMoveDown}
+          disabled={disabled || !canMoveDown}
+          className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-primary/15 active:text-primary disabled:opacity-25"
+          aria-label={`Mover ${reply.title} para baixo`}
+        >
+          <ChevronDown className="h-4 w-4" />
+        </button>
+      </div>
       <button
         type="button"
         onClick={onSelect}
