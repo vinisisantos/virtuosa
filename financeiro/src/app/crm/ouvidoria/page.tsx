@@ -27,6 +27,7 @@ import {
   ChevronRight,
   Clock,
   GripVertical,
+  Instagram,
   List,
   Loader2,
   MessageCircle,
@@ -120,6 +121,7 @@ type Evaluation = {
   pipelineClosedAt?: string | null;
   outcomeReason?: string | null;
   assignedUserId?: string | null;
+  isInstagramSource?: boolean;
 };
 
 type ChatLinkState = {
@@ -478,7 +480,14 @@ function EvaluationCardButton({
           {timeLabel(evaluation.startTime)}
         </span>
         <span className="min-w-0">
-          <span className="block truncate font-semibold text-foreground">{evaluation.clientName}</span>
+          <span className="flex min-w-0 items-center gap-1.5 font-semibold text-foreground">
+            <span className="truncate">{evaluation.clientName}</span>
+            {evaluation.isInstagramSource && (
+              <span title="Agendamento proveniente do Instagram" aria-label="Agendamento proveniente do Instagram">
+                <Instagram className="h-3.5 w-3.5 shrink-0 text-pink-500" />
+              </span>
+            )}
+          </span>
           <span
             className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-foreground/80"
             title={evaluation.campaignProcedureName || "Sem procedimento categorizado"}
@@ -528,7 +537,14 @@ function EvaluationCardButton({
           </span>
         )}
       </div>
-      <div className="mt-0.5 truncate text-foreground">{evaluation.clientName}</div>
+      <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-foreground">
+        <span className="truncate">{evaluation.clientName}</span>
+        {evaluation.isInstagramSource && (
+          <span title="Agendamento proveniente do Instagram" aria-label="Agendamento proveniente do Instagram">
+            <Instagram className="h-3.5 w-3.5 shrink-0 text-pink-500" />
+          </span>
+        )}
+      </div>
       <div
         className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-foreground/80"
         title={evaluation.campaignProcedureName || "Sem procedimento categorizado"}

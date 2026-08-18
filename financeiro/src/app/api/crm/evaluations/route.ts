@@ -35,6 +35,7 @@ import {
   resolveCampaignOfferForClient,
 } from "@/lib/campaign-offer";
 import { pipelineStageKeyFromName, pipelineToClientStage } from "@/lib/pipeline/stages";
+import { canonicalLeadSource } from "@/lib/lead-attribution";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
 import { suppressWhatsAppCallbacksForClosedPackage } from "@/lib/whatsapp/callback-suppression";
 
@@ -109,6 +110,7 @@ async function enrichEvaluationsWithPipelineData<
           select: {
             id: true,
             clientId: true,
+            source: true,
             value: true,
             stage: true,
             closedAt: true,
@@ -136,10 +138,10 @@ async function enrichEvaluationsWithPipelineData<
   const clients = clientIds.length
     ? await prisma.client.findMany({
         where: { id: { in: clientIds } },
-        select: { id: true, campaignName: true },
+        select: { id: true, campaignName: true, source: true, utmSource: true },
       })
     : [];
-  const clientCampaignById = new Map(clients.map((client) => [client.id, client.campaignName]));
+  const clientById = new Map(clients.map((client) => [client.id, client]));
   const latestOutcomeByEvaluation = new Map<string, EvaluationAuditDetails>();
 
   for (const log of evaluationAuditLogs) {
@@ -151,6 +153,7 @@ async function enrichEvaluationsWithPipelineData<
   return evaluations.map((evaluation) => {
     const pipelineDealId = getPipelineDealIdFromEvaluationNotes(evaluation.notes);
     const pipelineDeal = pipelineDealId ? dealById.get(pipelineDealId) : null;
+    const client = pipelineDeal?.clientId ? clientById.get(pipelineDeal.clientId) : null;
     const pipelineSaleItems = pipelineDealId ? saleItemsByDealId.get(pipelineDealId) || [] : [];
     const outcomeAudit = latestOutcomeByEvaluation.get(evaluation.id);
     const outcomeReason = evaluation.status === "nao_fechou" || evaluation.status === "nao_compareceu"
@@ -172,9 +175,13 @@ async function enrichEvaluationsWithPipelineData<
       pipelineProcedureNames: procedureNames,
       pipelineProcedureName: formatProcedureNames(procedureNames) || null,
       campaignProcedureName:
-        (pipelineDeal?.clientId ? clientCampaignById.get(pipelineDeal.clientId) : null) ||
+        client?.campaignName ||
         pipelineDeal?.campaignNameSnapshot ||
         null,
+      isInstagramSource:
+        canonicalLeadSource(pipelineDeal?.source) === "instagram" ||
+        canonicalLeadSource(client?.source) === "instagram" ||
+        canonicalLeadSource(client?.utmSource) === "instagram",
       pipelineSaleItems,
       pipelineStage: pipelineDeal?.pipelineStage?.name || pipelineDeal?.stage || null,
       pipelineClosedAt: pipelineDeal?.closedAt || null,
