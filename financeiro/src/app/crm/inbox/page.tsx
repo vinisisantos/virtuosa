@@ -9,6 +9,7 @@ import { useVisiblePolling } from "@/hooks/use-visible-polling";
 import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
+import { EvaluationAvailabilityDialog } from "@/components/whatsapp/evaluation-availability-dialog";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -2883,6 +2884,7 @@ export default function InboxPage() {
   });
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
   const [showSavedRepliesDialog, setShowSavedRepliesDialog] = useState(false);
+  const [showEvaluationAvailabilityDialog, setShowEvaluationAvailabilityDialog] = useState(false);
   const savedRepliesLibrary = useWhatsAppSavedReplies();
   const {
     replies: savedReplies,
@@ -4383,7 +4385,7 @@ export default function InboxPage() {
       if (event.key !== "Escape" || event.defaultPrevented) return;
 
       // Overlays consume Escape first; a second press then leaves the chat.
-      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog) {
+      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog) {
         return;
       }
       if (bulkFollowUpConfirmOpen) {
@@ -4419,6 +4421,7 @@ export default function InboxPage() {
     bulkFollowUpConfirmOpen,
     showNewConversationDialog,
     showSavedRepliesDialog,
+    showEvaluationAvailabilityDialog,
   ]);
 
   // ─── File attachment ──────────────────────────────────────
@@ -4827,6 +4830,16 @@ export default function InboxPage() {
     requestAnimationFrame(() => textareaRef.current?.focus());
     toast("Resposta adicionada ao campo", "success");
   }, [personalizeMessageForConversation, savedReplyDialogTarget, setNewMessage]);
+
+  const handleEvaluationAvailabilityInsert = useCallback((content: string) => {
+    const personalizedContent = personalizeMessageForConversation(content);
+    setNewMessage((current) => current.trim()
+      ? `${current.trimEnd()}\n\n${personalizedContent}`
+      : personalizedContent
+    );
+    requestAnimationFrame(() => textareaRef.current?.focus());
+    toast("Horários adicionados ao campo para revisão", "success");
+  }, [personalizeMessageForConversation, setNewMessage]);
 
   const handleComposerValueChange = useCallback((value: string, cursor: number) => {
     const personalizedValue = personalizeMessageForConversation(value);
@@ -6959,6 +6972,18 @@ export default function InboxPage() {
                   </button>
                 )}
 
+                {!selectedConv.blockedAt && canReplyToSelectedConversation && (
+                  <button
+                    type="button"
+                    onClick={() => setShowEvaluationAvailabilityDialog(true)}
+                    className="hidden h-8 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15 lg:flex"
+                    title="Consultar e enviar horários livres"
+                  >
+                    <Clock3 className="h-3.5 w-3.5" />
+                    Horários
+                  </button>
+                )}
+
                 <button
                   ref={internalNotesTriggerRef}
                   type="button"
@@ -7016,6 +7041,17 @@ export default function InboxPage() {
                       <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-2xl">
                         {canReplyToSelectedConversation ? (
                           <>
+                            <button
+                              onClick={() => {
+                                setShowEvaluationAvailabilityDialog(true);
+                                setKebabOpen(false);
+                              }}
+                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
+                            >
+                              <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                              Enviar disponibilidade
+                            </button>
+
                             <button
                               onClick={() => { setEvoSignal((s) => s + 1); setKebabOpen(false); }}
                               className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
@@ -8573,6 +8609,12 @@ export default function InboxPage() {
         endpoint={newConversationEndpoint}
         onOpenChange={setShowNewConversationDialog}
         onConversationReady={handleNewConversationReady}
+      />
+      <EvaluationAvailabilityDialog
+        open={showEvaluationAvailabilityDialog}
+        unit={selectedConversationUnit}
+        onOpenChange={setShowEvaluationAvailabilityDialog}
+        onInsertMessage={handleEvaluationAvailabilityInsert}
       />
       <SavedRepliesDialog
         open={showSavedRepliesDialog}

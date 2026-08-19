@@ -1,4 +1,5 @@
 import React from 'react';
+import { EVALUATION_AVAILABILITY_TIMES } from '@/lib/evaluation-availability';
 
 /* ──────────── Types ──────────── */
 export interface AbsenceSlot { start: string; end: string; }
@@ -19,11 +20,7 @@ export interface AgendaForm {
 export interface ProfForm { name: string; color: string; unit: string; }
 
 /* ──────────── Constants ──────────── */
-export const HOURS = Array.from({ length: 28 }, (_, i) => {
-  const h = Math.floor(i / 2) + 7;
-  const m = i % 2 === 0 ? '00' : '30';
-  return `${String(h).padStart(2, '0')}:${m}`;
-});
+export const HOURS = EVALUATION_AVAILABILITY_TIMES;
 
 export const DAYS_PT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 export const MONTHS_PT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
