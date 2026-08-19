@@ -138,9 +138,20 @@ function displayAvailabilityTime(time: string) {
 }
 
 export function buildEvaluationAvailabilityMessage(slots: EvaluationAvailabilitySlot[]) {
-  const lines = slots.map((slot, index) => (
-    `${index + 1} — ${slot.weekdayLabel}, ${slot.dateLabel}, às ${displayAvailabilityTime(slot.time)}`
-  ));
+  const slotsByDate = new Map<string, EvaluationAvailabilitySlot[]>();
+  slots.forEach((slot) => {
+    const daySlots = slotsByDate.get(slot.date);
+    if (daySlots) {
+      daySlots.push(slot);
+      return;
+    }
+    slotsByDate.set(slot.date, [slot]);
+  });
+  const lines = Array.from(slotsByDate.values()).map((daySlots) => {
+    const [firstSlot] = daySlots;
+    const times = daySlots.map((slot) => displayAvailabilityTime(slot.time)).join(" - ");
+    return `${firstSlot.weekdayLabel}, ${firstSlot.dateLabel}, às ${times}`;
+  });
 
   return [
     "Tenho estes horários disponíveis para sua avaliação: 🌸",

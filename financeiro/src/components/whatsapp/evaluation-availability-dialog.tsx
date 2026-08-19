@@ -174,10 +174,6 @@ export function EvaluationAvailabilityDialog({
   const toggleSlot = (slotId: string) => {
     setSelectedSlotIds((current) => {
       if (current.includes(slotId)) return current.filter((id) => id !== slotId);
-      if (current.length >= 5) {
-        setError("Selecione no máximo 5 horários por mensagem");
-        return current;
-      }
       setError(null);
       return [...current, slotId];
     });
@@ -215,7 +211,7 @@ export function EvaluationAvailabilityDialog({
                 Enviar disponibilidade
               </h2>
               <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
-                Consulte a agenda de {unit} e escolha até 5 opções.
+                Consulte a agenda de {unit} e escolha os horários que deseja oferecer.
               </p>
             </div>
           </div>
@@ -320,7 +316,7 @@ export function EvaluationAvailabilityDialog({
               <div className="flex items-center justify-between gap-3">
                 <p className="text-sm font-semibold text-foreground">Horários disponíveis</p>
                 <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary">
-                  {selectedSlotIds.length}/5 selecionados
+                  {selectedSlotIds.length} selecionados
                 </span>
               </div>
               {groupedSlots.map(([label, daySlots]) => (

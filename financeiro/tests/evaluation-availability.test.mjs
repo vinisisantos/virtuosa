@@ -51,7 +51,7 @@ test("filtro de período mantém apenas os horários da manhã", () => {
   ]);
 });
 
-test("mensagem enumera as opções preservando os parágrafos", () => {
+test("mensagem agrupa os horários do mesmo dia em uma única linha", () => {
   const slots = buildEvaluationAvailabilitySlots({
     startDate: "2026-08-18",
     endDate: "2026-08-18",
@@ -62,8 +62,29 @@ test("mensagem enumera as opções preservando os parágrafos", () => {
     [
       "Tenho estes horários disponíveis para sua avaliação: 🌸",
       "",
-      "1 — Terça-feira, 18/08, às 7h",
-      "2 — Terça-feira, 18/08, às 7h30",
+      "Terça-feira, 18/08, às 7h - 7h30",
+      "",
+      "Qual dessas opções fica melhor para você?",
+    ].join("\n"),
+  );
+});
+
+test("mensagem mantém dias diferentes em linhas separadas", () => {
+  const slots = buildEvaluationAvailabilitySlots({
+    startDate: "2026-08-21",
+    endDate: "2026-08-22",
+    period: "morning",
+    now: BEFORE_RANGE,
+  });
+  const selected = slots.filter((slot) => ["09:00", "09:30"].includes(slot.time));
+
+  assert.equal(
+    buildEvaluationAvailabilityMessage(selected),
+    [
+      "Tenho estes horários disponíveis para sua avaliação: 🌸",
+      "",
+      "Sexta-feira, 21/08, às 9h - 9h30",
+      "Sábado, 22/08, às 9h - 9h30",
       "",
       "Qual dessas opções fica melhor para você?",
     ].join("\n"),
