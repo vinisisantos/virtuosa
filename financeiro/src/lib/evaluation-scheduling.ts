@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { evaluationScheduleMinuteRange } from "@/lib/evaluation-schedule-conflict";
+import { isConfirmedEvaluationStatus } from "@/lib/evaluation-status";
 import { isAdminRole } from "@/lib/role-access";
 
 const UNIT_PERMISSION_KEY: Record<string, string> = {
@@ -224,9 +225,15 @@ export async function upsertPipelineEvaluationAppointment(params: {
   };
 
   if (existing) {
+    const scheduleChanged = existing.startTime.getTime() !== startTime.getTime();
     return database.agendamento.update({
       where: { id: existing.id },
-      data,
+      data: {
+        ...data,
+        ...(scheduleChanged && isConfirmedEvaluationStatus(existing.status)
+          ? { status: "pendente" }
+          : {}),
+      },
       include: { profissional: true },
     });
   }

@@ -849,7 +849,13 @@ export default function PipelinePage() {
         return;
       }
       if (!res.ok) throw new Error(data.error || "Erro ao atualizar o negócio");
-      toast.success("Negócio atualizado!");
+      if (data.rescheduleNotification?.status === "sent") {
+        toast.success("Negócio atualizado e cliente avisada sobre o reagendamento!");
+      } else if (data.rescheduleNotification?.status === "failed") {
+        toast.warning("Negócio atualizado, mas a mensagem de reagendamento não pôde ser enviada.");
+      } else {
+        toast.success("Negócio atualizado!");
+      }
       setEditModalOpen(false);
       fetchData();
     } catch (error) {

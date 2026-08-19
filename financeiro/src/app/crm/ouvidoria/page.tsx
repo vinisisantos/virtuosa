@@ -1114,7 +1114,13 @@ export default function AvaliacoesAgendaPage() {
             : [...current, updated.profissional as Professional].sort((left, right) => left.name.localeCompare(right.name)),
         );
       }
-      toast.success(assigneeUserId ? "Agendamento atualizado" : "Avaliação reagendada");
+      if (data.rescheduleNotification?.status === "sent") {
+        toast.success("Avaliação reagendada e cliente avisada");
+      } else if (data.rescheduleNotification?.status === "failed") {
+        toast.warning("Avaliação reagendada, mas a mensagem automática não pôde ser enviada pelo WhatsApp.");
+      } else {
+        toast.success(assigneeUserId ? "Agendamento atualizado" : "Avaliação reagendada");
+      }
       return updated;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao reagendar avaliação");
@@ -1219,6 +1225,11 @@ export default function AvaliacoesAgendaPage() {
       toast.success(successMessage);
       if (status === "nao_compareceu" && data.noShowNotification?.status === "failed") {
         toast.warning("Ausência registrada, mas a mensagem automática não pôde ser enviada pelo WhatsApp.");
+      }
+      if (data.rescheduleNotification?.status === "failed") {
+        toast.warning("Avaliação reagendada, mas a mensagem automática não pôde ser enviada pelo WhatsApp.");
+      } else if (data.rescheduleNotification?.status === "sent") {
+        toast.success("A cliente recebeu a nova data e o novo horário pelo WhatsApp.");
       }
 
       if (!isSameMonth(updatedDate, month)) {

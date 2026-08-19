@@ -13,6 +13,7 @@ import {
 } from "@/lib/evaluation-scheduling";
 import {
   isClosedPackageEvaluationStatus,
+  isConfirmedEvaluationStatus,
   isEvaluationStatus,
   isNoShowEvaluationStatus,
   type EvaluationStatus,
@@ -40,6 +41,7 @@ import { canonicalLeadSource } from "@/lib/lead-attribution";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
 import { suppressWhatsAppCallbacksForClosedPackage } from "@/lib/whatsapp/callback-suppression";
 import { sendEvaluationNoShowNotification } from "@/lib/whatsapp/evaluation-no-show-notification";
+import { sendEvaluationRescheduleNotification } from "@/lib/whatsapp/evaluation-reschedule-notification";
 
 function monthRange(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -537,6 +539,14 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Avaliação não encontrada." }, { status: 404 });
     }
 
+    const scheduleChanged = Boolean(
+      requestedStartTime
+      && requestedStartTime.getTime() !== evaluation.startTime.getTime()
+    );
+    const shouldResetConfirmation = scheduleChanged
+      && !hasStatus
+      && isConfirmedEvaluationStatus(evaluation.status);
+
     try {
       guard.enforceUnit(evaluation.unit);
     } catch (error) {
@@ -605,6 +615,8 @@ export async function PATCH(req: NextRequest) {
 
       if (hasStatus) {
         updateData.status = persistedStatus;
+      } else if (shouldResetConfirmation) {
+        updateData.status = "pendente";
       }
       if (requestedStartTime) {
         const currentDurationMs = evaluation.endTime.getTime() - evaluation.startTime.getTime();
@@ -667,6 +679,11 @@ export async function PATCH(req: NextRequest) {
             ...(procedureName ? { procedureName, procedureNames } : {}),
             ...(normalizedSale ? { saleItems: normalizedSale.items } : {}),
             ...(rescheduled ? { rescheduled: true } : {}),
+            ...(shouldResetConfirmation ? {
+              confirmationReset: true,
+              statusFrom: evaluation.status,
+              statusTo: "pendente",
+            } : {}),
             ...(requestedStartTime
               ? {
                   startTimeFrom: evaluation.startTime.toISOString(),
@@ -709,8 +726,20 @@ export async function PATCH(req: NextRequest) {
         })
       : null;
 
+    const rescheduleNotification = scheduleChanged
+      ? await sendEvaluationRescheduleNotification({
+          unit: updated.unit,
+          appointmentId: updated.id,
+          clientName: updated.clientName,
+          clientPhone: updated.clientPhone,
+          previousStartTime: evaluation.startTime,
+          startTime: updated.startTime,
+          createdBy: guard.userName,
+        })
+      : null;
+
     const [enriched] = await enrichEvaluationsWithPipelineData([updated]);
-    return NextResponse.json({ evaluation: enriched, noShowNotification });
+    return NextResponse.json({ evaluation: enriched, noShowNotification, rescheduleNotification });
   } catch (error) {
     if (error instanceof EvaluationSchedulingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

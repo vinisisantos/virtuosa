@@ -979,6 +979,10 @@ function PipelineStageSelector({
           onPipelineChanged?.();
           if (data.scheduleConfirmation?.status === "sent") {
             toast("Agendamento salvo e confirmação enviada!", "success");
+          } else if (data.rescheduleNotification?.status === "sent") {
+            toast("Avaliação reagendada e cliente avisada!", "success");
+          } else if (data.rescheduleNotification?.status === "failed") {
+            toast("Avaliação reagendada, mas a mensagem automática não pôde ser enviada.", "warning", 5500);
           } else if (data.scheduleConfirmation?.status === "failed") {
             toast("Agendamento salvo, mas não foi possível confirmar o envio automático.", "warning", 5500);
           } else {
@@ -1027,6 +1031,10 @@ function PipelineStageSelector({
         onPipelineChanged?.();
         if (data.scheduleConfirmation?.status === "sent") {
           toast("Agendamento salvo e confirmação enviada!", "success");
+        } else if (data.rescheduleNotification?.status === "sent") {
+          toast("Avaliação reagendada e cliente avisada!", "success");
+        } else if (data.rescheduleNotification?.status === "failed") {
+          toast("Avaliação reagendada, mas a mensagem automática não pôde ser enviada.", "warning", 5500);
         } else if (data.scheduleConfirmation?.status === "failed") {
           toast("Agendamento salvo, mas não foi possível confirmar o envio automático.", "warning", 5500);
         } else {

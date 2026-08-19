@@ -5,6 +5,7 @@ import {
   DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
   DEFAULT_EVALUATION_DAY_REMINDER_TEMPLATE,
   DEFAULT_EVALUATION_NO_SHOW_TEMPLATE,
+  DEFAULT_EVALUATION_RESCHEDULED_TEMPLATE,
   DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
   LEADS_OSASCO_INSTANCE_ID,
   LEADS_SBC_INSTANCE_ID,
@@ -12,6 +13,7 @@ import {
   buildEvaluationConfirmationRequestMessage,
   buildEvaluationDayReminderMessage,
   buildEvaluationNoShowMessage,
+  buildEvaluationRescheduledMessage,
   buildEvaluationScheduleConfirmationMessage,
   getEvaluationScheduleUnitConfig,
   getEvaluationScheduleAutomationMessage,
@@ -200,6 +202,59 @@ test("mensagem de ausência editada continua disponível nas três unidades", ()
       template: "Olá, {{primeiro_nome}}. Registramos sua ausência em {{unidade}} às {{hora}}.",
     }), `Olá, Ana. Registramos sua ausência em ${unit} às 10:30.`);
   }
+});
+
+test("reagendamento preserva os parágrafos e informa a nova agenda de Osasco", () => {
+  const message = buildEvaluationRescheduledMessage({
+    unit: "Osasco",
+    clientName: "Maria da Silva",
+    startTime: new Date("2026-08-24T13:30:00.000Z"),
+  });
+
+  assert.equal(message, [
+    "Olá, Maria da Silva! 💗",
+    "",
+    "Sua avaliação foi reagendada para *segunda-feira*, *24/08/2026*, às *10:30*. 🗓️✨",
+    "",
+    "📍 Clínica Virtuosa Osasco",
+    "Rua Eloy Cândido Lopes, 61 — Centro, Osasco",
+    "Localização: https://share.google/uwnrFMCt4re3TqvXI",
+    "",
+    "Estaremos esperando por você. Será um prazer receber você! 🌸",
+  ].join("\n"));
+  assert.match(DEFAULT_EVALUATION_RESCHEDULED_TEMPLATE, /\{\{dia_da_semana\}\}/);
+  assert.match(DEFAULT_EVALUATION_RESCHEDULED_TEMPLATE, /\{\{link_localizacao\}\}/);
+});
+
+test("reagendamento usa identidade, endereço e link da própria unidade", () => {
+  const cases = [
+    ["SBC", "São Bernardo", "Avenida das Nações Unidas, 30"],
+    ["SCS", "São Caetano", "Avenida Vital Brasil Filho, 143"],
+  ];
+
+  for (const [unit, displayName, address] of cases) {
+    const message = buildEvaluationRescheduledMessage({
+      unit,
+      clientName: "Ana",
+      startTime: new Date("2026-08-24T13:30:00.000Z"),
+    });
+    assert.match(message, new RegExp(`Clínica Virtuosa ${displayName}`));
+    assert.match(message, new RegExp(address));
+    assert.doesNotMatch(message, /Eloy Cândido Lopes/);
+  }
+});
+
+test("reagendamento editado continua substituindo todas as variáveis", () => {
+  const message = buildEvaluationRescheduledMessage({
+    unit: "SCS",
+    clientName: "Ana Souza",
+    startTime: new Date("2026-08-24T13:30:00.000Z"),
+    template: "{{primeiro_nome}}, reagendamos em {{unidade}} para {{data}} às {{hora}}. {{endereco}} {{link_localizacao}}",
+  });
+
+  assert.match(message, /^Ana, reagendamos em São Caetano para 24\/08\/2026 às 10:30\./);
+  assert.match(message, /Avenida Vital Brasil Filho, 143/);
+  assert.match(message, /google\.com\/maps/);
 });
 
 test("lembrete no dia preserva o texto aprovado e os dados de Osasco", () => {

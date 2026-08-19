@@ -82,6 +82,7 @@ const TRIGGER_TYPES = [
   { key: "evaluation_scheduled", label: "AGENDA · Agendamento", desc: "Confirmação após agendamento", icon: CalendarDays },
   { key: "evaluation_confirmation_request", label: "AGENDA · Confirmação", desc: "Janela configurável para confirmar presença", icon: CalendarDays },
   { key: "evaluation_day_reminder", label: "AGENDA · Lembrete no dia", desc: "Lembra avaliações já confirmadas", icon: CalendarDays },
+  { key: "evaluation_rescheduled", label: "AGENDA · Reagendamento", desc: "Informa a nova data e o novo horário", icon: CalendarDays },
   { key: "evaluation_no_show_follow_up", label: "AGENDA · Não compareceu", desc: "Mensagem automática para reagendar", icon: CalendarDays },
   { key: "new_message", label: "Nova Mensagem Recebida", desc: "Qualquer mensagem recebida", icon: MessageSquare },
   { key: "keyword", label: "Palavra-chave", desc: "Mensagem contém palavras específicas", icon: Tag },
@@ -94,6 +95,7 @@ const NATIVE_TRIGGER_TYPES = new Set([
   "evaluation_scheduled",
   "evaluation_confirmation_request",
   "evaluation_day_reminder",
+  "evaluation_rescheduled",
   "evaluation_no_show_follow_up",
 ]);
 
@@ -195,6 +197,7 @@ function AutomationCard({
     "evaluation_scheduled",
     "evaluation_confirmation_request",
     "evaluation_day_reminder",
+    "evaluation_rescheduled",
     "evaluation_no_show_follow_up",
   ].includes(automation.triggerType);
   const messagePreview = isEvaluationAgendaAutomation ? automationMessagePreview(automation) : null;
@@ -464,6 +467,7 @@ function AutomationBuilder({
     "evaluation_scheduled",
     "evaluation_confirmation_request",
     "evaluation_day_reminder",
+    "evaluation_rescheduled",
     "evaluation_no_show_follow_up",
   ].includes(initial?.triggerType || "");
   const confirmationWindowHours = Number(
@@ -657,6 +661,17 @@ function AutomationBuilder({
                 </p>
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
                   O lembrete é enviado uma única vez e somente para avaliações com status Confirmado no próprio dia.
+                </p>
+              </div>
+            )}
+
+            {triggerType === "evaluation_rescheduled" && (
+              <div className="rounded-lg border border-border bg-card p-3">
+                <p className="text-xs font-medium text-foreground">
+                  Envio automático após uma remarcação real
+                </p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                  A mensagem é enviada uma única vez quando a data ou o horário muda. Uma avaliação já confirmada volta para Pendente.
                 </p>
               </div>
             )}

@@ -8,6 +8,19 @@ export const EVALUATION_SCHEDULED_AUTOMATION_TRIGGER = "evaluation_scheduled";
 export const EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER = "evaluation_confirmation_request";
 export const EVALUATION_NO_SHOW_AUTOMATION_TRIGGER = "evaluation_no_show_follow_up";
 export const EVALUATION_DAY_REMINDER_AUTOMATION_TRIGGER = "evaluation_day_reminder";
+export const EVALUATION_RESCHEDULED_AUTOMATION_TRIGGER = "evaluation_rescheduled";
+
+export const DEFAULT_EVALUATION_RESCHEDULED_TEMPLATE = [
+  "Olá, {{nome}}! 💗",
+  "",
+  "Sua avaliação foi reagendada para *{{dia_da_semana}}*, *{{data}}*, às *{{hora}}*. 🗓️✨",
+  "",
+  "📍 Clínica Virtuosa {{unidade}}",
+  "{{endereco}}",
+  "Localização: {{link_localizacao}}",
+  "",
+  "Estaremos esperando por você. Será um prazer receber você! 🌸",
+].join("\n");
 
 export const DEFAULT_EVALUATION_DAY_REMINDER_TEMPLATE = [
   "Olá, {{nome}}!",
@@ -280,6 +293,26 @@ export function buildEvaluationDayReminderMessage(params: {
     clientName: params.clientName,
     startTime: params.startTime,
     template: params.template?.trim() || DEFAULT_EVALUATION_DAY_REMINDER_TEMPLATE,
+    unitName: config.displayUnitName,
+    address: config.address,
+    locationUrl: config.locationUrl,
+  });
+}
+
+export function buildEvaluationRescheduledMessage(params: {
+  unit: EvaluationScheduleUnit;
+  clientName: string;
+  startTime: Date;
+  template?: string | null;
+}) {
+  const config = getEvaluationScheduleUnitConfigByUnit(params.unit);
+  if (!config) throw new Error(`Unidade sem automação de reagendamento: ${params.unit}`);
+
+  return buildEvaluationMessage({
+    unit: params.unit,
+    clientName: params.clientName,
+    startTime: params.startTime,
+    template: params.template?.trim() || DEFAULT_EVALUATION_RESCHEDULED_TEMPLATE,
     unitName: config.displayUnitName,
     address: config.address,
     locationUrl: config.locationUrl,

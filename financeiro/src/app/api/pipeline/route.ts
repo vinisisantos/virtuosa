@@ -43,6 +43,7 @@ import {
   resolveCampaignOfferForClient,
 } from '@/lib/campaign-offer';
 import { sendEvaluationScheduleConfirmation } from '@/lib/whatsapp/evaluation-schedule-confirmation';
+import { sendEvaluationRescheduleNotification } from '@/lib/whatsapp/evaluation-reschedule-notification';
 import { suppressWhatsAppCallbacksForClosedPackage } from '@/lib/whatsapp/callback-suppression';
 
 type EvaluationScheduleConflict = NonNullable<Awaited<ReturnType<typeof findEvaluationScheduleConflict>>>;
@@ -498,6 +499,9 @@ export async function POST(req: NextRequest) {
         nextStage: effectiveStage,
         nextStageId: placement.stageId,
       });
+      const existingAppointment = evaluationStartTime
+        ? (await getPipelineEvaluationAppointments([existingEntry.id])).get(existingEntry.id) || null
+        : null;
       const existingProcedureSelections = !hasProcedureSubmission
         ? await getPipelineProcedureSelections(prisma, [existingEntry.id])
         : new Map<string, string[]>();
@@ -595,12 +599,29 @@ export async function POST(req: NextRequest) {
             startTime: updated.appointment.startTime,
           })
         : { status: 'not_applicable' as const };
+      const rescheduleNotification = (
+        !movedToScheduled
+        && existingAppointment
+        && updated.appointment
+        && existingAppointment.startTime.getTime() !== updated.appointment.startTime.getTime()
+      )
+        ? await sendEvaluationRescheduleNotification({
+            unit: updated.saved.unit,
+            appointmentId: updated.appointment.id,
+            clientName: updated.saved.clientName,
+            clientPhone: contactPhone || existingAppointment.clientPhone,
+            previousStartTime: existingAppointment.startTime,
+            startTime: updated.appointment.startTime,
+            createdBy: guard.userName || ownerAssignedName || 'Sistema',
+          })
+        : { status: 'not_applicable' as const };
 
       return NextResponse.json({
         ...updated.saved,
         procedureNames: effectiveProcedureNames,
         procedureName: effectiveProcedureName || null,
         scheduleConfirmation,
+        rescheduleNotification,
       });
     }
 
@@ -696,6 +717,7 @@ export async function POST(req: NextRequest) {
       procedureNames: normalizedProcedureNames,
       procedureName: normalizedProcedureName || null,
       scheduleConfirmation,
+      rescheduleNotification: { status: 'not_applicable' as const },
     }, { status: 201 });
   } catch (error) {
     if (error instanceof EvaluationSchedulingError) {
@@ -838,11 +860,15 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Informe um valor fechado válido' }, { status: 400 });
     }
 
-    let scheduledClosingDate: Date | null = null;
-    if (isClosing && targetStage === 'fechado' && !closedAt) {
-      const appointmentsByDealId = await getPipelineEvaluationAppointments([existing.id]);
-      scheduledClosingDate = appointmentsByDealId.get(existing.id)?.startTime || null;
-    }
+    const shouldLoadExistingAppointment = Boolean(
+      evaluationStartTime || (isClosing && targetStage === 'fechado' && !closedAt),
+    );
+    const existingAppointment = shouldLoadExistingAppointment
+      ? (await getPipelineEvaluationAppointments([existing.id])).get(existing.id) || null
+      : null;
+    const scheduledClosingDate = isClosing && targetStage === 'fechado' && !closedAt
+      ? existingAppointment?.startTime || null
+      : null;
 
     const data: Record<string, unknown> = {};
     if (effectiveStage !== undefined) {
@@ -962,12 +988,29 @@ export async function PUT(req: NextRequest) {
           startTime: updated.appointment.startTime,
         })
       : { status: 'not_applicable' as const };
+    const rescheduleNotification = (
+      !isMovingToScheduled
+      && existingAppointment
+      && updated.appointment
+      && existingAppointment.startTime.getTime() !== updated.appointment.startTime.getTime()
+    )
+      ? await sendEvaluationRescheduleNotification({
+          unit: updated.saved.unit,
+          appointmentId: updated.appointment.id,
+          clientName: updated.saved.clientName,
+          clientPhone: existingClient?.phone || contactPhone || existingAppointment.clientPhone,
+          previousStartTime: existingAppointment.startTime,
+          startTime: updated.appointment.startTime,
+          createdBy: guard.userName || assignedName || 'Sistema',
+        })
+      : { status: 'not_applicable' as const };
 
     return NextResponse.json({
       ...updated.saved,
       procedureNames: nextProcedureNames,
       procedureName: nextProcedureName || null,
       scheduleConfirmation,
+      rescheduleNotification,
     });
   } catch (error) {
     if (error instanceof EvaluationSchedulingError) {
