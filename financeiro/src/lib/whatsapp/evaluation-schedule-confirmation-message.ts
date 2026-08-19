@@ -58,7 +58,7 @@ export const DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE = [
 export const DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE = [
   "Olá, *{{nome}}*! 💗",
   "",
-  "Passando para confirmar a sua avaliação de amanhã na *Clínica Virtuosa Osasco*, às *{{hora}}*. 🗓️✨",
+  "Passando para confirmar a sua avaliação na *Clínica Virtuosa Osasco*, no dia *{{data}}*, às *{{hora}}*. 🗓️✨",
   "",
   "Esse momento é muito importante para que nossa especialista consiga entender melhor os seus objetivos, avaliar a região com atenção e indicar o tratamento mais adequado para você. 🌸",
   "",
@@ -81,7 +81,7 @@ export const DEFAULT_SBC_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE = [
 export const DEFAULT_SBC_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE = [
   "Olá, *{{nome}}*! 💗",
   "",
-  "Passando para confirmar a sua avaliação de amanhã na *Clínica Virtuosa São Bernardo*, às *{{hora}}*. 🗓️✨",
+  "Passando para confirmar a sua avaliação na *Clínica Virtuosa São Bernardo*, no dia *{{data}}*, às *{{hora}}*. 🗓️✨",
   "",
   "Esse momento é muito importante para que nossa especialista consiga entender melhor os seus objetivos, avaliar a região com atenção e indicar o tratamento mais adequado para você. 🌸",
   "",
@@ -104,7 +104,7 @@ export const DEFAULT_SCS_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE = [
 export const DEFAULT_SCS_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE = [
   "Olá, *{{nome}}*! 💗",
   "",
-  "Passando para confirmar a sua avaliação de amanhã na *Clínica Virtuosa São Caetano*, às *{{hora}}*. 🗓️✨",
+  "Passando para confirmar a sua avaliação na *Clínica Virtuosa São Caetano*, no dia *{{data}}*, às *{{hora}}*. 🗓️✨",
   "",
   "Esse momento é muito importante para que nossa especialista consiga entender melhor os seus objetivos, avaliar a região com atenção e indicar o tratamento mais adequado para você. 🌸",
   "",
