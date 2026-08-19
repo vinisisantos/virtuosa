@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Zap,
   Plus,
@@ -47,6 +47,7 @@ import {
   isValidEvaluationConfirmationWindowHours,
   normalizeEvaluationConfirmationWindowHours,
 } from "@/lib/whatsapp/evaluation-confirmation-window";
+import { useGlobalUnit } from "@/contexts/UnitContext";
 
 // ─── Types ────────────────────────────────────────────────────
 interface AutomationStep {
@@ -66,6 +67,7 @@ interface Automation {
   lastExecutedAt: string | null;
   createdBy: string | null;
   createdAt: string;
+  unit: string | null;
   _count?: { logs: number };
 }
 
@@ -107,6 +109,14 @@ const STEP_TYPES = [
 ];
 
 const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
+const AUTOMATION_UNIT_CATEGORIES = [
+  { key: "general", label: "Geral", description: "Configurações e automações compartilhadas entre unidades." },
+  { key: "Osasco", label: "Osasco", description: "Automações exclusivas da unidade de Osasco." },
+  { key: "SBC", label: "SBC", description: "Automações exclusivas da unidade de São Bernardo." },
+  { key: "SCS", label: "SCS", description: "Automações exclusivas da unidade de São Caetano." },
+] as const;
+type AutomationUnitCategory = (typeof AUTOMATION_UNIT_CATEGORIES)[number]["key"];
+const AUTOMATION_UNIT_NAMES = new Set<AutomationUnitCategory>(["Osasco", "SBC", "SCS"]);
 const DEFAULT_CALL_BLOCK_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
 
@@ -175,6 +185,22 @@ function automationMessagePreview(automation: Automation) {
   const messageStep = automation.steps?.find((step) => step.type === "send_message");
   const message = messageStep?.config?.message;
   return typeof message === "string" && message.trim() ? message.trim() : null;
+}
+
+function categoryFromGlobalUnit(globalUnit: string): AutomationUnitCategory {
+  return AUTOMATION_UNIT_NAMES.has(globalUnit as AutomationUnitCategory)
+    ? (globalUnit as AutomationUnitCategory)
+    : "general";
+}
+
+function automationMatchesCategory(
+  automation: Automation,
+  category: AutomationUnitCategory,
+) {
+  if (category === "general") {
+    return !automation.unit || !AUTOMATION_UNIT_NAMES.has(automation.unit as AutomationUnitCategory);
+  }
+  return automation.unit === category;
 }
 
 // ─── Automation Card ──────────────────────────────────────────
@@ -937,6 +963,7 @@ function CallBlockAutomationPanel() {
 // ─── Main Page ────────────────────────────────────────────────
 // ═════════════════════════════════════════════════════════════
 export default function AutomationsPage() {
+  const { globalUnit } = useGlobalUnit();
   const [automations, setAutomations] = useState<Automation[]>([]);
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
@@ -944,6 +971,9 @@ export default function AutomationsPage() {
   const [deleteTarget, setDeleteTarget] = useState<Automation | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<AutomationUnitCategory>(() =>
+    categoryFromGlobalUnit(globalUnit),
+  );
 
   const fetchAutomations = useCallback(async () => {
     try {
@@ -975,6 +1005,10 @@ export default function AutomationsPage() {
       setLoading(false);
     }
   }, [fetchAutomations]);
+
+  useEffect(() => {
+    setSelectedCategory(categoryFromGlobalUnit(globalUnit));
+  }, [globalUnit]);
 
   // ─── Actions ──────────────────────────────────────────────
   async function handleSave(data: Record<string, unknown>) {
@@ -1049,7 +1083,22 @@ export default function AutomationsPage() {
     setBuilderOpen(true);
   }
 
-  const showTemplates = automations.length < 3;
+  const categoryCounts = useMemo(
+    () => Object.fromEntries(
+      AUTOMATION_UNIT_CATEGORIES.map(({ key }) => [
+        key,
+        automations.filter((automation) => automationMatchesCategory(automation, key)).length,
+      ]),
+    ) as Record<AutomationUnitCategory, number>,
+    [automations],
+  );
+  const visibleAutomations = useMemo(
+    () => automations.filter((automation) => automationMatchesCategory(automation, selectedCategory)),
+    [automations, selectedCategory],
+  );
+  const selectedCategoryInfo = AUTOMATION_UNIT_CATEGORIES.find(({ key }) => key === selectedCategory)
+    ?? AUTOMATION_UNIT_CATEGORIES[0];
+  const showTemplates = selectedCategory === "general" && automations.length < 3;
 
   if (!authChecked || loading) {
     return (
@@ -1092,7 +1141,47 @@ export default function AutomationsPage() {
         </Button>
       </div>
 
-      <CallBlockAutomationPanel />
+      <section className="rounded-xl border border-border bg-card/40 p-1.5">
+        <div
+          role="tablist"
+          aria-label="Categorias de automações por unidade"
+          className="flex gap-1.5 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {AUTOMATION_UNIT_CATEGORIES.map((category) => {
+            const selected = category.key === selectedCategory;
+            return (
+              <button
+                key={category.key}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                onClick={() => setSelectedCategory(category.key)}
+                className={`flex min-h-11 min-w-[7.5rem] flex-1 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors sm:min-w-0 ${
+                  selected
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <span>{category.label}</span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs tabular-nums ${
+                    selected ? "bg-white/20 text-white" : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {categoryCounts[category.key]}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <div>
+        <h2 className="text-lg font-semibold text-foreground">{selectedCategoryInfo.label}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">{selectedCategoryInfo.description}</p>
+      </div>
+
+      {selectedCategory === "general" && <CallBlockAutomationPanel />}
 
       {/* Quick-start templates */}
       {showTemplates && (
@@ -1123,19 +1212,21 @@ export default function AutomationsPage() {
       )}
 
       {/* List */}
-      {automations.length === 0 ? (
+      {visibleAutomations.length === 0 ? (
         <div className="flex h-48 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card/40">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
             <Zap className="h-6 w-6 text-primary" />
           </div>
-          <p className="mt-3 text-sm font-medium text-foreground">Nenhuma automação ainda</p>
+          <p className="mt-3 text-sm font-medium text-foreground">
+            Nenhuma automação em {selectedCategoryInfo.label}
+          </p>
           <p className="mt-1 text-xs text-muted-foreground">
-            Use um template acima ou crie do zero.
+            As automações desta categoria aparecerão aqui.
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {automations.map((a) => (
+          {visibleAutomations.map((a) => (
             <AutomationCard
               key={a.id}
               automation={a}
