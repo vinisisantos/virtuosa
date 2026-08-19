@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { processExpiredWhatsAppCallbacks } from "@/lib/whatsapp/callbacks";
+import { processEvaluationDayReminders } from "@/lib/whatsapp/evaluation-day-reminder";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -16,8 +17,20 @@ export async function POST(req: Request) {
   }
 
   try {
-    const result = await processExpiredWhatsAppCallbacks();
-    return NextResponse.json({ success: true, ...result, processedAt: new Date().toISOString() });
+    let evaluationDayReminders: Awaited<ReturnType<typeof processEvaluationDayReminders>> | { error: string };
+    try {
+      evaluationDayReminders = await processEvaluationDayReminders();
+    } catch (reminderError) {
+      console.error("[Evaluation day reminders cron]", reminderError);
+      evaluationDayReminders = { error: "Erro ao processar lembretes de avaliação" };
+    }
+    const callbackResult = await processExpiredWhatsAppCallbacks();
+    return NextResponse.json({
+      success: true,
+      ...callbackResult,
+      evaluationDayReminders,
+      processedAt: new Date().toISOString(),
+    });
   } catch (error) {
     console.error("[WhatsApp callbacks cron]", error);
     return NextResponse.json({ error: "Erro ao processar rechamadas" }, { status: 500 });

@@ -7,6 +7,20 @@ export const LEADS_SCS_INSTANCE_ID = "bbb24b4e-ef6d-4b64-93e8-9998d0514c65";
 export const EVALUATION_SCHEDULED_AUTOMATION_TRIGGER = "evaluation_scheduled";
 export const EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER = "evaluation_confirmation_request";
 export const EVALUATION_NO_SHOW_AUTOMATION_TRIGGER = "evaluation_no_show_follow_up";
+export const EVALUATION_DAY_REMINDER_AUTOMATION_TRIGGER = "evaluation_day_reminder";
+
+export const DEFAULT_EVALUATION_DAY_REMINDER_TEMPLATE = [
+  "Olá, {{nome}}!",
+  "",
+  "Passando para lembrar que sua avaliação na Clínica Virtuosa {{unidade}} será hoje, às {{hora}}. 🗓️✨",
+  "",
+  "Estamos preparando tudo para receber você com muito carinho. 🌸",
+  "",
+  "📍 {{endereco}}",
+  "Localização: {{link_localizacao}}",
+  "",
+  "Estamos esperando por você!",
+].join("\n");
 
 export const DEFAULT_EVALUATION_NO_SHOW_TEMPLATE = [
   "Oi, {{nome}}! 😊",
@@ -91,9 +105,12 @@ export type EvaluationScheduleUnit = "Osasco" | "SBC" | "SCS";
 
 export type EvaluationScheduleUnitConfig = {
   unit: EvaluationScheduleUnit;
+  displayUnitName: string;
   instanceId: string;
   instanceDisplayName: string;
   clinicName: string;
+  address: string;
+  locationUrl: string;
   scheduledTemplate: string;
   confirmationRequestTemplate: string;
 };
@@ -101,25 +118,34 @@ export type EvaluationScheduleUnitConfig = {
 export const EVALUATION_SCHEDULE_UNIT_CONFIGS: readonly EvaluationScheduleUnitConfig[] = [
   {
     unit: LEADS_OSASCO_UNIT,
+    displayUnitName: "Osasco",
     instanceId: LEADS_OSASCO_INSTANCE_ID,
     instanceDisplayName: "Leads Osasco",
     clinicName: "Clínica Virtuosa Osasco",
+    address: "Rua Eloy Cândido Lopes, 61 — Centro, Osasco",
+    locationUrl: "https://share.google/uwnrFMCt4re3TqvXI",
     scheduledTemplate: DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
     confirmationRequestTemplate: DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
   },
   {
     unit: "SBC",
+    displayUnitName: "São Bernardo",
     instanceId: LEADS_SBC_INSTANCE_ID,
     instanceDisplayName: "Leads - Paloma",
     clinicName: "Clínica Virtuosa São Bernardo",
+    address: "Avenida das Nações Unidas, 30 — Jardim do Mar, São Bernardo do Campo",
+    locationUrl: "https://www.google.com/maps/search/?api=1&query=Avenida+das+Na%C3%A7%C3%B5es+Unidas%2C+30%2C+S%C3%A3o+Bernardo+do+Campo+SP",
     scheduledTemplate: DEFAULT_SBC_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
     confirmationRequestTemplate: DEFAULT_SBC_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
   },
   {
     unit: "SCS",
+    displayUnitName: "São Caetano",
     instanceId: LEADS_SCS_INSTANCE_ID,
     instanceDisplayName: "Thais Amorim Leads",
     clinicName: "Clínica Virtuosa São Caetano",
+    address: "Avenida Vital Brasil Filho, 143 — Osvaldo Cruz, São Caetano do Sul",
+    locationUrl: "https://www.google.com/maps/search/?api=1&query=Avenida+Vital+Brasil+Filho%2C+143%2C+S%C3%A3o+Caetano+do+Sul+SP",
     scheduledTemplate: DEFAULT_SCS_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
     confirmationRequestTemplate: DEFAULT_SCS_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
   },
@@ -168,6 +194,9 @@ function buildEvaluationMessage(params: {
   clientName: string;
   startTime: Date;
   template: string;
+  unitName?: string;
+  address?: string;
+  locationUrl?: string;
 }) {
   const clientName = params.clientName.trim();
   const weekday = weekdayFormatter.format(params.startTime);
@@ -180,7 +209,9 @@ function buildEvaluationMessage(params: {
     dia_da_semana: weekday,
     data: date,
     hora: time,
-    unidade: params.unit,
+    unidade: params.unitName || params.unit,
+    endereco: params.address || "",
+    link_localizacao: params.locationUrl || "",
   });
 }
 
@@ -232,6 +263,26 @@ export function buildEvaluationNoShowMessage(params: {
     clientName: params.clientName,
     startTime: params.startTime,
     template: params.template?.trim() || DEFAULT_EVALUATION_NO_SHOW_TEMPLATE,
+  });
+}
+
+export function buildEvaluationDayReminderMessage(params: {
+  unit: EvaluationScheduleUnit;
+  clientName: string;
+  startTime: Date;
+  template?: string | null;
+}) {
+  const config = getEvaluationScheduleUnitConfigByUnit(params.unit);
+  if (!config) throw new Error(`Unidade sem automação de lembrete: ${params.unit}`);
+
+  return buildEvaluationMessage({
+    unit: params.unit,
+    clientName: params.clientName,
+    startTime: params.startTime,
+    template: params.template?.trim() || DEFAULT_EVALUATION_DAY_REMINDER_TEMPLATE,
+    unitName: config.displayUnitName,
+    address: config.address,
+    locationUrl: config.locationUrl,
   });
 }
 

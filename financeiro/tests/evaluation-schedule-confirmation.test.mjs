@@ -3,12 +3,14 @@ import test from "node:test";
 
 import {
   DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
+  DEFAULT_EVALUATION_DAY_REMINDER_TEMPLATE,
   DEFAULT_EVALUATION_NO_SHOW_TEMPLATE,
   DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
   LEADS_OSASCO_INSTANCE_ID,
   LEADS_SBC_INSTANCE_ID,
   LEADS_SCS_INSTANCE_ID,
   buildEvaluationConfirmationRequestMessage,
+  buildEvaluationDayReminderMessage,
   buildEvaluationNoShowMessage,
   buildEvaluationScheduleConfirmationMessage,
   getEvaluationScheduleUnitConfig,
@@ -20,6 +22,9 @@ import {
   evaluationConfirmationWindow,
   normalizeEvaluationConfirmationWindowHours,
 } from "../src/lib/whatsapp/evaluation-confirmation-window.ts";
+import {
+  evaluationDayReminderWindow,
+} from "../src/lib/whatsapp/evaluation-day-reminder-window.ts";
 
 test("confirmação mantém os parágrafos e formata a agenda de Osasco", () => {
   const message = buildEvaluationScheduleConfirmationMessage({
@@ -195,6 +200,79 @@ test("mensagem de ausência editada continua disponível nas três unidades", ()
       template: "Olá, {{primeiro_nome}}. Registramos sua ausência em {{unidade}} às {{hora}}.",
     }), `Olá, Ana. Registramos sua ausência em ${unit} às 10:30.`);
   }
+});
+
+test("lembrete no dia preserva o texto aprovado e os dados de Osasco", () => {
+  const message = buildEvaluationDayReminderMessage({
+    unit: "Osasco",
+    clientName: "Maria da Silva",
+    startTime: new Date("2026-08-19T16:30:00.000Z"),
+  });
+
+  assert.equal(message, [
+    "Olá, Maria da Silva!",
+    "",
+    "Passando para lembrar que sua avaliação na Clínica Virtuosa Osasco será hoje, às 13:30. 🗓️✨",
+    "",
+    "Estamos preparando tudo para receber você com muito carinho. 🌸",
+    "",
+    "📍 Rua Eloy Cândido Lopes, 61 — Centro, Osasco",
+    "Localização: https://share.google/uwnrFMCt4re3TqvXI",
+    "",
+    "Estamos esperando por você!",
+  ].join("\n"));
+  assert.match(DEFAULT_EVALUATION_DAY_REMINDER_TEMPLATE, /\{\{endereco\}\}/);
+  assert.match(DEFAULT_EVALUATION_DAY_REMINDER_TEMPLATE, /\{\{link_localizacao\}\}/);
+});
+
+test("lembrete no dia usa nome, endereço e localização da própria unidade", () => {
+  const cases = [
+    ["SBC", "São Bernardo", "Avenida das Nações Unidas, 30"],
+    ["SCS", "São Caetano", "Avenida Vital Brasil Filho, 143"],
+  ];
+
+  for (const [unit, displayName, address] of cases) {
+    const message = buildEvaluationDayReminderMessage({
+      unit,
+      clientName: "Ana",
+      startTime: new Date("2026-08-19T16:30:00.000Z"),
+    });
+    assert.match(message, new RegExp(`Clínica Virtuosa ${displayName}`));
+    assert.match(message, new RegExp(address));
+    assert.doesNotMatch(message, /Eloy Cândido Lopes/);
+  }
+});
+
+test("lembrete abre duas horas antes e nunca antes das 8h de São Paulo", () => {
+  const afternoonStart = new Date("2026-08-19T16:30:00.000Z");
+  assert.equal(evaluationDayReminderWindow({
+    startTime: afternoonStart,
+    now: new Date("2026-08-19T14:29:59.999Z"),
+  }).state, "too_early");
+  assert.equal(evaluationDayReminderWindow({
+    startTime: afternoonStart,
+    now: new Date("2026-08-19T14:30:00.000Z"),
+  }).state, "available");
+
+  const morningStart = new Date("2026-08-19T12:00:00.000Z");
+  const window = evaluationDayReminderWindow({
+    startTime: morningStart,
+    now: new Date("2026-08-19T11:00:00.000Z"),
+  });
+  assert.equal(window.state, "available");
+  assert.equal(window.reminderAt.toISOString(), "2026-08-19T11:00:00.000Z");
+});
+
+test("lembrete não envia em outro dia nem depois do horário da avaliação", () => {
+  const startTime = new Date("2026-08-19T16:30:00.000Z");
+  assert.equal(evaluationDayReminderWindow({
+    startTime,
+    now: new Date("2026-08-18T16:30:00.000Z"),
+  }).state, "not_today");
+  assert.equal(evaluationDayReminderWindow({
+    startTime,
+    now: startTime,
+  }).state, "expired");
 });
 
 test("janela de confirmação abre exatamente 48h antes e fecha no horário", () => {

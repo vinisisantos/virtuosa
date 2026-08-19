@@ -81,6 +81,7 @@ const TRIGGER_TYPES = [
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
   { key: "evaluation_scheduled", label: "AGENDA · Agendamento", desc: "Confirmação após agendamento", icon: CalendarDays },
   { key: "evaluation_confirmation_request", label: "AGENDA · Confirmação", desc: "Janela configurável para confirmar presença", icon: CalendarDays },
+  { key: "evaluation_day_reminder", label: "AGENDA · Lembrete no dia", desc: "Lembra avaliações já confirmadas", icon: CalendarDays },
   { key: "evaluation_no_show_follow_up", label: "AGENDA · Não compareceu", desc: "Mensagem automática para reagendar", icon: CalendarDays },
   { key: "new_message", label: "Nova Mensagem Recebida", desc: "Qualquer mensagem recebida", icon: MessageSquare },
   { key: "keyword", label: "Palavra-chave", desc: "Mensagem contém palavras específicas", icon: Tag },
@@ -92,6 +93,7 @@ const NATIVE_TRIGGER_TYPES = new Set([
   "ctwa_welcome",
   "evaluation_scheduled",
   "evaluation_confirmation_request",
+  "evaluation_day_reminder",
   "evaluation_no_show_follow_up",
 ]);
 
@@ -192,6 +194,7 @@ function AutomationCard({
   const isEvaluationAgendaAutomation = [
     "evaluation_scheduled",
     "evaluation_confirmation_request",
+    "evaluation_day_reminder",
     "evaluation_no_show_follow_up",
   ].includes(automation.triggerType);
   const messagePreview = isEvaluationAgendaAutomation ? automationMessagePreview(automation) : null;
@@ -231,6 +234,11 @@ function AutomationCard({
             {confirmationWindowHours !== null && (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
                 {confirmationWindowHours}h antes
+              </span>
+            )}
+            {automation.triggerType === "evaluation_day_reminder" && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                2h antes · a partir das 8h
               </span>
             )}
           </div>
@@ -455,6 +463,7 @@ function AutomationBuilder({
   const isEvaluationAgendaAutomation = [
     "evaluation_scheduled",
     "evaluation_confirmation_request",
+    "evaluation_day_reminder",
     "evaluation_no_show_follow_up",
   ].includes(initial?.triggerType || "");
   const confirmationWindowHours = Number(
@@ -640,6 +649,17 @@ function AutomationBuilder({
                 </p>
               </div>
             )}
+
+            {triggerType === "evaluation_day_reminder" && (
+              <div className="rounded-lg border border-border bg-card p-3">
+                <p className="text-xs font-medium text-foreground">
+                  Envio automático 2 horas antes, nunca antes das 8h
+                </p>
+                <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
+                  O lembrete é enviado uma única vez e somente para avaliações com status Confirmado no próprio dia.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Steps */}
@@ -669,7 +689,7 @@ function AutomationBuilder({
                     onMoveDown={() => moveStep(i, i + 1)}
                     lockedStructure={isEvaluationAgendaAutomation}
                     variablesHint={isEvaluationAgendaAutomation
-                      ? "{{nome}}, {{nome_completo}}, {{primeiro_nome}}, {{dia_da_semana}}, {{data}}, {{hora}} e {{unidade}}"
+                      ? "{{nome}}, {{nome_completo}}, {{primeiro_nome}}, {{dia_da_semana}}, {{data}}, {{hora}}, {{unidade}}, {{endereco}} e {{link_localizacao}}"
                       : undefined}
                   />
                 ))}
