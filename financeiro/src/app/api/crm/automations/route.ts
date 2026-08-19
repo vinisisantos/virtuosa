@@ -17,6 +17,7 @@ import { ensureEvaluationDayReminderAutomations } from "@/lib/whatsapp/evaluatio
 import { ensureEvaluationRescheduleAutomations } from "@/lib/whatsapp/evaluation-reschedule-automation";
 import {
   DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+  EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION,
   isValidEvaluationConfirmationWindowHours,
 } from "@/lib/whatsapp/evaluation-confirmation-window";
 
@@ -232,6 +233,7 @@ export async function PUT(req: NextRequest) {
           instanceIds: [unitConfig.instanceId],
           manualAction: true,
           windowHours: Number(requestedWindowHours),
+          windowConfigVersion: EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION,
         };
       }
     }

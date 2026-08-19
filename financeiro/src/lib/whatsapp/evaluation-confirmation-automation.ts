@@ -10,6 +10,7 @@ import {
 } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import {
   DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+  EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION,
   LEGACY_EVALUATION_CONFIRMATION_WINDOW_HOURS,
   normalizeEvaluationConfirmationWindowHours,
 } from "@/lib/whatsapp/evaluation-confirmation-window";
@@ -30,8 +31,9 @@ function jsonObject(value: Prisma.JsonValue) {
 }
 
 function isLegacyConfirmationWindow(triggerConfig: Prisma.JsonValue) {
-  return Number(jsonObject(triggerConfig).windowHours)
-    === LEGACY_EVALUATION_CONFIRMATION_WINDOW_HOURS;
+  const config = jsonObject(triggerConfig);
+  return Number(config.windowHours) === LEGACY_EVALUATION_CONFIRMATION_WINDOW_HOURS
+    && Number(config.windowConfigVersion || 0) < EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION;
 }
 
 function upgradeLegacyConfirmationSteps(steps: Prisma.JsonValue) {
@@ -70,6 +72,7 @@ async function upgradeLegacyConfirmationAutomation<T extends EvaluationConfirmat
       triggerConfig: {
         ...jsonObject(automation.triggerConfig),
         windowHours: DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+        windowConfigVersion: EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION,
       } as Prisma.InputJsonValue,
       steps: upgradeLegacyConfirmationSteps(automation.steps),
     },
@@ -116,6 +119,7 @@ function confirmationAutomationData(
       units: [config.unit],
       instanceIds: [config.instanceId],
       windowHours: DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+      windowConfigVersion: EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION,
       manualAction: true,
     },
     steps: [
