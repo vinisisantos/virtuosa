@@ -81,6 +81,7 @@ const TRIGGER_TYPES = [
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
   { key: "evaluation_scheduled", label: "AGENDA · Agendamento", desc: "Confirmação após agendamento", icon: CalendarDays },
   { key: "evaluation_confirmation_request", label: "AGENDA · Confirmação", desc: "Janela configurável para confirmar presença", icon: CalendarDays },
+  { key: "evaluation_no_show_follow_up", label: "AGENDA · Não compareceu", desc: "Mensagem automática para reagendar", icon: CalendarDays },
   { key: "new_message", label: "Nova Mensagem Recebida", desc: "Qualquer mensagem recebida", icon: MessageSquare },
   { key: "keyword", label: "Palavra-chave", desc: "Mensagem contém palavras específicas", icon: Tag },
   { key: "new_contact", label: "Novo Contato", desc: "Quando um contato é criado", icon: Users },
@@ -91,6 +92,7 @@ const NATIVE_TRIGGER_TYPES = new Set([
   "ctwa_welcome",
   "evaluation_scheduled",
   "evaluation_confirmation_request",
+  "evaluation_no_show_follow_up",
 ]);
 
 const STEP_TYPES = [
@@ -190,6 +192,7 @@ function AutomationCard({
   const isEvaluationAgendaAutomation = [
     "evaluation_scheduled",
     "evaluation_confirmation_request",
+    "evaluation_no_show_follow_up",
   ].includes(automation.triggerType);
   const messagePreview = isEvaluationAgendaAutomation ? automationMessagePreview(automation) : null;
   const confirmationWindowHours = automation.triggerType === "evaluation_confirmation_request"
@@ -452,6 +455,7 @@ function AutomationBuilder({
   const isEvaluationAgendaAutomation = [
     "evaluation_scheduled",
     "evaluation_confirmation_request",
+    "evaluation_no_show_follow_up",
   ].includes(initial?.triggerType || "");
   const confirmationWindowHours = Number(
     triggerConfig.windowHours ?? DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,

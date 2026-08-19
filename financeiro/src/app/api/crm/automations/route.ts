@@ -3,12 +3,14 @@ import { prisma } from "@/lib/db";
 import { requireRole } from "@/lib/auth";
 import {
   EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
+  EVALUATION_NO_SHOW_AUTOMATION_TRIGGER,
   EVALUATION_SCHEDULE_UNIT_CONFIGS,
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
   getEvaluationScheduleUnitConfigByUnit,
   getEvaluationScheduleAutomationMessage,
 } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import { ensureEvaluationConfirmationRequestAutomations } from "@/lib/whatsapp/evaluation-confirmation-automation";
+import { ensureEvaluationNoShowAutomations } from "@/lib/whatsapp/evaluation-no-show-automation";
 import {
   DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
   isValidEvaluationConfirmationWindowHours,
@@ -18,6 +20,7 @@ const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
 const NATIVE_AUTOMATION_TRIGGERS = new Set([
   CTWA_WELCOME_TRIGGER,
   EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
+  EVALUATION_NO_SHOW_AUTOMATION_TRIGGER,
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
 ]);
 
@@ -114,6 +117,7 @@ export async function GET(req: NextRequest) {
     await Promise.all([
       ensureEvaluationScheduledAutomations(auth.user.name || auth.user.email),
       ensureEvaluationConfirmationRequestAutomations(auth.user.name || auth.user.email),
+      ensureEvaluationNoShowAutomations(auth.user.name || auth.user.email),
     ]);
 
     const where: Record<string, unknown> = {};
@@ -227,6 +231,7 @@ export async function PUT(req: NextRequest) {
       [
         EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
         EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
+        EVALUATION_NO_SHOW_AUTOMATION_TRIGGER,
       ].includes(existing.triggerType)
       && data.steps !== undefined
     ) {

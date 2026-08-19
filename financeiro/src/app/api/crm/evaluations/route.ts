@@ -14,6 +14,7 @@ import {
 import {
   isClosedPackageEvaluationStatus,
   isEvaluationStatus,
+  isNoShowEvaluationStatus,
   type EvaluationStatus,
 } from "@/lib/evaluation-status";
 import { prisma } from "@/lib/db";
@@ -38,6 +39,7 @@ import { pipelineStageKeyFromName, pipelineToClientStage } from "@/lib/pipeline/
 import { canonicalLeadSource } from "@/lib/lead-attribution";
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from "@/lib/unit-guard";
 import { suppressWhatsAppCallbacksForClosedPackage } from "@/lib/whatsapp/callback-suppression";
+import { sendEvaluationNoShowNotification } from "@/lib/whatsapp/evaluation-no-show-notification";
 
 function monthRange(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -691,8 +693,24 @@ export async function PATCH(req: NextRequest) {
       return savedEvaluation;
     });
 
+    const noShowNotification = (
+      hasStatus
+      && status === "nao_compareceu"
+      && !rescheduled
+      && !isNoShowEvaluationStatus(evaluation.status)
+    )
+      ? await sendEvaluationNoShowNotification({
+          unit: updated.unit,
+          appointmentId: updated.id,
+          clientName: updated.clientName,
+          clientPhone: updated.clientPhone,
+          startTime: updated.startTime,
+          createdBy: guard.userName,
+        })
+      : null;
+
     const [enriched] = await enrichEvaluationsWithPipelineData([updated]);
-    return NextResponse.json({ evaluation: enriched });
+    return NextResponse.json({ evaluation: enriched, noShowNotification });
   } catch (error) {
     if (error instanceof EvaluationSchedulingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

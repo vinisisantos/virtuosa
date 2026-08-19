@@ -38,6 +38,7 @@ export async function findConversationByPhone(params: {
     select: {
       id: true,
       instanceId: true,
+      lastKnownJid: true,
       status: true,
       assignedTo: true,
       assignedToName: true,

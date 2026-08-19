@@ -6,6 +6,17 @@ export const LEADS_SBC_INSTANCE_ID = "a6871ee7-8352-4b66-bfb2-b8dba9e4f8e3";
 export const LEADS_SCS_INSTANCE_ID = "bbb24b4e-ef6d-4b64-93e8-9998d0514c65";
 export const EVALUATION_SCHEDULED_AUTOMATION_TRIGGER = "evaluation_scheduled";
 export const EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER = "evaluation_confirmation_request";
+export const EVALUATION_NO_SHOW_AUTOMATION_TRIGGER = "evaluation_no_show_follow_up";
+
+export const DEFAULT_EVALUATION_NO_SHOW_TEMPLATE = [
+  "Oi, {{nome}}! 😊",
+  "",
+  "Vimos que você não conseguiu comparecer à sua avaliação de hoje. Aconteceu algum imprevisto?",
+  "",
+  "Me informe a melhor data que posso *reagendar sua avaliação* para um dia e horário que fique melhor para você. 😊",
+  "",
+  "Você prefere *durante a semana ou no sábado*?",
+].join("\n");
 
 export const DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE = [
   "{{nome}} sua avaliação ficou agendada para *{{dia_da_semana}}*, *{{data}}*, às *{{hora}}*. 🗓️✨",
@@ -204,6 +215,23 @@ export function buildEvaluationConfirmationRequestMessage(params: {
     clientName: params.clientName,
     startTime: params.startTime,
     template: params.template?.trim() || config.confirmationRequestTemplate,
+  });
+}
+
+export function buildEvaluationNoShowMessage(params: {
+  unit: EvaluationScheduleUnit;
+  clientName: string;
+  startTime: Date;
+  template?: string | null;
+}) {
+  const config = getEvaluationScheduleUnitConfigByUnit(params.unit);
+  if (!config) throw new Error(`Unidade sem automação de ausência: ${params.unit}`);
+
+  return buildEvaluationMessage({
+    unit: params.unit,
+    clientName: params.clientName,
+    startTime: params.startTime,
+    template: params.template?.trim() || DEFAULT_EVALUATION_NO_SHOW_TEMPLATE,
   });
 }
 

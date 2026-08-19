@@ -3,11 +3,13 @@ import test from "node:test";
 
 import {
   DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
+  DEFAULT_EVALUATION_NO_SHOW_TEMPLATE,
   DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
   LEADS_OSASCO_INSTANCE_ID,
   LEADS_SBC_INSTANCE_ID,
   LEADS_SCS_INSTANCE_ID,
   buildEvaluationConfirmationRequestMessage,
+  buildEvaluationNoShowMessage,
   buildEvaluationScheduleConfirmationMessage,
   getEvaluationScheduleUnitConfig,
   getEvaluationScheduleAutomationMessage,
@@ -163,6 +165,36 @@ test("pedido de confirmação de SBC usa o modelo da própria unidade", () => {
   assert.match(message, /Clínica Virtuosa São Bernardo/);
   assert.match(message, /Nações Unidas, 30/);
   assert.doesNotMatch(message, /Eloy Cândido Lopes/);
+});
+
+test("mensagem de ausência preserva os parágrafos e substitui o nome", () => {
+  const message = buildEvaluationNoShowMessage({
+    unit: "Osasco",
+    clientName: "Maria da Silva",
+    startTime: new Date("2026-08-18T13:30:00.000Z"),
+  });
+
+  assert.equal(message, [
+    "Oi, Maria da Silva! 😊",
+    "",
+    "Vimos que você não conseguiu comparecer à sua avaliação de hoje. Aconteceu algum imprevisto?",
+    "",
+    "Me informe a melhor data que posso *reagendar sua avaliação* para um dia e horário que fique melhor para você. 😊",
+    "",
+    "Você prefere *durante a semana ou no sábado*?",
+  ].join("\n"));
+  assert.match(DEFAULT_EVALUATION_NO_SHOW_TEMPLATE, /\{\{nome\}\}/);
+});
+
+test("mensagem de ausência editada continua disponível nas três unidades", () => {
+  for (const unit of ["Osasco", "SBC", "SCS"]) {
+    assert.equal(buildEvaluationNoShowMessage({
+      unit,
+      clientName: "Ana Souza",
+      startTime: new Date("2026-08-18T13:30:00.000Z"),
+      template: "Olá, {{primeiro_nome}}. Registramos sua ausência em {{unidade}} às {{hora}}.",
+    }), `Olá, Ana. Registramos sua ausência em ${unit} às 10:30.`);
+  }
 });
 
 test("janela de confirmação abre exatamente 48h antes e fecha no horário", () => {

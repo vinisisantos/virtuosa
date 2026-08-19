@@ -1217,6 +1217,9 @@ export default function AvaliacoesAgendaPage() {
       setSaleItemsInput([]);
       setActiveCampaignOffer(null);
       toast.success(successMessage);
+      if (status === "nao_compareceu" && data.noShowNotification?.status === "failed") {
+        toast.warning("Ausência registrada, mas a mensagem automática não pôde ser enviada pelo WhatsApp.");
+      }
 
       if (!isSameMonth(updatedDate, month)) {
         setSelectedEvaluationId(null);
