@@ -2,7 +2,10 @@ import {
   readProviderPayload,
   summarizeProviderError,
 } from "@/lib/whatsapp/provider";
-import { evolutionConversationNumber } from "@/lib/whatsapp/chat-action-identifiers";
+import {
+  evolutionBlockNumberCandidates,
+  evolutionConversationNumber,
+} from "@/lib/whatsapp/chat-action-identifiers";
 
 type BlockStatus = "block" | "unblock";
 
@@ -63,13 +66,24 @@ export async function updateEvolutionContactBlock(params: {
   remoteJid: string;
   status: BlockStatus;
 }) {
-  const number = evolutionConversationNumber(params.remoteJid, params.phone);
-  const { response, payload } = await evolutionRequest(
-    `/chat/updateBlockStatus/${encodeURIComponent(params.instanceName)}`,
-    { number, status: params.status },
-  );
+  const candidates = evolutionBlockNumberCandidates(params.remoteJid, params.phone);
+  let lastFailure: { response: Response; payload: unknown } | null = null;
 
-  if (!response.ok) {
-    throw new Error(providerErrorMessage(payload, "O WhatsApp não confirmou o bloqueio"));
+  for (const number of candidates) {
+    const result = await evolutionRequest(
+      `/chat/updateBlockStatus/${encodeURIComponent(params.instanceName)}`,
+      { number, status: params.status },
+    );
+
+    if (result.response.ok) return;
+    lastFailure = result;
+
+    // Erros de validação/autenticação não mudam com outro formato.
+    if (result.response.status < 500) break;
   }
+
+  throw new Error(providerErrorMessage(
+    lastFailure?.payload,
+    "O WhatsApp não confirmou o bloqueio",
+  ));
 }

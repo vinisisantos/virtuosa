@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  evolutionBlockNumberCandidates,
   evolutionConversationNumber,
   whatsappConversationJid,
 } from "../src/lib/whatsapp/chat-action-identifiers.ts";
@@ -33,5 +34,19 @@ test("Evolution recebe telefone puro para contato normal e JID completo para LID
   assert.equal(
     evolutionConversationNumber("123456789@lid", "lid:123456789"),
     "123456789@lid",
+  );
+});
+
+test("bloqueio tenta JID exato após falha 5xx com telefone puro", () => {
+  assert.deepEqual(
+    evolutionBlockNumberCandidates(
+      "5511999999999@s.whatsapp.net",
+      "+55 (11) 88888-8888",
+    ),
+    ["5511999999999", "5511999999999@s.whatsapp.net"],
+  );
+  assert.deepEqual(
+    evolutionBlockNumberCandidates("123456789@lid", "lid:123456789"),
+    ["123456789@lid"],
   );
 });

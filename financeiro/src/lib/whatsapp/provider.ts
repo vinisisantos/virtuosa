@@ -51,7 +51,9 @@ export function summarizeProviderError(value: unknown): string {
   if (typeof value !== "object") return String(value).slice(0, 180);
 
   const data = value as Record<string, unknown>;
-  for (const candidate of [data.message, data.error, data.details, data.response]) {
+  // Provedores como a Evolution devolvem `error: Internal Server Error` e o
+  // motivo acionável aninhado em `response.message`.
+  for (const candidate of [data.message, data.details, data.response, data.error]) {
     const summary = summarizeProviderError(candidate);
     if (summary) return summary;
   }
