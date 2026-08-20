@@ -2,6 +2,8 @@ import { saoPauloDateKey } from "#lib/date-filter";
 
 export const EVALUATION_DAY_REMINDER_HOURS_BEFORE = 2;
 export const EVALUATION_DAY_REMINDER_EARLIEST_HOUR = 8;
+export const EVALUATION_DAY_REMINDER_MANUAL_HOURS_BEFORE = 10;
+export const EVALUATION_DAY_REMINDER_MANUAL_EARLIEST_HOUR = 0;
 
 const HOUR_MS = 60 * 60 * 1000;
 const SAO_PAULO_OFFSET = "-03:00";

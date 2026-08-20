@@ -4,6 +4,11 @@ import { findConversationByPhone } from "@/lib/whatsapp/conversation-starter";
 import { ensureEvaluationDayReminderAutomations } from "@/lib/whatsapp/evaluation-day-reminder-automation";
 import { evaluationDayReminderWindow } from "@/lib/whatsapp/evaluation-day-reminder-window";
 import {
+  claimEvaluationMessageExecution,
+  evaluationMessageExecutionKey,
+  markEvaluationMessageFailed,
+} from "@/lib/whatsapp/evaluation-message-execution";
+import {
   DEFAULT_EVALUATION_DAY_REMINDER_TEMPLATE,
   EVALUATION_DAY_REMINDER_AUTOMATION_TRIGGER,
   EVALUATION_SCHEDULE_UNIT_CONFIGS,
@@ -17,6 +22,28 @@ const REMINDER_BATCH_SIZE = 3;
 const SAO_PAULO_TIME_ZONE = "America/Sao_Paulo";
 
 type ReminderAutomation = Awaited<ReturnType<typeof ensureEvaluationDayReminderAutomations>>[number];
+
+export type EvaluationDayReminderAppointment = {
+  id: string;
+  clientName: string;
+  clientPhone: string | null;
+  unit: string;
+  startTime: Date;
+};
+
+export type EvaluationDayReminderInstance = {
+  id: string;
+  name: string;
+  provider: string;
+  status: string;
+};
+
+export type EvaluationDayReminderConversation = {
+  id: string;
+  instanceId: string;
+  lastKnownJid: string | null;
+  contact: { phone: string };
+};
 
 export type EvaluationDayReminderProcessingResult = {
   checked: number;
@@ -35,101 +62,36 @@ function saoPauloHour(date: Date) {
   return Number(hour);
 }
 
-function reminderExecutionKey(appointmentId: string, startTime: Date) {
-  return `${appointmentId}:${startTime.toISOString()}`;
-}
-
 function executionKeyFromTriggerData(triggerData: unknown) {
   if (!triggerData || typeof triggerData !== "object" || Array.isArray(triggerData)) return null;
   const executionKey = (triggerData as Record<string, unknown>).executionKey;
   return typeof executionKey === "string" ? executionKey : null;
 }
 
-async function claimReminder(
-  automation: ReminderAutomation,
-  appointment: { id: string; clientName: string; clientPhone: string | null; unit: string; startTime: Date },
-) {
-  const executionKey = reminderExecutionKey(appointment.id, appointment.startTime);
-  const existing = await prisma.automationLog.findFirst({
-    where: {
-      automationId: automation.id,
-      triggerData: { path: ["executionKey"], equals: executionKey },
-    },
-    select: { id: true, result: true },
-    orderBy: { executedAt: "desc" },
-  });
-
-  if (existing?.result === "success" || existing?.result === "processing") return null;
-
-  const triggerData = {
-    topic: "AGENDA",
-    action: EVALUATION_DAY_REMINDER_AUTOMATION_TRIGGER,
-    appointmentId: appointment.id,
-    executionKey,
-    instanceId: getEvaluationScheduleUnitConfigByUnit(appointment.unit)?.instanceId,
-    unit: appointment.unit,
-    startTime: appointment.startTime.toISOString(),
-  };
-
-  if (existing) {
-    return prisma.automationLog.update({
-      where: { id: existing.id },
-      data: {
-        contactPhone: appointment.clientPhone,
-        contactName: appointment.clientName,
-        triggerData,
-        result: "processing",
-        error: null,
-        executedAt: new Date(),
-      },
-    });
-  }
-
-  return prisma.automationLog.create({
-    data: {
-      automationId: automation.id,
-      contactPhone: appointment.clientPhone,
-      contactName: appointment.clientName,
-      triggerData,
-      result: "processing",
-    },
-  });
-}
-
-async function markReminderFailed(logId: string, error: unknown) {
-  await prisma.automationLog.update({
-    where: { id: logId },
-    data: {
-      result: "failed",
-      error: error instanceof Error ? error.message.slice(0, 1000) : "Erro desconhecido",
-    },
-  }).catch(() => {});
-}
-
-async function sendReminder(params: {
+export async function sendEvaluationDayReminder(params: {
   automation: ReminderAutomation;
-  appointment: { id: string; clientName: string; clientPhone: string | null; unit: string; startTime: Date };
-  instances: Map<string, { id: string; name: string; provider: string; status: string }>;
+  appointment: EvaluationDayReminderAppointment;
+  instance: EvaluationDayReminderInstance;
+  conversation?: EvaluationDayReminderConversation | null;
+  source: "automatic" | "manual";
+  respondedByName?: string;
 }) {
   const { automation, appointment } = params;
   const unitConfig = getEvaluationScheduleUnitConfigByUnit(appointment.unit);
   if (!unitConfig) return "failed" as const;
 
-  const log = await claimReminder(automation, appointment);
-  if (!log) return "skipped" as const;
-
   try {
     if (!appointment.clientPhone) {
       throw new Error("A avaliação confirmada não possui telefone para o lembrete.");
     }
-    const instance = params.instances.get(unitConfig.instanceId);
-    if (!instance || instance.status !== "connected") {
+    const instance = params.instance;
+    if (instance.id !== unitConfig.instanceId || instance.status !== "connected") {
       throw new Error(`A instância ${unitConfig.instanceDisplayName} não está conectada.`);
     }
 
-    const conversation = await findConversationByPhone({
+    const conversation = params.conversation || await findConversationByPhone({
       phone: appointment.clientPhone,
-      instanceIds: [unitConfig.instanceId],
+      instanceIds: [instance.id],
     });
     if (!conversation || conversation.instanceId !== instance.id) {
       throw new Error(`Conversa não encontrada na ${unitConfig.instanceDisplayName}.`);
@@ -144,14 +106,42 @@ async function sendReminder(params: {
       template,
     });
 
-    await sendAutomationText({
-      dbInstance: instance,
+    const executionKey = evaluationMessageExecutionKey(appointment.id, appointment.startTime);
+    const triggerData = {
+      topic: "AGENDA",
+      action: EVALUATION_DAY_REMINDER_AUTOMATION_TRIGGER,
+      appointmentId: appointment.id,
+      executionKey,
       conversationId: conversation.id,
+      instanceId: instance.id,
+      unit: unitConfig.unit,
+      startTime: appointment.startTime.toISOString(),
+      source: params.source,
+    };
+    const claim = await claimEvaluationMessageExecution({
+      automationId: automation.id,
+      action: EVALUATION_DAY_REMINDER_AUTOMATION_TRIGGER,
+      appointmentId: appointment.id,
+      startTime: appointment.startTime,
       contactPhone: conversation.contact.phone,
-      lastKnownJid: conversation.lastKnownJid,
-      message,
-      respondedByName: "Automação de agenda",
+      contactName: appointment.clientName,
+      triggerData,
     });
+    if (claim.status === "already_sent") return "already_sent" as const;
+
+    try {
+      await sendAutomationText({
+        dbInstance: instance,
+        conversationId: conversation.id,
+        contactPhone: conversation.contact.phone,
+        lastKnownJid: conversation.lastKnownJid,
+        message,
+        respondedByName: params.respondedByName || "Automação de agenda",
+      });
+    } catch (error) {
+      await markEvaluationMessageFailed(claim.logId, error);
+      throw error;
+    }
 
     try {
       await prisma.$transaction([
@@ -163,20 +153,11 @@ async function sendReminder(params: {
           },
         }),
         prisma.automationLog.update({
-          where: { id: log.id },
+          where: { id: claim.logId },
           data: {
             result: "success",
             error: null,
-            triggerData: {
-              topic: "AGENDA",
-              action: EVALUATION_DAY_REMINDER_AUTOMATION_TRIGGER,
-              appointmentId: appointment.id,
-              executionKey: reminderExecutionKey(appointment.id, appointment.startTime),
-              conversationId: conversation.id,
-              instanceId: instance.id,
-              unit: unitConfig.unit,
-              startTime: appointment.startTime.toISOString(),
-            },
+            triggerData,
           },
         }),
       ]);
@@ -186,7 +167,6 @@ async function sendReminder(params: {
     return "sent" as const;
   } catch (error) {
     console.error("[Evaluation Day Reminder] Falha ao enviar lembrete:", error);
-    await markReminderFailed(log.id, error);
     return "failed" as const;
   }
 }
@@ -252,7 +232,7 @@ export async function processEvaluationDayReminders(
       .filter((executionKey): executionKey is string => Boolean(executionKey)),
   );
   const due = eligible.filter((appointment) => !protectedExecutionKeys.has(
-    reminderExecutionKey(appointment.id, appointment.startTime),
+    evaluationMessageExecutionKey(appointment.id, appointment.startTime),
   ));
   result.skipped = eligible.length - due.length;
   result.due = due.length;
@@ -272,8 +252,19 @@ export async function processEvaluationDayReminders(
       result.skipped += 1;
       continue;
     }
-    const status = await sendReminder({ automation, appointment, instances: instanceById });
-    result[status] += 1;
+    const instance = instanceById.get(getEvaluationScheduleUnitConfigByUnit(appointment.unit)?.instanceId || "");
+    if (!instance) {
+      result.failed += 1;
+      continue;
+    }
+    const status = await sendEvaluationDayReminder({
+      automation,
+      appointment,
+      instance,
+      source: "automatic",
+    });
+    if (status === "already_sent") result.skipped += 1;
+    else result[status] += 1;
   }
 
   return result;

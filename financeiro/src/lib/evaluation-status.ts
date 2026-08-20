@@ -1,6 +1,7 @@
 export const EVALUATION_STATUS_VALUES = [
   "pendente",
   "confirmado",
+  "nao_confirmou",
   "compareceu",
   "fechou_pacote",
   "nao_fechou",
@@ -13,6 +14,7 @@ export type EvaluationStatus = (typeof EVALUATION_STATUS_VALUES)[number];
 export const EVALUATION_STATUS_ACTION_VALUES = [
   "pendente",
   "confirmado",
+  "nao_confirmou",
   "fechou_pacote",
   "nao_fechou",
   "nao_compareceu",
@@ -22,6 +24,7 @@ export const EVALUATION_STATUS_ACTION_VALUES = [
 export const EVALUATION_STATUS_LABELS: Record<EvaluationStatus, string> = {
   pendente: "Pendente",
   confirmado: "Confirmado",
+  nao_confirmou: "Não confirmou",
   compareceu: "Compareceu",
   fechou_pacote: "Fechou pacote",
   nao_fechou: "Não fechou",
@@ -49,6 +52,7 @@ export function normalizeEvaluationStatus(value?: string | null): EvaluationStat
 
   if (key === "falta" || key === "ausente" || key === "no_show") return "nao_compareceu";
   if (key === "sem_resposta" || key === "nao_responde") return "nao_respondeu";
+  if (key === "nao_confirmado" || key === "sem_confirmacao") return "nao_confirmou";
   if (key === "finalizado" || key === "concluido" || key === "concluida") return "pendente";
   if (key === "em_atendimento") return "pendente";
   if (isEvaluationStatus(key)) return key;

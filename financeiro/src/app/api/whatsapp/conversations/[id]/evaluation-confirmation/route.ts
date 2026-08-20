@@ -10,6 +10,12 @@ import {
 } from "@/lib/whatsapp/evaluation-confirmation-automation";
 import { evaluationConfirmationWindow } from "@/lib/whatsapp/evaluation-confirmation-window";
 import {
+  claimEvaluationMessageExecution,
+  evaluationMessageExecutionKey,
+  evaluationMessageWasProtected,
+  markEvaluationMessageFailed,
+} from "@/lib/whatsapp/evaluation-message-execution";
+import {
   EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
   buildEvaluationConfirmationRequestMessage,
   getEvaluationScheduleUnitConfig,
@@ -37,20 +43,13 @@ type EvaluationConfirmationContext = {
   } | null;
 };
 
-async function confirmationWasSent(automationId: string, appointmentId: string) {
-  const log = await prisma.automationLog.findFirst({
-    where: {
-      automationId,
-      result: "success",
-      triggerData: {
-        path: ["appointmentId"],
-        equals: appointmentId,
-      },
-    },
-    orderBy: { executedAt: "desc" },
-    select: { id: true },
+async function confirmationWasSent(automationId: string, appointment: { id: string; startTime: Date }) {
+  return evaluationMessageWasProtected({
+    automationId,
+    action: EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
+    appointmentId: appointment.id,
+    startTime: appointment.startTime,
   });
-  return Boolean(log);
 }
 
 async function resolveEvaluationConfirmationContext(
@@ -100,7 +99,7 @@ async function resolveEvaluationConfirmationContext(
       unit: unitConfig.unit,
       clientPhone: { contains: phoneSuffix },
       procedimento: { contains: "avalia", mode: "insensitive" },
-      status: "pendente",
+      status: { in: ["pendente", "nao_confirmou"] },
       startTime: { gt: new Date() },
       notes: { contains: "[pipelineDealId:" },
     },
@@ -175,7 +174,7 @@ export async function GET(
       windowHours,
     });
     const alreadySent = automation
-      ? await confirmationWasSent(automation.id, context.appointment.id)
+      ? await confirmationWasSent(automation.id, context.appointment)
       : false;
 
     return NextResponse.json({
@@ -199,6 +198,7 @@ export async function POST(
 ) {
   let automation: Awaited<ReturnType<typeof ensureEvaluationConfirmationRequestAutomation>> | null = null;
   let context: EvaluationConfirmationContext | null = null;
+  let claimedLogId: string | null = null;
 
   try {
     const { id } = await params;
@@ -231,7 +231,7 @@ export async function POST(
       }, { status: 409 });
     }
 
-    if (await confirmationWasSent(automation.id, context.appointment.id)) {
+    if (await confirmationWasSent(automation.id, context.appointment)) {
       return NextResponse.json({
         status: "already_sent",
         appointmentId: context.appointment.id,
@@ -247,6 +247,39 @@ export async function POST(
       startTime: context.appointment.startTime,
       template: messageTemplate,
     });
+
+    const executionKey = evaluationMessageExecutionKey(
+      context.appointment.id,
+      context.appointment.startTime,
+    );
+    const triggerData = {
+      topic: "AGENDA",
+      action: EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
+      appointmentId: context.appointment.id,
+      executionKey,
+      conversationId: context.conversation.id,
+      instanceId: context.instance.id,
+      unit: context.unitConfig.unit,
+      startTime: context.appointment.startTime.toISOString(),
+      source: "manual",
+    };
+    const claim = await claimEvaluationMessageExecution({
+      automationId: automation.id,
+      action: EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
+      appointmentId: context.appointment.id,
+      startTime: context.appointment.startTime,
+      contactPhone: context.conversation.contact.phone,
+      contactName: context.appointment.clientName,
+      triggerData,
+    });
+    if (claim.status === "already_sent") {
+      return NextResponse.json({
+        status: "already_sent",
+        appointmentId: context.appointment.id,
+        startTime: context.appointment.startTime.toISOString(),
+      });
+    }
+    claimedLogId = claim.logId;
 
     await sendAutomationText({
       dbInstance: context.instance,
@@ -266,21 +299,12 @@ export async function POST(
             lastExecutedAt: new Date(),
           },
         }),
-        prisma.automationLog.create({
+        prisma.automationLog.update({
+          where: { id: claim.logId },
           data: {
-            automationId: automation.id,
-            contactPhone: context.conversation.contact.phone,
-            contactName: context.appointment.clientName,
-            triggerData: {
-              topic: "AGENDA",
-              action: EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
-              appointmentId: context.appointment.id,
-              conversationId: context.conversation.id,
-              instanceId: context.instance.id,
-              unit: context.unitConfig.unit,
-              startTime: context.appointment.startTime.toISOString(),
-            },
+            triggerData,
             result: "success",
+            error: null,
           },
         }),
       ]);
@@ -295,7 +319,9 @@ export async function POST(
     });
   } catch (error) {
     console.error("[Evaluation Confirmation Send API Error]:", error);
-    if (automation) {
+    if (claimedLogId) {
+      await markEvaluationMessageFailed(claimedLogId, error);
+    } else if (automation) {
       await prisma.automationLog.create({
         data: {
           automationId: automation.id,

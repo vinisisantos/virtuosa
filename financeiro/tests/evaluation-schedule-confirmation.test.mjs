@@ -25,6 +25,8 @@ import {
   normalizeEvaluationConfirmationWindowHours,
 } from "../src/lib/whatsapp/evaluation-confirmation-window.ts";
 import {
+  EVALUATION_DAY_REMINDER_MANUAL_EARLIEST_HOUR,
+  EVALUATION_DAY_REMINDER_MANUAL_HOURS_BEFORE,
   evaluationDayReminderWindow,
 } from "../src/lib/whatsapp/evaluation-day-reminder-window.ts";
 
@@ -125,7 +127,7 @@ test("agendamento de SCS usa endereço e identidade de São Caetano", () => {
   assert.doesNotMatch(message, /Osasco/);
 });
 
-test("pedido de confirmação em 48h preserva conteúdo, parágrafos e horário", () => {
+test("pedido de confirmação preserva conteúdo, parágrafos, data e horário", () => {
   const message = buildEvaluationConfirmationRequestMessage({
     unit: "Osasco",
     clientName: "Maria da Silva",
@@ -135,7 +137,7 @@ test("pedido de confirmação em 48h preserva conteúdo, parágrafos e horário"
   assert.equal(message, [
     "Olá, *Maria da Silva*! 💗",
     "",
-    "Passando para confirmar a sua avaliação de amanhã na *Clínica Virtuosa Osasco*, às *10:30*. 🗓️✨",
+    "Passando para confirmar a sua avaliação na *Clínica Virtuosa Osasco*, no dia *10/08/2026*, às *10:30*. 🗓️✨",
     "",
     "Esse momento é muito importante para que nossa especialista consiga entender melhor os seus objetivos, avaliar a região com atenção e indicar o tratamento mais adequado para você. 🌸",
     "",
@@ -330,7 +332,29 @@ test("lembrete não envia em outro dia nem depois do horário da avaliação", (
   }).state, "expired");
 });
 
-test("janela de confirmação abre exatamente 48h antes e fecha no horário", () => {
+test("lembrete manual abre dez horas antes e permanece restrito ao dia da avaliação", () => {
+  const startTime = new Date("2026-08-19T16:30:00.000Z");
+  const params = {
+    startTime,
+    hoursBefore: EVALUATION_DAY_REMINDER_MANUAL_HOURS_BEFORE,
+    earliestHour: EVALUATION_DAY_REMINDER_MANUAL_EARLIEST_HOUR,
+  };
+
+  assert.equal(evaluationDayReminderWindow({
+    ...params,
+    now: new Date("2026-08-19T06:29:59.999Z"),
+  }).state, "too_early");
+  assert.equal(evaluationDayReminderWindow({
+    ...params,
+    now: new Date("2026-08-19T06:30:00.000Z"),
+  }).state, "available");
+  assert.equal(evaluationDayReminderWindow({
+    ...params,
+    now: new Date("2026-08-18T23:30:00.000Z"),
+  }).state, "not_today");
+});
+
+test("janela de confirmação abre exatamente 72h antes e fecha no horário", () => {
   const startTime = new Date("2026-08-12T13:30:00.000Z");
   const eligibleAt = new Date(startTime.getTime() - EVALUATION_CONFIRMATION_WINDOW_MS);
 
@@ -346,25 +370,26 @@ test("janela de confirmação abre exatamente 48h antes e fecha no horário", ()
   assert.equal(evaluationConfirmationWindow({ startTime, now: startTime }).state, "expired");
 });
 
-test("janela de confirmação respeita a antecedência configurada", () => {
+test("janela de confirmação aceita uma antecedência configurada acima de 72h", () => {
   const startTime = new Date("2026-08-12T13:30:00.000Z");
-  const eligibleAt = new Date(startTime.getTime() - 24 * 60 * 60 * 1000);
+  const eligibleAt = new Date(startTime.getTime() - 96 * 60 * 60 * 1000);
 
   assert.equal(evaluationConfirmationWindow({
     startTime,
-    windowHours: 24,
+    windowHours: 96,
     now: new Date(eligibleAt.getTime() - 1),
   }).state, "too_early");
   assert.equal(evaluationConfirmationWindow({
     startTime,
-    windowHours: 24,
+    windowHours: 96,
     now: eligibleAt,
   }).state, "available");
 });
 
-test("antecedência inválida volta ao padrão seguro de 48h", () => {
+test("antecedência inválida ou menor que 72h volta ao mínimo seguro", () => {
   assert.equal(normalizeEvaluationConfirmationWindowHours(undefined), DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS);
   assert.equal(normalizeEvaluationConfirmationWindowHours("inválido"), DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS);
-  assert.equal(normalizeEvaluationConfirmationWindowHours(0), 1);
+  assert.equal(normalizeEvaluationConfirmationWindowHours(0), 72);
+  assert.equal(normalizeEvaluationConfirmationWindowHours(24), 72);
   assert.equal(normalizeEvaluationConfirmationWindowHours(500), 168);
 });

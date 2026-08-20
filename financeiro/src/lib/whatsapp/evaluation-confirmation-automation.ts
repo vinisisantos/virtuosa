@@ -20,6 +20,7 @@ type EvaluationConfirmationAutomationDatabase = Pick<Prisma.TransactionClient, "
 type EvaluationConfirmationAutomationRecord = {
   id: string;
   name: string;
+  description: string | null;
   triggerConfig: Prisma.JsonValue;
   steps: Prisma.JsonValue;
 };
@@ -63,18 +64,25 @@ async function upgradeLegacyConfirmationAutomation<T extends EvaluationConfirmat
   automation: T,
   database: EvaluationConfirmationAutomationDatabase,
 ): Promise<T> {
-  if (!isLegacyConfirmationWindow(automation.triggerConfig)) return automation;
+  const hasLegacyWindow = isLegacyConfirmationWindow(automation.triggerConfig);
+  const hasLegacyCopy = /(?:24|48)\s*(?:h|horas)/i.test(
+    `${automation.name} ${automation.description || ""}`,
+  );
+  if (!hasLegacyWindow && !hasLegacyCopy) return automation;
 
   const updated = await database.automation.update({
     where: { id: automation.id },
     data: {
-      name: automation.name.replace(/24h/gi, "72h"),
-      triggerConfig: {
-        ...jsonObject(automation.triggerConfig),
-        windowHours: DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
-        windowConfigVersion: EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION,
-      } as Prisma.InputJsonValue,
-      steps: upgradeLegacyConfirmationSteps(automation.steps),
+      name: automation.name.replace(/(?:24|48)\s*h/gi, "72h"),
+      description: automation.description?.replace(/(?:24|48)\s*horas/gi, "72 horas"),
+      ...(hasLegacyWindow ? {
+        triggerConfig: {
+          ...jsonObject(automation.triggerConfig),
+          windowHours: DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+          windowConfigVersion: EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION,
+        } as Prisma.InputJsonValue,
+        steps: upgradeLegacyConfirmationSteps(automation.steps),
+      } : {}),
     },
   });
   return updated as unknown as T;

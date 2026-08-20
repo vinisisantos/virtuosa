@@ -18,6 +18,8 @@ import { ensureEvaluationRescheduleAutomations } from "@/lib/whatsapp/evaluation
 import {
   DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
   EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION,
+  MAX_EVALUATION_CONFIRMATION_WINDOW_HOURS,
+  MIN_EVALUATION_CONFIRMATION_WINDOW_HOURS,
   isValidEvaluationConfirmationWindowHours,
 } from "@/lib/whatsapp/evaluation-confirmation-window";
 
@@ -221,7 +223,7 @@ export async function PUT(req: NextRequest) {
 
         if (!isValidEvaluationConfirmationWindowHours(requestedWindowHours)) {
           return NextResponse.json(
-            { error: "A antecedência deve ser um número inteiro entre 1 e 168 horas." },
+            { error: `A antecedência deve ser um número inteiro entre ${MIN_EVALUATION_CONFIRMATION_WINDOW_HOURS} e ${MAX_EVALUATION_CONFIRMATION_WINDOW_HOURS} horas.` },
             { status: 400 },
           );
         }

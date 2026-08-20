@@ -144,6 +144,8 @@ type EvaluationConfirmationAvailability = {
   windowHours?: number;
 };
 
+type EvaluationDayReminderAvailability = EvaluationConfirmationAvailability;
+
 type StatusUiConfig = {
   description: string;
   dotClass: string;
@@ -175,6 +177,13 @@ const STATUS_UI: Record<EvaluationStatus, StatusUiConfig> = {
     badgeClass: "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/15 dark:text-sky-200",
     cardClass: "border-sky-200 bg-sky-50/70 hover:border-sky-300 hover:bg-sky-100/70 dark:border-sky-500/25 dark:bg-sky-500/5 dark:hover:border-sky-500/45 dark:hover:bg-sky-500/10",
     actionClass: "border-sky-300 bg-sky-50 text-sky-800 hover:bg-sky-100 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100 dark:hover:bg-sky-500/20",
+  },
+  nao_confirmou: {
+    description: "Confirmação enviada, mas a cliente ainda não confirmou presença.",
+    dotClass: "bg-orange-600 dark:bg-orange-400",
+    badgeClass: "border-orange-300 bg-orange-50 text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/15 dark:text-orange-200",
+    cardClass: "border-orange-200 bg-orange-50/70 hover:border-orange-300 hover:bg-orange-100/70 dark:border-orange-500/25 dark:bg-orange-500/5 dark:hover:border-orange-500/45 dark:hover:bg-orange-500/10",
+    actionClass: "border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-100 dark:hover:bg-orange-500/20",
   },
   compareceu: {
     description: "Cliente compareceu, mas o resultado comercial ainda não foi definido.",
@@ -303,6 +312,20 @@ function evaluationConfirmationEndpoint(params: {
   });
   if (params.targetInstanceId) searchParams.set("targetInstanceId", params.targetInstanceId);
   return `/api/whatsapp/conversations/${encodeURIComponent(params.conversationId)}/evaluation-confirmation?${searchParams.toString()}`;
+}
+
+function evaluationDayReminderEndpoint(params: {
+  conversationId: string;
+  appointmentId: string;
+  targetInstanceId?: string;
+  unit: string;
+}) {
+  const searchParams = new URLSearchParams({
+    appointmentId: params.appointmentId,
+    unit: params.unit,
+  });
+  if (params.targetInstanceId) searchParams.set("targetInstanceId", params.targetInstanceId);
+  return `/api/whatsapp/conversations/${encodeURIComponent(params.conversationId)}/evaluation-day-reminder?${searchParams.toString()}`;
 }
 
 function normalizeStageName(value?: string | null) {
@@ -727,6 +750,10 @@ export default function AvaliacoesAgendaPage() {
   const [evaluationConfirmationRefreshKey, setEvaluationConfirmationRefreshKey] = useState(0);
   const [loadingEvaluationConfirmation, setLoadingEvaluationConfirmation] = useState(false);
   const [sendingEvaluationConfirmation, setSendingEvaluationConfirmation] = useState(false);
+  const [evaluationDayReminder, setEvaluationDayReminder] = useState<EvaluationDayReminderAvailability | null>(null);
+  const [evaluationDayReminderRefreshKey, setEvaluationDayReminderRefreshKey] = useState(0);
+  const [loadingEvaluationDayReminder, setLoadingEvaluationDayReminder] = useState(false);
+  const [sendingEvaluationDayReminder, setSendingEvaluationDayReminder] = useState(false);
   const [outcomeFlow, setOutcomeFlow] = useState<OutcomeFlow>(null);
   const [editingClosedPackage, setEditingClosedPackage] = useState(false);
   const [outcomeReason, setOutcomeReason] = useState("");
@@ -996,6 +1023,63 @@ export default function AvaliacoesAgendaPage() {
     chatLink?.conversationId,
     chatLink?.targetInstanceId,
     evaluationConfirmationRefreshKey,
+    selectedEvaluation,
+  ]);
+
+  useEffect(() => {
+    setEvaluationDayReminder(null);
+    setLoadingEvaluationDayReminder(false);
+    setSendingEvaluationDayReminder(false);
+
+    if (!selectedEvaluation || !chatLink?.available || !chatLink.conversationId) return;
+
+    const controller = new AbortController();
+    let boundaryTimer: number | null = null;
+    const endpoint = evaluationDayReminderEndpoint({
+      conversationId: chatLink.conversationId,
+      appointmentId: selectedEvaluation.id,
+      targetInstanceId: chatLink.targetInstanceId,
+      unit: selectedEvaluation.unit,
+    });
+
+    setLoadingEvaluationDayReminder(true);
+    fetch(endpoint, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Não foi possível verificar o lembrete da avaliação");
+        return data as EvaluationDayReminderAvailability;
+      })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setEvaluationDayReminder(data);
+
+        const boundaryValue = data.visible ? data.startTime : data.reason === "too_early" ? data.eligibleAt : null;
+        const boundaryTime = boundaryValue ? new Date(boundaryValue).getTime() : Number.NaN;
+        if (Number.isFinite(boundaryTime)) {
+          const delay = Math.max(1000, boundaryTime - Date.now() + 1000);
+          boundaryTimer = window.setTimeout(
+            () => setEvaluationDayReminderRefreshKey((current) => current + 1),
+            Math.min(delay, 2_147_483_647),
+          );
+        }
+      })
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.error(error);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingEvaluationDayReminder(false);
+      });
+
+    return () => {
+      controller.abort();
+      if (boundaryTimer !== null) window.clearTimeout(boundaryTimer);
+    };
+  }, [
+    chatLink?.available,
+    chatLink?.conversationId,
+    chatLink?.targetInstanceId,
+    evaluationDayReminderRefreshKey,
     selectedEvaluation,
   ]);
 
@@ -1280,7 +1364,7 @@ export default function AvaliacoesAgendaPage() {
       setOutcomeTime(timeInputValue(selectedEvaluation.startTime));
     }
 
-    if (status === "pendente" || status === "confirmado") {
+    if (status === "pendente" || status === "confirmado" || status === "nao_confirmou") {
       void submitEvaluationOutcome(status);
       return;
     }
@@ -1446,6 +1530,41 @@ export default function AvaliacoesAgendaPage() {
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar a confirmação da avaliação");
     } finally {
       setSendingEvaluationConfirmation(false);
+    }
+  };
+
+  const sendSelectedEvaluationDayReminder = async () => {
+    if (
+      !selectedEvaluation
+      || !chatLink?.conversationId
+      || !evaluationDayReminder?.visible
+      || evaluationDayReminder.alreadySent
+    ) return;
+
+    setSendingEvaluationDayReminder(true);
+    try {
+      const endpoint = evaluationDayReminderEndpoint({
+        conversationId: chatLink.conversationId,
+        appointmentId: selectedEvaluation.id,
+        targetInstanceId: chatLink.targetInstanceId,
+        unit: selectedEvaluation.unit,
+      });
+      const response = await fetch(endpoint, { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível enviar o lembrete da avaliação");
+
+      setEvaluationDayReminder((current) => current
+        ? { ...current, visible: true, alreadySent: true }
+        : current);
+      toast.success(
+        data.status === "already_sent"
+          ? "O lembrete já havia sido enviado"
+          : "Lembrete enviado com sucesso",
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível enviar o lembrete da avaliação");
+    } finally {
+      setSendingEvaluationDayReminder(false);
     }
   };
 
@@ -2077,6 +2196,41 @@ export default function AvaliacoesAgendaPage() {
                             <MessageCircle className="h-4 w-4" />
                           )}
                           {evaluationConfirmation.alreadySent ? "Confirmação enviada" : "Confirmar pelo WhatsApp"}
+                        </Button>
+                      </span>
+                    )}
+
+                    {evaluationDayReminder?.visible && (
+                      <span
+                        className="inline-flex w-full sm:w-auto"
+                        title={
+                          scheduleHasUnsavedChanges
+                            ? "Salve as alterações do agendamento antes de enviar o lembrete"
+                            : evaluationDayReminder.alreadySent
+                              ? "Lembrete já enviado automática ou manualmente"
+                              : "Enviar agora o lembrete do dia pelo WhatsApp"
+                        }
+                      >
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="w-full gap-2 border-sky-500/30 bg-sky-500/10 text-sky-700 hover:bg-sky-500/15 dark:text-sky-200 sm:w-auto"
+                          onClick={() => void sendSelectedEvaluationDayReminder()}
+                          disabled={
+                            loadingEvaluationDayReminder
+                            || sendingEvaluationDayReminder
+                            || evaluationDayReminder.alreadySent
+                            || scheduleHasUnsavedChanges
+                          }
+                        >
+                          {sendingEvaluationDayReminder ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : evaluationDayReminder.alreadySent ? (
+                            <CheckCircle2 className="h-4 w-4" />
+                          ) : (
+                            <Clock className="h-4 w-4" />
+                          )}
+                          {evaluationDayReminder.alreadySent ? "Lembrete enviado" : "Enviar lembrete de hoje"}
                         </Button>
                       </span>
                     )}

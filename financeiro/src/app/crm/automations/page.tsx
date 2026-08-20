@@ -267,7 +267,7 @@ function AutomationCard({
             )}
             {automation.triggerType === "evaluation_day_reminder" && (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                2h antes · a partir das 8h
+                Automático 2h · manual 10h
               </span>
             )}
           </div>
@@ -686,7 +686,7 @@ function AutomationBuilder({
                   Envio automático 2 horas antes, nunca antes das 8h
                 </p>
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
-                  O lembrete é enviado uma única vez e somente para avaliações com status Confirmado no próprio dia.
+                  O botão manual aparece até 10 horas antes, no próprio dia. O primeiro envio bloqueia o outro caminho, evitando mensagens duplicadas.
                 </p>
               </div>
             )}

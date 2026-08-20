@@ -14,6 +14,19 @@ import {
 
 type EvaluationDayReminderAutomationDatabase = Pick<Prisma.TransactionClient, "automation">;
 
+export async function findEvaluationDayReminderAutomation(
+  unit: string,
+  database: EvaluationDayReminderAutomationDatabase = prisma,
+) {
+  return database.automation.findFirst({
+    where: {
+      triggerType: EVALUATION_DAY_REMINDER_AUTOMATION_TRIGGER,
+      unit,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 function dayReminderAutomationData(
   config: EvaluationScheduleUnitConfig,
   createdBy?: string | null,
@@ -53,7 +66,10 @@ export async function ensureEvaluationDayReminderAutomations(
       unit: { in: units },
     },
   });
-  const existingUnits = new Set(existing.map((automation) => automation.unit));
+  const canonicalExisting = EVALUATION_SCHEDULE_UNIT_CONFIGS
+    .map((config) => existing.find((automation) => automation.unit === config.unit))
+    .filter((automation): automation is NonNullable<typeof automation> => Boolean(automation));
+  const existingUnits = new Set(canonicalExisting.map((automation) => automation.unit));
   const created = await Promise.all(
     EVALUATION_SCHEDULE_UNIT_CONFIGS
       .filter((config) => !existingUnits.has(config.unit))
@@ -61,5 +77,5 @@ export async function ensureEvaluationDayReminderAutomations(
         data: dayReminderAutomationData(config, createdBy),
       })),
   );
-  return [...existing, ...created];
+  return [...canonicalExisting, ...created];
 }

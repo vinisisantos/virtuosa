@@ -26,3 +26,12 @@ test("compareceu permanece apenas como legado de presença", () => {
   assert.equal(normalizeEvaluationStatus("compareceu"), "compareceu");
   assert.equal(isAttendedEvaluationStatus("compareceu"), true);
 });
+
+test("não confirmou é selecionável sem virar ausência ou desfecho final", () => {
+  assert.equal(normalizeEvaluationStatus("Não confirmou"), "nao_confirmou");
+  assert.equal(normalizeEvaluationStatus("sem confirmação"), "nao_confirmou");
+  assert.equal(isPendingEvaluationStatus("nao_confirmou"), false);
+  assert.equal(isAttendedEvaluationStatus("nao_confirmou"), false);
+  assert.equal(isFinalEvaluationStatus("nao_confirmou"), false);
+  assert.equal(EVALUATION_STATUS_ACTION_VALUES.includes("nao_confirmou"), true);
+});
