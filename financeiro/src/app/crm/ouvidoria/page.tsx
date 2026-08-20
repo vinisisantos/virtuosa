@@ -206,6 +206,13 @@ const STATUS_UI: Record<EvaluationStatus, StatusUiConfig> = {
     cardClass: "border-rose-200 bg-rose-50/70 hover:border-rose-300 hover:bg-rose-100/70 dark:border-rose-500/25 dark:bg-rose-500/5 dark:hover:border-rose-500/45 dark:hover:bg-rose-500/10",
     actionClass: "border-rose-300 bg-rose-50 text-rose-800 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100 dark:hover:bg-rose-500/20",
   },
+  desmarcou: {
+    description: "Cliente cancelou a avaliação antes do horário agendado.",
+    dotClass: "bg-fuchsia-600 dark:bg-fuchsia-400",
+    badgeClass: "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-800 dark:border-fuchsia-500/30 dark:bg-fuchsia-500/15 dark:text-fuchsia-200",
+    cardClass: "border-fuchsia-200 bg-fuchsia-50/70 hover:border-fuchsia-300 hover:bg-fuchsia-100/70 dark:border-fuchsia-500/25 dark:bg-fuchsia-500/5 dark:hover:border-fuchsia-500/45 dark:hover:bg-fuchsia-500/10",
+    actionClass: "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-800 hover:bg-fuchsia-100 dark:border-fuchsia-500/30 dark:bg-fuchsia-500/10 dark:text-fuchsia-100 dark:hover:bg-fuchsia-500/20",
+  },
   nao_compareceu: {
     description: "Cliente não compareceu à avaliação.",
     dotClass: "bg-amber-600 dark:bg-amber-400",
@@ -1383,6 +1390,11 @@ export default function AvaliacoesAgendaPage() {
 
     if (status === "nao_fechou") {
       setOutcomeFlow("not_closed");
+      return;
+    }
+
+    if (status === "desmarcou") {
+      void submitEvaluationOutcome(status, {}, "Cancelamento registrado");
       return;
     }
 

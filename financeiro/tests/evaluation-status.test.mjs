@@ -35,3 +35,12 @@ test("não confirmou é selecionável sem virar ausência ou desfecho final", ()
   assert.equal(isFinalEvaluationStatus("nao_confirmou"), false);
   assert.equal(EVALUATION_STATUS_ACTION_VALUES.includes("nao_confirmou"), true);
 });
+
+test("desmarcou é um desfecho final separado de falta e comparecimento", () => {
+  assert.equal(normalizeEvaluationStatus("Desmarcou"), "desmarcou");
+  assert.equal(normalizeEvaluationStatus("Cancelou"), "desmarcou");
+  assert.equal(isPendingEvaluationStatus("desmarcou"), false);
+  assert.equal(isAttendedEvaluationStatus("desmarcou"), false);
+  assert.equal(isFinalEvaluationStatus("desmarcou"), true);
+  assert.equal(EVALUATION_STATUS_ACTION_VALUES.includes("desmarcou"), true);
+});

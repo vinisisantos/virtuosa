@@ -658,13 +658,15 @@ export async function PATCH(req: NextRequest) {
             ? "not_closed"
             : status === "nao_compareceu"
               ? "no_show"
-              : status === "nao_confirmou"
-                ? "not_confirmed"
-              : status === "nao_respondeu"
-                ? "no_response"
-              : hasStatus
-                ? "status_changed"
-                : "rescheduled";
+              : status === "desmarcou"
+                ? "cancelled"
+                : status === "nao_confirmou"
+                  ? "not_confirmed"
+                  : status === "nao_respondeu"
+                    ? "no_response"
+                    : hasStatus
+                      ? "status_changed"
+                      : "rescheduled";
 
       await tx.auditLog.create({
         data: {
