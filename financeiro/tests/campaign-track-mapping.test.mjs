@@ -131,6 +131,29 @@ test("não propaga o link abdominal confirmado de Osasco para outra unidade", ()
   );
 });
 
+test("prioriza o criativo facial confirmado de SBC sobre a campanha pai", () => {
+  assert.equal(
+    campaignNameFromMetaAdAndTrackSignals(
+      null,
+      "120249699105390006",
+      "https://www.instagram.com/p/DcL-MELAE2a/",
+      "SBC",
+    ),
+    "Preenchimento Facial",
+  );
+});
+
+test("não propaga o criativo facial confirmado de SBC para outra unidade", () => {
+  assert.equal(
+    campaignNameFromMetaSignals(
+      "120249699105390006",
+      "https://www.instagram.com/p/DcL-MELAE2a/",
+      "Osasco",
+    ),
+    null,
+  );
+});
+
 test("não transforma a campanha pai de Osasco em um procedimento", () => {
   assert.equal(
     campaignNameFromMetaSignals("120249500621580006", null, "Osasco"),

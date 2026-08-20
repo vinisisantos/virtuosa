@@ -18,6 +18,7 @@ const OSASCO_SECONDARY_ACCOUNT_TRACK_IDS = [
 ];
 const SBC_LEADS_INSTANCE_ID = "a6871ee7-8352-4b66-bfb2-b8dba9e4f8e3";
 const SBC_COMMERCIAL_INSTANCE_ID = "b1977b09-5ce5-445c-8da8-11c805126a0c";
+const SBC_FACIAL_SECONDARY_TRACK_ID = "120249699105390006";
 
 test("identifica a campanha e os quatro anúncios como conta secundária somente em Osasco", () => {
   for (const trackId of OSASCO_SECONDARY_ACCOUNT_TRACK_IDS) {
@@ -67,6 +68,12 @@ test("identifica toda conversa da instância Leads SBC como conta secundária", 
   assert.equal(campaignAccountOriginFromInstance(SBC_LEADS_INSTANCE_ID, "SBC"), "secondary");
   assert.equal(campaignAccountOriginFromInstance(SBC_LEADS_INSTANCE_ID, "Osasco"), null);
   assert.equal(campaignAccountOriginFromInstance(SBC_LEADS_INSTANCE_ID, "SCS"), null);
+});
+
+test("identifica a nova campanha facial de SBC como conta secundária", () => {
+  assert.equal(campaignAccountOriginFromTrackId(SBC_FACIAL_SECONDARY_TRACK_ID, "SBC"), "secondary");
+  assert.equal(campaignAccountOriginFromTrackId(SBC_FACIAL_SECONDARY_TRACK_ID, "Osasco"), null);
+  assert.equal(campaignAccountOriginFromTrackId(SBC_FACIAL_SECONDARY_TRACK_ID, "SCS"), null);
 });
 
 test("não altera a origem das conversas da instância Comercial SBC", () => {

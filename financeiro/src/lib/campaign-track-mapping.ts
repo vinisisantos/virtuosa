@@ -23,6 +23,11 @@ type CampaignSourceUrlRule = {
 // post/reel foi confirmado, o link do criativo é o sinal mais específico.
 const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
   {
+    campaignName: FACIAL_FILLER_CAMPAIGN_NAME,
+    sourceMarkers: ["DcL-MELAE2a"],
+    unit: "SBC",
+  },
+  {
     campaignName: "Barriga Trincada",
     sourceMarkers: ["Db313GhAjB3"],
     unit: "Osasco",
