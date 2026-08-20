@@ -90,6 +90,10 @@ export interface Message {
   mediaFileName?: string | null;
   mediaMimeType?: string | null;
   mediaSizeBytes?: number | null;
+  linkPreviewUrl?: string | null;
+  linkPreviewTitle?: string | null;
+  linkPreviewDescription?: string | null;
+  linkPreviewThumbnailUrl?: string | null;
   mediaPayloadOmitted?: boolean;
   quotedMessageId?: string | null;
   quotedMessageBody?: string | null;
@@ -113,6 +117,7 @@ export type VisibleMessageItem =
 
 function messageHasVisibleContent(message: Message) {
   if ((message.body || "").trim()) return true;
+  if (message.linkPreviewUrl) return true;
   if (message.mediaPayloadOmitted) return true;
   if (!message.mediaUrl) return false;
   if (message.mediaUrl.startsWith("data:image/")) return true;

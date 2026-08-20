@@ -2020,6 +2020,65 @@ function VoiceMessagePlayer({
   );
 }
 
+function linkPreviewHostname(value: string) {
+  try {
+    return new URL(value).hostname.replace(/^www\./i, "");
+  } catch {
+    return value;
+  }
+}
+
+function WhatsAppLinkPreviewCard({ msg, isMe }: { msg: Message; isMe: boolean }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const url = msg.linkPreviewUrl;
+  if (!url) return null;
+
+  const showImage = Boolean(msg.linkPreviewThumbnailUrl && !imageFailed);
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(event) => event.stopPropagation()}
+      className={`mb-1 block w-full overflow-hidden rounded-[7px] text-left transition-[filter] hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] ${
+        isMe ? "bg-black/[0.07] dark:bg-black/20" : "bg-black/[0.06] dark:bg-black/25"
+      }`}
+      aria-label={`Abrir prévia de ${msg.linkPreviewTitle || linkPreviewHostname(url)}`}
+    >
+      {showImage && (
+        <img
+          src={msg.linkPreviewThumbnailUrl || undefined}
+          alt=""
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
+          className="aspect-[1.91/1] max-h-[188px] w-full bg-black/10 object-cover"
+        />
+      )}
+      <span className="block min-w-0 px-2.5 py-2">
+        {msg.linkPreviewTitle && (
+          <span className="line-clamp-2 block break-words text-[13px] font-semibold leading-snug">
+            {msg.linkPreviewTitle}
+          </span>
+        )}
+        {msg.linkPreviewDescription && (
+          <span className={`mt-0.5 line-clamp-2 block break-words text-[11.5px] leading-snug ${
+            isMe ? "text-[#54656f] dark:text-[#d1e3df]" : "text-muted-foreground"
+          }`}>
+            {msg.linkPreviewDescription}
+          </span>
+        )}
+        <span className={`mt-1 flex min-w-0 items-center gap-1 text-[10.5px] ${
+          isMe ? "text-[#667781] dark:text-[#c7d8d4]" : "text-muted-foreground"
+        }`}>
+          <Link2 className="h-3 w-3 shrink-0" />
+          <span className="truncate">{linkPreviewHostname(url)}</span>
+        </span>
+      </span>
+    </a>
+  );
+}
+
 // ─── Message Bubble ───────────────────────────────────────────
 function MessageBubble({
   msg,
@@ -2082,6 +2141,12 @@ function MessageBubble({
   const isVideoMessage = msg.type === "video" && Boolean(msg.mediaUrl);
   const isAlbumMessage = Boolean(albumImages && albumImages.length >= 2);
   const hasVisualMedia = isMediaMessage || isVideoMessage || isAlbumMessage;
+  const hasLinkPreview = Boolean(
+    !isDeleted &&
+    msg.linkPreviewUrl &&
+    (msg.linkPreviewTitle || msg.linkPreviewDescription || msg.linkPreviewThumbnailUrl),
+  );
+  const hasRichContent = hasVisualMedia || hasLinkPreview;
   const isAudioMessage = (msg.type === "audio" || msg.type === "ptt") && Boolean(msg.mediaUrl);
   const documentMeta = msg.type === "document" && msg.mediaUrl ? documentMessageMeta(msg) : null;
   const hasQuotedMessage = Boolean(msg.quotedMessageId && msg.status !== "deleted");
@@ -2285,13 +2350,15 @@ function MessageBubble({
           } ${isHighlighted ? "ring-2 ring-[#00a884] ring-offset-4 ring-offset-transparent shadow-[0_0_0_7px_rgba(0,168,132,0.20)]" : ""} ${hasQuotedMessage ? "min-w-48 sm:min-w-52" : ""} ${
             isAlbumMessage
               ? "w-[min(82vw,360px)] p-[3px] pb-5 sm:w-[min(42vw,360px)]"
-              : hasVisualMedia
-              ? "max-w-[min(82vw,360px)] items-start p-[3px] pb-5 sm:max-w-[min(42vw,360px)]"
-              : isAudioMessage
-                ? "max-w-full px-2.5 pb-1 pt-2"
-                : documentMeta
-                  ? "max-w-full p-1.5 pb-5"
-                  : "max-w-full px-2.5 pb-1.5 pt-1.5"
+              : hasLinkPreview
+                ? "w-[min(82vw,360px)] p-[3px] pb-5 sm:w-[min(42vw,360px)]"
+                : hasVisualMedia
+                  ? "max-w-[min(82vw,360px)] items-start p-[3px] pb-5 sm:max-w-[min(42vw,360px)]"
+                  : isAudioMessage
+                    ? "max-w-full px-2.5 pb-1 pt-2"
+                    : documentMeta
+                      ? "max-w-full p-1.5 pb-5"
+                      : "max-w-full px-2.5 pb-1.5 pt-1.5"
           }`}
         >
           <div
@@ -2403,7 +2470,7 @@ function MessageBubble({
               aria-label={`Ir para a mensagem original: ${quotedMessageBody(msg)}`}
               className={`mb-1.5 flex max-w-full cursor-pointer overflow-hidden rounded-md text-left outline-none transition-[filter,box-shadow] hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[#00a884] focus-visible:ring-offset-1 ${
                 isMe ? "bg-black/5 dark:bg-black/15" : "bg-black/10 dark:bg-black/20"
-              } ${hasVisualMedia ? "mx-1.5 mt-1.5 w-[calc(100%_-_0.75rem)]" : "w-full"}`}
+              } ${hasRichContent ? "mx-1.5 mt-1.5 w-[calc(100%_-_0.75rem)]" : "w-full"}`}
             >
               <div className={`w-1 shrink-0 ${isMe ? "bg-[#02765c] dark:bg-[#53bdeb]" : "bg-[#00a884]"}`} />
               <div className="min-w-0 max-w-full px-2.5 py-1.5">
@@ -2416,6 +2483,8 @@ function MessageBubble({
               </div>
             </button>
           )}
+
+          {hasLinkPreview && <WhatsAppLinkPreviewCard msg={msg} isMe={isMe} />}
 
           {isAlbumMessage && albumImages && (
             <div
@@ -2535,9 +2604,9 @@ function MessageBubble({
 
           {/* Text */}
           {visibleBody && (
-            <div className={`break-words whitespace-pre-wrap ${isDeleted ? "italic opacity-70" : ""} ${hasVisualMedia ? "px-2 pb-0.5 pt-1" : ""}`}>
+            <div className={`break-words whitespace-pre-wrap ${isDeleted ? "italic opacity-70" : ""} ${hasRichContent ? "px-2 pb-0.5 pt-1" : ""}`}>
               <WhatsAppFormattedText text={visibleBody} id={msg.id} />
-              {!hasVisualMedia && !isAudioMessage && !documentMeta && (
+              {!hasRichContent && !isAudioMessage && !documentMeta && (
                 <span className={`inline-block ${isMe ? "w-[58px]" : "w-[42px]"}`} aria-hidden="true" />
               )}
             </div>

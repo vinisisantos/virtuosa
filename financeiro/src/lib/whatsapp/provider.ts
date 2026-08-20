@@ -323,6 +323,7 @@ export async function sendWahaText(params: {
   chatId: string;
   text: string;
   replyTo?: string | null;
+  linkPreview?: boolean;
 }) {
   const body: Record<string, unknown> = {
     session: params.sessionName,
@@ -330,6 +331,10 @@ export async function sendWahaText(params: {
     text: params.text,
   };
   if (params.replyTo) body.reply_to = params.replyTo;
+  if (params.linkPreview) {
+    body.linkPreview = true;
+    body.linkPreviewHighQuality = true;
+  }
 
   const res = await wahaRequest("/api/sendText", {
     method: "POST",

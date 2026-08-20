@@ -39,6 +39,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260815130000_whatsapp_callback_attempts/migration.sql",
     "prisma/migrations/20260815183000_suppress_closed_package_callbacks/migration.sql",
     "prisma/migrations/20260816113000_whatsapp_saved_reply_positions/migration.sql",
+    "prisma/migrations/20260820170000_whatsapp_link_previews/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {

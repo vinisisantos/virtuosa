@@ -101,6 +101,10 @@ function serializeReadonlyHistoryMessage(message: {
   mediaFileName: string | null;
   mediaMimeType: string | null;
   mediaSizeBytes: number | null;
+  linkPreviewUrl: string | null;
+  linkPreviewTitle: string | null;
+  linkPreviewDescription: string | null;
+  linkPreviewThumbnailUrl: string | null;
   quotedMessageId: string | null;
   quotedMessageBody: string | null;
   quotedMessageType: string | null;
@@ -272,6 +276,10 @@ async function loadLarissaHandoffHistory(params: {
       mediaFileName: true,
       mediaMimeType: true,
       mediaSizeBytes: true,
+      linkPreviewUrl: true,
+      linkPreviewTitle: true,
+      linkPreviewDescription: true,
+      linkPreviewThumbnailUrl: true,
       quotedMessageId: true,
       quotedMessageBody: true,
       quotedMessageType: true,
@@ -299,6 +307,10 @@ async function loadLarissaHandoffHistory(params: {
       mediaFileName: null,
       mediaMimeType: null,
       mediaSizeBytes: null,
+      linkPreviewUrl: null,
+      linkPreviewTitle: null,
+      linkPreviewDescription: null,
+      linkPreviewThumbnailUrl: null,
       quotedMessageId: null,
       quotedMessageBody: null,
       quotedMessageType: null,
@@ -471,6 +483,10 @@ export async function GET(req: Request) {
         mediaFileName: true,
         mediaMimeType: true,
         mediaSizeBytes: true,
+        linkPreviewUrl: true,
+        linkPreviewTitle: true,
+        linkPreviewDescription: true,
+        linkPreviewThumbnailUrl: true,
         quotedMessageId: true,
         quotedMessageBody: true,
         quotedMessageType: true,

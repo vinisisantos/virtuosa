@@ -1474,6 +1474,10 @@ model WhatsAppMessage {
   mediaFileName       String?
   mediaMimeType       String?
   mediaSizeBytes      Int?
+  linkPreviewUrl String?
+  linkPreviewTitle String?
+  linkPreviewDescription String?
+  linkPreviewThumbnailUrl String?
   quotedMessageId     String?
   quotedMessageBody   String?
   quotedMessageType   String?

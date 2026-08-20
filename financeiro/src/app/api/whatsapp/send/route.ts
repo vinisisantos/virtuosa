@@ -23,6 +23,7 @@ import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
 import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
 import { whatsAppConversationPreview } from "@/lib/whatsapp/message-content";
+import { firstWhatsAppLink, loadWhatsAppLinkPreview } from "@/lib/whatsapp/link-preview";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -387,6 +388,11 @@ export async function POST(req: Request) {
       unit: dbInstance.unit || resolvedContact.unit,
       attendantName: userName || conversation.assignedToName,
     });
+    const linkPreviewSourceUrl = !isMedia ? firstWhatsAppLink(messageBody) : null;
+    // A busca acontece em paralelo ao envio e nunca impede a entrega da mensagem.
+    const linkPreviewPromise = linkPreviewSourceUrl
+      ? loadWhatsAppLinkPreview(messageBody)
+      : Promise.resolve(null);
 
     const originalMediaReference = isMedia && typeof body.file === "string" ? body.file.trim() : "";
     const usesPrivateBlob = isPrivateBlobUrl(originalMediaReference);
@@ -495,6 +501,7 @@ export async function POST(req: Request) {
           chatId: providerSendTarget,
           text: finalTextBody,
           replyTo: replyid || null,
+          linkPreview: Boolean(linkPreviewSourceUrl),
         });
         sendData = result.data;
         sendDiagnostic = {
@@ -626,6 +633,7 @@ export async function POST(req: Request) {
       const textPayload: any = {
         number: sendTarget,
         text: finalTextBody,
+        ...(linkPreviewSourceUrl ? { linkPreview: true } : {}),
       };
 
       // Se tiver replyId, usar quoted message
@@ -702,6 +710,7 @@ export async function POST(req: Request) {
     const mediaFileName = cleanFileName(body.docName || body.fileName);
     const mediaMimeType = verifiedMediaMimeType || parsedMedia.mimeType;
     const mediaSizeBytes = verifiedMediaSizeBytes ?? parsedMedia.sizeBytes;
+    const linkPreview = await linkPreviewPromise;
 
     // Texto de fallback para mensagens de mídia sem legenda
     const displayBody = whatsAppConversationPreview(messageBody, type);
@@ -719,6 +728,12 @@ export async function POST(req: Request) {
       mediaFileName,
       mediaMimeType,
       mediaSizeBytes,
+      ...(linkPreview ? {
+        linkPreviewUrl: linkPreview.url,
+        linkPreviewTitle: linkPreview.title,
+        linkPreviewDescription: linkPreview.description,
+        linkPreviewThumbnailUrl: linkPreview.thumbnailUrl,
+      } : {}),
       fromMe: true,
       status: "sent",
       timestamp: sentAt,
