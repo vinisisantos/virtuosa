@@ -5,6 +5,7 @@ import {
 import {
   evolutionBlockNumberCandidates,
   evolutionConversationNumber,
+  evolutionMessageLidCandidates,
 } from "@/lib/whatsapp/chat-action-identifiers";
 
 type BlockStatus = "block" | "unblock";
@@ -78,8 +79,34 @@ export async function updateEvolutionContactBlock(params: {
     if (result.response.ok) return;
     lastFailure = result;
 
-    // Erros de validação/autenticação não mudam com outro formato.
     if (result.response.status < 500) break;
+  }
+
+  const providerFailure = summarizeProviderError(lastFailure?.payload);
+  const shouldResolveLid = lastFailure?.response.status === 500
+    && /bad-request|error blocking user/i.test(providerFailure);
+
+  if (shouldResolveLid && !/@(?:hosted\.)?lid$/i.test(params.remoteJid)) {
+    const phoneJid = params.remoteJid.trim().match(/@(?:s\.whatsapp\.net|c\.us)$/i)
+      ? params.remoteJid.trim().replace(/@c\.us$/i, "@s.whatsapp.net")
+      : `${params.phone.replace(/\D/g, "")}@s.whatsapp.net`;
+    const history = await evolutionRequest(
+      `/chat/findMessages/${encodeURIComponent(params.instanceName)}`,
+      { where: { key: { remoteJid: phoneJid } }, page: 1, offset: 20 },
+    ).catch(() => null);
+    const lidCandidates = history?.response.ok
+      ? evolutionMessageLidCandidates(history.payload)
+      : [];
+
+    for (const number of lidCandidates) {
+      const result = await evolutionRequest(
+        `/chat/updateBlockStatus/${encodeURIComponent(params.instanceName)}`,
+        { number, status: params.status },
+      );
+      if (result.response.ok) return;
+      lastFailure = result;
+      if (result.response.status < 500) break;
+    }
   }
 
   throw new Error(providerErrorMessage(

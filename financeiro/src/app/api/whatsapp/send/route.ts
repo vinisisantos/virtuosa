@@ -24,6 +24,7 @@ import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
 import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
 import { whatsAppConversationPreview } from "@/lib/whatsapp/message-content";
 import { firstWhatsAppLink, loadWhatsAppLinkPreview } from "@/lib/whatsapp/link-preview";
+import { evolutionMessageLidCandidates } from "@/lib/whatsapp/chat-action-identifiers";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -679,6 +680,9 @@ export async function POST(req: Request) {
 
     // Evolution retorna { key: { remoteJid, fromMe, id }, message, messageTimestamp, status }
     const sendDataObject = sendData && typeof sendData === "object" ? sendData : {};
+    const [providerConversationLid] = provider === "evolution"
+      ? evolutionMessageLidCandidates(sendDataObject)
+      : [];
     const messageId = provider === "waha"
       ? (extractWahaMessageId(sendData) || `waha_${Date.now()}`)
       : (sendDataObject.key?.id || sendDataObject.id || `temp_${Date.now()}`);
@@ -756,6 +760,9 @@ export async function POST(req: Request) {
       archivedBy: null,
       archivedByName: null,
     };
+    if (providerConversationLid) {
+      convUpdateData.lastKnownJid = providerConversationLid;
+    }
     
     if (claimConversation) {
       convUpdateData.status = "open";

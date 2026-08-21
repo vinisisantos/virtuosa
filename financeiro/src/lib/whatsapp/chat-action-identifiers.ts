@@ -19,20 +19,57 @@ export function evolutionConversationNumber(remoteJid: string, phone: string) {
 
 export function evolutionBlockNumberCandidates(remoteJid: string, phone: string) {
   const primary = evolutionConversationNumber(remoteJid, phone);
-  const exactJid = remoteJid.trim();
-  const candidates = [primary];
+  return primary ? [primary] : [];
+}
 
-  // Algumas instalações da Evolution 2.3.x falham ao resolver o telefone
-  // puro, mas aceitam o JID exato observado no webhook. O status de bloqueio é
-  // idempotente, então o fallback pode repetir a mesma intenção com segurança.
-  if (
-    /@(?:s\.whatsapp\.net|c\.us)$/i.test(exactJid) &&
-    exactJid !== primary
-  ) {
-    candidates.push(exactJid);
+function lidFromValue(value: unknown) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  return /@(?:hosted\.)?lid$/i.test(normalized) ? normalized : "";
+}
+
+function messageContextInfos(message: unknown) {
+  if (!message || typeof message !== "object") return [];
+  const data = message as Record<string, unknown>;
+  const contexts: unknown[] = [data.contextInfo];
+
+  for (const value of Object.values(data)) {
+    if (value && typeof value === "object") {
+      contexts.push((value as Record<string, unknown>).contextInfo);
+    }
   }
 
-  return candidates.filter((candidate, index) => (
-    Boolean(candidate) && candidates.indexOf(candidate) === index
-  ));
+  return contexts;
+}
+
+export function evolutionMessageLidCandidates(payload: unknown) {
+  if (!payload || typeof payload !== "object") return [];
+  const data = payload as Record<string, any>;
+  const records = Array.isArray(data.messages?.records)
+    ? data.messages.records
+    : Array.isArray(data.records)
+      ? data.records
+      : [data];
+  const candidates: string[] = [];
+
+  for (const record of records) {
+    if (!record || typeof record !== "object") continue;
+    const contexts = [record.contextInfo, ...messageContextInfos(record.message)];
+    const values = [
+      record.key?.remoteJidAlt,
+      record.key?.remoteJid,
+      ...contexts.flatMap((context) => {
+        if (!context || typeof context !== "object") return [];
+        const value = context as Record<string, unknown>;
+        return [value.remoteJid, value.participant, value.remoteJidAlt, value.participantAlt];
+      }),
+    ];
+
+    for (const value of values) {
+      const lid = lidFromValue(value);
+      if (lid && !candidates.includes(lid)) candidates.push(lid);
+    }
+  }
+
+  return candidates;
 }
