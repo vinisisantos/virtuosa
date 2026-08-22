@@ -153,6 +153,8 @@ test("prioriza os criativos Glúteos Perfeitos 120ml sobre a campanha pai de Osa
     "https://fb.me/6hDnjnq1V",
     "https://fb.me/blVsIofjH",
     "https://web.facebook.com/story.php?story_fbid=1309185502272233&id=100095423860776",
+    "https://fb.me/4U5nMuofc",
+    "https://www.facebook.com/story.php?story_fbid=1310594035464713&id=100095423860776",
   ]) {
     assert.equal(
       campaignNameFromMetaAdAndTrackSignals(
@@ -172,6 +174,8 @@ test("não propaga os criativos 120ml de Osasco para outra unidade", () => {
     "https://www.instagram.com/p/DcT5vGtAFVs/",
     "https://fb.me/blVsIofjH",
     "https://web.facebook.com/story.php?story_fbid=1309185502272233&id=100095423860776",
+    "https://fb.me/4U5nMuofc",
+    "https://www.facebook.com/story.php?story_fbid=1310594035464713&id=100095423860776",
   ]) {
     assert.equal(
       campaignNameFromMetaSignals(

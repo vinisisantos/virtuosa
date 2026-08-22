@@ -64,6 +64,8 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
       "6hDnjnq1V",
       "blVsIofjH",
       "1309185502272233",
+      "4U5nMuofc",
+      "1310594035464713",
     ],
     unit: "Osasco",
   },
