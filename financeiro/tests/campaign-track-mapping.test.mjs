@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  COMBO_HARMONIZACAO_CAMPAIGN_NAME,
+  COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
   campaignFromPrefilledMetaLeadMessage,
   campaignNameFromMetaAdAndTrackSignals,
   campaignNameFromMetaSignals,
@@ -212,6 +214,32 @@ test("não propaga o criativo facial confirmado de SBC para outra unidade", () =
   );
 });
 
+test("prioriza o criativo Combo Harmonização de SBC sobre a campanha pai", () => {
+  assert.equal(
+    campaignNameFromMetaAdAndTrackSignals(
+      null,
+      COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
+      "https://www.instagram.com/p/DcWM0DjgNHg/",
+      "SBC",
+    ),
+    COMBO_HARMONIZACAO_CAMPAIGN_NAME,
+  );
+});
+
+test("não propaga o criativo Combo Harmonização de SBC para outra unidade", () => {
+  for (const unit of ["Osasco", "SCS"]) {
+    assert.equal(
+      campaignNameFromMetaSignals(
+        COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
+        "https://www.instagram.com/p/DcWM0DjgNHg/",
+        unit,
+      ),
+      null,
+      unit,
+    );
+  }
+});
+
 test("não transforma a campanha pai de Osasco em um procedimento", () => {
   assert.equal(
     campaignNameFromMetaSignals("120249500621580006", null, "Osasco"),
@@ -243,6 +271,35 @@ test("não classifica uma conversa comum que apenas menciona glúteos 120ml", ()
     campaignFromPrefilledMetaLeadMessage(
       "Você consegue me explicar como funcionam os 120ml nos glúteos?",
       "Osasco",
+    ),
+    null,
+  );
+});
+
+test("recupera Combo Harmonização pela mensagem predefinida quando a Meta omite o anúncio", () => {
+  assert.deepEqual(
+    campaignFromPrefilledMetaLeadMessage(
+      "Olá! Vim pelo COMBO HARMONIZAÇÃO, posso ter mais informações sobre isso?",
+      "SBC",
+    ),
+    {
+      campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
+      campaignTrackId: COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
+    },
+  );
+});
+
+test("não aplica o fallback textual Combo Harmonização em outra unidade", () => {
+  const message = "Olá! Vim pelo COMBO HARMONIZAÇÃO, posso ter mais informações sobre isso?";
+  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "Osasco"), null);
+  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SCS"), null);
+});
+
+test("não classifica uma conversa comum que apenas menciona combo harmonização", () => {
+  assert.equal(
+    campaignFromPrefilledMetaLeadMessage(
+      "Você pode me explicar se existe um combo de harmonização?",
+      "SBC",
     ),
     null,
   );

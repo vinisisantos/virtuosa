@@ -1,4 +1,6 @@
 export const FACIAL_FILLER_CAMPAIGN_NAME = "Preenchimento Facial";
+export const COMBO_HARMONIZACAO_CAMPAIGN_NAME = "Combo Harmonização";
+export const COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID = "120249763486830006";
 export const GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME = "Glúteos Perfeitos 120ml";
 export const GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID = "120249766005370006";
 
@@ -23,9 +25,20 @@ export function campaignFromPrefilledMetaLeadMessage(
   message?: string | null,
   unit?: string | null,
 ): PrefilledMetaLeadCampaign | null {
-  if (unit?.trim().toLowerCase() !== "osasco") return null;
-
+  const normalizedUnit = unit?.trim().toLowerCase();
   const normalizedMessage = normalizePrefilledMetaLeadMessage(message);
+
+  if (
+    normalizedUnit === "sbc"
+    && /\bvim pelo combo harmonizacao\b/.test(normalizedMessage)
+  ) {
+    return {
+      campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
+      campaignTrackId: COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
+    };
+  }
+
+  if (normalizedUnit !== "osasco") return null;
   if (!/\bvim pelo gluteos perfeitos 120 ?ml\b/.test(normalizedMessage)) return null;
 
   return {
@@ -72,6 +85,11 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
   {
     campaignName: FACIAL_FILLER_CAMPAIGN_NAME,
     sourceMarkers: ["DcL-MELAE2a"],
+    unit: "SBC",
+  },
+  {
+    campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
+    sourceMarkers: ["DcWM0DjgNHg"],
     unit: "SBC",
   },
   {
