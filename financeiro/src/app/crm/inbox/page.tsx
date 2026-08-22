@@ -49,6 +49,7 @@ import {
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
 import { resolveInboxConversationUnit } from "@/lib/whatsapp/conversation-unit";
 import { preserveActiveAudioMediaUrl } from "@/lib/whatsapp/audio-playback";
+import { whatsappDeferredMediaUrl } from "@/lib/whatsapp/deferred-media";
 import { findQuotedImagePreviewTarget } from "@/lib/whatsapp/quoted-media";
 import {
   fixRecordedWebmDuration,
@@ -2097,6 +2098,7 @@ function MessageBubble({
   audioAvatarFetchUrl,
   onAudioPlaybackChange,
   quotedContactLabel,
+  mediaInstanceId,
   domId,
   isHighlighted,
 }: {
@@ -2116,6 +2118,7 @@ function MessageBubble({
   audioAvatarFetchUrl?: string;
   onAudioPlaybackChange: (messageId: string, isPlaying: boolean) => void;
   quotedContactLabel?: string | null;
+  mediaInstanceId?: string;
   domId: string;
   isHighlighted: boolean;
 }) {
@@ -2140,7 +2143,7 @@ function MessageBubble({
   const { canEdit, canDelete } = messageActionState(msg);
   const isDeleted = msg.status === "deleted";
   const deferredMediaUrl = loadDeferredMedia && msg.mediaPayloadOmitted
-    ? `/api/whatsapp/messages?mediaMessageId=${encodeURIComponent(msg.id)}`
+    ? whatsappDeferredMediaUrl(msg.id, mediaInstanceId)
     : null;
   const renderedMessage = deferredMediaUrl ? { ...msg, mediaUrl: deferredMediaUrl } : msg;
   const renderedMediaUrl = renderedMessage.mediaUrl;
@@ -7405,6 +7408,7 @@ export default function InboxPage() {
                         audioAvatarFetchUrl={audioAvatarFetchUrl}
                         onAudioPlaybackChange={handleAudioPlaybackChange}
                         quotedContactLabel={selectedConv.contact.name || selectedConv.contact.phone}
+                        mediaInstanceId={selectedConv.instanceId || targetInstanceId || undefined}
                         domId={messageDomId(item.id)}
                         isHighlighted={highlightedMessageItemId === item.id}
                       />
