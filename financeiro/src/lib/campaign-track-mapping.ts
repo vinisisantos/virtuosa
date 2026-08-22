@@ -41,7 +41,7 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
   },
   {
     campaignName: "Barriga Trincada",
-    sourceMarkers: ["Db313GhAjB3"],
+    sourceMarkers: ["Db313GhAjB3", "DcT5vIkgtgJ"],
     unit: "Osasco",
   },
 ];

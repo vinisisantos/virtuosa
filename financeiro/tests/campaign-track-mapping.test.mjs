@@ -102,15 +102,21 @@ test("prioriza o anúncio específico quando a Graph devolve apenas a campanha p
 });
 
 test("prioriza o link abdominal quando a Meta reutiliza o ID de Glúteo Perfeito", () => {
-  assert.equal(
-    campaignNameFromMetaAdAndTrackSignals(
-      "120249502628370006",
-      "120249500621580006",
-      "https://www.instagram.com/p/Db313GhAjB3/",
-      "Osasco",
-    ),
-    "Barriga Trincada",
-  );
+  for (const sourceUrl of [
+    "https://www.instagram.com/p/Db313GhAjB3/",
+    "https://www.instagram.com/p/DcT5vIkgtgJ/",
+  ]) {
+    assert.equal(
+      campaignNameFromMetaAdAndTrackSignals(
+        "120249502628370006",
+        "120249500621580006",
+        sourceUrl,
+        "Osasco",
+      ),
+      "Barriga Trincada",
+      sourceUrl,
+    );
+  }
   assert.equal(
     campaignNameFromMetaSignals(
       "120249502628370006",
@@ -122,14 +128,20 @@ test("prioriza o link abdominal quando a Meta reutiliza o ID de Glúteo Perfeito
 });
 
 test("não propaga o link abdominal confirmado de Osasco para outra unidade", () => {
-  assert.equal(
-    campaignNameFromMetaSignals(
-      "120249502628370006",
-      "https://www.instagram.com/p/Db313GhAjB3/",
-      "SBC",
-    ),
-    null,
-  );
+  for (const sourceUrl of [
+    "https://www.instagram.com/p/Db313GhAjB3/",
+    "https://www.instagram.com/p/DcT5vIkgtgJ/",
+  ]) {
+    assert.equal(
+      campaignNameFromMetaSignals(
+        "120249502628370006",
+        sourceUrl,
+        "SBC",
+      ),
+      null,
+      sourceUrl,
+    );
+  }
 });
 
 test("prioriza os criativos Glúteos Perfeitos 120ml sobre a campanha pai de Osasco", () => {
