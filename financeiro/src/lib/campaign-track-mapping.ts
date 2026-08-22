@@ -1,4 +1,5 @@
 export const FACIAL_FILLER_CAMPAIGN_NAME = "Preenchimento Facial";
+export const GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME = "Glúteos Perfeitos 120ml";
 
 type CampaignTrackRule = {
   campaignName: string;
@@ -22,6 +23,11 @@ type CampaignSourceUrlRule = {
 // A Meta pode reutilizar o mesmo sourceId em criativos diferentes. Quando o
 // post/reel foi confirmado, o link do criativo é o sinal mais específico.
 const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
+  {
+    campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+    sourceMarkers: ["DcT5vGtAFVs", "DcT5t79AF2R", "6hDnjnq1V"],
+    unit: "Osasco",
+  },
   {
     campaignName: FACIAL_FILLER_CAMPAIGN_NAME,
     sourceMarkers: ["DcL-MELAE2a"],

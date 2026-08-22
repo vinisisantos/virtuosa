@@ -215,7 +215,21 @@ export async function PUT(req: NextRequest) {
     delete data.updatedAt;
     // ────────────────────────────────────────────────────────────────────────
 
-    const client = await prisma.client.update({ where: { id }, data });
+    const shouldSyncCampaignName = Object.prototype.hasOwnProperty.call(data, 'campaignName');
+    const client = await prisma.$transaction(async (tx) => {
+      const saved = await tx.client.update({ where: { id }, data });
+      if (shouldSyncCampaignName) {
+        await tx.salesPipeline.updateMany({
+          where: {
+            clientId: id,
+            closedAt: null,
+            lostReason: null,
+          },
+          data: { campaignNameSnapshot: saved.campaignName },
+        });
+      }
+      return saved;
+    });
     return NextResponse.json({ success: true, client });
   } catch (err) {
     console.error('Clients PUT error:', err);

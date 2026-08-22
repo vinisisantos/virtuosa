@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   campaignNameFromMetaAdAndTrackSignals,
   campaignNameFromMetaSignals,
+  GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
 } from "../src/lib/campaign-track-mapping.ts";
 
 const exactAdCases = [
@@ -125,6 +126,36 @@ test("não propaga o link abdominal confirmado de Osasco para outra unidade", ()
     campaignNameFromMetaSignals(
       "120249502628370006",
       "https://www.instagram.com/p/Db313GhAjB3/",
+      "SBC",
+    ),
+    null,
+  );
+});
+
+test("prioriza os criativos Glúteos Perfeitos 120ml sobre a campanha pai de Osasco", () => {
+  for (const sourceUrl of [
+    "https://www.instagram.com/p/DcT5vGtAFVs/",
+    "https://www.instagram.com/p/DcT5t79AF2R/",
+    "https://fb.me/6hDnjnq1V",
+  ]) {
+    assert.equal(
+      campaignNameFromMetaAdAndTrackSignals(
+        null,
+        "120249766005370006",
+        sourceUrl,
+        "Osasco",
+      ),
+      GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+      sourceUrl,
+    );
+  }
+});
+
+test("não propaga os criativos 120ml de Osasco para outra unidade", () => {
+  assert.equal(
+    campaignNameFromMetaSignals(
+      "120249766005370006",
+      "https://www.instagram.com/p/DcT5vGtAFVs/",
       "SBC",
     ),
     null,
