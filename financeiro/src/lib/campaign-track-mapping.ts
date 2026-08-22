@@ -25,7 +25,13 @@ type CampaignSourceUrlRule = {
 const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
   {
     campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
-    sourceMarkers: ["DcT5vGtAFVs", "DcT5t79AF2R", "6hDnjnq1V"],
+    sourceMarkers: [
+      "DcT5vGtAFVs",
+      "DcT5t79AF2R",
+      "6hDnjnq1V",
+      "blVsIofjH",
+      "1309185502272233",
+    ],
     unit: "Osasco",
   },
   {

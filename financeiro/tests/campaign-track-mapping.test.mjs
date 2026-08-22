@@ -137,6 +137,8 @@ test("prioriza os criativos Glúteos Perfeitos 120ml sobre a campanha pai de Osa
     "https://www.instagram.com/p/DcT5vGtAFVs/",
     "https://www.instagram.com/p/DcT5t79AF2R/",
     "https://fb.me/6hDnjnq1V",
+    "https://fb.me/blVsIofjH",
+    "https://web.facebook.com/story.php?story_fbid=1309185502272233&id=100095423860776",
   ]) {
     assert.equal(
       campaignNameFromMetaAdAndTrackSignals(
@@ -152,14 +154,21 @@ test("prioriza os criativos Glúteos Perfeitos 120ml sobre a campanha pai de Osa
 });
 
 test("não propaga os criativos 120ml de Osasco para outra unidade", () => {
-  assert.equal(
-    campaignNameFromMetaSignals(
-      "120249766005370006",
-      "https://www.instagram.com/p/DcT5vGtAFVs/",
-      "SBC",
-    ),
-    null,
-  );
+  for (const sourceUrl of [
+    "https://www.instagram.com/p/DcT5vGtAFVs/",
+    "https://fb.me/blVsIofjH",
+    "https://web.facebook.com/story.php?story_fbid=1309185502272233&id=100095423860776",
+  ]) {
+    assert.equal(
+      campaignNameFromMetaSignals(
+        "120249766005370006",
+        sourceUrl,
+        "SBC",
+      ),
+      null,
+      sourceUrl,
+    );
+  }
 });
 
 test("prioriza o criativo facial confirmado de SBC sobre a campanha pai", () => {
