@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { constrainInlineMediaPayload } from "../src/lib/whatsapp/message-payload.ts";
+import {
+  constrainInlineMediaPayload,
+  parseInlineMediaDataUrl,
+  resolveInlineMediaByteRange,
+} from "../src/lib/whatsapp/message-payload.ts";
 
 test("mantém todas as mensagens quando as mídias cabem no orçamento", () => {
   const messages = [
@@ -36,4 +40,31 @@ test("URLs externas e privadas não consomem o orçamento de base64", () => {
   ];
 
   assert.deepEqual(constrainInlineMediaPayload(messages, 0), messages);
+});
+
+test("decodifica mídia base64 preservada no histórico", () => {
+  const parsed = parseInlineMediaDataUrl("data:video/mp4;base64,AQIDBA==");
+
+  assert.equal(parsed?.mimeType, "video/mp4");
+  assert.deepEqual([...parsed.bytes], [1, 2, 3, 4]);
+  assert.equal(parseInlineMediaDataUrl("https://example.com/video.mp4"), null);
+});
+
+test("resolve intervalos HTTP para reprodução progressiva de vídeo", () => {
+  assert.deepEqual(resolveInlineMediaByteRange(null, 100), {
+    start: 0,
+    end: 99,
+    partial: false,
+  });
+  assert.deepEqual(resolveInlineMediaByteRange("bytes=10-19", 100), {
+    start: 10,
+    end: 19,
+    partial: true,
+  });
+  assert.deepEqual(resolveInlineMediaByteRange("bytes=-10", 100), {
+    start: 90,
+    end: 99,
+    partial: true,
+  });
+  assert.equal(resolveInlineMediaByteRange("bytes=100-110", 100), null);
 });

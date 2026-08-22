@@ -2122,6 +2122,8 @@ function MessageBubble({
   const isMe = msg.fromMe;
   const [menuOpen, setMenuOpen] = useState(false);
   const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
+  const [loadDeferredMedia, setLoadDeferredMedia] = useState(false);
+  const [deferredMediaFailed, setDeferredMediaFailed] = useState(false);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPopupRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -2137,8 +2139,15 @@ function MessageBubble({
   const suppressClickUntilRef = useRef(0);
   const { canEdit, canDelete } = messageActionState(msg);
   const isDeleted = msg.status === "deleted";
-  const isMediaMessage = msg.type === "image" || msg.mediaUrl?.startsWith("data:image/");
-  const isVideoMessage = msg.type === "video" && Boolean(msg.mediaUrl);
+  const deferredMediaUrl = loadDeferredMedia && msg.mediaPayloadOmitted
+    ? `/api/whatsapp/messages?mediaMessageId=${encodeURIComponent(msg.id)}`
+    : null;
+  const renderedMessage = deferredMediaUrl ? { ...msg, mediaUrl: deferredMediaUrl } : msg;
+  const renderedMediaUrl = renderedMessage.mediaUrl;
+  const isMediaMessage = Boolean(
+    renderedMediaUrl && (msg.type === "image" || renderedMediaUrl.startsWith("data:image/")),
+  );
+  const isVideoMessage = msg.type === "video" && Boolean(renderedMediaUrl);
   const isAlbumMessage = Boolean(albumImages && albumImages.length >= 2);
   const hasVisualMedia = isMediaMessage || isVideoMessage || isAlbumMessage;
   const hasLinkPreview = Boolean(
@@ -2147,8 +2156,10 @@ function MessageBubble({
     (msg.linkPreviewTitle || msg.linkPreviewDescription || msg.linkPreviewThumbnailUrl),
   );
   const hasRichContent = hasVisualMedia || hasLinkPreview;
-  const isAudioMessage = (msg.type === "audio" || msg.type === "ptt") && Boolean(msg.mediaUrl);
-  const documentMeta = msg.type === "document" && msg.mediaUrl ? documentMessageMeta(msg) : null;
+  const isAudioMessage = (msg.type === "audio" || msg.type === "ptt") && Boolean(renderedMediaUrl);
+  const documentMeta = msg.type === "document" && renderedMediaUrl
+    ? documentMessageMeta(renderedMessage)
+    : null;
   const hasQuotedMessage = Boolean(msg.quotedMessageId && msg.status !== "deleted");
   const albumSources = albumImages?.flatMap((image) => image.mediaUrl ? [image.mediaUrl] : []) || [];
   const visibleBody = isAlbumMessage
@@ -2533,23 +2544,28 @@ function MessageBubble({
           )}
 
           {/* Image — aceita type "image" ou data URLs de imagem */}
-          {!isAlbumMessage && isMediaMessage && msg.mediaUrl && (
+          {!isAlbumMessage && isMediaMessage && renderedMediaUrl && (
             <img
-              src={msg.mediaUrl}
+              src={renderedMediaUrl}
               alt=""
               className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-full cursor-pointer rounded-[7px] object-contain"
               onClick={(e) => {
                 e.stopPropagation();
-                onOpenImage(msg.mediaUrl!);
+                onOpenImage(renderedMediaUrl);
               }}
             />
           )}
 
           {isVideoMessage && (
             <video
-              src={msg.mediaUrl || undefined}
+              src={renderedMediaUrl || undefined}
               controls
               preload="metadata"
+              onError={() => {
+                if (!deferredMediaUrl) return;
+                setLoadDeferredMedia(false);
+                setDeferredMediaFailed(true);
+              }}
               className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-full rounded-[7px] bg-black object-contain"
             />
           )}
@@ -2557,7 +2573,7 @@ function MessageBubble({
           {/* Áudio compacto com avatar e waveform no padrão WhatsApp. */}
           {isAudioMessage && (
             <VoiceMessagePlayer
-              msg={msg}
+              msg={renderedMessage}
               isMe={isMe}
               avatarContact={audioAvatarContact}
               avatarFetchUrl={audioAvatarFetchUrl}
@@ -2571,7 +2587,7 @@ function MessageBubble({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                onOpenDocument(msg);
+                onOpenDocument(renderedMessage);
               }}
               className={`mb-1.5 flex w-[290px] max-w-full items-center gap-3 rounded-xl p-2.5 text-left transition-colors ${
                 isMe
@@ -2595,11 +2611,23 @@ function MessageBubble({
             </button>
           )}
 
-          {msg.mediaPayloadOmitted && !msg.mediaUrl && (
-            <div className="mb-1 flex max-w-[290px] items-center gap-2 rounded-lg bg-black/5 px-3 py-2 text-xs text-muted-foreground dark:bg-white/10">
+          {msg.mediaPayloadOmitted && !renderedMediaUrl && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setDeferredMediaFailed(false);
+                setLoadDeferredMedia(true);
+              }}
+              className="mb-1 flex min-h-11 max-w-[290px] items-center gap-2 rounded-lg bg-black/5 px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-black/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00a884] dark:bg-white/10 dark:hover:bg-white/15"
+            >
               <AlertTriangle className="h-4 w-4 shrink-0" />
-              <span>Mídia antiga preservada, mas não carregada neste histórico.</span>
-            </div>
+              <span>
+                {deferredMediaFailed
+                  ? "Não foi possível carregar. Toque para tentar novamente."
+                  : `Carregar ${msg.type === "video" ? "vídeo" : "mídia"} preservado no histórico.`}
+              </span>
+            </button>
           )}
 
           {/* Text */}

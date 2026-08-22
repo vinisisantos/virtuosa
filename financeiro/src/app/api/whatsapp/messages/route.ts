@@ -10,7 +10,11 @@ import {
   attachStoredMessageReactions,
   setStoredMessageReaction,
 } from "@/lib/whatsapp/message-reactions";
-import { constrainInlineMediaPayload } from "@/lib/whatsapp/message-payload";
+import {
+  constrainInlineMediaPayload,
+  parseInlineMediaDataUrl,
+  resolveInlineMediaByteRange,
+} from "@/lib/whatsapp/message-payload";
 import {
   getInstanceProvider,
   sendWahaReaction,
@@ -362,6 +366,39 @@ async function getAuthorizedMessage(req: Request, messageId: string, requireRepl
   return { message };
 }
 
+async function storedInlineMediaResponse(req: Request, messageId: string) {
+  const { message, error } = await getAuthorizedMessage(req, messageId);
+  if (error) return error;
+  if (!message) return NextResponse.json({ error: "Mídia não encontrada" }, { status: 404 });
+
+  const media = parseInlineMediaDataUrl(message.mediaUrl);
+  if (!media) {
+    return NextResponse.json({ error: "Mídia não está disponível no histórico" }, { status: 404 });
+  }
+
+  const range = resolveInlineMediaByteRange(req.headers.get("range"), media.bytes.byteLength);
+  if (!range) {
+    return new Response(null, {
+      status: 416,
+      headers: { "Content-Range": `bytes */${media.bytes.byteLength}` },
+    });
+  }
+
+  const body = media.bytes.slice(range.start, range.end + 1);
+  const headers = new Headers({
+    "Accept-Ranges": "bytes",
+    "Cache-Control": "private, max-age=300",
+    "Content-Length": String(body.byteLength),
+    "Content-Type": message.mediaMimeType || media.mimeType || "application/octet-stream",
+    "X-Content-Type-Options": "nosniff",
+  });
+  if (range.partial) {
+    headers.set("Content-Range", `bytes ${range.start}-${range.end}/${media.bytes.byteLength}`);
+  }
+
+  return new Response(body, { status: range.partial ? 206 : 200, headers });
+}
+
 async function callEvolutionCandidates(candidates: Array<{ method: string; path: string; body: unknown }>) {
   const { url, apiKey } = getEvolutionConfig();
   let lastError: unknown = null;
@@ -436,6 +473,9 @@ async function sendEvolutionReaction(params: {
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
+    const mediaMessageId = searchParams.get("mediaMessageId");
+    if (mediaMessageId) return storedInlineMediaResponse(req, mediaMessageId);
+
     const conversationId = searchParams.get("conversationId");
     const markAsRead = searchParams.get("markAsRead") === "1";
     const limit = parseLimit(searchParams.get("limit"));

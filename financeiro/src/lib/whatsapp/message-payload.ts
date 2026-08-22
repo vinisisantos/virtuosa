@@ -5,8 +5,56 @@ type MessageWithMedia = {
   mediaPayloadOmitted?: boolean;
 };
 
+export type InlineMediaByteRange = {
+  start: number;
+  end: number;
+  partial: boolean;
+};
+
 function isInlineMediaUrl(value?: string | null) {
   return Boolean(value?.startsWith("data:"));
+}
+
+export function parseInlineMediaDataUrl(value?: string | null) {
+  const match = /^data:([^;,]+)(?:;[^,]*)?;base64,([\s\S]+)$/i.exec(value || "");
+  if (!match) return null;
+
+  try {
+    const bytes = Uint8Array.from(Buffer.from(match[2], "base64"));
+    if (!bytes.byteLength) return null;
+    return { mimeType: match[1], bytes };
+  } catch {
+    return null;
+  }
+}
+
+export function resolveInlineMediaByteRange(
+  header: string | null,
+  totalBytes: number,
+): InlineMediaByteRange | null {
+  if (!Number.isSafeInteger(totalBytes) || totalBytes <= 0) return null;
+  if (!header) return { start: 0, end: totalBytes - 1, partial: false };
+
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(header.trim());
+  if (!match || (!match[1] && !match[2])) return null;
+
+  let start: number;
+  let end: number;
+
+  if (!match[1]) {
+    const suffixLength = Number.parseInt(match[2], 10);
+    if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) return null;
+    start = Math.max(0, totalBytes - suffixLength);
+    end = totalBytes - 1;
+  } else {
+    start = Number.parseInt(match[1], 10);
+    end = match[2] ? Number.parseInt(match[2], 10) : totalBytes - 1;
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)) return null;
+    if (start < 0 || start >= totalBytes || end < start) return null;
+    end = Math.min(end, totalBytes - 1);
+  }
+
+  return { start, end, partial: true };
 }
 
 /**
