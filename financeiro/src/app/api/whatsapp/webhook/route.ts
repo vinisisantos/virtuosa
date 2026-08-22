@@ -15,6 +15,7 @@ import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-pr
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
 import { campaignNameFromAccountTrackId } from "@/lib/campaign-account-origin";
 import {
+  campaignFromPrefilledMetaLeadMessage,
   campaignNameFromExactMetaAdId,
   campaignNameFromExactMetaSourceUrl,
   campaignNameFromMetaAdAndTrackSignals,
@@ -1662,9 +1663,17 @@ async function processMessage(
   ].filter(Boolean).join(" ");
   // O formulário direto da Meta pode chegar sem externalAdReply. Nome e
   // telefone estruturados, conferidos contra o remetente, ainda comprovam a
-  // origem Meta; a campanha permanece sem classificação quando o anúncio não
-  // fornece um identificador confiável.
-  const hasCampaignSignal = !!adTitle || !!adId || !!adSourceUrl || !!adReply || !!directFormLeadName;
+  // origem Meta. Mensagens CTWA predefinidas e estritamente reconhecidas também
+  // recuperam a campanha quando o provedor omite o externalAdReply.
+  const prefilledMetaCampaign = canCaptureLead && !isFromMe && createdConversation
+    ? campaignFromPrefilledMetaLeadMessage(messageBody, leadUnit)
+    : null;
+  const hasCampaignSignal = !!adTitle
+    || !!adId
+    || !!adSourceUrl
+    || !!adReply
+    || !!directFormLeadName
+    || !!prefilledMetaCampaign;
   const managedCampaignName = canCaptureLead && hasCampaignSignal ? await inferManagedCampaignName(adSignal, leadUnit) : null;
   const keywordCampaignName = canCaptureLead && hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
   const messageKeywordCampaignName = canCaptureLead
@@ -1675,7 +1684,9 @@ async function processMessage(
   const exactAdCampaignName = campaignNameFromExactMetaAdId(adId, leadUnit);
   const canonicalAdCampaignName = exactSourceCampaignName || exactAdCampaignName;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
-  const campaignTrackId: string | null = canCaptureLead ? (resolvedCampaignId || adId) : null;
+  const campaignTrackId: string | null = canCaptureLead
+    ? (resolvedCampaignId || adId || prefilledMetaCampaign?.campaignTrackId || null)
+    : null;
   const trackedCampaignName = campaignNameFromMetaAdAndTrackSignals(
     adId,
     campaignTrackId,
@@ -1690,7 +1701,15 @@ async function processMessage(
   // prevalecer sobre inferências textuais que podem classificar o anúncio errado.
   const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
   const campaignName: string | null = canCaptureLead && hasCampaignSignal
-    ? canonicalAdCampaignName || accountCampaignName || trackedCampaignName || keywordCampaignName || managedCampaignName || resolvedCampaignName || fallbackCampaignName
+    ? exactSourceCampaignName
+      || prefilledMetaCampaign?.campaignName
+      || exactAdCampaignName
+      || accountCampaignName
+      || trackedCampaignName
+      || keywordCampaignName
+      || managedCampaignName
+      || resolvedCampaignName
+      || fallbackCampaignName
     : null;
 
   // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string.
@@ -1835,13 +1854,16 @@ async function processMessage(
           ["Barriga Trincada", "Gordura Localizada"].includes(campaignNameForUpdate);
         const shouldApplyCanonicalAdCampaign =
           !!canonicalAdCampaignName && canonicalAdCampaignName !== client.campaignName;
+        const shouldApplyPrefilledMetaCampaign =
+          !!prefilledMetaCampaign && prefilledMetaCampaign.campaignName !== client.campaignName;
         const shouldSetCampaign =
           !!campaignNameForUpdate &&
           (!client.campaignName ||
             (isViaLinkCampaignName(campaignNameForUpdate) && isGenericCampaignName(client.campaignName)) ||
             (!isGenericCampaignName(campaignNameForUpdate) && isGenericCampaignName(client.campaignName)) ||
             shouldRepairHyperSlim ||
-            shouldApplyCanonicalAdCampaign);
+            shouldApplyCanonicalAdCampaign ||
+            shouldApplyPrefilledMetaCampaign);
         client = await prisma.client.update({
           where: { id: client.id },
           data: {
@@ -1881,7 +1903,7 @@ async function processMessage(
         },
       });
 
-      if (existingDeal && canonicalAdCampaignName && (
+      if (existingDeal && (canonicalAdCampaignName || prefilledMetaCampaign) && (
         existingDeal.campaignIdSnapshot !== client.campaignId
         || existingDeal.campaignNameSnapshot !== client.campaignName
         || existingDeal.campaignAttributionSnapshot !== client.campaignAttribution

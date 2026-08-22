@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  campaignFromPrefilledMetaLeadMessage,
   campaignNameFromMetaAdAndTrackSignals,
   campaignNameFromMetaSignals,
   GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+  GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
 } from "../src/lib/campaign-track-mapping.ts";
 
 const exactAdCases = [
@@ -209,6 +211,35 @@ test("não propaga o criativo facial confirmado de SBC para outra unidade", () =
 test("não transforma a campanha pai de Osasco em um procedimento", () => {
   assert.equal(
     campaignNameFromMetaSignals("120249500621580006", null, "Osasco"),
+    null,
+  );
+});
+
+test("recupera a campanha 120ml pela mensagem CTWA predefinida quando a Meta omite o anúncio", () => {
+  assert.deepEqual(
+    campaignFromPrefilledMetaLeadMessage(
+      "Olá! Vim pelo GLÚTEOS PERFEITOS 120ML, posso ter mais informações sobre isso?",
+      "Osasco",
+    ),
+    {
+      campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+      campaignTrackId: GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
+    },
+  );
+});
+
+test("não aplica o fallback textual 120ml em outra unidade", () => {
+  const message = "Vim pelo Glúteos Perfeitos 120 ml";
+  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SBC"), null);
+  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SCS"), null);
+});
+
+test("não classifica uma conversa comum que apenas menciona glúteos 120ml", () => {
+  assert.equal(
+    campaignFromPrefilledMetaLeadMessage(
+      "Você consegue me explicar como funcionam os 120ml nos glúteos?",
+      "Osasco",
+    ),
     null,
   );
 });

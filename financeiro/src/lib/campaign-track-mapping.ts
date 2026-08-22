@@ -1,5 +1,38 @@
 export const FACIAL_FILLER_CAMPAIGN_NAME = "Preenchimento Facial";
 export const GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME = "Glúteos Perfeitos 120ml";
+export const GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID = "120249766005370006";
+
+export type PrefilledMetaLeadCampaign = {
+  campaignName: string;
+  campaignTrackId: string;
+};
+
+function normalizePrefilledMetaLeadMessage(value?: string | null) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+// Algumas mensagens CTWA chegam sem externalAdReply, mas preservam o texto
+// pré-preenchido configurado no anúncio. O padrão precisa ser estrito e só é
+// usado pelo webhook na primeira mensagem de uma conversa nova.
+export function campaignFromPrefilledMetaLeadMessage(
+  message?: string | null,
+  unit?: string | null,
+): PrefilledMetaLeadCampaign | null {
+  if (unit?.trim().toLowerCase() !== "osasco") return null;
+
+  const normalizedMessage = normalizePrefilledMetaLeadMessage(message);
+  if (!/\bvim pelo gluteos perfeitos 120 ?ml\b/.test(normalizedMessage)) return null;
+
+  return {
+    campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+    campaignTrackId: GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
+  };
+}
 
 type CampaignTrackRule = {
   campaignName: string;
