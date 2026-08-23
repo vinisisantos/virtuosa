@@ -125,6 +125,22 @@ test("mantém respostas de Glúteos Perfeitos 60ml e 120ml em categorias exclusi
   );
 });
 
+test("conecta as duas novas campanhas às categorias exclusivas de respostas rápidas", () => {
+  const categories = [
+    { id: "combo", title: "Combo Harmonização" },
+    { id: "rosto", title: "Adeus Rosto Cansado" },
+  ];
+
+  assert.deepEqual(
+    savedReplyCategoryIdsForCampaign("Combo Harmonização", categories),
+    ["combo"],
+  );
+  assert.deepEqual(
+    savedReplyCategoryIdsForCampaign("Adeus Rosto Cansado", categories),
+    ["rosto"],
+  );
+});
+
 test("filtra pela campanha e preserva somente respostas globais quando a categoria não existe", () => {
   const categories = [
     { id: "perfeito", title: "Glúteos Perfeito" },

@@ -122,7 +122,7 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
   },
   {
     campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
-    sourceMarkers: ["DcWM0DjgNHg", "DcWLOEFggbI"],
+    sourceMarkers: ["DcWM0DjgNHg", "DcWLOEFggbI", "DcWL3aTAEzs"],
   },
   {
     campaignName: ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,

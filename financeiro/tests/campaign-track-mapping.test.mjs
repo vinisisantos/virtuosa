@@ -274,6 +274,17 @@ test("reconhece o criativo Combo Harmonização nas três unidades", () => {
   }
 });
 
+test("reconhece o criativo Combo Harmonização específico de SCS", () => {
+  assert.equal(
+    campaignNameFromMetaSignals(
+      null,
+      "https://www.instagram.com/p/DcWL3aTAEzs/",
+      "SCS",
+    ),
+    COMBO_HARMONIZACAO_CAMPAIGN_NAME,
+  );
+});
+
 test("prioriza o criativo Adeus Rosto Cansado de SBC sobre a campanha pai", () => {
   assert.equal(
     campaignNameFromMetaAdAndTrackSignals(
