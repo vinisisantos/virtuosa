@@ -71,7 +71,10 @@ import {
   WHATSAPP_MEDIA_MAX_BATCH_FILES,
   WHATSAPP_MEDIA_MAX_FILE_BYTES,
 } from "@/lib/whatsapp/media-constraints";
-import { isEvaluationScheduleInstanceId } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
+import {
+  getEvaluationScheduleUnitConfigByUnit,
+  isEvaluationScheduleInstanceId,
+} from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   Search,
@@ -3288,10 +3291,19 @@ export default function InboxPage() {
   ) => {
     if (!conversation) return message;
 
+    const unit = resolveInboxConversationUnit(
+      selectedCollaborator?.unit,
+      effectiveUnit,
+      conversation.contact.unit,
+    );
+    const unitConfig = getEvaluationScheduleUnitConfigByUnit(unit);
+
     return renderWhatsAppMessageTemplate(message, {
       contactName: conversation.contact.name,
       contactPhone: conversation.contact.phone,
-      unit: conversation.contact.unit || effectiveUnit || selectedCollaborator?.unit || currentUser?.unit,
+      unit: unitConfig?.displayUnitName || unit || currentUser?.unit,
+      unitAddress: unitConfig?.address,
+      unitLocationUrl: unitConfig?.locationUrl,
       attendantName: currentUser?.name,
     });
   }, [currentUser?.name, currentUser?.unit, effectiveUnit, selectedCollaborator?.unit, selectedConv]);

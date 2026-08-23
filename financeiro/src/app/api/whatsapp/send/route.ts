@@ -25,6 +25,7 @@ import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
 import { whatsAppConversationPreview } from "@/lib/whatsapp/message-content";
 import { firstWhatsAppLink, loadWhatsAppLinkPreview } from "@/lib/whatsapp/link-preview";
 import { evolutionMessageLidCandidates } from "@/lib/whatsapp/chat-action-identifiers";
+import { getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -383,10 +384,13 @@ export async function POST(req: Request) {
     }
 
     const resolvedContact = contact!;
+    const unitConfig = getEvaluationScheduleUnitConfigByUnit(dbInstance.unit || resolvedContact.unit);
     const messageBody = renderWhatsAppMessageTemplate(rawMessageBody, {
       contactName: resolvedContact.name,
       contactPhone: resolvedContact.phone,
-      unit: dbInstance.unit || resolvedContact.unit,
+      unit: unitConfig?.displayUnitName || dbInstance.unit || resolvedContact.unit,
+      unitAddress: unitConfig?.address,
+      unitLocationUrl: unitConfig?.locationUrl,
       attendantName: userName || conversation.assignedToName,
     });
     const linkPreviewSourceUrl = !isMedia ? firstWhatsAppLink(messageBody) : null;

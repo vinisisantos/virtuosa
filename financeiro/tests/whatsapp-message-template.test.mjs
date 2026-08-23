@@ -7,6 +7,8 @@ const values = {
   contactName: "Maria da Silva",
   contactPhone: "5511999999999",
   unit: "Osasco",
+  unitAddress: "Rua Eloy Cândido Lopes, 61 — Centro, Osasco",
+  unitLocationUrl: "https://share.google/uwnrFMCt4re3TqvXI",
   attendantName: "Claudenice",
 };
 
@@ -44,5 +46,15 @@ test("não interpreta marcador com apenas uma chave", () => {
   assert.equal(
     renderWhatsAppMessageTemplate("Olá, {nome}!", values),
     "Olá, {nome}!",
+  );
+});
+
+test("substitui endereço e localização conforme a unidade da conversa", () => {
+  assert.equal(
+    renderWhatsAppMessageTemplate(
+      "📍 {{endereco}}\nLocalização: {{link_localizacao}}",
+      values,
+    ),
+    "📍 Rua Eloy Cândido Lopes, 61 — Centro, Osasco\nLocalização: https://share.google/uwnrFMCt4re3TqvXI",
   );
 });

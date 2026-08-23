@@ -2,6 +2,8 @@ export type WhatsAppMessageTemplateValues = {
   contactName?: string | null;
   contactPhone?: string | null;
   unit?: string | null;
+  unitAddress?: string | null;
+  unitLocationUrl?: string | null;
   attendantName?: string | null;
 };
 
@@ -45,6 +47,8 @@ export function renderWhatsAppMessageTemplate(
     primeiro_nome: contactName.split(" ")[0] || "",
     telefone: cleanTemplateValue(values.contactPhone),
     unidade: cleanTemplateValue(values.unit),
+    endereco: cleanTemplateValue(values.unitAddress),
+    link_localizacao: cleanTemplateValue(values.unitLocationUrl),
     atendente: cleanTemplateValue(values.attendantName),
   });
 }
