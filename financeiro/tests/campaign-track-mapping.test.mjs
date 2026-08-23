@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
+  ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
   COMBO_HARMONIZACAO_CAMPAIGN_NAME,
   COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
   campaignFromPrefilledMetaLeadMessage,
@@ -240,6 +242,32 @@ test("não propaga o criativo Combo Harmonização de SBC para outra unidade", (
   }
 });
 
+test("prioriza o criativo Adeus Rosto Cansado de SBC sobre a campanha pai", () => {
+  assert.equal(
+    campaignNameFromMetaAdAndTrackSignals(
+      null,
+      ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
+      "https://www.instagram.com/p/DcWNr8zgApx/",
+      "SBC",
+    ),
+    ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
+  );
+});
+
+test("não propaga o criativo Adeus Rosto Cansado de SBC para outra unidade", () => {
+  for (const unit of ["Osasco", "SCS"]) {
+    assert.equal(
+      campaignNameFromMetaSignals(
+        ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
+        "https://www.instagram.com/p/DcWNr8zgApx/",
+        unit,
+      ),
+      null,
+      unit,
+    );
+  }
+});
+
 test("não transforma a campanha pai de Osasco em um procedimento", () => {
   assert.equal(
     campaignNameFromMetaSignals("120249500621580006", null, "Osasco"),
@@ -299,6 +327,35 @@ test("não classifica uma conversa comum que apenas menciona combo harmonizaçã
   assert.equal(
     campaignFromPrefilledMetaLeadMessage(
       "Você pode me explicar se existe um combo de harmonização?",
+      "SBC",
+    ),
+    null,
+  );
+});
+
+test("recupera Adeus Rosto Cansado pela mensagem predefinida quando a Meta omite o anúncio", () => {
+  assert.deepEqual(
+    campaignFromPrefilledMetaLeadMessage(
+      "Olá! Vim pelo ADEUS ROSTO CANSADO, posso ter mais informações sobre isso?",
+      "SBC",
+    ),
+    {
+      campaignName: ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
+      campaignTrackId: ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
+    },
+  );
+});
+
+test("não aplica o fallback textual Adeus Rosto Cansado em outra unidade", () => {
+  const message = "Olá! Vim pelo ADEUS ROSTO CANSADO, posso ter mais informações sobre isso?";
+  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "Osasco"), null);
+  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SCS"), null);
+});
+
+test("não classifica conversa comum que apenas menciona rosto cansado", () => {
+  assert.equal(
+    campaignFromPrefilledMetaLeadMessage(
+      "Meu rosto parece cansado; qual tratamento vocês indicam?",
       "SBC",
     ),
     null,

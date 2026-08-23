@@ -1,4 +1,6 @@
 export const FACIAL_FILLER_CAMPAIGN_NAME = "Preenchimento Facial";
+export const ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME = "Adeus Rosto Cansado";
+export const ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID = "120249763378230006";
 export const COMBO_HARMONIZACAO_CAMPAIGN_NAME = "Combo Harmonização";
 export const COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID = "120249763486830006";
 export const GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME = "Glúteos Perfeitos 120ml";
@@ -35,6 +37,16 @@ export function campaignFromPrefilledMetaLeadMessage(
     return {
       campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
       campaignTrackId: COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
+    };
+  }
+
+  if (
+    normalizedUnit === "sbc"
+    && /\bvim pelo adeus rosto cansado\b/.test(normalizedMessage)
+  ) {
+    return {
+      campaignName: ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
+      campaignTrackId: ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
     };
   }
 
@@ -90,6 +102,11 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
   {
     campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
     sourceMarkers: ["DcWM0DjgNHg"],
+    unit: "SBC",
+  },
+  {
+    campaignName: ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
+    sourceMarkers: ["DcWNr8zgApx"],
     unit: "SBC",
   },
   {
