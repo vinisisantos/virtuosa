@@ -5,6 +5,7 @@ export const COMBO_HARMONIZACAO_CAMPAIGN_NAME = "Combo Harmonização";
 export const COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID = "120249763486830006";
 export const GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME = "Glúteos Perfeitos 120ml";
 export const GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID = "120249766005370006";
+export const GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID = "120249766070900006";
 
 export type PrefilledMetaLeadCampaign = {
   campaignName: string;
@@ -50,12 +51,19 @@ export function campaignFromPrefilledMetaLeadMessage(
     };
   }
 
-  if (normalizedUnit !== "osasco") return null;
   if (!/\bvim pelo gluteos perfeitos 120 ?ml\b/.test(normalizedMessage)) return null;
+
+  const campaignTrackId = normalizedUnit === "osasco"
+    ? GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID
+    : normalizedUnit === "sbc"
+      ? GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID
+      : null;
+
+  if (!campaignTrackId) return null;
 
   return {
     campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
-    campaignTrackId: GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
+    campaignTrackId,
   };
 }
 
@@ -81,6 +89,11 @@ type CampaignSourceUrlRule = {
 // A Meta pode reutilizar o mesmo sourceId em criativos diferentes. Quando o
 // post/reel foi confirmado, o link do criativo é o sinal mais específico.
 const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
+  {
+    campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+    sourceMarkers: ["8SMTimx6y", "1105442545165051"],
+    unit: "SBC",
+  },
   {
     campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
     sourceMarkers: [

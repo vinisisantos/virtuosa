@@ -11,6 +11,7 @@ import {
   campaignNameFromMetaSignals,
   GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
   GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
+  GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
 } from "../src/lib/campaign-track-mapping.ts";
 
 const exactAdCases = [
@@ -193,6 +194,38 @@ test("não propaga os criativos 120ml de Osasco para outra unidade", () => {
   }
 });
 
+test("prioriza o criativo Glúteos Perfeitos 120ml confirmado de SBC", () => {
+  for (const sourceUrl of [
+    "https://fb.me/8SMTimx6y",
+    "https://www.facebook.com/story.php?story_fbid=1105442545165051&id=100070979479157",
+  ]) {
+    assert.equal(
+      campaignNameFromMetaAdAndTrackSignals(
+        null,
+        GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
+        sourceUrl,
+        "SBC",
+      ),
+      GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+      sourceUrl,
+    );
+  }
+});
+
+test("não propaga o criativo 120ml de SBC para outra unidade", () => {
+  for (const unit of ["Osasco", "SCS"]) {
+    assert.equal(
+      campaignNameFromMetaSignals(
+        GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
+        "https://fb.me/8SMTimx6y",
+        unit,
+      ),
+      null,
+      unit,
+    );
+  }
+});
+
 test("prioriza o criativo facial confirmado de SBC sobre a campanha pai", () => {
   assert.equal(
     campaignNameFromMetaAdAndTrackSignals(
@@ -288,9 +321,19 @@ test("recupera a campanha 120ml pela mensagem CTWA predefinida quando a Meta omi
   );
 });
 
-test("não aplica o fallback textual 120ml em outra unidade", () => {
+test("recupera a campanha 120ml de SBC pela mensagem CTWA predefinida", () => {
   const message = "Vim pelo Glúteos Perfeitos 120 ml";
-  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SBC"), null);
+  assert.deepEqual(
+    campaignFromPrefilledMetaLeadMessage(message, "SBC"),
+    {
+      campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+      campaignTrackId: GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
+    },
+  );
+});
+
+test("não aplica o fallback textual 120ml em SCS", () => {
+  const message = "Vim pelo Glúteos Perfeitos 120 ml";
   assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SCS"), null);
 });
 

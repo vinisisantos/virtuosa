@@ -1664,8 +1664,9 @@ async function processMessage(
   // O formulário direto da Meta pode chegar sem externalAdReply. Nome e
   // telefone estruturados, conferidos contra o remetente, ainda comprovam a
   // origem Meta. Mensagens CTWA predefinidas e estritamente reconhecidas também
-  // recuperam a campanha quando o provedor omite o externalAdReply.
-  const prefilledMetaCampaign = canCaptureLead && !isFromMe && createdConversation
+  // recuperam a campanha quando o provedor omite o externalAdReply, inclusive
+  // em um novo clique de anúncio de um contato que já tinha conversa aberta.
+  const prefilledMetaCampaign = canCaptureLead && !isFromMe
     ? campaignFromPrefilledMetaLeadMessage(messageBody, leadUnit)
     : null;
   const hasCampaignSignal = !!adTitle
@@ -1701,8 +1702,8 @@ async function processMessage(
   // prevalecer sobre inferências textuais que podem classificar o anúncio errado.
   const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
   const campaignName: string | null = canCaptureLead && hasCampaignSignal
-    ? exactSourceCampaignName
-      || prefilledMetaCampaign?.campaignName
+    ? prefilledMetaCampaign?.campaignName
+      || exactSourceCampaignName
       || exactAdCampaignName
       || accountCampaignName
       || trackedCampaignName
