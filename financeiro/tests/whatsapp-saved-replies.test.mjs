@@ -71,8 +71,11 @@ test("resposta sem categoria específica fica disponível em todas as categorias
 test("associa campanhas às categorias equivalentes apesar de acentos e plural", () => {
   const categories = [
     { id: "perfeito", title: "Glúteos Perfeito" },
+    { id: "perfeito-120", title: "Glúteos Perfeitos 120ml" },
     { id: "harmonizacao", title: "Harmonização de Glúteo" },
     { id: "barriga", title: "Barriga Trincada" },
+    { id: "combo", title: "Combo de Harmonização" },
+    { id: "rosto", title: "Microfocado Full Face + Bioestimulador" },
   ];
 
   assert.deepEqual(
@@ -86,6 +89,39 @@ test("associa campanhas às categorias equivalentes apesar de acentos e plural",
   assert.deepEqual(
     savedReplyCategoryIdsForCampaign("VIM PELO BARRIGA TRINCADA", categories),
     ["barriga"],
+  );
+  assert.deepEqual(
+    savedReplyCategoryIdsForCampaign("Glúteos Perfeito - 120 ml", categories),
+    ["perfeito-120"],
+  );
+  assert.deepEqual(
+    savedReplyCategoryIdsForCampaign("COMBO HARMONIZAÇÃO", categories),
+    ["combo"],
+  );
+  assert.deepEqual(
+    savedReplyCategoryIdsForCampaign("Adeus Rosto Cansado", categories),
+    ["rosto"],
+  );
+});
+
+test("mantém respostas de Glúteos Perfeitos 60ml e 120ml em categorias exclusivas", () => {
+  const categories = [
+    { id: "perfeito-60", title: "Glúteos Perfeitos" },
+    { id: "perfeito-120", title: "Glúteos Perfeitos 120ml" },
+  ];
+  const replies = [
+    { id: "global", categoryId: null },
+    { id: "resposta-60", categoryId: "perfeito-60" },
+    { id: "resposta-120", categoryId: "perfeito-120" },
+  ];
+
+  assert.deepEqual(
+    filterSavedRepliesByCampaign(replies, "Glúteos Perfeitos", categories).map((reply) => reply.id),
+    ["global", "resposta-60"],
+  );
+  assert.deepEqual(
+    filterSavedRepliesByCampaign(replies, "Glúteos Perfeitos 120ml", categories).map((reply) => reply.id),
+    ["global", "resposta-120"],
   );
 });
 

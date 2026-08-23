@@ -62,6 +62,18 @@ function savedReplyProcedureKey(value: string) {
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
 
+  if (/\bgluteos?\b/.test(normalized) && /\bperfeit[oa]s?\b/.test(normalized) && /\b120\s*ml\b/.test(normalized)) {
+    return "gluteos-perfeito-120ml";
+  }
+  if (/\bcombo\b/.test(normalized) && /\bharmonizacao\b/.test(normalized)) {
+    return "combo-harmonizacao";
+  }
+  if (
+    (/\badeus\b/.test(normalized) && /\brosto\b/.test(normalized) && /\bcansado\b/.test(normalized))
+    || (/\bmicrofocado\b/.test(normalized) && /\bbioestimulador\b/.test(normalized))
+  ) {
+    return "adeus-rosto-cansado";
+  }
   if (/\bharmonizacao\b/.test(normalized) && /\bgluteos?\b/.test(normalized)) {
     return "harmonizacao-gluteos";
   }
