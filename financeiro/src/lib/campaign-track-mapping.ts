@@ -3,14 +3,25 @@ export const ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME = "Adeus Rosto Cansado";
 export const ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID = "120249763378230006";
 export const COMBO_HARMONIZACAO_CAMPAIGN_NAME = "Combo Harmonização";
 export const COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID = "120249763486830006";
+export const COMBO_HARMONIZACAO_OSASCO_PARENT_CAMPAIGN_ID = "120249763449990006";
 export const GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME = "Glúteos Perfeitos 120ml";
 export const GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID = "120249766005370006";
 export const GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID = "120249766070900006";
 
 export type PrefilledMetaLeadCampaign = {
   campaignName: string;
-  campaignTrackId: string;
+  campaignTrackId: string | null;
 };
+
+const ACTIVE_CAMPAIGN_UNITS = new Set(["osasco", "sbc", "scs"]);
+
+function campaignTrackIdForUnit(
+  normalizedUnit: string | undefined,
+  idsByUnit: Partial<Record<"osasco" | "sbc" | "scs", string>>,
+) {
+  if (!normalizedUnit || !ACTIVE_CAMPAIGN_UNITS.has(normalizedUnit)) return null;
+  return idsByUnit[normalizedUnit as "osasco" | "sbc" | "scs"] || null;
+}
 
 function normalizePrefilledMetaLeadMessage(value?: string | null) {
   return String(value || "")
@@ -31,39 +42,35 @@ export function campaignFromPrefilledMetaLeadMessage(
   const normalizedUnit = unit?.trim().toLowerCase();
   const normalizedMessage = normalizePrefilledMetaLeadMessage(message);
 
-  if (
-    normalizedUnit === "sbc"
-    && /\bvim pelo combo harmonizacao\b/.test(normalizedMessage)
-  ) {
+  if (!normalizedUnit || !ACTIVE_CAMPAIGN_UNITS.has(normalizedUnit)) return null;
+
+  if (/\bvim pelo combo harmonizacao\b/.test(normalizedMessage)) {
     return {
       campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
-      campaignTrackId: COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
+      campaignTrackId: campaignTrackIdForUnit(normalizedUnit, {
+        osasco: COMBO_HARMONIZACAO_OSASCO_PARENT_CAMPAIGN_ID,
+        sbc: COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
+      }),
     };
   }
 
-  if (
-    normalizedUnit === "sbc"
-    && /\bvim pelo adeus rosto cansado\b/.test(normalizedMessage)
-  ) {
+  if (/\bvim pelo adeus rosto cansado\b/.test(normalizedMessage)) {
     return {
       campaignName: ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
-      campaignTrackId: ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
+      campaignTrackId: campaignTrackIdForUnit(normalizedUnit, {
+        sbc: ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
+      }),
     };
   }
 
   if (!/\bvim pelo gluteos perfeitos 120 ?ml\b/.test(normalizedMessage)) return null;
 
-  const campaignTrackId = normalizedUnit === "osasco"
-    ? GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID
-    : normalizedUnit === "sbc"
-      ? GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID
-      : null;
-
-  if (!campaignTrackId) return null;
-
   return {
     campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
-    campaignTrackId,
+    campaignTrackId: campaignTrackIdForUnit(normalizedUnit, {
+      osasco: GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
+      sbc: GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
+    }),
   };
 }
 
@@ -83,7 +90,7 @@ type CampaignAdIdRule = {
 type CampaignSourceUrlRule = {
   campaignName: string;
   sourceMarkers: string[];
-  unit: string;
+  units?: string[];
 };
 
 // A Meta pode reutilizar o mesmo sourceId em criativos diferentes. Quando o
@@ -91,12 +98,9 @@ type CampaignSourceUrlRule = {
 const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
   {
     campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
-    sourceMarkers: ["8SMTimx6y", "1105442545165051"],
-    unit: "SBC",
-  },
-  {
-    campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
     sourceMarkers: [
+      "8SMTimx6y",
+      "1105442545165051",
       "DcT5vGtAFVs",
       "DcT5t79AF2R",
       "6hDnjnq1V",
@@ -104,28 +108,30 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
       "1309185502272233",
       "4U5nMuofc",
       "1310594035464713",
+      "DcWK6VOgoyy",
+      "8VzZCxv3G",
+      "DcWMl3Dg9pw",
+      "kVkNpjbAP",
+      "9r9vCbTmy",
     ],
-    unit: "Osasco",
   },
   {
     campaignName: FACIAL_FILLER_CAMPAIGN_NAME,
     sourceMarkers: ["DcL-MELAE2a"],
-    unit: "SBC",
+    units: ["SBC"],
   },
   {
     campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
-    sourceMarkers: ["DcWM0DjgNHg"],
-    unit: "SBC",
+    sourceMarkers: ["DcWM0DjgNHg", "DcWLOEFggbI"],
   },
   {
     campaignName: ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
     sourceMarkers: ["DcWNr8zgApx"],
-    unit: "SBC",
   },
   {
     campaignName: "Barriga Trincada",
     sourceMarkers: ["Db313GhAjB3", "DcT5vIkgtgJ"],
-    unit: "Osasco",
+    units: ["Osasco"],
   },
 ];
 
@@ -167,7 +173,7 @@ export function campaignNameFromExactMetaSourceUrl(
   if (!sourceUrl) return null;
   const normalizedUnit = unit?.trim().toLowerCase();
   return CAMPAIGN_SOURCE_URL_RULES.find((candidate) => (
-    candidate.unit.toLowerCase() === normalizedUnit
+    (!candidate.units || candidate.units.some((allowedUnit) => allowedUnit.toLowerCase() === normalizedUnit))
     && candidate.sourceMarkers.some((marker) => sourceUrl.includes(marker))
   ))?.campaignName || null;
 }

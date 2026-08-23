@@ -5,6 +5,7 @@ import {
   ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
   ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
   COMBO_HARMONIZACAO_CAMPAIGN_NAME,
+  COMBO_HARMONIZACAO_OSASCO_PARENT_CAMPAIGN_ID,
   COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
   campaignFromPrefilledMetaLeadMessage,
   campaignNameFromMetaAdAndTrackSignals,
@@ -174,7 +175,7 @@ test("prioriza os criativos Glúteos Perfeitos 120ml sobre a campanha pai de Osa
   }
 });
 
-test("não propaga os criativos 120ml de Osasco para outra unidade", () => {
+test("reconhece os criativos 120ml compartilhados nas três unidades", () => {
   for (const sourceUrl of [
     "https://www.instagram.com/p/DcT5vGtAFVs/",
     "https://fb.me/blVsIofjH",
@@ -182,15 +183,13 @@ test("não propaga os criativos 120ml de Osasco para outra unidade", () => {
     "https://fb.me/4U5nMuofc",
     "https://www.facebook.com/story.php?story_fbid=1310594035464713&id=100095423860776",
   ]) {
-    assert.equal(
-      campaignNameFromMetaSignals(
-        "120249766005370006",
-        sourceUrl,
-        "SBC",
-      ),
-      null,
-      sourceUrl,
-    );
+    for (const unit of ["Osasco", "SBC", "SCS"]) {
+      assert.equal(
+        campaignNameFromMetaSignals(null, sourceUrl, unit),
+        GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+        `${unit}: ${sourceUrl}`,
+      );
+    }
   }
 });
 
@@ -212,15 +211,15 @@ test("prioriza o criativo Glúteos Perfeitos 120ml confirmado de SBC", () => {
   }
 });
 
-test("não propaga o criativo 120ml de SBC para outra unidade", () => {
-  for (const unit of ["Osasco", "SCS"]) {
+test("reconhece o criativo 120ml de SBC nas três unidades", () => {
+  for (const unit of ["Osasco", "SBC", "SCS"]) {
     assert.equal(
       campaignNameFromMetaSignals(
-        GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
+        null,
         "https://fb.me/8SMTimx6y",
         unit,
       ),
-      null,
+      GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
       unit,
     );
   }
@@ -261,15 +260,15 @@ test("prioriza o criativo Combo Harmonização de SBC sobre a campanha pai", () 
   );
 });
 
-test("não propaga o criativo Combo Harmonização de SBC para outra unidade", () => {
-  for (const unit of ["Osasco", "SCS"]) {
+test("reconhece o criativo Combo Harmonização nas três unidades", () => {
+  for (const unit of ["Osasco", "SBC", "SCS"]) {
     assert.equal(
       campaignNameFromMetaSignals(
-        COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
+        null,
         "https://www.instagram.com/p/DcWM0DjgNHg/",
         unit,
       ),
-      null,
+      COMBO_HARMONIZACAO_CAMPAIGN_NAME,
       unit,
     );
   }
@@ -287,15 +286,15 @@ test("prioriza o criativo Adeus Rosto Cansado de SBC sobre a campanha pai", () =
   );
 });
 
-test("não propaga o criativo Adeus Rosto Cansado de SBC para outra unidade", () => {
-  for (const unit of ["Osasco", "SCS"]) {
+test("reconhece o criativo Adeus Rosto Cansado nas três unidades", () => {
+  for (const unit of ["Osasco", "SBC", "SCS"]) {
     assert.equal(
       campaignNameFromMetaSignals(
-        ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
+        null,
         "https://www.instagram.com/p/DcWNr8zgApx/",
         unit,
       ),
-      null,
+      ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
       unit,
     );
   }
@@ -332,9 +331,12 @@ test("recupera a campanha 120ml de SBC pela mensagem CTWA predefinida", () => {
   );
 });
 
-test("não aplica o fallback textual 120ml em SCS", () => {
+test("classifica 120ml em SCS sem inventar um ID de campanha", () => {
   const message = "Vim pelo Glúteos Perfeitos 120 ml";
-  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SCS"), null);
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, "SCS"), {
+    campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+    campaignTrackId: null,
+  });
 });
 
 test("não classifica uma conversa comum que apenas menciona glúteos 120ml", () => {
@@ -360,10 +362,16 @@ test("recupera Combo Harmonização pela mensagem predefinida quando a Meta omit
   );
 });
 
-test("não aplica o fallback textual Combo Harmonização em outra unidade", () => {
+test("aplica o fallback textual Combo Harmonização nas três unidades", () => {
   const message = "Olá! Vim pelo COMBO HARMONIZAÇÃO, posso ter mais informações sobre isso?";
-  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "Osasco"), null);
-  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SCS"), null);
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, "Osasco"), {
+    campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
+    campaignTrackId: COMBO_HARMONIZACAO_OSASCO_PARENT_CAMPAIGN_ID,
+  });
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, "SCS"), {
+    campaignName: COMBO_HARMONIZACAO_CAMPAIGN_NAME,
+    campaignTrackId: null,
+  });
 });
 
 test("não classifica uma conversa comum que apenas menciona combo harmonização", () => {
@@ -389,10 +397,16 @@ test("recupera Adeus Rosto Cansado pela mensagem predefinida quando a Meta omite
   );
 });
 
-test("não aplica o fallback textual Adeus Rosto Cansado em outra unidade", () => {
+test("aplica o fallback textual Adeus Rosto Cansado nas três unidades", () => {
   const message = "Olá! Vim pelo ADEUS ROSTO CANSADO, posso ter mais informações sobre isso?";
-  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "Osasco"), null);
-  assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SCS"), null);
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, "Osasco"), {
+    campaignName: ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
+    campaignTrackId: null,
+  });
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, "SCS"), {
+    campaignName: ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
+    campaignTrackId: null,
+  });
 });
 
 test("não classifica conversa comum que apenas menciona rosto cansado", () => {
