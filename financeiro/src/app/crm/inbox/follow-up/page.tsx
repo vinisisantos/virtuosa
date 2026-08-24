@@ -75,12 +75,6 @@ type FollowUpConversation = {
   };
 };
 
-type CurrentUser = {
-  id: string;
-  name: string;
-  unit: string | null;
-};
-
 type CampaignGroup = {
   key: string;
   campaignName: string | null;
@@ -244,7 +238,6 @@ export default function FollowUpCenterPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clockNow, setClockNow] = useState(Date.now());
-  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
   const [campaignDrafts, setCampaignDrafts] = useState<Record<string, string>>({});
   const [bulkComposerOpen, setBulkComposerOpen] = useState(false);
@@ -314,20 +307,6 @@ export default function FollowUpCenterPage() {
   useEffect(() => {
     const interval = window.setInterval(() => setClockNow(Date.now()), 60_000);
     return () => window.clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/auth/me", { credentials: "include" })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.user) return;
-        setCurrentUser({
-          id: payload.user.id,
-          name: payload.user.name || "Operador",
-          unit: payload.user.unit || null,
-        });
-      })
-      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -411,12 +390,12 @@ export default function FollowUpCenterPage() {
       unit: unitConfig?.displayUnitName || conversation.contact.unit || FOLLOW_UP_CENTER_PILOT_UNIT,
       unitAddress: unitConfig?.address,
       unitLocationUrl: unitConfig?.locationUrl,
-      attendantName: currentUser?.name,
+      attendantName: conversation.assignedToName,
     });
   };
 
   const sendBulkFollowUp = async () => {
-    if (bulkFollowUpSending || !currentUser || !allCampaignDraftsReady) return;
+    if (bulkFollowUpSending || !allCampaignDraftsReady) return;
 
     const recipients = campaignGroups.flatMap((group) => group.conversations.map((conversation) => ({
       conversation,
@@ -448,8 +427,6 @@ export default function FollowUpCenterPage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "x-user-id": currentUser.id,
-              "x-user-name": currentUser.name,
             },
             body: JSON.stringify({
               conversationId: conversation.id,
@@ -1020,7 +997,7 @@ export default function FollowUpCenterPage() {
                 <button
                   type="button"
                   onClick={() => void sendBulkFollowUp()}
-                  disabled={bulkFollowUpSending || !currentUser || !allCampaignDraftsReady}
+                  disabled={bulkFollowUpSending || !allCampaignDraftsReady}
                   className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-11"
                 >
                   {bulkFollowUpSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
