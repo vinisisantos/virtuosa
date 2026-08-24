@@ -5,6 +5,7 @@ import {
   evolutionBlockNumberCandidates,
   evolutionConversationNumber,
   evolutionMessageLidCandidates,
+  evolutionPayloadContactJidCandidates,
   evolutionPayloadLidCandidates,
   whatsappConversationJid,
 } from "../src/lib/whatsapp/chat-action-identifiers.ts";
@@ -121,5 +122,16 @@ test("recupera LID em contatos e respostas auxiliares da Evolution", () => {
       { remoteJid: "123456789@lid", nested: { jid: "987654321@hosted.lid" } },
     ]),
     ["123456789@lid", "987654321@hosted.lid"],
+  );
+});
+
+test("recupera JIDs canônicos retornados pela consulta de números", () => {
+  assert.deepEqual(
+    evolutionPayloadContactJidCandidates([
+      { jid: "5511999999999@s.whatsapp.net", exists: true },
+      { nested: { remoteJid: "123456789@lid" } },
+      { ignored: "status@broadcast" },
+    ]),
+    ["5511999999999@s.whatsapp.net", "123456789@lid"],
   );
 });

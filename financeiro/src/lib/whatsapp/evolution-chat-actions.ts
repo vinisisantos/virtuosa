@@ -6,6 +6,7 @@ import {
   evolutionBlockNumberCandidates,
   evolutionConversationNumber,
   evolutionMessageLidCandidates,
+  evolutionPayloadContactJidCandidates,
   evolutionPayloadLidCandidates,
 } from "@/lib/whatsapp/chat-action-identifiers";
 
@@ -104,6 +105,14 @@ export async function updateEvolutionContactBlock(params: {
       ? params.remoteJid.trim().replace(/@c\.us$/i, "@s.whatsapp.net")
       : `${params.phone.replace(/\D/g, "")}@s.whatsapp.net`;
     const lidCandidates: string[] = [];
+    const contactJidCandidates: string[] = [];
+    const resolution = {
+      messageLids: 0,
+      historyLids: 0,
+      contactLids: 0,
+      numberJids: 0,
+      syncLids: 0,
+    };
     const appendLids = (payload: unknown) => {
       const discovered = [
         ...evolutionMessageLidCandidates(payload),
@@ -113,6 +122,23 @@ export async function updateEvolutionContactBlock(params: {
         if (!lidCandidates.includes(lid)) lidCandidates.push(lid);
       }
     };
+    const appendContactJids = (payload: unknown) => {
+      for (const jid of evolutionPayloadContactJidCandidates(payload)) {
+        if (!contactJidCandidates.includes(jid)) contactJidCandidates.push(jid);
+      }
+    };
+
+    // Consulta a identidade canônica que a própria Evolution tem em cache.
+    // Em contas migradas para LID ela pode divergir do telefone salvo no CRM.
+    const numberLookup = await evolutionRequest(
+      `/chat/whatsappNumbers/${encodeURIComponent(params.instanceName)}`,
+      { numbers: candidates },
+    ).catch(() => null);
+    if (numberLookup?.response.ok) {
+      appendContactJids(numberLookup.payload);
+      appendLids(numberLookup.payload);
+      resolution.numberJids = contactJidCandidates.length;
+    }
 
     // O ID da mensagem não depende de sabermos previamente se a Evolution
     // gravou a conversa pelo PN ou pelo LID, portanto é a fonte mais segura.
@@ -121,7 +147,11 @@ export async function updateEvolutionContactBlock(params: {
         `/chat/findMessages/${encodeURIComponent(params.instanceName)}`,
         { where: { key: { id: messageId } }, page: 1, offset: 10 },
       ).catch(() => null);
-      if (history?.response.ok) appendLids(history.payload);
+      if (history?.response.ok) {
+        const before = lidCandidates.length;
+        appendLids(history.payload);
+        resolution.messageLids += lidCandidates.length - before;
+      }
     }
 
     // Mantém compatibilidade com históricos anteriores, nos quais o PN e o
@@ -130,7 +160,11 @@ export async function updateEvolutionContactBlock(params: {
       `/chat/findMessages/${encodeURIComponent(params.instanceName)}`,
       { where: { key: { remoteJid: phoneJid } }, page: 1, offset: 20 },
     ).catch(() => null);
-    if (history?.response.ok) appendLids(history.payload);
+    if (history?.response.ok) {
+      const before = lidCandidates.length;
+      appendLids(history.payload);
+      resolution.historyLids += lidCandidates.length - before;
+    }
 
     // Algumas instalações já possuem um contato LID separado, mesmo quando
     // a mensagem foi normalizada e perdeu remoteJidAlt antes de ser salva.
@@ -140,7 +174,12 @@ export async function updateEvolutionContactBlock(params: {
         `/chat/findContacts/${encodeURIComponent(params.instanceName)}`,
         { where: { pushName: contactName }, page: 1, offset: 50 },
       ).catch(() => null);
-      if (contacts?.response.ok) appendLids(contacts.payload);
+      if (contacts?.response.ok) {
+        const before = lidCandidates.length;
+        appendLids(contacts.payload);
+        appendContactJids(contacts.payload);
+        resolution.contactLids += lidCandidates.length - before;
+      }
     }
 
     // Força o Baileys a atualizar o mapa PN↔LID desta pessoa. A resposta pode
@@ -150,7 +189,28 @@ export async function updateEvolutionContactBlock(params: {
       `/baileys/getUSyncDevices/${encodeURIComponent(params.instanceName)}`,
       { jids: [phoneJid], useCache: false, ignoreZeroDevices: false },
     ).catch(() => null);
-    if (sync?.response.ok) appendLids(sync.payload);
+    if (sync?.response.ok) {
+      const before = lidCandidates.length;
+      appendLids(sync.payload);
+      appendContactJids(sync.payload);
+      resolution.syncLids += lidCandidates.length - before;
+    }
+
+    console.info("[WhatsApp Evolution Block Resolution]", {
+      status: params.status,
+      providerStatus: lastFailure?.response.status || null,
+      ...resolution,
+      resolvedLids: lidCandidates.length,
+      resolvedContactJids: contactJidCandidates.length,
+    });
+
+    for (const number of contactJidCandidates) {
+      const result = await attemptBlock(number);
+      if (!result) continue;
+      if (result.response.ok) return { remoteJid: number };
+      lastFailure = result;
+      if (result.response.status < 500) break;
+    }
 
     for (const number of lidCandidates) {
       const result = await attemptBlock(number);
