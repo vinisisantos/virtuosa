@@ -86,3 +86,22 @@ test("recupera LID no retorno imediato de envio", () => {
     ["123456789@lid"],
   );
 });
+
+test("recupera o LID da chave ao localizar a mensagem pelo ID", () => {
+  assert.deepEqual(
+    evolutionMessageLidCandidates({
+      messages: {
+        records: [
+          {
+            key: {
+              id: "3EB0123456789",
+              remoteJid: "123456789@lid",
+              remoteJidAlt: "5511999999999@s.whatsapp.net",
+            },
+          },
+        ],
+      },
+    }),
+    ["123456789@lid"],
+  );
+});

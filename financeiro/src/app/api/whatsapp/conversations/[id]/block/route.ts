@@ -18,6 +18,7 @@ async function updateProviderBlockStatus(params: {
   provider?: string | null;
   phone: string;
   remoteJid: string;
+  messageIds?: string[];
   status: BlockStatus;
 }) {
   const provider = getInstanceProvider(params);
@@ -36,10 +37,10 @@ async function updateProviderBlockStatus(params: {
         ? `O WhatsApp recusou a ação: ${details}`
         : "O WhatsApp não confirmou a ação. Tente novamente.");
     }
-    return;
+    return { remoteJid: params.remoteJid };
   }
 
-  await updateEvolutionContactBlock(params);
+  return updateEvolutionContactBlock(params);
 }
 
 export async function PATCH(
@@ -81,14 +82,25 @@ export async function PATCH(
       return NextResponse.json({ error: "Contato sem identificador válido para bloqueio" }, { status: 400 });
     }
 
+    const provider = getInstanceProvider(conversation.instance);
+    const messageIds = provider === "evolution"
+      ? (await prisma.whatsAppMessage.findMany({
+          where: { conversationId: conversation.id },
+          select: { messageId: true },
+          orderBy: { timestamp: "desc" },
+          take: 5,
+        })).map((message) => message.messageId)
+      : [];
     const nextStatus: BlockStatus = body.blocked ? "block" : "unblock";
-    await updateProviderBlockStatus({
+    const providerResult = await updateProviderBlockStatus({
       instanceName: conversation.instance.name,
       provider: conversation.instance.provider,
       phone: conversation.contact.phone,
       remoteJid,
+      messageIds,
       status: nextStatus,
     });
+    const confirmedRemoteJid = providerResult.remoteJid || remoteJid;
 
     const userId = req.headers.get("x-user-id") || null;
     const userName = req.headers.get("x-user-name") || "Operador";
@@ -102,6 +114,7 @@ export async function PATCH(
             blockedAt,
             blockedBy: body.blocked ? userId : null,
             blockedByName: body.blocked ? userName : null,
+            lastKnownJid: confirmedRemoteJid,
           },
         }),
         prisma.activityLog.create({
@@ -128,7 +141,8 @@ export async function PATCH(
         instanceName: conversation.instance.name,
         provider: conversation.instance.provider,
         phone: conversation.contact.phone,
-        remoteJid,
+        remoteJid: confirmedRemoteJid,
+        messageIds,
         status: body.blocked ? "unblock" : "block",
       }).catch((rollbackError) => {
         console.error("[WhatsApp Contact Block Rollback Error]:", rollbackError);
