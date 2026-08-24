@@ -1347,6 +1347,16 @@ async function processMessage(
   // ─── Extrair tipo da mensagem ───────────────────────────────
   const msgType = extractMessageType(msg);
 
+  // Evolution usa unix seconds (number), enquanto Uazapi usa ISO string.
+  // O resumo inicial da conversa precisa desse horário antes das etapas de
+  // campanha e mídia, que podem falhar sem invalidar a chegada da mensagem.
+  const timestamp =
+    typeof msg.messageTimestamp === "number"
+      ? new Date(msg.messageTimestamp * 1000)
+      : msg.messageTimestamp
+        ? new Date(msg.messageTimestamp)
+        : new Date();
+
   // ─── Extrair nome do contato ────────────────────────────────
   const contactName = resolveContactNameFromMessage(msg, contactPhone, isFromMe);
 
@@ -1443,6 +1453,8 @@ async function processMessage(
           instanceId: dbInstance.id,
           contactId: contact.id,
           status: "open",
+          lastMessage: whatsAppConversationPreview(messageBody, msgType),
+          lastMessageAt: timestamp,
           ...(privateAssignment || {}),
         },
       });
@@ -1712,14 +1724,6 @@ async function processMessage(
       || resolvedCampaignName
       || fallbackCampaignName
     : null;
-
-  // Timestamp: Evolution usa unix seconds (number), Uazapi usa ISO string.
-  const timestamp =
-    typeof msg.messageTimestamp === "number"
-      ? new Date(msg.messageTimestamp * 1000)
-      : msg.messageTimestamp
-        ? new Date(msg.messageTimestamp)
-        : new Date();
 
   // ─── Diagnóstico: registrar estrutura de mensagens de anúncio ────────────────
   // Guarda um resumo leve apenas quando o CTWA nao foi classificado. Formulários
