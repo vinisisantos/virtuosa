@@ -5,6 +5,7 @@ import {
   evolutionBlockNumberCandidates,
   evolutionConversationNumber,
   evolutionMessageLidCandidates,
+  evolutionPayloadLidCandidates,
   whatsappConversationJid,
 } from "../src/lib/whatsapp/chat-action-identifiers.ts";
 
@@ -38,13 +39,20 @@ test("Evolution recebe telefone puro para contato normal e JID completo para LID
   );
 });
 
-test("bloqueio não repete o mesmo telefone em dois formatos equivalentes", () => {
+test("bloqueio tenta as duas formas brasileiras com e sem nono dígito", () => {
   assert.deepEqual(
     evolutionBlockNumberCandidates(
       "5511999999999@s.whatsapp.net",
       "+55 (11) 88888-8888",
     ),
-    ["5511999999999"],
+    ["5511999999999", "551199999999"],
+  );
+  assert.deepEqual(
+    evolutionBlockNumberCandidates(
+      "551188888888@s.whatsapp.net",
+      "+55 (11) 99999-9999",
+    ),
+    ["551188888888", "5511988888888"],
   );
   assert.deepEqual(
     evolutionBlockNumberCandidates("123456789@lid", "lid:123456789"),
@@ -103,5 +111,15 @@ test("recupera o LID da chave ao localizar a mensagem pelo ID", () => {
       },
     }),
     ["123456789@lid"],
+  );
+});
+
+test("recupera LID em contatos e respostas auxiliares da Evolution", () => {
+  assert.deepEqual(
+    evolutionPayloadLidCandidates([
+      { remoteJid: "5511999999999@s.whatsapp.net", pushName: "Contato" },
+      { remoteJid: "123456789@lid", nested: { jid: "987654321@hosted.lid" } },
+    ]),
+    ["123456789@lid", "987654321@hosted.lid"],
   );
 });

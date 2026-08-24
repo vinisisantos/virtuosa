@@ -6,6 +6,7 @@ import {
   evolutionBlockNumberCandidates,
   evolutionConversationNumber,
   evolutionMessageLidCandidates,
+  evolutionPayloadLidCandidates,
 } from "@/lib/whatsapp/chat-action-identifiers";
 
 type BlockStatus = "block" | "unblock";
@@ -66,6 +67,7 @@ export async function updateEvolutionContactBlock(params: {
   instanceName: string;
   phone: string;
   remoteJid: string;
+  contactName?: string | null;
   messageIds?: string[];
   status: BlockStatus;
 }): Promise<EvolutionBlockResult> {
@@ -73,9 +75,9 @@ export async function updateEvolutionContactBlock(params: {
   let lastFailure: { response: Response; payload: unknown } | null = null;
   const attemptedNumbers = new Set<string>();
 
-  const attemptBlock = async (number: string) => {
+  const attemptBlock = async (number: string, retry = false) => {
     const normalized = number.trim();
-    if (!normalized || attemptedNumbers.has(normalized)) return null;
+    if (!normalized || (!retry && attemptedNumbers.has(normalized))) return null;
     attemptedNumbers.add(normalized);
 
     return evolutionRequest(
@@ -103,7 +105,11 @@ export async function updateEvolutionContactBlock(params: {
       : `${params.phone.replace(/\D/g, "")}@s.whatsapp.net`;
     const lidCandidates: string[] = [];
     const appendLids = (payload: unknown) => {
-      for (const lid of evolutionMessageLidCandidates(payload)) {
+      const discovered = [
+        ...evolutionMessageLidCandidates(payload),
+        ...evolutionPayloadLidCandidates(payload),
+      ];
+      for (const lid of discovered) {
         if (!lidCandidates.includes(lid)) lidCandidates.push(lid);
       }
     };
@@ -126,12 +132,42 @@ export async function updateEvolutionContactBlock(params: {
     ).catch(() => null);
     if (history?.response.ok) appendLids(history.payload);
 
+    // Algumas instalações já possuem um contato LID separado, mesmo quando
+    // a mensagem foi normalizada e perdeu remoteJidAlt antes de ser salva.
+    const contactName = params.contactName?.trim();
+    if (contactName) {
+      const contacts = await evolutionRequest(
+        `/chat/findContacts/${encodeURIComponent(params.instanceName)}`,
+        { where: { pushName: contactName }, page: 1, offset: 50 },
+      ).catch(() => null);
+      if (contacts?.response.ok) appendLids(contacts.payload);
+    }
+
+    // Força o Baileys a atualizar o mapa PN↔LID desta pessoa. A resposta pode
+    // incluir o LID em algumas versões; nas demais, o mapa interno atualizado
+    // permite que uma nova tentativa com o PN seja resolvida corretamente.
+    const sync = await evolutionRequest(
+      `/baileys/getUSyncDevices/${encodeURIComponent(params.instanceName)}`,
+      { jids: [phoneJid], useCache: false, ignoreZeroDevices: false },
+    ).catch(() => null);
+    if (sync?.response.ok) appendLids(sync.payload);
+
     for (const number of lidCandidates) {
       const result = await attemptBlock(number);
       if (!result) continue;
       if (result.response.ok) return { remoteJid: number };
       lastFailure = result;
       if (result.response.status < 500) break;
+    }
+
+    if (sync?.response.ok && lidCandidates.length === 0) {
+      for (const number of candidates) {
+        const result = await attemptBlock(number, true);
+        if (!result) continue;
+        if (result.response.ok) return { remoteJid: params.remoteJid };
+        lastFailure = result;
+        if (result.response.status < 500) break;
+      }
     }
   }
 

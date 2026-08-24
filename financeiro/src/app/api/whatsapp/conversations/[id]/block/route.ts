@@ -18,6 +18,7 @@ async function updateProviderBlockStatus(params: {
   provider?: string | null;
   phone: string;
   remoteJid: string;
+  contactName?: string | null;
   messageIds?: string[];
   status: BlockStatus;
 }) {
@@ -97,6 +98,7 @@ export async function PATCH(
       provider: conversation.instance.provider,
       phone: conversation.contact.phone,
       remoteJid,
+      contactName: conversation.contact.name,
       messageIds,
       status: nextStatus,
     });
@@ -142,6 +144,7 @@ export async function PATCH(
         provider: conversation.instance.provider,
         phone: conversation.contact.phone,
         remoteJid: confirmedRemoteJid,
+        contactName: conversation.contact.name,
         messageIds,
         status: body.blocked ? "unblock" : "block",
       }).catch((rollbackError) => {

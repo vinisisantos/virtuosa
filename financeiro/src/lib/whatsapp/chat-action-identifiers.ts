@@ -19,7 +19,22 @@ export function evolutionConversationNumber(remoteJid: string, phone: string) {
 
 export function evolutionBlockNumberCandidates(remoteJid: string, phone: string) {
   const primary = evolutionConversationNumber(remoteJid, phone);
-  return primary ? [primary] : [];
+  if (!primary) return [];
+  if (/@(?:hosted\.)?lid$/i.test(primary)) return [primary];
+
+  const digits = primary.replace(/\D/g, "");
+  const candidates = [digits];
+
+  // A base do WhatsApp ainda pode registrar números brasileiros antigos sem
+  // o nono dígito. A Evolution considera as duas formas ao consultar o número,
+  // mas pode devolver apenas uma delas para a operação de bloqueio.
+  if (/^55\d{2}9\d{8}$/.test(digits)) {
+    candidates.push(`${digits.slice(0, 4)}${digits.slice(5)}`);
+  } else if (/^55\d{10}$/.test(digits)) {
+    candidates.push(`${digits.slice(0, 4)}9${digits.slice(4)}`);
+  }
+
+  return [...new Set(candidates)];
 }
 
 function lidFromValue(value: unknown) {
@@ -71,5 +86,33 @@ export function evolutionMessageLidCandidates(payload: unknown) {
     }
   }
 
+  return candidates;
+}
+
+export function evolutionPayloadLidCandidates(payload: unknown) {
+  const candidates: string[] = [];
+  const visited = new Set<object>();
+
+  const visit = (value: unknown, depth: number) => {
+    if (depth > 8 || value == null) return;
+    const lid = lidFromValue(value);
+    if (lid) {
+      if (!candidates.includes(lid)) candidates.push(lid);
+      return;
+    }
+    if (typeof value !== "object" || visited.has(value)) return;
+    visited.add(value);
+
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item, depth + 1);
+      return;
+    }
+
+    for (const nested of Object.values(value as Record<string, unknown>)) {
+      visit(nested, depth + 1);
+    }
+  };
+
+  visit(payload, 0);
   return candidates;
 }
