@@ -28,6 +28,7 @@ import { NotificationBell } from "@/components/notification-bell";
 const pageTitles: Record<string, string> = {
   "/crm": "Dashboard",
   "/crm/inbox": "WhatsApp Inbox",
+  "/crm/inbox/follow-up": "Central de Follow-up",
   "/crm/contacts": "Contatos",
   "/crm/pipeline": "Pipeline",
   "/crm/campanhas": "Campanhas",

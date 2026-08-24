@@ -159,6 +159,14 @@ const MESSAGE_LOAD_RETRY_DELAYS_MS = [350, 1000] as const;
 
 type InboxTab = "all" | "open" | "unread" | "closed" | "archived" | "callback" | "followup" | "lost";
 
+function inboxTabFromSearchParams(searchParams: { get(name: string): string | null }): InboxTab {
+  if (searchParams.get("archived") === "1") return "archived";
+  const queue = searchParams.get("queue");
+  return ["callback", "followup", "lost", "unread", "open"].includes(queue || "")
+    ? queue as InboxTab
+    : "all";
+}
+
 function serverConversationStatusForTab(tab: InboxTab) {
   return ["open", "unread", "callback", "followup", "lost"].includes(tab) ? tab : "all";
 }
@@ -3061,9 +3069,7 @@ export default function InboxPage() {
   const selectedConversationIdRef = useRef<string | null>(null);
   const activeAudioMessageIdRef = useRef<string | null>(null);
   const dismissedDeepLinkConversationIdRef = useRef<string | null>(null);
-  const [tab, setTab] = useState<InboxTab>(
-    searchParams.get("archived") === "1" ? "archived" : "all",
-  );
+  const [tab, setTab] = useState<InboxTab>(() => inboxTabFromSearchParams(searchParams));
   // Filtro por etiqueta (campanha). Vazio = mostra todas.
   const [tagFilter, setTagFilter] = useState<string[]>([]);
 
@@ -5935,6 +5941,13 @@ export default function InboxPage() {
     return true;
   });
   const activeInstanceChannel = getInstanceChannel(selectedCollaborator);
+  const isOsascoFollowUpPilotScope = activeInstanceChannel === "whatsapp" && (
+    selectedCollaborator
+      ? selectedCollaborator.unit === "Osasco"
+        || (selectedCollaborator.unit === "Todas" && effectiveUnit === "Osasco")
+      : effectiveUnit === "Osasco"
+        || (!effectiveUnit && currentUser?.unit === "Osasco")
+  );
   const selectedInstanceConnection = getInstanceConnectionPresentation(selectedCollaborator?.status);
   const mutedInstanceIdSet = useMemo(
     () => new Set(notificationMutes.mutedInstanceIds),
@@ -6485,6 +6498,26 @@ export default function InboxPage() {
                 )}
               </div>
             </div>
+            {isOsascoFollowUpPilotScope && (
+              <button
+                type="button"
+                onClick={() => router.push(buildUrl("/crm/inbox/follow-up", {
+                  scopeLabel: selectedCollaborator
+                    ? getInstanceDisplayLabel(selectedCollaborator)
+                    : "Meu Inbox",
+                }))}
+                className="mb-3 flex min-h-11 w-full items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/8 px-3 text-left transition-colors hover:border-emerald-500/35 hover:bg-emerald-500/12"
+              >
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/12 text-emerald-700 dark:text-emerald-300">
+                  <ListChecks className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-xs font-black text-foreground">Central de Follow-up</span>
+                  <span className="block truncate text-[10px] text-muted-foreground">Piloto Osasco · priorize a fila vencida</span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" />
+              </button>
+            )}
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
