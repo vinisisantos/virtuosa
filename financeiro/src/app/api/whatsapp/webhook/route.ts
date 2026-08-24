@@ -2392,6 +2392,7 @@ async function processMessage(
         if (isFromMe) {
           await recordOutboundForCallbackTracking(tx, conversation.id, timestamp, {
             messageId: persistedMessageDbId,
+            unit: dbInstance.unit === "Todas" ? contact.unit : dbInstance.unit || contact.unit,
           });
         } else {
           await recordInboundForCallbackTracking(tx, conversation.id, timestamp, {

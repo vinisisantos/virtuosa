@@ -788,6 +788,7 @@ export async function POST(req: Request) {
         messageId: savedMessage.id,
         userId: messageData.respondedBy,
         userName: messageData.respondedByName,
+        unit: dbInstance.unit === "Todas" ? contact.unit : dbInstance.unit || contact.unit,
       });
       const updatedConversation = await tx.whatsAppConversation.update({
         where: { id: conversation.id },

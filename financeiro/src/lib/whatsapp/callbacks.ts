@@ -7,9 +7,14 @@ import {
   WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
   WHATSAPP_CALLBACK_QUEUE_STATUS,
 } from "@/lib/whatsapp/callback-queue";
+import {
+  WHATSAPP_CALLBACK_DEFAULT_INTERVAL_MS,
+  nextWhatsAppCallbackDueAtForUnit,
+  whatsAppCallbackIntervalHoursForUnit,
+} from "@/lib/whatsapp/callback-interval";
 import { WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE } from "@/lib/whatsapp/callback-suppression";
 
-export const WHATSAPP_CALLBACK_INTERVAL_MS = 12 * 60 * 60 * 1000;
+export const WHATSAPP_CALLBACK_INTERVAL_MS = WHATSAPP_CALLBACK_DEFAULT_INTERVAL_MS;
 export { WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS } from "@/lib/whatsapp/callback-queue";
 export const WHATSAPP_CALLBACK_LOST_STATUS = "lost";
 export const WHATSAPP_CALLBACK_LOST_RESOLUTION = "callback_exhausted";
@@ -29,10 +34,11 @@ type CallbackMessageContext = {
   messageId?: string | null;
   userId?: string | null;
   userName?: string | null;
+  unit?: string | null;
 };
 
-export function nextWhatsAppCallbackDueAt(sentAt: Date) {
-  return new Date(sentAt.getTime() + WHATSAPP_CALLBACK_INTERVAL_MS);
+export function nextWhatsAppCallbackDueAt(sentAt: Date, unit?: string | null) {
+  return nextWhatsAppCallbackDueAtForUnit(sentAt, unit);
 }
 
 export async function recordInboundForCallbackTracking(
@@ -111,7 +117,7 @@ export async function recordOutboundForCallbackTracking(
   sentAt: Date,
   context: CallbackMessageContext = {},
 ) {
-  const callbackDueAt = nextWhatsAppCallbackDueAt(sentAt);
+  const callbackDueAt = nextWhatsAppCallbackDueAt(sentAt, context.unit);
 
   // O update condicional funciona como trava idempotente: se duas mensagens
   // forem enviadas juntas durante uma rechamada, apenas a primeira consome a
@@ -238,6 +244,10 @@ export async function processExpiredWhatsAppCallbacks(
   };
 
   for (const conversation of expired) {
+    const targetUnit = conversation.instance.unit && conversation.instance.unit !== "Todas"
+      ? conversation.instance.unit
+      : conversation.contact.unit || null;
+    const callbackIntervalHours = whatsAppCallbackIntervalHoursForUnit(targetUnit);
     const processed = await prisma.$transaction(async (tx) => {
       const claimed = await tx.whatsAppConversation.updateMany({
         where: {
@@ -251,7 +261,7 @@ export async function processExpiredWhatsAppCallbacks(
         data: {
           status: WHATSAPP_CALLBACK_LOST_STATUS,
           resolution: WHATSAPP_CALLBACK_LOST_RESOLUTION,
-          closeNote: "Sem resposta após 6 rechamadas em intervalos de 12 horas.",
+          closeNote: `Sem resposta após 6 rechamadas em intervalos de ${callbackIntervalHours} horas.`,
           closedAt: now,
           closedByName: "Sistema · Rechamada",
           callbackDueAt: null,
@@ -269,9 +279,6 @@ export async function processExpiredWhatsAppCallbacks(
       });
 
       const phoneKey = phoneLookupKey(conversation.contact.phone);
-      const targetUnit = conversation.instance.unit && conversation.instance.unit !== "Todas"
-        ? conversation.instance.unit
-        : conversation.contact.unit || null;
       let pipelineUpdated = false;
 
       if (phoneKey) {
