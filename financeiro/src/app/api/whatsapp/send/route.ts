@@ -19,6 +19,7 @@ import {
 } from "@/lib/whatsapp/media-storage";
 import { WHATSAPP_MEDIA_MAX_FILE_BYTES } from "@/lib/whatsapp/media-constraints";
 import { recordOutboundForCallbackTracking } from "@/lib/whatsapp/callbacks";
+import { isWhatsAppConversationInCallbackQueue } from "@/lib/whatsapp/callback-queue";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
 import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
@@ -197,6 +198,7 @@ export async function POST(req: Request) {
     const { type, viewOnce } = body;
     const rawMessageBody = typeof body.body === "string" ? body.body : "";
     const claimConversation = body.claimConversation === true;
+    const requireCallbackDue = body.requireCallbackDue === true;
     const replyid = typeof body.replyid === "string"
       ? body.replyid
       : typeof body.replyId === "string"
@@ -320,6 +322,13 @@ export async function POST(req: Request) {
           status: "open",
         },
       });
+    }
+
+    if (requireCallbackDue && !isWhatsAppConversationInCallbackQueue(conversation)) {
+      return NextResponse.json({
+        error: "O contato respondeu ou já não está disponível para rechame.",
+        code: "CALLBACK_NOT_DUE",
+      }, { status: 409 });
     }
 
     if (conversation.blockedAt) {

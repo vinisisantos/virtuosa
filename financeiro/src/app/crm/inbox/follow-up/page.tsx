@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   ArrowUpRight,
   CalendarClock,
+  Check,
   CheckCircle2,
   Clock3,
   History,
@@ -16,15 +17,27 @@ import {
   MessageSquareText,
   RefreshCw,
   RotateCcw,
+  Send,
+  UsersRound,
   UserRound,
+  X,
 } from "lucide-react";
 
+import { toast } from "@/components/toast";
+import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
+import { useWhatsAppSavedReplies } from "@/hooks/use-whatsapp-saved-replies";
 import {
   FOLLOW_UP_CENTER_PAGE_SIZE,
   FOLLOW_UP_CENTER_PILOT_UNIT,
   followUpCenterAgeBucket,
   type FollowUpCenterBucket,
 } from "@/lib/whatsapp/follow-up-center";
+import { getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
+import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
+
+const MAX_BULK_FOLLOW_UP_CONVERSATIONS = 10;
+const NO_CAMPAIGN_KEY = "campaign:none";
+const BULK_FOLLOW_UP_INTERVAL_MS = 1_000;
 
 type FollowUpCenterStats = {
   totalDue: number;
@@ -48,6 +61,7 @@ type FollowUpConversation = {
   callbackDueAt: string;
   callbackStreakCount: number;
   callbackTotalCount: number;
+  campaignName: string | null;
   canReply: boolean;
   contact: {
     name: string | null;
@@ -59,6 +73,26 @@ type FollowUpConversation = {
     name: string;
     unit: string | null;
   };
+};
+
+type CurrentUser = {
+  id: string;
+  name: string;
+  unit: string | null;
+};
+
+type CampaignGroup = {
+  key: string;
+  campaignName: string | null;
+  conversations: FollowUpConversation[];
+};
+
+type BulkFollowUpProgress = {
+  total: number;
+  completed: number;
+  sent: number;
+  failed: number;
+  skipped: number;
 };
 
 type FollowUpCenterResponse = {
@@ -152,6 +186,15 @@ function initials(value: string) {
     .toUpperCase();
 }
 
+function campaignGroupKey(campaignName?: string | null) {
+  const normalized = campaignName?.trim();
+  return normalized ? `campaign:${normalized}` : NO_CAMPAIGN_KEY;
+}
+
+function waitForBulkFollowUpInterval() {
+  return new Promise((resolve) => window.setTimeout(resolve, BULK_FOLLOW_UP_INTERVAL_MS));
+}
+
 function agePresentation(callbackDueAt: string, now: number) {
   const bucket = followUpCenterAgeBucket(callbackDueAt, now);
   if (bucket === "today") {
@@ -201,6 +244,14 @@ export default function FollowUpCenterPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clockNow, setClockNow] = useState(Date.now());
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
+  const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
+  const [campaignDrafts, setCampaignDrafts] = useState<Record<string, string>>({});
+  const [bulkComposerOpen, setBulkComposerOpen] = useState(false);
+  const [bulkFollowUpSending, setBulkFollowUpSending] = useState(false);
+  const [bulkFollowUpProgress, setBulkFollowUpProgress] = useState<BulkFollowUpProgress | null>(null);
+  const [savedReplyCampaignKey, setSavedReplyCampaignKey] = useState<string | null>(null);
+  const savedRepliesLibrary = useWhatsAppSavedReplies();
 
   const scopedSearchParams = useMemo(() => new URLSearchParams(scopeParams), [scopeParams]);
   const selectedScopeLabel = scopedSearchParams.get("scopeLabel") || data?.scope.label || "Carregando...";
@@ -264,6 +315,194 @@ export default function FollowUpCenterPage() {
     const interval = window.setInterval(() => setClockNow(Date.now()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.user) return;
+        setCurrentUser({
+          id: payload.user.id,
+          name: payload.user.name || "Operador",
+          unit: payload.user.unit || null,
+        });
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    setSelectedConversationIds([]);
+    setCampaignDrafts({});
+    setBulkComposerOpen(false);
+    setBulkFollowUpProgress(null);
+  }, [bucket]);
+
+  const selectedConversationIdSet = useMemo(
+    () => new Set(selectedConversationIds),
+    [selectedConversationIds],
+  );
+  const selectedConversations = useMemo(() => {
+    const conversationById = new Map(conversations.map((conversation) => [conversation.id, conversation]));
+    return selectedConversationIds
+      .map((conversationId) => conversationById.get(conversationId))
+      .filter((conversation): conversation is FollowUpConversation => Boolean(conversation));
+  }, [conversations, selectedConversationIds]);
+  const campaignGroups = useMemo(() => {
+    const groups = new Map<string, CampaignGroup>();
+    for (const conversation of selectedConversations) {
+      const key = campaignGroupKey(conversation.campaignName);
+      const existing = groups.get(key);
+      if (existing) {
+        existing.conversations.push(conversation);
+      } else {
+        groups.set(key, {
+          key,
+          campaignName: conversation.campaignName,
+          conversations: [conversation],
+        });
+      }
+    }
+    return [...groups.values()];
+  }, [selectedConversations]);
+  const savedReplyCampaign = campaignGroups.find((group) => group.key === savedReplyCampaignKey) || null;
+  const allCampaignDraftsReady = campaignGroups.length > 0
+    && campaignGroups.every((group) => campaignDrafts[group.key]?.trim());
+
+  const toggleConversationSelection = (conversation: FollowUpConversation) => {
+    if (bulkFollowUpSending) return;
+    if (!conversation.canReply) {
+      toast("Esta conversa está disponível somente para consulta.", "error");
+      return;
+    }
+    setSelectedConversationIds((current) => {
+      if (current.includes(conversation.id)) {
+        return current.filter((conversationId) => conversationId !== conversation.id);
+      }
+      if (current.length >= MAX_BULK_FOLLOW_UP_CONVERSATIONS) {
+        toast(`Selecione no máximo ${MAX_BULK_FOLLOW_UP_CONVERSATIONS} contatos.`, "error");
+        return current;
+      }
+      return [...current, conversation.id];
+    });
+  };
+
+  const selectFirstAvailableConversations = () => {
+    if (bulkFollowUpSending) return;
+    const nextIds = conversations
+      .filter((conversation) => conversation.canReply)
+      .slice(0, MAX_BULK_FOLLOW_UP_CONVERSATIONS)
+      .map((conversation) => conversation.id);
+    setSelectedConversationIds(nextIds);
+    if (nextIds.length === 0) toast("Nenhum contato disponível para envio nesta página.", "error");
+  };
+
+  const updateCampaignDraft = (campaignKey: string, value: string) => {
+    setCampaignDrafts((current) => ({ ...current, [campaignKey]: value }));
+  };
+
+  const campaignPreview = (group: CampaignGroup) => {
+    const conversation = group.conversations[0];
+    const unitConfig = getEvaluationScheduleUnitConfigByUnit(
+      conversation.contact.unit || FOLLOW_UP_CENTER_PILOT_UNIT,
+    );
+    return renderWhatsAppMessageTemplate(campaignDrafts[group.key] || "", {
+      contactName: conversation.contact.name,
+      contactPhone: conversation.contact.phone,
+      unit: unitConfig?.displayUnitName || conversation.contact.unit || FOLLOW_UP_CENTER_PILOT_UNIT,
+      unitAddress: unitConfig?.address,
+      unitLocationUrl: unitConfig?.locationUrl,
+      attendantName: currentUser?.name,
+    });
+  };
+
+  const sendBulkFollowUp = async () => {
+    if (bulkFollowUpSending || !currentUser || !allCampaignDraftsReady) return;
+
+    const recipients = campaignGroups.flatMap((group) => group.conversations.map((conversation) => ({
+      conversation,
+      message: campaignDrafts[group.key].trim(),
+    })));
+    if (recipients.length === 0 || recipients.length > MAX_BULK_FOLLOW_UP_CONVERSATIONS) return;
+
+    setBulkFollowUpSending(true);
+    setBulkFollowUpProgress({
+      total: recipients.length,
+      completed: 0,
+      sent: 0,
+      failed: 0,
+      skipped: 0,
+    });
+    const query = new URLSearchParams(scopedSearchParams);
+    query.set("unit", FOLLOW_UP_CENTER_PILOT_UNIT);
+    const sendUrl = `/api/whatsapp/send?${query.toString()}`;
+    const failedIds: string[] = [];
+    let sent = 0;
+    let failed = 0;
+    let skipped = 0;
+
+    try {
+      for (let index = 0; index < recipients.length; index += 1) {
+        const { conversation, message } = recipients[index];
+        try {
+          const response = await fetch(sendUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-id": currentUser.id,
+              "x-user-name": currentUser.name,
+            },
+            body: JSON.stringify({
+              conversationId: conversation.id,
+              contactId: conversation.contact.phone,
+              instanceId: conversation.instanceId,
+              body: message,
+              type: "text",
+              claimConversation: true,
+              requireCallbackDue: true,
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            if (response.status === 409 && payload.code === "CALLBACK_NOT_DUE") {
+              skipped += 1;
+            } else {
+              failed += 1;
+              failedIds.push(conversation.id);
+            }
+          } else {
+            sent += 1;
+            setConversations((current) => current.filter((item) => item.id !== conversation.id));
+          }
+        } catch {
+          failed += 1;
+          failedIds.push(conversation.id);
+        }
+
+        setBulkFollowUpProgress({
+          total: recipients.length,
+          completed: index + 1,
+          sent,
+          failed,
+          skipped,
+        });
+        if (index < recipients.length - 1) await waitForBulkFollowUpInterval();
+      }
+
+      setSelectedConversationIds(failedIds);
+      await fetchPage();
+      if (failedIds.length === 0) {
+        setBulkComposerOpen(false);
+        setCampaignDrafts({});
+        setBulkFollowUpProgress(null);
+        const skippedLabel = skipped > 0 ? ` ${skipped} não foram enviados porque já saíram da fila.` : "";
+        toast(`${sent} ${sent === 1 ? "rechame enviado" : "rechames enviados"}.${skippedLabel}`, "success");
+      } else {
+        toast(`${sent} enviados e ${failedIds.length} com falha. As falhas continuam selecionadas.`, "error");
+      }
+    } finally {
+      setBulkFollowUpSending(false);
+    }
+  };
 
   const stats = data?.stats || EMPTY_STATS;
   const bucketCounts: Record<FollowUpCenterBucket, number> = {
@@ -462,6 +701,46 @@ export default function FollowUpCenterPage() {
                   })}
                 </div>
               </div>
+              <div className="mt-4 flex flex-col gap-3 border-t border-border/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-2">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <UsersRound className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-foreground">Rechame em lote</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {selectedConversationIds.length} de {MAX_BULK_FOLLOW_UP_CONVERSATIONS} selecionados · mensagem por campanha
+                    </p>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                  <button
+                    type="button"
+                    onClick={selectFirstAvailableConversations}
+                    disabled={loading || bulkFollowUpSending}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-black text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                  >
+                    Selecionar 10
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedConversationIds([])}
+                    disabled={selectedConversationIds.length === 0 || bulkFollowUpSending}
+                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-black text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  >
+                    Limpar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBulkComposerOpen(true)}
+                    disabled={selectedConversationIds.length === 0 || bulkFollowUpSending}
+                    className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-black text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    <MessageSquareText className="h-4 w-4" />
+                    Preparar mensagens
+                  </button>
+                </div>
+              </div>
             </div>
 
             {loading ? (
@@ -489,11 +768,29 @@ export default function FollowUpCenterPage() {
                   inboxParams.set("conversationId", conversation.id);
                   inboxParams.set("queue", "callback");
                   const conversationHref = `/crm/inbox?${inboxParams.toString()}`;
+                  const selected = selectedConversationIdSet.has(conversation.id);
 
                   return (
-                    <article key={conversation.id} className="p-4 transition-colors hover:bg-muted/20 sm:p-5">
+                    <article
+                      key={conversation.id}
+                      className={`p-4 transition-colors sm:p-5 ${selected ? "bg-primary/5" : "hover:bg-muted/20"}`}
+                    >
                       <div className="flex flex-col gap-4 xl:grid xl:grid-cols-[minmax(260px,1.1fr)_minmax(220px,1fr)_minmax(300px,1.2fr)_auto] xl:items-center">
                         <div className="flex min-w-0 items-start gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleConversationSelection(conversation)}
+                            disabled={!conversation.canReply || bulkFollowUpSending}
+                            aria-pressed={selected}
+                            aria-label={selected ? `Remover ${contactLabel} da seleção` : `Selecionar ${contactLabel}`}
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors sm:h-12 sm:w-12 ${
+                              selected
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border bg-background text-muted-foreground hover:border-primary/40 hover:text-primary"
+                            } disabled:cursor-not-allowed disabled:opacity-40`}
+                          >
+                            {selected ? <Check className="h-5 w-5" /> : <span className="h-5 w-5 rounded border-2 border-current" />}
+                          </button>
                           {conversation.contact.profilePic ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -514,6 +811,9 @@ export default function FollowUpCenterPage() {
                               </span>
                             </div>
                             <p className="mt-1 text-xs text-muted-foreground">{formatPhone(conversation.contact.phone)}</p>
+                            <p className="mt-1 inline-flex max-w-full rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-black text-violet-700 dark:text-violet-300">
+                              <span className="truncate">{conversation.campaignName || "Sem campanha"}</span>
+                            </p>
                             <p className="mt-1 truncate text-xs text-muted-foreground" title={conversation.lastMessage || undefined}>
                               {conversation.lastMessage || "Sem prévia da última mensagem"}
                             </p>
@@ -596,6 +896,156 @@ export default function FollowUpCenterPage() {
           </section>
         </>
       )}
+
+      {bulkComposerOpen && !savedReplyCampaignKey && (
+        <div
+          className="fixed inset-0 z-40 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !bulkFollowUpSending) setBulkComposerOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="bulk-follow-up-title"
+            className="flex max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-border bg-card shadow-2xl sm:max-w-3xl sm:rounded-3xl"
+          >
+            <div className="flex shrink-0 items-start gap-3 border-b border-border/70 px-4 py-4 sm:px-6">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <UsersRound className="h-5 w-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 id="bulk-follow-up-title" className="text-base font-black text-foreground sm:text-lg">
+                  Rechame por campanha
+                </h2>
+                <p className="mt-0.5 text-xs leading-5 text-muted-foreground">
+                  {selectedConversations.length} contatos em {campaignGroups.length} {campaignGroups.length === 1 ? "campanha" : "campanhas"}. Cada texto será personalizado no envio.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkComposerOpen(false)}
+                disabled={bulkFollowUpSending}
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                aria-label="Fechar preparação do lote"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+              {campaignGroups.map((group) => {
+                const draft = campaignDrafts[group.key] || "";
+                const preview = campaignPreview(group);
+                const sampleContact = group.conversations[0];
+                return (
+                  <section key={group.key} className="overflow-hidden rounded-2xl border border-border/80 bg-background/55">
+                    <div className="flex flex-col gap-3 border-b border-border/70 p-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black text-foreground">
+                          {group.campaignName || "Sem campanha"}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {group.conversations.length} {group.conversations.length === 1 ? "contato selecionado" : "contatos selecionados"}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSavedReplyCampaignKey(group.key)}
+                        disabled={bulkFollowUpSending}
+                        className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-border bg-card px-3 text-xs font-black text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                      >
+                        <MessageSquareText className="h-4 w-4" />
+                        Usar resposta rápida
+                      </button>
+                    </div>
+                    <div className="space-y-3 p-4">
+                      <label className="block">
+                        <span className="mb-1.5 block text-xs font-black text-foreground">Mensagem desta campanha</span>
+                        <textarea
+                          value={draft}
+                          onChange={(event) => updateCampaignDraft(group.key, event.target.value)}
+                          disabled={bulkFollowUpSending}
+                          rows={5}
+                          maxLength={4096}
+                          lang="pt-BR"
+                          spellCheck
+                          autoCorrect="on"
+                          autoCapitalize="sentences"
+                          placeholder={`Escreva o rechame para ${group.campaignName || "os contatos sem campanha"}...`}
+                          className="min-h-32 w-full resize-y rounded-xl border border-border bg-card px-3 py-2.5 text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground focus:border-primary/40 focus:ring-1 focus:ring-primary/25 disabled:opacity-60"
+                        />
+                      </label>
+                      <div className={`rounded-xl border p-3 ${draft.trim() ? "border-emerald-500/20 bg-emerald-500/5" : "border-amber-500/20 bg-amber-500/5"}`}>
+                        <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                          {draft.trim()
+                            ? `Prévia para ${sampleContact.contact.name || formatPhone(sampleContact.contact.phone)}`
+                            : "Mensagem obrigatória"}
+                        </p>
+                        <p className="mt-1 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-xs leading-5 text-foreground">
+                          {draft.trim() ? preview : "Escolha uma resposta rápida ou escreva o texto antes de enviar."}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                );
+              })}
+
+              {bulkFollowUpProgress && (
+                <section className="rounded-2xl border border-border bg-background/70 p-4">
+                  <div className="flex items-center justify-between gap-3 text-xs font-black text-foreground">
+                    <span>{bulkFollowUpProgress.completed} de {bulkFollowUpProgress.total}</span>
+                    <span>
+                      {bulkFollowUpProgress.sent} enviados
+                      {bulkFollowUpProgress.failed > 0 ? ` · ${bulkFollowUpProgress.failed} falharam` : ""}
+                      {bulkFollowUpProgress.skipped > 0 ? ` · ${bulkFollowUpProgress.skipped} saíram da fila` : ""}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                    <div
+                      className="h-full rounded-full bg-primary transition-[width] duration-300"
+                      style={{ width: `${(bulkFollowUpProgress.completed / bulkFollowUpProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </section>
+              )}
+            </div>
+
+            <div className="shrink-0 border-t border-border/70 bg-card px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4">
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-center text-[11px] leading-4 text-muted-foreground sm:max-w-sm sm:text-left">
+                  O sistema confere novamente se o lead continua sem resposta e envia um contato por vez.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void sendBulkFollowUp()}
+                  disabled={bulkFollowUpSending || !currentUser || !allCampaignDraftsReady}
+                  className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 text-sm font-black text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-11"
+                >
+                  {bulkFollowUpSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {bulkFollowUpSending ? "Enviando..." : `Enviar ${selectedConversations.length} rechames`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <SavedRepliesDialog
+        open={Boolean(savedReplyCampaign)}
+        draftText={savedReplyCampaign ? campaignDrafts[savedReplyCampaign.key] || "" : ""}
+        library={savedRepliesLibrary}
+        campaignName={savedReplyCampaign?.campaignName}
+        onOpenChange={(open) => {
+          if (!open) setSavedReplyCampaignKey(null);
+        }}
+        onSelect={(content) => {
+          if (savedReplyCampaign) updateCampaignDraft(savedReplyCampaign.key, content);
+          setSavedReplyCampaignKey(null);
+          toast("Resposta aplicada à campanha.", "success");
+        }}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
+import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { prisma } from "@/lib/db";
 import { permittedUnitsForAccess } from "@/lib/role-access";
 import {
@@ -16,6 +17,11 @@ import {
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 const MAX_PAGE_SIZE = 100;
+const CAMPAIGN_PHONE_LOOKUP_TAKE = 8;
+
+function normalizePhoneSuffix(value?: string | null) {
+  return (value || "").replace(/\D/g, "").slice(-8);
+}
 
 function readPermissions(req: Request) {
   try {
@@ -41,6 +47,7 @@ function pilotConversationWhere(instanceIds: string[], now: Date): Prisma.WhatsA
     instanceId: { in: instanceIds },
     archivedAt: null,
     callbackTrackingStartedAt: { not: null },
+    lastOutboundAt: { not: null },
     callbackDueAt: { lte: now },
     callbackStreakCount: { lt: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
     callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
@@ -156,6 +163,11 @@ export async function GET(req: Request) {
         WHERE conversation."instanceId" IN (${Prisma.join(instanceIds)})
           AND conversation."archivedAt" IS NULL
           AND conversation."callbackTrackingStartedAt" IS NOT NULL
+          AND conversation."lastOutboundAt" IS NOT NULL
+          AND (
+            conversation."lastInboundAt" IS NULL
+            OR conversation."lastOutboundAt" > conversation."lastInboundAt"
+          )
           AND conversation."callbackDueAt" <= ${now}
           AND conversation."callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
           AND conversation."callbackQueueStatus" <> ${WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE}
@@ -236,6 +248,41 @@ export async function GET(req: Request) {
 
     const hasMore = rows.length > limit;
     const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const phoneSuffixes = [...new Set(
+      pageRows
+        .map((conversation) => normalizePhoneSuffix(conversation.contact.phone))
+        .filter((suffix) => suffix.length >= 8),
+    )];
+    const clients = phoneSuffixes.length > 0
+      ? await prisma.client.findMany({
+          where: {
+            OR: phoneSuffixes.map((suffix) => ({ phone: { contains: suffix } })),
+          },
+          select: {
+            phone: true,
+            campaignName: true,
+            campaignId: true,
+            fbclid: true,
+            source: true,
+            updatedAt: true,
+          },
+          orderBy: { updatedAt: "desc" },
+          take: Math.max(limit, phoneSuffixes.length * CAMPAIGN_PHONE_LOOKUP_TAKE),
+        })
+      : [];
+    const campaignCandidatesByPhone = new Map<string, typeof clients>();
+    for (const client of clients) {
+      const phoneKey = normalizePhoneSuffix(client.phone);
+      if (phoneKey.length < 8) continue;
+      const candidates = campaignCandidatesByPhone.get(phoneKey) || [];
+      candidates.push(client);
+      campaignCandidatesByPhone.set(phoneKey, candidates);
+    }
+    const campaignByPhone = new Map<string, string>();
+    for (const [phoneKey, candidates] of campaignCandidatesByPhone.entries()) {
+      const campaignName = pickBestCampaignClient(candidates)?.campaignName?.trim();
+      if (campaignName) campaignByPhone.set(phoneKey, campaignName);
+    }
     const accessByInstanceId = new Map(instances.map((instance) => [instance.id, instance]));
     const instanceLabels = [...new Set(instances.map((instance) => instance.displayName || instance.name))];
 
@@ -259,6 +306,7 @@ export async function GET(req: Request) {
       },
       conversations: pageRows.map((conversation) => ({
         ...conversation,
+        campaignName: campaignByPhone.get(normalizePhoneSuffix(conversation.contact.phone)) || null,
         canReply: accessByInstanceId.get(conversation.instanceId)?.canReply !== false,
       })),
       hasMore,

@@ -11,6 +11,8 @@ const now = Date.parse("2026-08-15T15:00:00.000Z");
 test("mantém atendimento normal fora da fila antes do primeiro vencimento", () => {
   assert.equal(whatsAppCallbackQueueView({
     status: "open",
+    lastInboundAt: "2026-08-15T09:00:00.000Z",
+    lastOutboundAt: "2026-08-15T10:00:00.000Z",
     callbackTrackingStartedAt: "2026-08-15T10:00:00.000Z",
     callbackDueAt: "2026-08-15T22:00:00.000Z",
     callbackStreakCount: 0,
@@ -21,6 +23,8 @@ test("mantém atendimento normal fora da fila antes do primeiro vencimento", () 
 test("move para pendentes quando a janela de rechame vence", () => {
   assert.equal(whatsAppCallbackQueueView({
     status: "open",
+    lastInboundAt: "2026-08-14T09:00:00.000Z",
+    lastOutboundAt: "2026-08-14T10:00:00.000Z",
     callbackTrackingStartedAt: "2026-08-14T10:00:00.000Z",
     callbackDueAt: "2026-08-15T14:59:59.000Z",
     callbackStreakCount: 0,
@@ -31,6 +35,8 @@ test("move para pendentes quando a janela de rechame vence", () => {
 test("mantém a conversa na fila principal enquanto aguarda resposta", () => {
   assert.equal(whatsAppCallbackQueueView({
     status: "open",
+    lastInboundAt: "2026-08-14T09:00:00.000Z",
+    lastOutboundAt: "2026-08-15T15:00:00.000Z",
     callbackTrackingStartedAt: "2026-08-14T10:00:00.000Z",
     callbackDueAt: "2026-08-16T03:00:00.000Z",
     callbackStreakCount: 2,
@@ -41,6 +47,8 @@ test("mantém a conversa na fila principal enquanto aguarda resposta", () => {
 test("prioriza pendência quando uma nova tentativa já venceu", () => {
   assert.equal(whatsAppCallbackQueueView({
     status: "open",
+    lastInboundAt: "2026-08-14T09:00:00.000Z",
+    lastOutboundAt: "2026-08-15T02:00:00.000Z",
     callbackTrackingStartedAt: "2026-08-14T10:00:00.000Z",
     callbackDueAt: "2026-08-15T14:00:00.000Z",
     callbackStreakCount: 2,
@@ -60,9 +68,25 @@ test("mantém a resposta na fila principal sem exigir retomada manual", () => {
   assert.equal(isWhatsAppConversationInCallbackQueue(conversation, now), false);
 });
 
+test("não oferece rechame quando a última mensagem veio do lead", () => {
+  const conversation = {
+    status: "open",
+    lastOutboundAt: "2026-08-15T10:00:00.000Z",
+    lastInboundAt: "2026-08-15T14:30:00.000Z",
+    callbackTrackingStartedAt: "2026-08-15T10:00:00.000Z",
+    callbackDueAt: "2026-08-15T14:00:00.000Z",
+    callbackStreakCount: 1,
+    callbackQueueStatus: "waiting_response",
+  };
+  assert.equal(whatsAppCallbackQueueView(conversation, now), null);
+  assert.equal(isWhatsAppConversationInCallbackQueue(conversation, now), false);
+});
+
 test("não contabiliza cliente com pacote fechado mesmo se houver prazo vencido", () => {
   const conversation = {
     status: "open",
+    lastInboundAt: "2026-08-14T09:00:00.000Z",
+    lastOutboundAt: "2026-08-14T10:00:00.000Z",
     callbackTrackingStartedAt: "2026-08-14T10:00:00.000Z",
     callbackDueAt: "2026-08-15T14:00:00.000Z",
     callbackStreakCount: 2,

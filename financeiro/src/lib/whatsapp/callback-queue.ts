@@ -14,6 +14,8 @@ export type WhatsAppCallbackQueueView = "due" | "waiting_response" | "responded"
 
 type CallbackQueueCandidate = {
   status?: string | null;
+  lastInboundAt?: Date | string | null;
+  lastOutboundAt?: Date | string | null;
   callbackTrackingStartedAt?: Date | string | null;
   callbackDueAt?: Date | string | null;
   callbackStreakCount?: number | null;
@@ -21,6 +23,12 @@ type CallbackQueueCandidate = {
 };
 
 const CLOSED_CONVERSATION_STATUSES = new Set(["closed", "resolved", "lost"]);
+
+function timestampFrom(value?: Date | string | null) {
+  if (!value) return null;
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
 
 export function whatsAppCallbackQueueView(
   conversation: CallbackQueueCandidate,
@@ -32,8 +40,13 @@ export function whatsAppCallbackQueueView(
   const dueAt = conversation.callbackDueAt
     ? new Date(conversation.callbackDueAt).getTime()
     : Number.POSITIVE_INFINITY;
+  const lastInboundAt = timestampFrom(conversation.lastInboundAt);
+  const lastOutboundAt = timestampFrom(conversation.lastOutboundAt);
+  const teamIsWaitingForLead = lastOutboundAt !== null
+    && (lastInboundAt === null || lastOutboundAt > lastInboundAt);
   const isDue = Boolean(
     conversation.callbackTrackingStartedAt
+    && teamIsWaitingForLead
     && dueAt <= now
     && (conversation.callbackStreakCount || 0) < WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
   );
