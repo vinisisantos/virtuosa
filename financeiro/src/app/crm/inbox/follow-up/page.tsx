@@ -10,10 +10,12 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   History,
   ListChecks,
   Loader2,
+  Megaphone,
   MessageSquareText,
   RefreshCw,
   RotateCcw,
@@ -36,6 +38,7 @@ import { getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 
 const MAX_BULK_FOLLOW_UP_CONVERSATIONS = 10;
+const ALL_CAMPAIGNS_KEY = "campaign:all";
 const NO_CAMPAIGN_KEY = "campaign:none";
 const BULK_FOLLOW_UP_INTERVAL_MS = 1_000;
 
@@ -79,6 +82,12 @@ type CampaignGroup = {
   key: string;
   campaignName: string | null;
   conversations: FollowUpConversation[];
+};
+
+type CampaignFilterOption = {
+  key: string;
+  label: string;
+  count: number;
 };
 
 type BulkFollowUpProgress = {
@@ -238,6 +247,7 @@ export default function FollowUpCenterPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [clockNow, setClockNow] = useState(Date.now());
+  const [campaignFilterKey, setCampaignFilterKey] = useState(ALL_CAMPAIGNS_KEY);
   const [selectedConversationIds, setSelectedConversationIds] = useState<string[]>([]);
   const [campaignDrafts, setCampaignDrafts] = useState<Record<string, string>>({});
   const [bulkComposerOpen, setBulkComposerOpen] = useState(false);
@@ -310,6 +320,7 @@ export default function FollowUpCenterPage() {
   }, []);
 
   useEffect(() => {
+    setCampaignFilterKey(ALL_CAMPAIGNS_KEY);
     setSelectedConversationIds([]);
     setCampaignDrafts({});
     setBulkComposerOpen(false);
@@ -346,6 +357,42 @@ export default function FollowUpCenterPage() {
   const savedReplyCampaign = campaignGroups.find((group) => group.key === savedReplyCampaignKey) || null;
   const allCampaignDraftsReady = campaignGroups.length > 0
     && campaignGroups.every((group) => campaignDrafts[group.key]?.trim());
+  const campaignFilterOptions = useMemo(() => {
+    const options = new Map<string, CampaignFilterOption>();
+    for (const conversation of conversations) {
+      const key = campaignGroupKey(conversation.campaignName);
+      const existing = options.get(key);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        options.set(key, {
+          key,
+          label: conversation.campaignName?.trim() || "Sem campanha",
+          count: 1,
+        });
+      }
+    }
+    return [...options.values()].sort((left, right) => {
+      if (left.key === NO_CAMPAIGN_KEY) return 1;
+      if (right.key === NO_CAMPAIGN_KEY) return -1;
+      return left.label.localeCompare(right.label, "pt-BR");
+    });
+  }, [conversations]);
+  const filteredConversations = useMemo(() => (
+    campaignFilterKey === ALL_CAMPAIGNS_KEY
+      ? conversations
+      : conversations.filter((conversation) => campaignGroupKey(conversation.campaignName) === campaignFilterKey)
+  ), [campaignFilterKey, conversations]);
+  const activeCampaignFilter = campaignFilterOptions.find((option) => option.key === campaignFilterKey) || null;
+
+  const changeCampaignFilter = (nextFilterKey: string) => {
+    if (bulkFollowUpSending || nextFilterKey === campaignFilterKey) return;
+    setCampaignFilterKey(nextFilterKey);
+    setSelectedConversationIds([]);
+    setCampaignDrafts({});
+    setBulkComposerOpen(false);
+    setBulkFollowUpProgress(null);
+  };
 
   const toggleConversationSelection = (conversation: FollowUpConversation) => {
     if (bulkFollowUpSending) return;
@@ -367,7 +414,7 @@ export default function FollowUpCenterPage() {
 
   const selectFirstAvailableConversations = () => {
     if (bulkFollowUpSending) return;
-    const nextIds = conversations
+    const nextIds = filteredConversations
       .filter((conversation) => conversation.canReply)
       .slice(0, MAX_BULK_FOLLOW_UP_CONVERSATIONS)
       .map((conversation) => conversation.id);
@@ -678,7 +725,7 @@ export default function FollowUpCenterPage() {
                   })}
                 </div>
               </div>
-              <div className="mt-4 flex flex-col gap-3 border-t border-border/70 pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="mt-4 flex flex-col gap-3 border-t border-border/70 pt-4 xl:flex-row xl:items-end xl:justify-between">
                 <div className="flex min-w-0 items-center gap-2">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                     <UsersRound className="h-4 w-4" />
@@ -686,36 +733,63 @@ export default function FollowUpCenterPage() {
                   <div className="min-w-0">
                     <p className="text-sm font-black text-foreground">Rechame em lote</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {selectedConversationIds.length} de {MAX_BULK_FOLLOW_UP_CONVERSATIONS} selecionados · mensagem por campanha
+                      {selectedConversationIds.length} de {MAX_BULK_FOLLOW_UP_CONVERSATIONS} selecionados
+                      {activeCampaignFilter ? ` · ${activeCampaignFilter.label}` : " · mensagem por campanha"}
                     </p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-                  <button
-                    type="button"
-                    onClick={selectFirstAvailableConversations}
-                    disabled={loading || bulkFollowUpSending}
-                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-black text-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                  >
-                    Selecionar 10
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedConversationIds([])}
-                    disabled={selectedConversationIds.length === 0 || bulkFollowUpSending}
-                    className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-black text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
-                  >
-                    Limpar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBulkComposerOpen(true)}
-                    disabled={selectedConversationIds.length === 0 || bulkFollowUpSending}
-                    className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-black text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    <MessageSquareText className="h-4 w-4" />
-                    Preparar mensagens
-                  </button>
+                <div className="flex w-full flex-col gap-3 xl:w-auto xl:flex-row xl:items-end">
+                  <label className="block min-w-0 xl:w-64">
+                    <span className="mb-1 block text-[10px] font-black uppercase tracking-wider text-muted-foreground">
+                      Filtrar por anúncio
+                    </span>
+                    <span className="relative block">
+                      <Megaphone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                      <select
+                        value={campaignFilterKey}
+                        onChange={(event) => changeCampaignFilter(event.target.value)}
+                        disabled={loading || bulkFollowUpSending}
+                        aria-label="Filtrar contatos por anúncio"
+                        title="Usa o rótulo roxo exibido em cada contato"
+                        className="min-h-11 w-full appearance-none rounded-xl border border-border bg-background py-2 pl-10 pr-9 text-sm font-bold text-foreground outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/15 disabled:opacity-50"
+                      >
+                        <option value={ALL_CAMPAIGNS_KEY}>Todos os anúncios ({conversations.length})</option>
+                        {campaignFilterOptions.map((option) => (
+                          <option key={option.key} value={option.key}>
+                            {option.label} ({option.count})
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    </span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+                    <button
+                      type="button"
+                      onClick={selectFirstAvailableConversations}
+                      disabled={loading || filteredConversations.length === 0 || bulkFollowUpSending}
+                      className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-black text-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                    >
+                      Selecionar 10
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedConversationIds([])}
+                      disabled={selectedConversationIds.length === 0 || bulkFollowUpSending}
+                      className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-background px-3 text-xs font-black text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                    >
+                      Limpar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkComposerOpen(true)}
+                      disabled={selectedConversationIds.length === 0 || bulkFollowUpSending}
+                      className="col-span-2 inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-black text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      <MessageSquareText className="h-4 w-4" />
+                      Preparar mensagens
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -725,17 +799,23 @@ export default function FollowUpCenterPage() {
                 <Loader2 className="h-7 w-7 animate-spin text-primary" />
                 <p className="text-sm font-semibold text-muted-foreground">Organizando a fila de Osasco...</p>
               </div>
-            ) : conversations.length === 0 ? (
+            ) : filteredConversations.length === 0 ? (
               <div className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
                 <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-300">
                   <CheckCircle2 className="h-6 w-6" />
                 </div>
-                <h3 className="mt-4 font-black text-foreground">Nenhum contato nesta faixa</h3>
-                <p className="mt-1 max-w-sm text-sm text-muted-foreground">Escolha outro filtro para consultar o restante do estoque.</p>
+                <h3 className="mt-4 font-black text-foreground">
+                  {activeCampaignFilter ? "Nenhum contato carregado neste anúncio" : "Nenhum contato nesta faixa"}
+                </h3>
+                <p className="mt-1 max-w-sm text-sm text-muted-foreground">
+                  {activeCampaignFilter
+                    ? "Escolha outro anúncio ou carregue mais contatos para ampliar a busca."
+                    : "Escolha outro filtro para consultar o restante do estoque."}
+                </p>
               </div>
             ) : (
               <div className="divide-y divide-border/70">
-                {conversations.map((conversation) => {
+                {filteredConversations.map((conversation) => {
                   const contactLabel = conversation.contact.name || formatPhone(conversation.contact.phone);
                   const age = agePresentation(conversation.callbackDueAt, clockNow);
                   const inboxParams = new URLSearchParams(scopedSearchParams);
@@ -855,7 +935,9 @@ export default function FollowUpCenterPage() {
             {!loading && conversations.length > 0 && (
               <div className="flex flex-col items-center justify-between gap-3 border-t border-border/70 p-4 sm:flex-row sm:px-5">
                 <p className="text-xs text-muted-foreground">
-                  {conversations.length.toLocaleString("pt-BR")} contatos exibidos em {selectedBucket.label.toLowerCase()}.
+                  {activeCampaignFilter
+                    ? `${filteredConversations.length.toLocaleString("pt-BR")} de ${conversations.length.toLocaleString("pt-BR")} contatos carregados neste anúncio.`
+                    : `${conversations.length.toLocaleString("pt-BR")} contatos exibidos em ${selectedBucket.label.toLowerCase()}.`}
                 </p>
                 {data?.hasMore && data.nextOffset !== null && (
                   <button
