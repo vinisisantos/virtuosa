@@ -14,6 +14,7 @@ import {
   FOLLOW_UP_CENTER_PILOT_UNIT,
   parseFollowUpCenterBucket,
 } from "@/lib/whatsapp/follow-up-center";
+import { WHATSAPP_CALLBACK_OSASCO_INTERVAL_MS } from "@/lib/whatsapp/callback-interval";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 const MAX_PAGE_SIZE = 100;
@@ -43,20 +44,36 @@ function scopedPilotRequest(req: Request) {
 }
 
 function pilotConversationWhere(instanceIds: string[], now: Date): Prisma.WhatsAppConversationWhereInput {
+  const lastTeamContactCutoff = new Date(now.getTime() - WHATSAPP_CALLBACK_OSASCO_INTERVAL_MS);
+
   return {
     instanceId: { in: instanceIds },
     archivedAt: null,
     callbackTrackingStartedAt: { not: null },
-    lastOutboundAt: { not: null },
+    lastOutboundAt: { not: null, lte: lastTeamContactCutoff },
     callbackDueAt: { lte: now },
     callbackStreakCount: { lt: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
     callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
     status: { notIn: ["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS] },
-    OR: [
-      { instance: { unit: FOLLOW_UP_CENTER_PILOT_UNIT } },
+    AND: [
       {
-        instance: { unit: "Todas" },
-        contact: { unit: FOLLOW_UP_CENTER_PILOT_UNIT },
+        OR: [
+          { lastInboundAt: null },
+          {
+            lastOutboundAt: {
+              gt: prisma.whatsAppConversation.fields.lastInboundAt,
+            },
+          },
+        ],
+      },
+      {
+        OR: [
+          { instance: { unit: FOLLOW_UP_CENTER_PILOT_UNIT } },
+          {
+            instance: { unit: "Todas" },
+            contact: { unit: FOLLOW_UP_CENTER_PILOT_UNIT },
+          },
+        ],
       },
     ],
   };
@@ -128,6 +145,9 @@ export async function GET(req: Request) {
     );
     const limit = Math.min(Math.max(1, requestedLimit), MAX_PAGE_SIZE);
     const now = new Date();
+    const lastTeamContactCutoff = new Date(
+      now.getTime() - WHATSAPP_CALLBACK_OSASCO_INTERVAL_MS,
+    );
     const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
@@ -164,6 +184,7 @@ export async function GET(req: Request) {
           AND conversation."archivedAt" IS NULL
           AND conversation."callbackTrackingStartedAt" IS NOT NULL
           AND conversation."lastOutboundAt" IS NOT NULL
+          AND conversation."lastOutboundAt" <= ${lastTeamContactCutoff}
           AND (
             conversation."lastInboundAt" IS NULL
             OR conversation."lastOutboundAt" > conversation."lastInboundAt"

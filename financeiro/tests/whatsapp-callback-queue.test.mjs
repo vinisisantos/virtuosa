@@ -32,6 +32,27 @@ test("move para pendentes quando a janela de rechame vence", () => {
   }, now), "due");
 });
 
+test("respeita a janela mínima desde o último contato da equipe", () => {
+  const conversation = {
+    status: "open",
+    lastInboundAt: "2026-08-14T09:00:00.000Z",
+    lastOutboundAt: "2026-08-14T15:00:01.000Z",
+    callbackTrackingStartedAt: "2026-08-14T15:00:01.000Z",
+    callbackDueAt: "2026-08-15T14:00:00.000Z",
+    callbackStreakCount: 0,
+    callbackQueueStatus: "inactive",
+  };
+
+  assert.equal(whatsAppCallbackQueueView(conversation, now, 24 * 60 * 60 * 1000), null);
+
+  conversation.lastOutboundAt = "2026-08-14T15:00:00.000Z";
+  assert.equal(whatsAppCallbackQueueView(
+    conversation,
+    now,
+    24 * 60 * 60 * 1000,
+  ), "due");
+});
+
 test("mantém a conversa na fila principal enquanto aguarda resposta", () => {
   assert.equal(whatsAppCallbackQueueView({
     status: "open",

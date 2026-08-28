@@ -33,6 +33,7 @@ function timestampFrom(value?: Date | string | null) {
 export function whatsAppCallbackQueueView(
   conversation: CallbackQueueCandidate,
   now = Date.now(),
+  minimumTeamSilenceMs = 0,
 ): WhatsAppCallbackQueueView {
   if (CLOSED_CONVERSATION_STATUSES.has(conversation.status || "")) return null;
   if (conversation.callbackQueueStatus === WHATSAPP_CALLBACK_QUEUE_STATUS.suppressedClosedPackage) return null;
@@ -44,9 +45,12 @@ export function whatsAppCallbackQueueView(
   const lastOutboundAt = timestampFrom(conversation.lastOutboundAt);
   const teamIsWaitingForLead = lastOutboundAt !== null
     && (lastInboundAt === null || lastOutboundAt > lastInboundAt);
+  const minimumTeamSilenceElapsed = lastOutboundAt !== null
+    && now - lastOutboundAt >= minimumTeamSilenceMs;
   const isDue = Boolean(
     conversation.callbackTrackingStartedAt
     && teamIsWaitingForLead
+    && minimumTeamSilenceElapsed
     && dueAt <= now
     && (conversation.callbackStreakCount || 0) < WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
   );
@@ -58,6 +62,7 @@ export function whatsAppCallbackQueueView(
 export function isWhatsAppConversationInCallbackQueue(
   conversation: CallbackQueueCandidate,
   now = Date.now(),
+  minimumTeamSilenceMs = 0,
 ) {
-  return whatsAppCallbackQueueView(conversation, now) !== null;
+  return whatsAppCallbackQueueView(conversation, now, minimumTeamSilenceMs) !== null;
 }

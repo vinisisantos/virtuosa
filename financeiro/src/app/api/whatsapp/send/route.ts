@@ -20,6 +20,7 @@ import {
 import { WHATSAPP_MEDIA_MAX_FILE_BYTES } from "@/lib/whatsapp/media-constraints";
 import { recordOutboundForCallbackTracking } from "@/lib/whatsapp/callbacks";
 import { isWhatsAppConversationInCallbackQueue } from "@/lib/whatsapp/callback-queue";
+import { whatsAppCallbackIntervalMsForUnit } from "@/lib/whatsapp/callback-interval";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
 import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
@@ -324,7 +325,16 @@ export async function POST(req: Request) {
       });
     }
 
-    if (requireCallbackDue && !isWhatsAppConversationInCallbackQueue(conversation)) {
+    const callbackUnit = dbInstance.unit === "Todas" ? contact?.unit : dbInstance.unit;
+    const minimumCallbackSilenceMs = whatsAppCallbackIntervalMsForUnit(callbackUnit);
+    if (
+      requireCallbackDue
+      && !isWhatsAppConversationInCallbackQueue(
+        conversation,
+        Date.now(),
+        minimumCallbackSilenceMs,
+      )
+    ) {
       return NextResponse.json({
         error: "O contato respondeu ou já não está disponível para rechame.",
         code: "CALLBACK_NOT_DUE",
