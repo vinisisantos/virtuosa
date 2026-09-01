@@ -12,6 +12,7 @@ import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import { EvaluationAvailabilityDialog } from "@/components/whatsapp/evaluation-availability-dialog";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
+import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
   SavedRepliesComposerMenu,
@@ -48,7 +49,13 @@ import {
 } from "@/lib/whatsapp/inbox-utils";
 import type { Contact, Conversation, Message } from "@/lib/whatsapp/inbox-utils";
 import { resolveInboxConversationUnit } from "@/lib/whatsapp/conversation-unit";
-import { preserveActiveAudioMediaUrl } from "@/lib/whatsapp/audio-playback";
+import {
+  audioPlaybackRateLabel,
+  formatAudioDuration,
+  nextAudioPlaybackRate,
+  preserveActiveAudioMediaUrl,
+  type AudioPlaybackRate,
+} from "@/lib/whatsapp/audio-playback";
 import { whatsappDeferredMediaUrl } from "@/lib/whatsapp/deferred-media";
 import { findQuotedImagePreviewTarget } from "@/lib/whatsapp/quoted-media";
 import {
@@ -314,12 +321,6 @@ function formatMessageTime(dateString: string) {
   }
 }
 
-function formatAudioDuration(seconds: number) {
-  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
-  const rounded = Math.floor(seconds);
-  return `${Math.floor(rounded / 60)}:${String(rounded % 60).padStart(2, "0")}`;
-}
-
 function voiceWaveformHeights(seed: string, count = 52) {
   let state = 2166136261;
   for (let index = 0; index < seed.length; index += 1) {
@@ -385,9 +386,19 @@ function formatMessageDateLabel(dateString: string) {
 
 const MESSAGE_EDIT_WINDOW_MS = 15 * 60 * 1000;
 const MESSAGE_DELETE_WINDOW_MS = 60 * 60 * 1000;
+const AUDIO_RECORDING_TIMESLICE_MS = 1_000;
 const ATTACHMENT_DOCUMENT_EXTENSION = /\.(pdf|doc|docx|xls|xlsx)$/i;
 const ATTACHMENT_AUDIO_EXTENSION = /\.(aac|flac|m4a|mp3|oga|ogg|opus|wav|webm)$/i;
 const ATTACHMENT_VIDEO_EXTENSION = /\.(m4v|mov|mp4|webm)$/i;
+
+function flushMediaRecorderData(mediaRecorder: MediaRecorder) {
+  if (mediaRecorder.state === "inactive") return;
+  try {
+    mediaRecorder.requestData();
+  } catch (error) {
+    console.warn("Não foi possível descarregar o bloco atual da gravação:", error);
+  }
+}
 
 type PendingAttachmentStatus = "ready" | "uploading" | "sending" | "error";
 
@@ -400,6 +411,13 @@ interface PendingAttachment {
   progress: number;
   status: PendingAttachmentStatus;
   error?: string;
+}
+
+interface PendingRecordedAudio {
+  file: File;
+  previewUrl: string;
+  durationSeconds: number;
+  conversation: Conversation;
 }
 
 interface ImageBatchAssignment {
@@ -1914,6 +1932,7 @@ function VoiceMessagePlayer({
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState<AudioPlaybackRate>(1);
   const waveform = useMemo(
     () => voiceWaveformHeights(msg.messageId || msg.id || msg.mediaUrl || "audio"),
     [msg.id, msg.mediaUrl, msg.messageId],
@@ -1947,6 +1966,12 @@ function VoiceMessagePlayer({
     const nextProgress = Math.min(1, Math.max(0, (event.clientX - bounds.left) / bounds.width));
     audio.currentTime = duration * nextProgress;
     setCurrentTime(audio.currentTime);
+  };
+
+  const cyclePlaybackRate = () => {
+    const nextRate = nextAudioPlaybackRate(playbackRate);
+    setPlaybackRate(nextRate);
+    if (audioRef.current) audioRef.current.playbackRate = nextRate;
   };
 
   return (
@@ -2000,16 +2025,36 @@ function VoiceMessagePlayer({
             />
           ))}
         </button>
-        <span className={`mt-0.5 block text-[11px] leading-none ${isMe ? "text-[#54656f] dark:text-[#b7d5cd]" : "text-[#667781] dark:text-[#8696a0]"}`}>
-          {formatAudioDuration(isPlaying || currentTime > 0 ? currentTime : duration)}
-        </span>
+        <div className="mt-0.5 flex min-h-9 items-center justify-between gap-2">
+          <span className={`block text-[11px] leading-none ${isMe ? "text-[#54656f] dark:text-[#b7d5cd]" : "text-[#667781] dark:text-[#8696a0]"}`}>
+            {formatAudioDuration(isPlaying || currentTime > 0 ? currentTime : duration)}
+          </span>
+          <button
+            type="button"
+            onClick={cyclePlaybackRate}
+            className={`flex h-9 min-w-10 items-center justify-center rounded-full px-2 text-[11px] font-semibold transition-colors ${
+              isMe
+                ? "text-[#54656f] hover:bg-black/10 dark:text-[#e9edef] dark:hover:bg-white/10"
+                : "text-[#667781] hover:bg-black/10 dark:text-[#d1d7db] dark:hover:bg-white/10"
+            }`}
+            aria-label={`Velocidade ${audioPlaybackRateLabel(playbackRate)}. Alterar velocidade`}
+            title="Alterar velocidade"
+          >
+            {audioPlaybackRateLabel(playbackRate)}
+          </button>
+        </div>
       </div>
 
       <audio
         ref={audioRef}
         preload="metadata"
         src={msg.mediaUrl || undefined}
-        onLoadedMetadata={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
+        onLoadedMetadata={(event) => {
+          const nextDuration = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0;
+          setDuration(nextDuration);
+          event.currentTarget.playbackRate = playbackRate;
+          if (currentTime > 0 && currentTime < nextDuration) event.currentTarget.currentTime = currentTime;
+        }}
         onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
         onPlay={() => {
@@ -3028,6 +3073,12 @@ export default function InboxPage() {
   // ─── Gravação de áudio ─────────────────────────────────────
   const [isRecording, setIsRecording] = useState(false);
   const [isRecordingPaused, setIsRecordingPaused] = useState(false);
+  const [isPreparingRecordedAudio, setIsPreparingRecordedAudio] = useState(false);
+  const [pendingRecordedAudio, setPendingRecordedAudio] = useState<PendingRecordedAudio | null>(null);
+  const pendingRecordedAudioRef = useRef<PendingRecordedAudio | null>(null);
+  const selectedPendingRecordedAudio = pendingRecordedAudio?.conversation.id === selectedConversationId
+    ? pendingRecordedAudio
+    : null;
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -3037,6 +3088,15 @@ export default function InboxPage() {
     elapsedMs: 0,
     activeSinceMs: null,
   });
+
+  const replacePendingRecordedAudio = useCallback((next: PendingRecordedAudio | null) => {
+    const current = pendingRecordedAudioRef.current;
+    if (current?.previewUrl && current.previewUrl !== next?.previewUrl) {
+      URL.revokeObjectURL(current.previewUrl);
+    }
+    pendingRecordedAudioRef.current = next;
+    setPendingRecordedAudio(next);
+  }, []);
 
   const messagesViewportRef = useRef<HTMLDivElement>(null);
   const messageHighlightTimerRef = useRef<number | null>(null);
@@ -3164,6 +3224,12 @@ export default function InboxPage() {
   }, []);
 
   useEffect(() => () => {
+    const pending = pendingRecordedAudioRef.current;
+    if (pending?.previewUrl) URL.revokeObjectURL(pending.previewUrl);
+    pendingRecordedAudioRef.current = null;
+  }, []);
+
+  useEffect(() => () => {
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     const mediaRecorder = mediaRecorderRef.current;
     if (!mediaRecorder) return;
@@ -3186,8 +3252,10 @@ export default function InboxPage() {
     audioChunksRef.current = [];
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
     recordingTimerRef.current = null;
+    recordingDurationClockRef.current = { elapsedMs: 0, activeSinceMs: null };
     setIsRecording(false);
     setIsRecordingPaused(false);
+    setIsPreparingRecordedAudio(false);
     setRecordingTime(0);
   }, [selectedConversationId]);
 
@@ -5154,7 +5222,15 @@ export default function InboxPage() {
 
   const startRecording = async () => {
     const recordingConversation = selectedConvRef.current;
-    if (!recordingConversation || isRecording || isSending) return;
+    if (
+      !recordingConversation
+      || isRecording
+      || isSending
+      || isPreparingRecordedAudio
+      || selectedPendingRecordedAudio
+    ) return;
+
+    if (pendingRecordedAudio) replacePendingRecordedAudio(null);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -5178,6 +5254,7 @@ export default function InboxPage() {
       };
 
       mediaRecorder.onstop = async () => {
+        setIsPreparingRecordedAudio(true);
         const durationMs = recordingDurationMs(recordingDurationClockRef.current, performance.now());
         const rawAudioBlob = new Blob(audioChunksRef.current, {
           type: mediaRecorder.mimeType || "audio/webm",
@@ -5186,9 +5263,11 @@ export default function InboxPage() {
         mediaRecorderRef.current = null;
         audioChunksRef.current = [];
         recordingDurationClockRef.current = { elapsedMs: 0, activeSinceMs: null };
+        recordingConversationRef.current = null;
 
         if (!rawAudioBlob.size) {
           toast("A gravação ficou vazia. Tente novamente.", "error");
+          setIsPreparingRecordedAudio(false);
           return;
         }
 
@@ -5205,7 +5284,16 @@ export default function InboxPage() {
           `audio-gravado-${Date.now()}.${extension}`,
           { type: audioBlob.type || "audio/webm", lastModified: Date.now() },
         );
-        await sendAudioMessage(audioFile, recordingConversation);
+        if (selectedConversationIdRef.current === recordingConversation.id) {
+          replacePendingRecordedAudio({
+            file: audioFile,
+            previewUrl: URL.createObjectURL(audioFile),
+            durationSeconds: durationMs / 1000,
+            conversation: recordingConversation,
+          });
+        }
+        setRecordingTime(0);
+        setIsPreparingRecordedAudio(false);
       };
 
       mediaRecorder.onerror = (event) => {
@@ -5220,9 +5308,10 @@ export default function InboxPage() {
         recordingDurationClockRef.current = { elapsedMs: 0, activeSinceMs: null };
         setIsRecording(false);
         setIsRecordingPaused(false);
+        setIsPreparingRecordedAudio(false);
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(AUDIO_RECORDING_TIMESLICE_MS);
       recordingDurationClockRef.current = startRecordingDurationClock(performance.now());
       setIsRecording(true);
       setIsRecordingPaused(false);
@@ -5243,6 +5332,7 @@ export default function InboxPage() {
         recordingDurationClockRef.current,
         performance.now(),
       );
+      flushMediaRecorderData(mediaRecorder);
       mediaRecorder.pause();
       setIsRecordingPaused(true);
       clearRecordingTimer();
@@ -5266,6 +5356,8 @@ export default function InboxPage() {
         recordingDurationClockRef.current,
         performance.now(),
       );
+      flushMediaRecorderData(mediaRecorderRef.current);
+      setIsPreparingRecordedAudio(true);
       mediaRecorderRef.current.stop();
     }
     setIsRecording(false);
@@ -5288,6 +5380,7 @@ export default function InboxPage() {
     recordingDurationClockRef.current = { elapsedMs: 0, activeSinceMs: null };
     setIsRecording(false);
     setIsRecordingPaused(false);
+    setIsPreparingRecordedAudio(false);
     setRecordingTime(0);
     clearRecordingTimer();
   };
@@ -5295,11 +5388,11 @@ export default function InboxPage() {
   const sendAudioMessage = async (audioFile: File, sendConversation: Conversation) => {
     if (!canReplyToConversation(sendConversation)) {
       toast("Esta conta está disponível somente para consulta.", "error");
-      return;
+      return false;
     }
     if (sendConversation.blockedAt) {
       toast("Este contato está bloqueado. Desbloqueie-o antes de enviar mensagens.", "error");
-      return;
+      return false;
     }
 
     setIsSending(true);
@@ -5334,18 +5427,29 @@ export default function InboxPage() {
           fetchMessages(sendConversation.id, isConversationInService(sendConversation));
         }
         fetchConversations({ incremental: true });
+        return true;
       } else {
         const err = await res.json().catch(() => ({}));
         console.error("Falha ao enviar áudio:", err);
         toast(err.error || "Erro ao enviar áudio", "error");
+        return false;
       }
     } catch (e) {
       console.error(e);
       toast("Erro ao enviar áudio", "error");
+      return false;
     } finally {
       recordingConversationRef.current = null;
       setIsSending(false);
     }
+  };
+
+  const sendPendingRecordedAudio = async () => {
+    const pending = pendingRecordedAudio;
+    if (!pending || isSending) return;
+
+    const sent = await sendAudioMessage(pending.file, pending.conversation);
+    if (sent) replacePendingRecordedAudio(null);
   };
 
   // Finalizar conversa
@@ -7757,7 +7861,7 @@ export default function InboxPage() {
               </div>
             ) : selectedConversationNeedsStart ? null : (
             <div className="inbox-thread-composer shrink-0 border-t px-2 py-1.5 sm:px-3 sm:py-2.5">
-              {composerHasFormatting && !isRecording && (
+              {composerHasFormatting && !isRecording && !isPreparingRecordedAudio && !selectedPendingRecordedAudio && (
                 <div
                   className="inbox-composer-field mb-1 overflow-hidden rounded-lg border border-black/5 shadow-sm dark:border-white/5"
                   aria-label="Prévia formatada da mensagem"
@@ -7771,7 +7875,7 @@ export default function InboxPage() {
                   </div>
                 </div>
               )}
-              {replyingTo && !isRecording && (
+              {replyingTo && !isRecording && !isPreparingRecordedAudio && !selectedPendingRecordedAudio && (
                 <div className="inbox-composer-field mb-1 flex items-stretch overflow-hidden rounded-lg shadow-sm">
                   <div className="w-1 shrink-0 bg-[#00a884]" />
                   <div className="min-w-0 flex-1 px-3 py-1.5">
@@ -7833,18 +7937,32 @@ export default function InboxPage() {
                   <button
                     type="button"
                     onClick={stopRecording}
-                    disabled={isSending}
+                    disabled={isSending || isPreparingRecordedAudio}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-white transition-colors hover:bg-[#06a17f] disabled:opacity-50 sm:h-10 sm:w-10"
-                    title="Enviar áudio"
-                    aria-label="Enviar áudio"
+                    title="Concluir e revisar gravação"
+                    aria-label="Concluir e revisar gravação"
                   >
-                    {isSending ? (
+                    {isPreparingRecordedAudio ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      <Send className="h-4 w-4 ml-0.5" />
+                      <Check className="h-5 w-5" />
                     )}
                   </button>
                 </div>
+              ) : isPreparingRecordedAudio ? (
+                <div className="inbox-composer-field flex min-h-12 items-center justify-center gap-2 rounded-xl px-3 text-sm text-muted-foreground shadow-sm">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Preparando prévia do áudio...
+                </div>
+              ) : selectedPendingRecordedAudio ? (
+                <RecordedAudioPreview
+                  key={selectedPendingRecordedAudio.previewUrl}
+                  previewUrl={selectedPendingRecordedAudio.previewUrl}
+                  durationSeconds={selectedPendingRecordedAudio.durationSeconds}
+                  isSending={isSending}
+                  onDiscard={() => replacePendingRecordedAudio(null)}
+                  onSend={() => void sendPendingRecordedAudio()}
+                />
               ) : (
                 /* Barra de input normal */
                 <div className="inbox-composer-field relative flex min-h-12 items-end rounded-xl px-1.5 py-0.5 shadow-sm">

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { preserveActiveAudioMediaUrl } from "../src/lib/whatsapp/audio-playback.ts";
+import {
+  audioPlaybackRateLabel,
+  formatAudioDuration,
+  nextAudioPlaybackRate,
+  preserveActiveAudioMediaUrl,
+} from "../src/lib/whatsapp/audio-playback.ts";
 
 const currentMessages = [
   {
@@ -57,4 +62,24 @@ test("não interfere nos demais áudios da conversa", () => {
 
   assert.equal(result[0].mediaUrl, currentMessages[0].mediaUrl);
   assert.equal(result[1].mediaUrl, refreshedMessages[1].mediaUrl);
+});
+
+test("alterna as velocidades de reprodução em ciclo", () => {
+  assert.equal(nextAudioPlaybackRate(1), 1.5);
+  assert.equal(nextAudioPlaybackRate(1.5), 2);
+  assert.equal(nextAudioPlaybackRate(2), 1);
+  assert.equal(nextAudioPlaybackRate(1.25), 1);
+});
+
+test("formata a velocidade para a interface em português", () => {
+  assert.equal(audioPlaybackRateLabel(1), "1x");
+  assert.equal(audioPlaybackRateLabel(1.5), "1,5x");
+  assert.equal(audioPlaybackRateLabel(2), "2x");
+});
+
+test("formata a duração do áudio sem propagar valores inválidos", () => {
+  assert.equal(formatAudioDuration(0), "0:00");
+  assert.equal(formatAudioDuration(75.9), "1:15");
+  assert.equal(formatAudioDuration(Number.POSITIVE_INFINITY), "0:00");
+  assert.equal(formatAudioDuration(-1), "0:00");
 });
