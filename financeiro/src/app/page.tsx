@@ -20,7 +20,7 @@ const VTSection = dynamic(() => import('@/components/vt-section').then(m => ({ d
 const VRSection = dynamic(() => import('@/components/vr-section').then(m => ({ default: m.VRSection })));
 
 function DashboardBackedFinanceTab({ type }: { type: 'custos' | 'analise' }) {
-  const d = useDashboard();
+  const d = useDashboard({ syncPayroll: type !== 'custos' });
   if (type === 'custos') return <CustosUnificado d={d} />;
 
   return (

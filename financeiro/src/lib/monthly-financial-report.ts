@@ -4,6 +4,15 @@ import { isManualRevenue, isOperationalSale, isRevenuePending, isRevenueReceived
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
+export interface AdditionalFinancialExpense {
+  name: string;
+  category: string;
+  type: string;
+  dueDate: string;
+  value: number;
+  status: 'Pago' | 'Pendente' | 'Lançado';
+}
+
 interface MonthlyFinancialReportInput {
   selectedMonth: number;
   selectedYear: number;
@@ -11,6 +20,7 @@ interface MonthlyFinancialReportInput {
   logs: LogEntry[];
   fixedExpenses: FixedExpense[];
   bills: Bill[];
+  additionalExpenses?: AdditionalFinancialExpense[];
 }
 
 interface ReportExpense {
@@ -19,7 +29,7 @@ interface ReportExpense {
   type: string;
   dueDate: string;
   value: number;
-  status: 'Pago' | 'Pendente';
+  status: 'Pago' | 'Pendente' | 'Lançado';
 }
 
 interface ReportRevenue {
@@ -58,7 +68,8 @@ function isSalaryCategory(category: string) {
 }
 
 function consolidateSalaryExpenses(expenses: ReportExpense[]) {
-  const salaryExpenses = expenses.filter(expense => isSalaryCategory(expense.category));
+  const isAutomaticPayroll = (expense: ReportExpense) => expense.type.startsWith('Folha automática');
+  const salaryExpenses = expenses.filter(expense => isSalaryCategory(expense.category) && !isAutomaticPayroll(expense));
   if (salaryExpenses.length < 2) return expenses;
 
   const earliestDueDate = salaryExpenses
@@ -70,7 +81,7 @@ function consolidateSalaryExpenses(expenses: ReportExpense[]) {
     })[0];
 
   return [
-    ...expenses.filter(expense => !isSalaryCategory(expense.category)),
+    ...expenses.filter(expense => !isSalaryCategory(expense.category) || isAutomaticPayroll(expense)),
     {
       name: 'Salários (consolidado)',
       category: 'Salários',
@@ -142,6 +153,11 @@ function collectReportData(input: MonthlyFinancialReportInput) {
       });
     });
 
+  input.additionalExpenses?.forEach(expense => {
+    if (expense.value <= 0) return;
+    expenses.push({ ...expense });
+  });
+
   const sortedExpenses = consolidateSalaryExpenses(expenses).sort((a, b) => {
     const [dayA, monthA, yearA] = a.dueDate.split('/').map(Number);
     const [dayB, monthB, yearB] = b.dueDate.split('/').map(Number);
@@ -151,8 +167,9 @@ function collectReportData(input: MonthlyFinancialReportInput) {
   });
   const revenue = periodLogs.filter(isRevenueReceived).reduce((sum, sale) => sum + sale.value, 0);
   const pendingRevenue = manualRevenues.filter(isRevenuePending).reduce((sum, sale) => sum + sale.value, 0);
-  const fixedTotal = expenses.filter(expense => expense.type !== 'Unico').reduce((sum, expense) => sum + expense.value, 0);
-  const variableTotal = expenses.filter(expense => expense.type === 'Unico').reduce((sum, expense) => sum + expense.value, 0);
+  const isVariableExpense = (expense: ReportExpense) => expense.type === 'Unico' || expense.type === 'Pedido';
+  const fixedTotal = expenses.filter(expense => !isVariableExpense(expense)).reduce((sum, expense) => sum + expense.value, 0);
+  const variableTotal = expenses.filter(isVariableExpense).reduce((sum, expense) => sum + expense.value, 0);
   const paidTotal = expenses.filter(expense => expense.status === 'Pago').reduce((sum, expense) => sum + expense.value, 0);
   const pendingTotal = expenses.filter(expense => expense.status === 'Pendente').reduce((sum, expense) => sum + expense.value, 0);
   const totalCosts = fixedTotal + variableTotal;
@@ -218,13 +235,13 @@ export async function generateReportPdf(input: MonthlyFinancialReportInput, gene
   const summaryDoc = doc as typeof doc & { lastAutoTable?: { finalY: number } };
   autoTable(doc, {
     startY: (summaryDoc.lastAutoTable?.finalY || 84) + 6,
-    head: [['DRE resumida', 'Valor']],
+    head: [['Resumo gerencial mensal', 'Valor']],
     body: [
       ['(+) Receitas realizadas', money(data.revenue)],
       ['(i) Receitas a receber (fora do resultado)', money(data.pendingRevenue)],
       ['(-) Custos fixos', money(data.fixedTotal)],
       ['(-) Custos variaveis', money(data.variableTotal)],
-      ['(=) Resultado operacional', money(data.result)],
+      ['(=) Resultado gerencial', money(data.result)],
     ],
     theme: 'grid',
     headStyles: { fillColor: [27, 27, 39] },

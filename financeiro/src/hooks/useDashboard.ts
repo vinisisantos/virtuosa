@@ -48,7 +48,7 @@ export const formGroupS:React.CSSProperties = { display:'flex', flexDirection:'c
 export const formHeaderS:React.CSSProperties = { display:'flex', alignItems:'center', gap:12, marginBottom:24 };
 
 /* ─── Hook ─── */
-export function useDashboard() {
+export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } = {}) {
   const now = new Date();
   
   // Read initial tab from URL query param (e.g., ?tab=sales)
@@ -188,10 +188,16 @@ export function useDashboard() {
         } catch (e) { console.warn('[Backup] Falha ao restaurar do servidor:', e); }
       }
 
-      try {
-        const res = await fetch('/api/payroll/dashboard-sync');
-        if (res.ok) { const data = await res.json(); if (data.success&&data.data) { loadedLogs = loadedLogs.filter(l=>!l.id||!l.id.toString().startsWith('payroll-')); loadedLogs = [...loadedLogs,...data.data]; } }
-      } catch {}
+      if (syncPayroll) {
+        try {
+          const res = await fetch('/api/payroll/dashboard-sync');
+          if (res.ok) { const data = await res.json(); if (data.success&&data.data) { loadedLogs = loadedLogs.filter(l=>!l.id||!l.id.toString().startsWith('payroll-')); loadedLogs = [...loadedLogs,...data.data]; } }
+        } catch {}
+      } else {
+        // Custos usa a fonte automática detalhada; remova qualquer linha sintética
+        // legada para não somar a mesma folha duas vezes após restaurações antigas.
+        loadedLogs = loadedLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-'));
+      }
 
       // ── One-time data cleanup: fix retorno/cortesia procedure obs fields ──
       const cleanupDone = localStorage.getItem('virtuosa_retorno_cleanup_v1');
@@ -276,7 +282,7 @@ export function useDashboard() {
       }
     };
     loadData();
-  }, []);
+  }, [syncPayroll]);
 
   // Auto-sync to server (debounced — waits 5s after last change)
   const syncTimerRef = useRef<NodeJS.Timeout|null>(null);

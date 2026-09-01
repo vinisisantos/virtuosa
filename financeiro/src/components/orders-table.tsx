@@ -10,11 +10,18 @@ interface OrdersTableProps {
     onEdit: (order: OrderData) => void;
     onDelete: (id: string) => void;
     onStatusChange: (id: string, newStatus: string, estimatedArrival?: string) => void;
+    onCostRecognition?: (order: OrderData) => void;
 }
 
 function fmtBRL(v?: number) {
     if (v === undefined || v === null) return '—';
     return formatCurrency(v);
+}
+
+function formatCostDate(value?: string | null) {
+    const dateOnly = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!dateOnly) return '';
+    return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
 }
 
 interface BatchGroup {
@@ -25,7 +32,7 @@ interface BatchGroup {
     itemCount: number;
 }
 
-export function OrdersTable({ orders, onEdit, onDelete, onStatusChange }: OrdersTableProps) {
+export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRecognition }: OrdersTableProps) {
     const [etaModal, setEtaModal] = useState<{id: string, productName: string} | null>(null);
     const [etaDate, setEtaDate] = useState('');
     const [collapsedBatches, setCollapsedBatches] = useState<Set<number | null>>(new Set());
@@ -255,6 +262,10 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange }: Orders
                                                 const urgencyCfg = getUrgencyConfig(order.urgency);
                                                 const eta = formatEta(order.estimatedArrival);
                                                 const uColor = unitColors[order.unit || ''] || '#64748b';
+                                                const isCostRecognized = Boolean(order.costRecognizedAt);
+                                                const hasFinancialValue = Boolean(order.totalPrice && order.totalPrice > 0);
+                                                const isCostSuspended = isCostRecognized && (!hasFinancialValue || order.status === 'Cancelado');
+                                                const recognitionUnavailable = !isCostRecognized && (!hasFinancialValue || order.status === 'Cancelado');
 
                                                 return (
                                                     <tr key={order.id} style={{ borderBottom: '1px solid var(--border)', transition: 'var(--transition)' }} className="hover-row">
@@ -268,6 +279,46 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange }: Orders
                                                                         Ver produto
                                                                     </a>
                                                                 )}
+                                                                <div style={{ display: 'flex', alignItems: 'flex-start', flexDirection: 'column', gap: 5, marginTop: 7 }}>
+                                                                    {isCostRecognized && (
+                                                                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 7px', borderRadius: 7, background: isCostSuspended ? '#fef3c7' : 'rgba(16,185,129,0.12)', color: isCostSuspended ? '#92400e' : '#10b981', fontSize: '0.68rem', fontWeight: 800, whiteSpace: 'nowrap' }}>
+                                                                            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>{isCostSuspended ? 'warning' : 'account_balance_wallet'}</span>
+                                                                            {isCostSuspended ? 'Fora de Custos' : 'Em Custos'} · {formatCostDate(order.costRecognizedAt)}
+                                                                        </span>
+                                                                    )}
+                                                                    {onCostRecognition && (
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => onCostRecognition(order)}
+                                                                            disabled={recognitionUnavailable}
+                                                                            title={
+                                                                                order.status === 'Cancelado' && !isCostRecognized
+                                                                                    ? 'Pedido cancelado não pode ser lançado em Custos'
+                                                                                    : !hasFinancialValue && !isCostRecognized
+                                                                                        ? 'Informe o preço total para lançar em Custos'
+                                                                                        : isCostRecognized ? 'Corrigir data ou remover de Custos' : 'Lançar na categoria Produtos em Custos'
+                                                                            }
+                                                                            style={{
+                                                                                minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                                                padding: '0 9px', borderRadius: 8,
+                                                                                border: `1px solid ${recognitionUnavailable ? 'var(--border)' : 'rgba(16,185,129,0.28)'}`,
+                                                                                background: recognitionUnavailable ? 'var(--bg)' : 'rgba(16,185,129,0.08)',
+                                                                                color: recognitionUnavailable ? 'var(--text-muted)' : '#10b981',
+                                                                                fontFamily: 'inherit', fontSize: '0.7rem', fontWeight: 800,
+                                                                                cursor: recognitionUnavailable ? 'not-allowed' : 'pointer', opacity: recognitionUnavailable ? 0.65 : 1,
+                                                                                whiteSpace: 'nowrap',
+                                                                            }}
+                                                                        >
+                                                                            <span className="material-symbols-outlined" style={{ fontSize: 15 }}>{isCostRecognized ? 'edit_calendar' : 'add_card'}</span>
+                                                                            {isCostRecognized ? 'Ajustar custo' : 'Lançar em custos'}
+                                                                        </button>
+                                                                    )}
+                                                                    {onCostRecognition && !isCostRecognized && !hasFinancialValue && order.status !== 'Cancelado' && (
+                                                                        <span style={{ maxWidth: 190, color: '#b45309', fontSize: '0.66rem', fontWeight: 700, lineHeight: 1.35 }}>
+                                                                            Informe o preço total primeiro.
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </td>
                                                         <td style={{ ...tdS, textAlign: 'center' }}>
@@ -305,6 +356,7 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange }: Orders
                                                                 <select
                                                                     value={order.status}
                                                                     onChange={(e) => order.id && handleStatusSelect(order.id, order.productName, e.target.value)}
+                                                                    title={isCostRecognized ? 'Remova de Custos antes de cancelar o pedido' : undefined}
                                                                     style={{
                                                                         padding: '5px 34px 5px 28px', borderRadius: 'var(--radius-full)',
                                                                         border: `1px solid ${statusCfg.text}30`, backgroundColor: statusCfg.bg,
@@ -318,7 +370,7 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange }: Orders
                                                                     <option value="Aguardando">Aguardando</option>
                                                                     <option value="Pedido">Pedido Feito</option>
                                                                     <option value="Entregue">Entregue</option>
-                                                                    <option value="Cancelado">Cancelado</option>
+                                                                    <option value="Cancelado" disabled={isCostRecognized}>Cancelado</option>
                                                                 </select>
                                                                 <span style={{
                                                                     position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)',
@@ -340,7 +392,7 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange }: Orders
                                                                 <button onClick={() => onEdit(order)} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--text-muted)', cursor: 'pointer', transition: 'var(--transition)' }} className="hover-btn" title="Editar">
                                                                     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit</span>
                                                                 </button>
-                                                                <button onClick={() => order.id && onDelete(order.id)} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--text-muted)', cursor: 'pointer', transition: 'var(--transition)' }} className="hover-btn-danger" title="Excluir">
+                                                                <button onClick={() => order.id && onDelete(order.id)} disabled={isCostRecognized} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--text-muted)', cursor: isCostRecognized ? 'not-allowed' : 'pointer', opacity: isCostRecognized ? 0.45 : 1, transition: 'var(--transition)' }} className="hover-btn-danger" title={isCostRecognized ? 'Remova de Custos antes de excluir' : 'Excluir'}>
                                                                     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
                                                                 </button>
                                                             </div>

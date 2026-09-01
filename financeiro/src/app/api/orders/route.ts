@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { sendPushToAll } from '@/lib/push';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
+import { canAccessOrders, validateRecognizedOrderMutation } from '@/lib/automatic-costs';
 
 /* ─── Field label map for UI-friendly audit ─── */
 const FIELD_LABELS: Record<string, string> = {
@@ -10,22 +11,6 @@ const FIELD_LABELS: Record<string, string> = {
   totalPrice: 'Preço Total', unit: 'Unidade', estimatedArrival: 'Previsão de Chegada',
   sourceUrl: 'URL do Produto',
 };
-
-/* ─── Helper: get user + permissions ─── */
-async function getUserPerms(userId?: string) {
-  if (!userId) return { isAdmin: false, canEditDirect: false, canApprove: false };
-  try {
-    const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true, permissions: true } });
-    if (!user) return { isAdmin: false, canEditDirect: false, canApprove: false };
-    const perms = (user.permissions as Record<string, boolean>) || {};
-    const isAdmin = user.role === 'ADMINISTRADOR' || perms.admin === true;
-    return {
-      isAdmin,
-      canEditDirect: isAdmin || perms.pedidosEditarDireto === true,
-      canApprove: isAdmin || perms.pedidosAprovar === true,
-    };
-  } catch { return { isAdmin: false, canEditDirect: false, canApprove: false }; }
-}
 
 /* ─── Helper: create audit log entries for each changed field ─── */
 async function createAuditLogs(opts: {
@@ -94,6 +79,7 @@ async function notifyPedidosUsers(title: string, message: string, icon: string, 
 export async function GET(request: NextRequest) {
     const guard = requireUnitGuard(request, { requestedUnit: new URL(request.url).searchParams.get('unit') });
     if (guard instanceof NextResponse) return guard;
+    if (!canAccessOrders(guard)) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
     try {
         const { searchParams } = new URL(request.url);
@@ -130,6 +116,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     const guard = requireUnitGuard(request);
     if (guard instanceof NextResponse) return guard;
+    if (!canAccessOrders(guard)) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
     try {
         const body = await request.json();
@@ -141,12 +128,11 @@ export async function POST(request: NextRequest) {
         else if (body.items && Array.isArray(body.items)) { orderItems = body.items; }
         else { orderItems = [body]; }
 
-        // UNIT GUARD: Force JWT unit on all created orders
-        const forcedUnit = guard.createUnit();
+        // UNIT GUARD: validate each selected unit; non-admins remain limited to permitted units.
         const validOrders = orderItems.map((item: any) => {
-            const { productName, quantity, urgency, notes, unitPrice, totalPrice, sourceUrl } = item;
+            const { productName, quantity, urgency, notes, unitPrice, totalPrice, sourceUrl, unit } = item;
             if (!productName || !quantity || !urgency) throw new Error('Campos obrigatórios ausentes em um ou mais itens');
-            return { productName, quantity: Number(quantity), urgency, status: 'Aguardando', unit: forcedUnit, notes: notes || null, unitPrice: unitPrice ? Number(unitPrice) : null, totalPrice: totalPrice ? Number(totalPrice) : null, sourceUrl: sourceUrl || null };
+            return { productName, quantity: Number(quantity), urgency, status: 'Aguardando', unit: guard.createUnit(unit), notes: notes || null, unitPrice: unitPrice ? Number(unitPrice) : null, totalPrice: totalPrice ? Number(totalPrice) : null, sourceUrl: sourceUrl || null };
         });
 
         const lastBatch = await prisma.order.findFirst({ orderBy: { batchNumber: 'desc' }, where: { batchNumber: { not: null } }, select: { batchNumber: true } });
@@ -162,11 +148,13 @@ export async function POST(request: NextRequest) {
         }
 
         const count = validOrders.length;
+        const orderUnits = new Set(validOrders.map(order => order.unit));
+        const notificationUnit = orderUnits.size === 1 ? validOrders[0].unit : undefined;
         const pushTitle = '🛒 Novo Pedido';
         const pushBody = count > 1 ? `${userName} adicionou ${count} itens no Lote #${nextBatch}` : `${userName} adicionou: ${validOrders[0].productName} (Lote #${nextBatch})`;
-        sendPushToAll(pushTitle, pushBody, userId, forcedUnit).catch(() => {});
+        sendPushToAll(pushTitle, pushBody, userId, notificationUnit).catch(() => {});
         const notifMsg = count > 1 ? `${userName} adicionou ${count} itens no Lote #${nextBatch}.` : `${userName} adicionou o pedido: "${validOrders[0].productName}" (Qtd: ${validOrders[0].quantity}, Urgência: ${validOrders[0].urgency}) — Lote #${nextBatch}`;
-        notifyPedidosUsers('🛒 Novo Pedido Criado', notifMsg, 'shopping_cart', 'info', '/pedidos', forcedUnit, userId).catch(() => {});
+        notifyPedidosUsers('🛒 Novo Pedido Criado', notifMsg, 'shopping_cart', 'info', '/pedidos', notificationUnit, userId).catch(() => {});
 
         return NextResponse.json({ success: true, count: newOrders.count, batchNumber: nextBatch }, { status: 201 });
     } catch (err: any) {
@@ -182,6 +170,7 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
     const guard = requireUnitGuard(request);
     if (guard instanceof NextResponse) return guard;
+    if (!canAccessOrders(guard)) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
     try {
         const body = await request.json();
@@ -219,9 +208,22 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ success: true, message: 'Nenhuma alteração detectada.' });
         }
 
+        const mutationValidationMessage = validateRecognizedOrderMutation({
+          isRecognized: Boolean(currentOrder.costRecognizedAt),
+          nextStatus: typeof updateFields.status === 'string' ? updateFields.status : currentOrder.status,
+          nextTotalPrice: Object.prototype.hasOwnProperty.call(updateFields, 'totalPrice')
+            ? updateFields.totalPrice as number | null
+            : currentOrder.totalPrice,
+        });
+        if (mutationValidationMessage) {
+          return NextResponse.json({ error: mutationValidationMessage }, { status: 409 });
+        }
+
         const actor = guard.userName || 'Alguém';
         const userId = guard.userId;
-        const { canEditDirect } = await getUserPerms(userId);
+        const canEditDirect = guard.isAdmin
+          || guard.permissions?.admin === true
+          || guard.permissions?.pedidosEditarDireto === true;
         const changes = computeChanges(currentOrder, updateFields);
         const changesDesc = changes.map(c => `${FIELD_LABELS[c.field] || c.field}: "${c.oldValue || '—'}" → "${c.newValue || '—'}"`).join('; ');
         const changeDescription = `alterar "${currentOrder.productName}": ${changesDesc}`;
@@ -238,7 +240,7 @@ export async function PUT(request: NextRequest) {
                     changeType: 'direct_edit', changeData: JSON.stringify(updateFields),
                     description: changeDescription, reason: reason || null, status: 'direto',
                     reviewedBy: userId || null, reviewedByName: actor, reviewedAt: new Date(),
-                    unit: guard.userUnit,
+                    unit: currentOrder.unit,
                 },
             });
             await createAuditLogs({
@@ -248,7 +250,7 @@ export async function PUT(request: NextRequest) {
             });
             const pushBody = `${actor} alterou diretamente: ${currentOrder.productName}`;
             sendPushToAll('📦 Pedido Atualizado', pushBody, userId, currentOrder.unit).catch(() => {});
-            notifyPedidosUsers('📦 Pedido Atualizado', `${actor} alterou o pedido "${currentOrder.productName}" diretamente.`, 'inventory_2', 'info', '/pedidos', guard.userUnit, userId).catch(() => {});
+            notifyPedidosUsers('📦 Pedido Atualizado', `${actor} alterou o pedido "${currentOrder.productName}" diretamente.`, 'inventory_2', 'info', '/pedidos', currentOrder.unit || undefined, userId).catch(() => {});
             return NextResponse.json({ success: true });
         }
 
@@ -257,7 +259,7 @@ export async function PUT(request: NextRequest) {
                 orderId: id, requesterId: userId || null, requesterName: actor,
                 changeType: status && status !== currentOrder.status ? 'status_change' : 'edit',
                 changeData: JSON.stringify(updateFields), description: changeDescription,
-                reason: reason || null, status: 'pendente', unit: guard.userUnit,
+                reason: reason || null, status: 'pendente', unit: currentOrder.unit,
             },
         });
         await createAuditLogs({
@@ -266,8 +268,8 @@ export async function PUT(request: NextRequest) {
             batchNumber: currentOrder.batchNumber, unit: currentOrder.unit, changes,
         });
         const approvalMsg = `${actor} solicitou ${changeDescription}. Acesse Pedidos para aprovar.`;
-        notifyUsersWithPerm('pedidosAprovar', '⚠️ Aprovação Necessária — Pedido', approvalMsg, 'approval', 'warning', '/pedidos', guard.userUnit, userId).catch(() => {});
-        sendPushToAll('⚠️ Aprovação de Pedido', `${actor} solicitou alteração em "${currentOrder.productName}"`, userId, guard.userUnit).catch(() => {});
+        notifyUsersWithPerm('pedidosAprovar', '⚠️ Aprovação Necessária — Pedido', approvalMsg, 'approval', 'warning', '/pedidos', currentOrder.unit || undefined, userId).catch(() => {});
+        sendPushToAll('⚠️ Aprovação de Pedido', `${actor} solicitou alteração em "${currentOrder.productName}"`, userId, currentOrder.unit || undefined).catch(() => {});
 
         return NextResponse.json({ success: false, pendingApproval: true, message: 'Solicitação enviada para aprovação.' });
     } catch (err) {
@@ -283,6 +285,7 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
     const guard = requireUnitGuard(request);
     if (guard instanceof NextResponse) return guard;
+    if (!canAccessOrders(guard)) return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
 
     try {
         const { searchParams } = new URL(request.url);
@@ -296,6 +299,16 @@ export async function DELETE(request: NextRequest) {
         try { guard.enforceUnit(order.unit); } catch (e) {
           if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
           throw e;
+        }
+
+        const deletionValidationMessage = validateRecognizedOrderMutation({
+          isRecognized: Boolean(order.costRecognizedAt),
+          nextStatus: order.status,
+          nextTotalPrice: order.totalPrice,
+          deleting: true,
+        });
+        if (deletionValidationMessage) {
+          return NextResponse.json({ error: deletionValidationMessage }, { status: 409 });
         }
 
         await createAuditLogs({

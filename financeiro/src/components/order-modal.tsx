@@ -17,6 +17,7 @@ export interface OrderData {
     batchNumber?: number;
     estimatedArrival?: string;
     createdAt?: string;
+    costRecognizedAt?: string | null;
 }
 
 export interface OrderItemInput {
@@ -424,7 +425,8 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        const isValid = items.every(item => item.productName && item.quantity && parseInt(item.quantity) > 0);
+        const isValid = items.every(item => item.productName && item.quantity && parseInt(item.quantity) > 0)
+            && (!order?.costRecognizedAt || items.every(item => parseCur(item.totalPrice) > 0));
         if (!isValid) return;
 
         const formattedItems = items.map(item => ({
@@ -452,7 +454,8 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
     const focusIn = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 4px var(--primary-light)'; };
     const focusOut = (e: React.FocusEvent<HTMLInputElement | HTMLSelectElement>) => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; };
 
-    const isAllValid = items.every(item => item.productName && item.quantity && parseInt(item.quantity) > 0);
+    const isAllValid = items.every(item => item.productName && item.quantity && parseInt(item.quantity) > 0)
+        && (!order?.costRecognizedAt || items.every(item => parseCur(item.totalPrice) > 0));
 
     return (
         <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 }} onClick={pricePrompt ? undefined : onClose}>
@@ -662,6 +665,9 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                         <label style={labelS}>Preço Total (R$)</label>
                                         <input value={item.totalPrice} onChange={e => handleItemChange(index, 'totalPrice', formatCurrency(e.target.value))}
                                             inputMode="numeric" placeholder="0,00" style={{ ...inputStyle, color: parseCur(item.totalPrice) > 0 ? '#10b981' : undefined, fontWeight: 800 }} onFocus={focusIn} onBlur={focusOut} />
+                                        <p style={{ margin: '5px 0 0', color: 'var(--text-muted)', fontSize: '0.68rem', lineHeight: 1.35 }}>
+                                            {order?.costRecognizedAt ? 'Para zerar o valor, remova primeiro o pedido de Custos.' : 'Necessário para lançar em Custos.'}
+                                        </p>
                                     </div>
                                     <div>
                                         <label style={labelS}>Observações</label>

@@ -28,24 +28,24 @@ const ACTION_MAP: Record<string, { label: string; icon: string; color: string }>
   alteracao_direta: { label: 'Alteração Direta', icon: 'bolt', color: '#2563eb' },
   pedido_excluido: { label: 'Pedido Excluído', icon: 'delete', color: '#ef4444' },
   historico_excluido: { label: 'Histórico Excluído', icon: 'delete_sweep', color: '#94a3b8' },
+  custo_reconhecido: { label: 'Lançado em Custos', icon: 'account_balance_wallet', color: '#10b981' },
+  reconhecimento_custo_removido: { label: 'Removido de Custos', icon: 'money_off', color: '#e11d48' },
 };
 
 const FIELD_LABELS: Record<string, string> = {
   productName: 'Produto', quantity: 'Quantidade', urgency: 'Urgência',
   status: 'Status', notes: 'Observação', unitPrice: 'Preço Unitário',
   totalPrice: 'Preço Total', unit: 'Unidade', estimatedArrival: 'Previsão',
-  sourceUrl: 'URL do Produto',
+  sourceUrl: 'URL do Produto', costRecognizedAt: 'Lançamento em Custos',
 };
 
-function getUserInfo() {
-  try {
-    const stored = localStorage.getItem('virtuosa_user');
-    if (stored) {
-      const user = JSON.parse(stored);
-      return { userName: user.name || 'Admin', userId: user.id || '' };
-    }
-  } catch {}
-  return { userName: 'Admin', userId: '' };
+function formatFieldValue(field: string | null, value: string | null) {
+  if (!value) return '—';
+  if (field === 'costRecognizedAt') {
+    const dateOnly = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dateOnly) return `${dateOnly[3]}/${dateOnly[2]}/${dateOnly[1]}`;
+  }
+  return value;
 }
 
 function getUserPermissions() {
@@ -64,9 +64,10 @@ function getUserPermissions() {
 
 interface Props {
   canDelete?: boolean;
+  unit?: string;
 }
 
-export function OrderAuditPanel({ canDelete: canDeleteProp }: Props) {
+export function OrderAuditPanel({ canDelete: canDeleteProp, unit }: Props) {
   const [logs, setLogs] = useState<AuditEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -87,11 +88,10 @@ export function OrderAuditPanel({ canDelete: canDeleteProp }: Props) {
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
-    const { userId } = getUserInfo();
     const params = new URLSearchParams();
-    params.append('userId', userId);
     params.append('page', String(page));
     params.append('limit', '30');
+    if (unit && unit !== 'all') params.append('unit', unit);
     if (filterAction) params.append('action', filterAction);
     if (filterSearch) params.append('search', filterSearch);
     if (filterDateFrom) params.append('dateFrom', filterDateFrom);
@@ -110,19 +110,18 @@ export function OrderAuditPanel({ canDelete: canDeleteProp }: Props) {
       }
     } catch (err) { console.error('Fetch audit error:', err); }
     finally { setLoading(false); }
-  }, [page, filterAction, filterSearch, filterDateFrom, filterDateTo]);
+  }, [page, filterAction, filterSearch, filterDateFrom, filterDateTo, unit]);
 
   useEffect(() => {
     if (isExpanded) fetchLogs();
   }, [isExpanded, fetchLogs]);
 
   const handleDelete = async (logId: string) => {
-    const { userName, userId } = getUserInfo();
     try {
       const res = await fetch('/api/orders/audit', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ logId, userId, userName }),
+        body: JSON.stringify({ logId }),
       });
       if (res.ok) {
         setLogs(prev => prev.filter(l => l.id !== logId));
@@ -252,9 +251,9 @@ export function OrderAuditPanel({ canDelete: canDeleteProp }: Props) {
                       {log.field && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, fontSize: '0.8rem' }}>
                           <span style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{FIELD_LABELS[log.field] || log.field}:</span>
-                          {log.oldValue && <span style={{ padding: '1px 6px', borderRadius: 4, background: '#fee2e2', color: '#dc2626', fontWeight: 700, fontSize: '0.75rem', textDecoration: 'line-through' }}>{log.oldValue}</span>}
+                          {log.oldValue && <span style={{ padding: '1px 6px', borderRadius: 4, background: '#fee2e2', color: '#dc2626', fontWeight: 700, fontSize: '0.75rem', textDecoration: 'line-through' }}>{formatFieldValue(log.field, log.oldValue)}</span>}
                           <span className="material-symbols-outlined" style={{ fontSize: 12, color: 'var(--text-muted)' }}>arrow_forward</span>
-                          <span style={{ padding: '1px 6px', borderRadius: 4, background: '#dcfce7', color: '#16a34a', fontWeight: 700, fontSize: '0.75rem' }}>{log.newValue || '—'}</span>
+                          <span style={{ padding: '1px 6px', borderRadius: 4, background: '#dcfce7', color: '#16a34a', fontWeight: 700, fontSize: '0.75rem' }}>{formatFieldValue(log.field, log.newValue)}</span>
                         </div>
                       )}
 

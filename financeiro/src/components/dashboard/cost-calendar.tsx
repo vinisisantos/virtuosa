@@ -10,6 +10,15 @@ interface CostCalendarProps {
   revenues: LogEntry[];
   selectedMonth: number;
   selectedYear: number;
+  automaticExpenses?: Array<{
+    key: string;
+    name: string;
+    value: number;
+    category: string;
+    date: string;
+    isPaid: boolean;
+    isRecognized?: boolean;
+  }>;
 }
 
 interface CalendarCost {
@@ -19,6 +28,7 @@ interface CalendarCost {
   category: string;
   day: number;
   isPaid: boolean;
+  isRecognized?: boolean;
   direction: 'in' | 'out';
 }
 
@@ -30,7 +40,7 @@ function parseLocalDate(value?: string | null) {
   return { year, month: month - 1, day };
 }
 
-export function CostCalendar({ fixedExpenses, bills, revenues, selectedMonth, selectedYear }: CostCalendarProps) {
+export function CostCalendar({ fixedExpenses, bills, revenues, selectedMonth, selectedYear, automaticExpenses = [] }: CostCalendarProps) {
   const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
   const firstWeekday = new Date(selectedYear, selectedMonth, 1).getDay();
   const today = new Date();
@@ -87,6 +97,21 @@ export function CostCalendar({ fixedExpenses, bills, revenues, selectedMonth, se
       });
     });
 
+    automaticExpenses.forEach(expense => {
+      const date = parseLocalDate(expense.date);
+      if (!date || date.year !== selectedYear || date.month !== selectedMonth || expense.value <= 0) return;
+      addCost({
+        key: expense.key,
+        name: expense.name,
+        value: expense.value,
+        category: expense.category,
+        day: date.day,
+        isPaid: expense.isPaid,
+        isRecognized: expense.isRecognized,
+        direction: 'out',
+      });
+    });
+
     revenues.forEach(revenue => {
       const date = new Date(revenue.date);
       if (Number.isNaN(date.getTime()) || date.getUTCFullYear() !== selectedYear || date.getUTCMonth() !== selectedMonth) return;
@@ -103,7 +128,7 @@ export function CostCalendar({ fixedExpenses, bills, revenues, selectedMonth, se
 
     grouped.forEach(costs => costs.sort((a, b) => b.value - a.value));
     return grouped;
-  }, [bills, daysInMonth, fixedExpenses, revenues, selectedMonth, selectedYear]);
+  }, [automaticExpenses, bills, daysInMonth, fixedExpenses, revenues, selectedMonth, selectedYear]);
 
   const calendarCells = useMemo(() => {
     const previousMonthDays = new Date(selectedYear, selectedMonth, 0).getDate();
@@ -129,8 +154,8 @@ export function CostCalendar({ fixedExpenses, bills, revenues, selectedMonth, se
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18, textAlign: 'right' }}>
           <div><div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase' }}>Entradas previstas</div><div style={{ color: '#22c55e', fontSize: '0.92rem', fontWeight: 850 }}>{fmt(incomingTotal)}</div></div>
-          <div><div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase' }}>Saídas</div><div style={{ color: '#ef4444', fontSize: '0.92rem', fontWeight: 850 }}>{fmt(outgoingTotal)}</div></div>
-          <div><div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase' }}>Saldo previsto</div><div style={{ color: incomingTotal - outgoingTotal >= 0 ? '#22c55e' : '#ef4444', fontSize: '1rem', fontWeight: 900 }}>{fmt(incomingTotal - outgoingTotal)}</div></div>
+          <div><div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase' }}>Custos do mês</div><div style={{ color: '#ef4444', fontSize: '0.92rem', fontWeight: 850 }}>{fmt(outgoingTotal)}</div></div>
+          <div><div style={{ color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700, textTransform: 'uppercase' }}>Resultado previsto</div><div style={{ color: incomingTotal - outgoingTotal >= 0 ? '#22c55e' : '#ef4444', fontSize: '1rem', fontWeight: 900 }}>{fmt(incomingTotal - outgoingTotal)}</div></div>
         </div>
       </header>
 
@@ -164,19 +189,19 @@ export function CostCalendar({ fixedExpenses, bills, revenues, selectedMonth, se
                 {dayCosts.slice(0, 3).map(cost => (
                   <article
                     key={cost.key}
-                    title={`${cost.direction === 'in' ? 'Receita' : 'Despesa'} · ${cost.name} · ${fmt(cost.value)}`}
+                    title={`${cost.direction === 'in' ? 'Receita' : cost.isRecognized ? 'Despesa lançada sem baixa' : 'Despesa'} · ${cost.name} · ${fmt(cost.value)}`}
                     style={{
                       minWidth: 0,
                       padding: '7px 8px',
                       borderRadius: 8,
-                      border: `1px solid ${cost.direction === 'in' ? cost.isPaid ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)' : cost.isPaid ? 'rgba(59,130,246,0.28)' : 'rgba(239,68,68,0.24)'}`,
-                      background: cost.direction === 'in' ? cost.isPaid ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)' : cost.isPaid ? 'rgba(59,130,246,0.07)' : 'rgba(239,68,68,0.06)',
+                      border: `1px solid ${cost.direction === 'in' ? cost.isPaid ? 'rgba(34,197,94,0.3)' : 'rgba(245,158,11,0.3)' : cost.isRecognized ? 'rgba(139,92,246,0.3)' : cost.isPaid ? 'rgba(59,130,246,0.28)' : 'rgba(239,68,68,0.24)'}`,
+                      background: cost.direction === 'in' ? cost.isPaid ? 'rgba(34,197,94,0.08)' : 'rgba(245,158,11,0.08)' : cost.isRecognized ? 'rgba(139,92,246,0.08)' : cost.isPaid ? 'rgba(59,130,246,0.07)' : 'rgba(239,68,68,0.06)',
                     }}
                   >
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-main)', fontSize: '0.72rem', fontWeight: 750 }}>{cost.name}</div>
                     <div style={{ marginTop: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 5 }}>
                       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.62rem' }}>{cost.category}</span>
-                      <strong style={{ flexShrink: 0, color: cost.direction === 'in' ? cost.isPaid ? '#22c55e' : '#f59e0b' : cost.isPaid ? '#3b82f6' : '#ef4444', fontSize: '0.66rem' }}>{cost.direction === 'in' ? '+' : '-'} {fmt(cost.value)}</strong>
+                      <strong style={{ flexShrink: 0, color: cost.direction === 'in' ? cost.isPaid ? '#22c55e' : '#f59e0b' : cost.isRecognized ? 'var(--primary)' : cost.isPaid ? '#3b82f6' : '#ef4444', fontSize: '0.66rem' }}>{cost.direction === 'in' ? '+' : '-'} {fmt(cost.value)}</strong>
                     </div>
                   </article>
                 ))}

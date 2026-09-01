@@ -78,11 +78,13 @@ model Order {
   sourceUrl        String?
   batchNumber      Int?
   estimatedArrival DateTime?
+  costRecognizedAt DateTime? @db.Date
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
   @@index([batchNumber])
   @@index([status])
+  @@index([unit, costRecognizedAt])
 }
 
 model OrderApproval {

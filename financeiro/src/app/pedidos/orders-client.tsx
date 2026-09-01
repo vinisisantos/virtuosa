@@ -2,7 +2,8 @@
 import { useEffect, useState } from 'react';
 import { OrdersTable } from '@/components/orders-table';
 import { OrderFilters } from '@/components/order-filters';
-import { OrderModal } from '@/components/order-modal';
+import { OrderModal, type OrderData } from '@/components/order-modal';
+import { OrderCostRecognitionModal } from '@/components/order-cost-recognition-modal';
 import { PriceComparisonPanel } from '@/components/price-comparison';
 import { MercadoLivreSection } from '@/components/mercadolivre-section';
 import { DeliveredBatches } from '@/components/delivered-batches';
@@ -23,10 +24,14 @@ function getUserPermissions() {
         canApprove: isAdmin || perms.pedidosAprovar === true,
         canViewHistory: isAdmin || perms.pedidosHistorico === true,
         canDeleteHistory: isAdmin || perms.pedidosExcluirHistorico === true,
+        canManageCosts: isAdmin || (
+          perms.pedidos === true
+          && (perms.financeiro === true || perms.finCustos === true)
+        ),
       };
     }
   } catch {}
-  return { canApprove: false, canViewHistory: false, canDeleteHistory: false };
+  return { canApprove: false, canViewHistory: false, canDeleteHistory: false, canManageCosts: false };
 }
 
 export function OrdersClient() {
@@ -34,6 +39,8 @@ export function OrdersClient() {
   const [showApprovals, setShowApprovals] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
   const [canDeleteHistory, setCanDeleteHistory] = useState(false);
+  const [canManageCosts] = useState(() => getUserPermissions().canManageCosts);
+  const [costRecognitionOrder, setCostRecognitionOrder] = useState<OrderData | null>(null);
 
   useEffect(() => {
     const perms = getUserPermissions();
@@ -119,7 +126,7 @@ export function OrdersClient() {
         urgencyFilter={o.urgencyFilter} onUrgencyChange={o.setUrgencyFilter} />
 
       {/* ─── Approval Panel — for users with pedidosAprovar ─── */}
-      {showApprovals && <OrderApprovalPanel />}
+      {showApprovals && <OrderApprovalPanel unit={o.selectedUnit} />}
 
       {/* ─── Orders Table ─── */}
       {o.loading && o.orders.length === 0 ? (
@@ -128,10 +135,29 @@ export function OrdersClient() {
           <p style={{ marginTop: 12, fontWeight: 700 }}>Carregando pedidos...</p>
         </div>
       ) : (
-        <OrdersTable orders={o.orders} onEdit={o.openEditModal} onDelete={o.handleDeleteOrder} onStatusChange={o.handleStatusChange} />
+        <OrdersTable
+          orders={o.orders}
+          onEdit={o.openEditModal}
+          onDelete={o.handleDeleteOrder}
+          onStatusChange={o.handleStatusChange}
+          onCostRecognition={canManageCosts ? setCostRecognitionOrder : undefined}
+        />
       )}
 
       {o.isModalOpen && <OrderModal order={o.editingOrder} onSave={o.handleSaveOrder} onClose={() => o.setIsModalOpen(false)} defaultUnit={o.selectedUnit !== 'all' ? o.selectedUnit : undefined} />}
+
+      {canManageCosts && costRecognitionOrder && (
+        <OrderCostRecognitionModal
+          order={costRecognitionOrder}
+          saving={o.costRecognitionSaving}
+          onClose={() => setCostRecognitionOrder(null)}
+          onChange={async (costRecognizedAt) => {
+            if (!costRecognitionOrder.id) return;
+            await o.handleCostRecognition(costRecognitionOrder.id, costRecognizedAt);
+            setCostRecognitionOrder(null);
+          }}
+        />
+      )}
 
       {o.orderToDelete && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
@@ -152,7 +178,7 @@ export function OrdersClient() {
       <MercadoLivreSection unit={o.selectedUnit} />
 
       {/* ─── Audit History Panel — for users with pedidosHistorico ─── */}
-      {showAudit && <OrderAuditPanel canDelete={canDeleteHistory} />}
+      {showAudit && <OrderAuditPanel canDelete={canDeleteHistory} unit={o.selectedUnit} />}
 
       {/* ─── Delivered Batches History + Analytics ─── */}
       <DeliveredBatches orders={o.orders as any} />

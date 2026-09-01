@@ -1,7 +1,8 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { OrderData } from '@/components/order-modal';
 import { isUserAdmin, getUserUnit } from '@/components/unit-selector';
+import { toast } from '@/components/toast';
 
 function getUserInfo() {
   try {
@@ -59,6 +60,8 @@ export function useOrders() {
   const [orderToDelete, setOrderToDelete] = useState<string | null>(null);
   const [showPrices, setShowPrices] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState<string | null>(null);
+  const [costRecognitionSaving, setCostRecognitionSaving] = useState(false);
+  const costRecognitionPendingRef = useRef(false);
 
   useEffect(() => { subscribeToPush(); }, []);
 
@@ -115,7 +118,9 @@ export function useOrders() {
     if (!orderToDelete) return;
     try {
       const res = await fetch(`/api/orders?id=${orderToDelete}`, { method: 'DELETE' });
-      if (res.ok) { fetchOrders(); setOrderToDelete(null); }
+      const data = await res.json().catch(() => null);
+      if (res.ok) { fetchOrders(); setOrderToDelete(null); return; }
+      toast(data?.error || 'Não foi possível excluir o pedido.', 'error');
     } catch (err) { console.error('Delete order error:', err); }
   };
 
@@ -132,7 +137,50 @@ export function useOrders() {
         setApprovalMessage(data.message || 'Solicitação enviada ao administrador para aprovação.');
         return;
       }
+      if (!res.ok) {
+        setOrders(prevOrders);
+        toast(data?.error || 'Não foi possível atualizar o status.', 'error');
+      }
     } catch { fetchOrders(); }
+  };
+
+  const handleCostRecognition = async (id: string, costRecognizedAt: string | null) => {
+    if (costRecognitionPendingRef.current) {
+      throw new Error('Aguarde a atualização em andamento.');
+    }
+
+    costRecognitionPendingRef.current = true;
+    setCostRecognitionSaving(true);
+    const wasAlreadyRecognized = orders.some(order => order.id === id && Boolean(order.costRecognizedAt));
+    try {
+      const res = await fetch('/api/orders/cost-recognition', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, costRecognizedAt }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.error || 'Não foi possível atualizar o custo do pedido.');
+      }
+
+      const updatedOrder = data?.order as Partial<OrderData> | undefined;
+      setOrders(prev => prev.map(order => order.id === id
+        ? { ...order, ...(updatedOrder || {}), costRecognizedAt: updatedOrder?.costRecognizedAt ?? null }
+        : order));
+      toast(
+        costRecognizedAt
+          ? wasAlreadyRecognized ? 'Data do custo atualizada.' : 'Pedido lançado em Custos.'
+          : 'Pedido removido de Custos.',
+        'success',
+      );
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Erro ao atualizar o custo do pedido.';
+      toast(message, 'error');
+      throw cause instanceof Error ? cause : new Error(message);
+    } finally {
+      costRecognitionPendingRef.current = false;
+      setCostRecognitionSaving(false);
+    }
   };
 
   const openCreateModal = () => { setEditingOrder(null); setIsModalOpen(true); };
@@ -152,6 +200,7 @@ export function useOrders() {
     isModalOpen, setIsModalOpen, editingOrder, orderToDelete, setOrderToDelete,
     showPrices, setShowPrices, handleSaveOrder, handleDeleteOrder, confirmDeleteOrder,
     handleStatusChange, openCreateModal, openEditModal,
+    handleCostRecognition, costRecognitionSaving,
     totalOrders, totalSpent, avgPrice, aguardando, entregues,
     approvalMessage, setApprovalMessage,
     refreshOrders: fetchOrders,

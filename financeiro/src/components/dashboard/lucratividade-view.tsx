@@ -3,7 +3,15 @@ import { fmt, FixedExpense, Bill, LogEntry } from '@/hooks/useDashboard';
 import { recurringCostsTotalInMonth } from '@/lib/cost-recurrence';
 import { isRevenuePending } from '@/lib/revenue';
 
-export function LucratividadeView({ d }: { d: any }) {
+export function LucratividadeView({
+  d,
+  automaticFixedCosts = 0,
+  automaticVariableCosts = 0,
+}: {
+  d: any;
+  automaticFixedCosts?: number;
+  automaticVariableCosts?: number;
+}) {
   const { totalRev, fixedExpenses, bills, logs, selectedUnit, selectedYear, selectedMonth } = d;
 
   const data = useMemo(() => {
@@ -19,7 +27,7 @@ export function LucratividadeView({ d }: { d: any }) {
     
     // Custos Fixos (competência do mês selecionado por padrão)
     const fixed = fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (selectedUnit === 'all' || !e.unit || e.unit === selectedUnit));
-    const totalFixed = recurringCostsTotalInMonth(fixed, selectedYear, selectedMonth);
+    const totalFixed = recurringCostsTotalInMonth(fixed, selectedYear, selectedMonth) + automaticFixedCosts;
 
     // Custos Variáveis do Mês de Competência
     const refKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
@@ -38,16 +46,20 @@ export function LucratividadeView({ d }: { d: any }) {
       }
     });
 
-    const totalVariaveis = variaveis.reduce((sum: number, b: Bill) => sum + b.value, 0);
+    const totalVariaveis = variaveis.reduce((sum: number, b: Bill) => sum + b.value, 0) + automaticVariableCosts;
     const totalCustos = totalFixed + totalVariaveis;
     const lucro = receita - totalCustos;
     const margem = receita > 0 ? (lucro / receita) * 100 : 0;
 
     return { receita, aReceber, totalFixed, totalVariaveis, totalCustos, lucro, margem };
-  }, [totalRev, fixedExpenses, bills, logs, selectedUnit, selectedYear, selectedMonth]);
+  }, [automaticFixedCosts, automaticVariableCosts, totalRev, fixedExpenses, bills, logs, selectedUnit, selectedYear, selectedMonth]);
 
   return (
     <div style={{ animation: 'fadeSlide 0.3s ease-out' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 16, padding: '11px 13px', borderRadius: 11, border: '1px solid rgba(59,130,246,0.22)', background: 'rgba(59,130,246,0.07)', color: 'var(--text-muted)', fontSize: '0.76rem', lineHeight: 1.45 }}>
+        <span className="material-symbols-outlined" style={{ color: '#3b82f6', fontSize: 18, flexShrink: 0 }}>info</span>
+        Visão gerencial mensal: a folha entra no mês seguinte à competência e os pedidos entram na data lançada em Custos, sem presumir que já foram pagos.
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 24 }}>
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: '#3b82f6' }}>trending_up</span> RECEITA REALIZADA</div>
@@ -65,13 +77,13 @@ export function LucratividadeView({ d }: { d: any }) {
         </div>
 
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: data.lucro >= 0 ? '#22c55e' : '#ef4444' }}>account_balance</span> LUCRO (EBITDA)</div>
+          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: data.lucro >= 0 ? '#22c55e' : '#ef4444' }}>account_balance</span> RESULTADO GERENCIAL</div>
           <div style={{ fontSize: '1.8rem', fontWeight: 900, color: data.lucro >= 0 ? '#22c55e' : '#ef4444', letterSpacing: '-0.5px' }}>{fmt(data.lucro)}</div>
         </div>
       </div>
 
       <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 24px' }}>DRE Resumido</h3>
+        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 24px' }}>Resumo Gerencial do Mês</h3>
         
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px dashed var(--border)' }}>
@@ -92,7 +104,7 @@ export function LucratividadeView({ d }: { d: any }) {
           </div>
           
           <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, alignItems: 'center' }}>
-            <span style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: '1.1rem' }}>(=) Lucro Líquido Operacional</span>
+            <span style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: '1.1rem' }}>(=) Resultado Gerencial</span>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontWeight: 900, color: data.lucro >= 0 ? '#22c55e' : '#ef4444', fontSize: '1.4rem' }}>{fmt(data.lucro)}</div>
               <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', marginTop: 4 }}>

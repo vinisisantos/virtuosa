@@ -19,7 +19,7 @@ interface Approval {
   requesterId: string | null;
   requesterName: string;
   changeType: string;
-  changeData: Record<string, any>;
+  changeData: Record<string, unknown>;
   description: string;
   reason: string | null;
   status: string;
@@ -30,17 +30,6 @@ interface Approval {
   order: ApprovalOrder | null;
 }
 
-function getUserInfo() {
-  try {
-    const stored = localStorage.getItem('virtuosa_user');
-    if (stored) {
-      const user = JSON.parse(stored);
-      return { userName: user.name || 'Admin', userId: user.id || '' };
-    }
-  } catch {}
-  return { userName: 'Admin', userId: '' };
-}
-
 const FIELD_LABELS: Record<string, string> = {
   productName: 'Produto', quantity: 'Quantidade', urgency: 'Urgência',
   status: 'Status', notes: 'Observação', unitPrice: 'Preço Unitário',
@@ -48,7 +37,7 @@ const FIELD_LABELS: Record<string, string> = {
   sourceUrl: 'URL do Produto',
 };
 
-export function OrderApprovalPanel() {
+export function OrderApprovalPanel({ unit }: { unit?: string }) {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -58,18 +47,21 @@ export function OrderApprovalPanel() {
 
   const fetchApprovals = useCallback(async () => {
     try {
-      const res = await fetch('/api/orders/approvals?status=pendente');
+      const params = new URLSearchParams({ status: 'pendente' });
+      if (unit && unit !== 'all') params.set('unit', unit);
+      const res = await fetch(`/api/orders/approvals?${params.toString()}`);
       if (res.ok) setApprovals(await res.json());
     } catch (err) { console.error('Fetch approvals error:', err); }
     finally { setLoading(false); }
-  }, []);
+  }, [unit]);
 
   const fetchHistory = useCallback(async () => {
     try {
+      const unitParam = unit && unit !== 'all' ? `&unit=${encodeURIComponent(unit)}` : '';
       const [approvedRes, rejectedRes, directRes] = await Promise.all([
-        fetch('/api/orders/approvals?status=aprovado'),
-        fetch('/api/orders/approvals?status=recusado'),
-        fetch('/api/orders/approvals?status=direto'),
+        fetch(`/api/orders/approvals?status=aprovado${unitParam}`),
+        fetch(`/api/orders/approvals?status=recusado${unitParam}`),
+        fetch(`/api/orders/approvals?status=direto${unitParam}`),
       ]);
       const approved = approvedRes.ok ? await approvedRes.json() : [];
       const rejected = rejectedRes.ok ? await rejectedRes.json() : [];
@@ -79,19 +71,21 @@ export function OrderApprovalPanel() {
       );
       setHistory(all);
     } catch {}
-  }, []);
+  }, [unit]);
 
   useEffect(() => { fetchApprovals(); }, [fetchApprovals]);
+  useEffect(() => {
+    if (showHistory) void fetchHistory();
+  }, [fetchHistory, showHistory]);
 
   const handleAction = async (approvalId: string, action: 'aprovar' | 'recusar') => {
     setProcessing(approvalId);
-    const { userName, userId } = getUserInfo();
     const reason = reasonInputs[approvalId] || '';
     try {
       const res = await fetch('/api/orders/approvals', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ approvalId, action, userId, userName, reason }),
+        body: JSON.stringify({ approvalId, action, reason }),
       });
       if (res.ok) {
         setApprovals(prev => prev.filter(a => a.id !== approvalId));
@@ -118,7 +112,7 @@ export function OrderApprovalPanel() {
 
     for (const [key, newVal] of Object.entries(changeData)) {
       if (order && key in order) {
-        const oldVal = (order as any)[key];
+        const oldVal = (order as unknown as Record<string, unknown>)[key];
         const label = FIELD_LABELS[key] || key;
         items.push({ label, from: oldVal != null ? String(oldVal) : '—', to: newVal != null ? String(newVal) : '—' });
       }
@@ -179,7 +173,7 @@ export function OrderApprovalPanel() {
           </div>
         </div>
         <button
-          onClick={() => { setShowHistory(!showHistory); if (!showHistory) fetchHistory(); }}
+          onClick={() => setShowHistory(!showHistory)}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 4, padding: '6px 12px', borderRadius: 8,
             border: '1px solid var(--border)', background: showHistory ? 'var(--primary-light)' : 'var(--bg)',

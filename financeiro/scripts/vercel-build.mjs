@@ -41,6 +41,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260816113000_whatsapp_saved_reply_positions/migration.sql",
     "prisma/migrations/20260820170000_whatsapp_link_previews/migration.sql",
     "prisma/migrations/20260824163000_extend_osasco_callback_interval/migration.sql",
+    "prisma/migrations/20260901120000_order_cost_recognition/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {
