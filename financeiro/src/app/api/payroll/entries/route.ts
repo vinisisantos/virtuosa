@@ -2,6 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import {
+    normalizePayrollEmployeeKey,
+    selectRecurringPayrollEntries,
+} from '@/lib/payroll-recurrence';
+import {
+    requireUnitGuard,
+    UnitAccessDeniedError,
+    unitAccessDeniedResponse,
+} from '@/lib/unit-guard';
+import {
     AUTOMATIC_TRANSPORT_LABEL,
     CURRENT_MINIMUM_WAGE,
     calculateAutomaticTransportDiscount,
@@ -14,15 +23,16 @@ import {
 
 // GET — list entries by competence (with auto-creation of recurring entries)
 export async function GET(request: NextRequest) {
-    const user = getUserFromHeaders(request);
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    if (!user.isAdmin && !user.permissions?.financeiro)
+    const { searchParams } = new URL(request.url);
+    const requestedUnit = searchParams.get('unit');
+    const guard = requireUnitGuard(request, { requestedUnit });
+    if (guard instanceof NextResponse) return guard;
+    if (!guard.isAdmin && !guard.permissions?.financeiro)
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
-        const { searchParams } = new URL(request.url);
         const month = parseInt(searchParams.get('month') || '');
         const year = parseInt(searchParams.get('year') || '');
-        const unit = searchParams.get('unit') || '';
+        const unit = guard.unitFilter || '';
 
         if (!month || !year) {
             return NextResponse.json({ error: 'Mês e ano são obrigatórios' }, { status: 400 });
@@ -47,84 +57,113 @@ export async function GET(request: NextRequest) {
             };
             if (unit) prevWhereClause.unit = unit;
 
-            // Find recurring entries from previous month
-            const prevImports = await prisma.payrollImport.findMany({
-                where: prevWhereClause,
-                include: {
-                    entries: {
-                        where: { isRecurring: true },
-                    },
-                },
-            });
+            const exclusionWhere: any = {
+                competenceMonth: month,
+                competenceYear: year,
+            };
+            if (unit) exclusionWhere.unit = unit;
 
-            const recurringEntries = prevImports.flatMap(imp => imp.entries);
-
-            if (recurringEntries.length > 0) {
-                // Check if entries already exist for this month
-                const existingImports = await prisma.payrollImport.findMany({
-                    where: whereClause,
-                    include: {
+            const [prevImports, existingImports, exclusions] = await Promise.all([
+                prisma.payrollImport.findMany({
+                    where: prevWhereClause,
+                    select: {
+                        unit: true,
                         entries: {
-                            select: { employeeName: true },
-                        },
-                    },
-                });
-
-                const existingNames = new Set(
-                    existingImports.flatMap(imp => imp.entries.map(e => e.employeeName.toLowerCase().trim()))
-                );
-
-                // Filter only those that don't already exist
-                const toCreate = recurringEntries.filter(
-                    e => !existingNames.has(e.employeeName.toLowerCase().trim())
-                );
-
-                if (toCreate.length > 0) {
-                    // Determine unit for new entries
-                    const entryUnit = unit || prevImports[0]?.unit || 'SCS';
-
-                    // Get or create import record for this month
-                    const importRecord = await prisma.payrollImport.upsert({
-                        where: {
-                            competenceMonth_competenceYear_unit: {
-                                competenceMonth: month,
-                                competenceYear: year,
-                                unit: entryUnit,
+                            where: { isRecurring: true },
+                            select: {
+                                employeeName: true,
+                                netSalary: true,
+                                baseSalary: true,
+                                cargo: true,
+                                hasAdiantamento: true,
+                                hasFgts: true,
+                                employmentType: true,
+                                hazardPayRate: true,
+                                hazardPayBase: true,
                             },
                         },
-                        update: {},
-                        create: {
-                            fileName: `Recorrente - ${entryUnit} - ${month}/${year}`,
+                    },
+                }),
+                prisma.payrollImport.findMany({
+                    where: whereClause,
+                    select: {
+                        id: true,
+                        unit: true,
+                        entries: { select: { employeeName: true } },
+                    },
+                }),
+                prisma.payrollEntryExclusion.findMany({
+                    where: exclusionWhere,
+                    select: { unit: true, employeeKey: true },
+                }),
+            ]);
+
+            const recurringCandidates = prevImports.flatMap(payrollImport =>
+                payrollImport.entries.map(entry => ({ ...entry, unit: payrollImport.unit })),
+            );
+            const existingEmployees = existingImports.flatMap(payrollImport =>
+                payrollImport.entries.map(entry => ({
+                    unit: payrollImport.unit,
+                    employeeName: entry.employeeName,
+                })),
+            );
+            const toCreate = selectRecurringPayrollEntries(
+                recurringCandidates,
+                existingEmployees,
+                exclusions,
+            );
+
+            const entriesByUnit = new Map<string, typeof toCreate>();
+            for (const entry of toCreate) {
+                const groupedEntries = entriesByUnit.get(entry.unit) || [];
+                groupedEntries.push(entry);
+                entriesByUnit.set(entry.unit, groupedEntries);
+            }
+
+            // No modo global, cada unidade mantém sua própria importação. O limite é
+            // o conjunto fixo de unidades ativas, sem fan-out por colaborador.
+            for (const [entryUnit, entries] of entriesByUnit) {
+                const currentImport = existingImports.find(payrollImport => payrollImport.unit === entryUnit);
+                const importRecord = currentImport || await prisma.payrollImport.upsert({
+                    where: {
+                        competenceMonth_competenceYear_unit: {
                             competenceMonth: month,
                             competenceYear: year,
                             unit: entryUnit,
-                            processingStatus: 'completed',
                         },
-                    });
+                    },
+                    update: {},
+                    create: {
+                        fileName: `Recorrente - ${entryUnit} - ${month}/${year}`,
+                        competenceMonth: month,
+                        competenceYear: year,
+                        unit: entryUnit,
+                        processingStatus: 'completed',
+                    },
+                    select: { id: true, unit: true },
+                });
 
-                    // Create recurring entries
-                    await prisma.payrollEntry.createMany({
-                        data: toCreate.map(e => ({
-                            payrollImportId: importRecord.id,
-                            employeeName: e.employeeName,
-                            netSalary: e.netSalary,
-                            baseSalary: e.baseSalary,
-                            cargo: e.cargo,
-                            bonus: 0,
-                            paymentStatus: 'unpaid',
-                            confidenceScore: 1.0,
-                            extractionSource: 'recurring',
-                            hasPenalty: false,
-                            hasAdiantamento: e.hasAdiantamento,
-                            hasFgts: e.hasFgts,
-                            employmentType: e.employmentType,
-                            hazardPayRate: e.hazardPayRate,
-                            hazardPayBase: e.hazardPayBase,
-                            isRecurring: true, // Keep recurring
-                            notes: null,
-                        })),
-                    });
-                }
+                await prisma.payrollEntry.createMany({
+                    data: entries.map(entry => ({
+                        payrollImportId: importRecord.id,
+                        employeeName: entry.employeeName,
+                        netSalary: entry.netSalary,
+                        baseSalary: entry.baseSalary,
+                        cargo: entry.cargo,
+                        bonus: 0,
+                        paymentStatus: 'unpaid',
+                        confidenceScore: 1.0,
+                        extractionSource: 'recurring',
+                        hasPenalty: false,
+                        hasAdiantamento: entry.hasAdiantamento,
+                        hasFgts: entry.hasFgts,
+                        employmentType: entry.employmentType,
+                        hazardPayRate: entry.hazardPayRate,
+                        hazardPayBase: entry.hazardPayBase,
+                        isRecurring: true,
+                        notes: null,
+                    })),
+                });
             }
         } catch (recurErr) {
             console.error('Recurring auto-create warning:', recurErr);
@@ -380,9 +419,9 @@ export async function PUT(request: NextRequest) {
 
 // DELETE — remove entry or entire import
 export async function DELETE(request: NextRequest) {
-    const user = getUserFromHeaders(request);
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    if (!user.isAdmin && !user.permissions?.financeiro)
+    const guard = requireUnitGuard(request);
+    if (guard instanceof NextResponse) return guard;
+    if (!guard.isAdmin && !guard.permissions?.financeiro)
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const { searchParams } = new URL(request.url);
@@ -390,8 +429,39 @@ export async function DELETE(request: NextRequest) {
         const importId = searchParams.get('importId');
 
         if (importId) {
-            // Delete entire import (entries cascade via onDelete: Cascade)
-            await prisma.payrollImport.delete({ where: { id: importId } });
+            const payrollImport = await prisma.payrollImport.findUnique({
+                where: { id: importId },
+                select: {
+                    id: true,
+                    unit: true,
+                    competenceMonth: true,
+                    competenceYear: true,
+                    entries: { select: { employeeName: true } },
+                },
+            });
+            if (!payrollImport) {
+                return NextResponse.json({ error: 'Competência não encontrada' }, { status: 404 });
+            }
+            guard.enforceUnit(payrollImport.unit);
+
+            const exclusions = payrollImport.entries.map(entry => ({
+                competenceMonth: payrollImport.competenceMonth,
+                competenceYear: payrollImport.competenceYear,
+                unit: payrollImport.unit,
+                employeeKey: normalizePayrollEmployeeKey(entry.employeeName),
+                employeeName: entry.employeeName,
+            }));
+
+            await prisma.$transaction(async transaction => {
+                if (exclusions.length > 0) {
+                    await transaction.payrollEntryExclusion.createMany({
+                        data: exclusions,
+                        skipDuplicates: true,
+                    });
+                }
+                // Entries e ajustes são removidos em cascata após registrar o bloqueio.
+                await transaction.payrollImport.delete({ where: { id: payrollImport.id } });
+            });
             return NextResponse.json({ success: true });
         }
 
@@ -399,10 +469,46 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
         }
 
-        await prisma.payrollEntry.delete({ where: { id } });
+        const entry = await prisma.payrollEntry.findUnique({
+            where: { id },
+            select: {
+                id: true,
+                employeeName: true,
+                payrollImport: {
+                    select: {
+                        unit: true,
+                        competenceMonth: true,
+                        competenceYear: true,
+                    },
+                },
+            },
+        });
+        if (!entry) {
+            return NextResponse.json({ error: 'Colaborador não encontrado' }, { status: 404 });
+        }
+        guard.enforceUnit(entry.payrollImport.unit);
+
+        const exclusionIdentity = {
+            competenceMonth: entry.payrollImport.competenceMonth,
+            competenceYear: entry.payrollImport.competenceYear,
+            unit: entry.payrollImport.unit,
+            employeeKey: normalizePayrollEmployeeKey(entry.employeeName),
+        };
+
+        await prisma.$transaction([
+            prisma.payrollEntryExclusion.upsert({
+                where: {
+                    competenceMonth_competenceYear_unit_employeeKey: exclusionIdentity,
+                },
+                update: { employeeName: entry.employeeName },
+                create: { ...exclusionIdentity, employeeName: entry.employeeName },
+            }),
+            prisma.payrollEntry.delete({ where: { id: entry.id } }),
+        ]);
 
         return NextResponse.json({ success: true });
     } catch (err) {
+        if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse(err);
         console.error('DELETE entry error:', err);
         return NextResponse.json({ error: 'Erro ao remover entrada' }, { status: 500 });
     }

@@ -267,7 +267,7 @@ export function PayrollControl({
   const deleteEmployee = async (entry: PayrollEntryData) => {
     const confirmed = await confirmDialog({
       title: 'Remover colaborador',
-      message: `Remover ${entry.employeeName} desta competência? Os ajustes vinculados também serão removidos.`,
+      message: `Remover ${entry.employeeName} desta competência? Os ajustes vinculados também serão removidos e a recorrência não recriará o colaborador neste mês.`,
       confirmText: 'Remover',
       variant: 'danger',
     });
