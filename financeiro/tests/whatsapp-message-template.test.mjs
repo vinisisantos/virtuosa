@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { renderWhatsAppMessageTemplate } from "../src/lib/whatsapp/message-template.ts";
+import { EVALUATION_SCHEDULE_UNIT_CONFIGS } from "../src/lib/whatsapp/evaluation-schedule-confirmation-message.ts";
 
 const values = {
   contactName: "Maria da Silva",
@@ -57,4 +58,21 @@ test("substitui endereço e localização conforme a unidade da conversa", () =>
     ),
     "📍 Rua Eloy Cândido Lopes, 61 — Centro, Osasco\nLocalização: https://share.google/uwnrFMCt4re3TqvXI",
   );
+});
+
+test("resolve a mesma resposta LOCALIZAÇÃO sem misturar endereços das unidades", () => {
+  const template = "📍 **Nossa localização**\n\nEstamos localizados em:\n\n**{{endereco}}**";
+
+  for (const config of EVALUATION_SCHEDULE_UNIT_CONFIGS) {
+    const rendered = renderWhatsAppMessageTemplate(template, {
+      unit: config.displayUnitName,
+      unitAddress: config.address,
+      unitLocationUrl: config.locationUrl,
+    });
+
+    assert.match(rendered, new RegExp(config.address.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    for (const otherConfig of EVALUATION_SCHEDULE_UNIT_CONFIGS) {
+      if (otherConfig.unit !== config.unit) assert.doesNotMatch(rendered, new RegExp(otherConfig.address.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
+  }
 });

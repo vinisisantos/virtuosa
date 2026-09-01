@@ -63,6 +63,7 @@ type Props = {
   replies: SavedReply[];
   categories: SavedReplyCategory[];
   campaignName?: string | null;
+  renderContentPreview?: (content: string) => string;
   loading: boolean;
   error?: string | null;
   activeIndex: number;
@@ -77,6 +78,7 @@ export function SavedRepliesComposerMenu({
   replies,
   categories,
   campaignName,
+  renderContentPreview = (content) => content,
   loading,
   error,
   activeIndex,
@@ -137,7 +139,7 @@ export function SavedRepliesComposerMenu({
                 {reply.categoryId ? categoryTitleById.get(reply.categoryId) || "Todas as categorias" : "Todas as categorias"}
               </span>
               <span className="mt-0.5 line-clamp-1 block whitespace-pre-line text-xs text-muted-foreground">
-                {reply.content}
+                {renderContentPreview(reply.content)}
               </span>
             </button>
           ))

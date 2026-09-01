@@ -426,12 +426,12 @@ export default function FollowUpCenterPage() {
     setCampaignDrafts((current) => ({ ...current, [campaignKey]: value }));
   };
 
-  const campaignPreview = (group: CampaignGroup) => {
+  const renderCampaignMessage = (group: CampaignGroup, message: string) => {
     const conversation = group.conversations[0];
     const unitConfig = getEvaluationScheduleUnitConfigByUnit(
       conversation.contact.unit || FOLLOW_UP_CENTER_PILOT_UNIT,
     );
-    return renderWhatsAppMessageTemplate(campaignDrafts[group.key] || "", {
+    return renderWhatsAppMessageTemplate(message, {
       contactName: conversation.contact.name,
       contactPhone: conversation.contact.phone,
       unit: unitConfig?.displayUnitName || conversation.contact.unit || FOLLOW_UP_CENTER_PILOT_UNIT,
@@ -440,6 +440,10 @@ export default function FollowUpCenterPage() {
       attendantName: conversation.assignedToName,
     });
   };
+
+  const campaignPreview = (group: CampaignGroup) => (
+    renderCampaignMessage(group, campaignDrafts[group.key] || "")
+  );
 
   const sendBulkFollowUp = async () => {
     if (bulkFollowUpSending || !allCampaignDraftsReady) return;
@@ -1096,6 +1100,9 @@ export default function FollowUpCenterPage() {
         draftText={savedReplyCampaign ? campaignDrafts[savedReplyCampaign.key] || "" : ""}
         library={savedRepliesLibrary}
         campaignName={savedReplyCampaign?.campaignName}
+        renderContentPreview={(content) => savedReplyCampaign
+          ? renderCampaignMessage(savedReplyCampaign, content)
+          : content}
         onOpenChange={(open) => {
           if (!open) setSavedReplyCampaignKey(null);
         }}

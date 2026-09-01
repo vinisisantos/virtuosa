@@ -7854,6 +7854,7 @@ export default function InboxPage() {
                     replies={savedReplies}
                     categories={savedReplyCategories}
                     campaignName={selectedConv?.campaignName}
+                    renderContentPreview={personalizeMessageForConversation}
                     loading={savedRepliesLoading}
                     error={savedRepliesMenuError}
                     activeIndex={savedReplyActiveIndex}
@@ -8775,6 +8776,7 @@ export default function InboxPage() {
         draftText={savedReplyDialogTarget === "bulk" ? bulkFollowUpDraft : newMessage}
         library={savedRepliesLibrary}
         campaignName={savedReplyDialogTarget === "bulk" ? null : selectedConv?.campaignName}
+        renderContentPreview={savedReplyDialogTarget === "single" ? personalizeMessageForConversation : undefined}
         onOpenChange={(open) => {
           setShowSavedRepliesDialog(open);
           if (!open) setSavedReplyDialogTarget("single");

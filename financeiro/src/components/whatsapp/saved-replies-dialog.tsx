@@ -67,11 +67,22 @@ type Props = {
   draftText: string;
   library: WhatsAppSavedRepliesLibrary;
   campaignName?: string | null;
+  renderContentPreview?: (content: string) => string;
   onOpenChange: (open: boolean) => void;
   onSelect: (content: string) => void;
 };
 
-export function SavedRepliesDialog({ open, draftText, library, campaignName, onOpenChange, onSelect }: Props) {
+const identityContentPreview = (content: string) => content;
+
+export function SavedRepliesDialog({
+  open,
+  draftText,
+  library,
+  campaignName,
+  renderContentPreview = identityContentPreview,
+  onOpenChange,
+  onSelect,
+}: Props) {
   const {
     replies,
     categories,
@@ -148,9 +159,11 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
       const categoryTitle = reply.categoryId
         ? categoryTitleById.get(reply.categoryId) || ""
         : `Todas as categorias ${categories.map((category) => category.title).join(" ")}`;
-      return `${categoryTitle}\n${reply.title}\n${reply.content}`.toLocaleLowerCase("pt-BR").includes(term);
+      return `${categoryTitle}\n${reply.title}\n${reply.content}\n${renderContentPreview(reply.content)}`
+        .toLocaleLowerCase("pt-BR")
+        .includes(term);
     });
-  }, [campaignName, categories, categoryTitleById, replies, search]);
+  }, [campaignName, categories, categoryTitleById, renderContentPreview, replies, search]);
 
   const groupedReplies = useMemo(() => {
     const groups: Array<{ id: string; title: string; category: SavedReplyCategory | null; replies: SavedReply[] }> = visibleCategories.length > 0
@@ -448,6 +461,7 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
                                       <SortableSavedReplyRow
                                         key={reply.id}
                                         reply={reply}
+                                        contentPreview={renderContentPreview(reply.content)}
                                         disabled={reordering}
                                         deleting={deletingId === reply.id}
                                         canMoveUp={group.replies[0]?.id !== reply.id}
@@ -685,6 +699,7 @@ export function SavedRepliesDialog({ open, draftText, library, campaignName, onO
 
 function SortableSavedReplyRow({
   reply,
+  contentPreview,
   disabled,
   deleting,
   canMoveUp,
@@ -696,6 +711,7 @@ function SortableSavedReplyRow({
   onDelete,
 }: {
   reply: SavedReply;
+  contentPreview: string;
   disabled: boolean;
   deleting: boolean;
   canMoveUp: boolean;
@@ -759,7 +775,7 @@ function SortableSavedReplyRow({
         className="min-w-0 flex-1 rounded-lg px-2 py-2.5 text-left sm:px-3"
       >
         <span className="block truncate text-sm font-semibold text-foreground">{reply.title}</span>
-        <span className="mt-1 line-clamp-2 block whitespace-pre-line text-xs leading-5 text-muted-foreground">{reply.content}</span>
+        <span className="mt-1 line-clamp-2 block whitespace-pre-line text-xs leading-5 text-muted-foreground">{contentPreview}</span>
       </button>
       <div className="flex shrink-0 items-center gap-0.5 pr-1">
         <button
