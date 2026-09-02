@@ -3,11 +3,13 @@ import { Fragment, useState, useRef, useEffect, useMemo } from 'react';
 import { FixedExpense, Bill, LogEntry, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, formatCurrency } from '@/hooks/useDashboard';
 import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
+import { EditableProductExpenseItem, ProductExpenseItemsEditor } from './product-expense-items-editor';
 import { LucratividadeView } from './lucratividade-view';
 import { CostCalendar } from './cost-calendar';
 import { RevenueView } from './revenue-view';
 import { isManualRevenue } from '@/lib/revenue';
 import { CostRecurrence, currentMonthStartDateKey, recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth, todayDateKey } from '@/lib/cost-recurrence';
+import { isProductExpenseCategory, normalizeProductExpenseItems, sumProductExpenseItems } from '@/lib/product-expense-items';
 
 /* ─── Types ─── */
 interface CostRow {
@@ -76,6 +78,23 @@ function normalizeCategoryLabel(value: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .trim()
     .toLocaleLowerCase('pt-BR');
+}
+
+function editableProductItem(name = '', value = ''): EditableProductExpenseItem {
+  return {
+    id: `produto-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    name,
+    value,
+  };
+}
+
+function currencyInputValue(value: number) {
+  return formatCurrency(String(Math.round(value * 100)));
+}
+
+function currencyInputToNumber(value: string) {
+  const digits = value.replace(/[^\d]/g, '');
+  return digits ? parseInt(digits, 10) / 100 : 0;
 }
 
 function storedUserCanAccessOrders() {
@@ -199,6 +218,7 @@ export function CustosUnificado({ d }: { d: any }) {
   const [addDueDate, setAddDueDate] = useState('');
   const [addRefMonth, setAddRefMonth] = useState('');
   const [addObs, setAddObs] = useState('');
+  const [productItems, setProductItems] = useState<EditableProductExpenseItem[]>([]);
   const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [automaticCosts, setAutomaticCosts] = useState<AutomaticCostsResponse | null>(null);
@@ -206,6 +226,12 @@ export function CustosUnificado({ d }: { d: any }) {
   const [automaticCostsError, setAutomaticCostsError] = useState<string | null>(null);
   const [expandedAutomaticRows, setExpandedAutomaticRows] = useState<Set<string>>(new Set());
   const [canOpenOrders] = useState(storedUserCanAccessOrders);
+
+  const isProductExpense = isProductExpenseCategory(addCategory);
+  const productItemsTotal = useMemo(() => {
+    const cents = productItems.reduce((sum, item) => sum + Math.round(currencyInputToNumber(item.value) * 100), 0);
+    return cents / 100;
+  }, [productItems]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -445,7 +471,7 @@ export function CustosUnificado({ d }: { d: any }) {
 
   const resetForm = () => {
     setAddName(''); setAddValue(''); setAddCategory('Outros');
-    setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setRecurrence('once'); setEditingRow(null);
+    setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setProductItems([]); setRecurrence('once'); setEditingRow(null);
   };
 
   const openAddForm = () => {
@@ -482,6 +508,19 @@ export function CustosUnificado({ d }: { d: any }) {
     setAddName(editableRow.name);
     setAddValue(formatCurrency(String(Math.round(editableRow.value * 100))));
     setAddCategory(editableRow.category || 'Outros');
+    if (isProductExpenseCategory(editableRow.category)) {
+      const storedItems = normalizeProductExpenseItems(editableRow.raw.items);
+      const items = storedItems.length > 0
+        ? storedItems
+        : [{ id: `legado-${editableRow.id}`, name: editableRow.name, value: editableRow.value }];
+      setProductItems(items.map(item => ({
+        id: item.id,
+        name: item.name,
+        value: currencyInputValue(item.value),
+      })));
+    } else {
+      setProductItems([]);
+    }
     const legacyFixedBillDate = editableRow.source === 'bill' && editableRow.raw.type === 'fixo'
       ? `${d.selectedYear}-${String(d.selectedMonth + 1).padStart(2, '0')}-${String(editableRow.raw.dueDay || 1).padStart(2, '0')}`
       : '';
@@ -494,8 +533,17 @@ export function CustosUnificado({ d }: { d: any }) {
 
   /* ─── Add/edit cost handler ─── */
   const handleSave = () => {
-    const digits = addValue.replace(/[^\d]/g, '');
-    const val = parseInt(digits, 10) / 100;
+    const normalizedItems = isProductExpense
+      ? normalizeProductExpenseItems(productItems.map(item => ({
+          id: item.id,
+          name: item.name,
+          value: currencyInputToNumber(item.value),
+        })))
+      : [];
+    if (isProductExpense && normalizedItems.length !== productItems.length) {
+      return alert('Informe o nome e um valor maior que zero para todos os produtos.');
+    }
+    const val = isProductExpense ? sumProductExpenseItems(normalizedItems) : currencyInputToNumber(addValue);
     if (!addName.trim() || val <= 0) return alert('Informe nome e valor da despesa.');
     if (!addDueDate) return alert('Informe a data.');
 
@@ -507,6 +555,7 @@ export function CustosUnificado({ d }: { d: any }) {
       unit: d.fixedUnit,
       obs: addObs,
       recurrence: recurrence === 'weekly' ? 'weekly' : 'monthly',
+      items: isProductExpense ? normalizedItems : undefined,
     };
     const billDraft = {
           name: addName,
@@ -517,6 +566,7 @@ export function CustosUnificado({ d }: { d: any }) {
           unit: d.billUnit,
           refMonth: addRefMonth,
           obs: addObs,
+          items: isProductExpense ? normalizedItems : undefined,
     };
 
     let saved = false;
@@ -534,6 +584,7 @@ export function CustosUnificado({ d }: { d: any }) {
         name: addName.trim(), value: val, type: 'variavel', dueDay: null,
         dueDateManual: addDueDate, category: addCategory, unit: d.billUnit,
         refMonth: addRefMonth || undefined, obs: addObs || undefined,
+        items: isProductExpense ? normalizedItems : undefined,
       });
       saved = true;
     } else {
@@ -550,6 +601,13 @@ export function CustosUnificado({ d }: { d: any }) {
     setCustomCategories(current => current.some(item => item.toLocaleLowerCase('pt-BR') === category.toLocaleLowerCase('pt-BR'))
       ? current
       : [...current, category]);
+  };
+
+  const handleCategoryChange = (category: string) => {
+    setAddCategory(category);
+    if (isProductExpenseCategory(category) && productItems.length === 0) {
+      setProductItems([editableProductItem('', addValue)]);
+    }
   };
 
   /* ─── Delete handler ─── */
@@ -770,6 +828,7 @@ export function CustosUnificado({ d }: { d: any }) {
                   const isAutomatic = row.source.startsWith('automatic-');
                   const isExpanded = isAutomatic && expandedAutomaticRows.has(rowId);
                   const isManualProduct = !isAutomatic && normalizeCategoryLabel(row.category) === 'produtos';
+                  const manualProductItems = isManualProduct ? normalizeProductExpenseItems(row.raw.items) : [];
                   const sourceLabel = row.source === 'automatic-payroll'
                     ? 'Automático · Folha'
                     : row.source === 'automatic-products'
@@ -794,6 +853,11 @@ export function CustosUnificado({ d }: { d: any }) {
                             )}
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{row.category}</span>
                           </div>
+                          {manualProductItems.length > 0 && (
+                            <div title={manualProductItems.map(item => item.name).join(', ')} style={{ maxWidth: 420, marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                              {manualProductItems.length} {manualProductItems.length === 1 ? 'produto' : 'produtos'} · {manualProductItems.map(item => item.name).join(', ')}
+                            </div>
+                          )}
                         </td>
                         <td className="cost-due-cell" style={{ padding: '16px 20px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{row.dueInfo}</td>
                         <td className="cost-value-cell" style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>
@@ -877,7 +941,7 @@ export function CustosUnificado({ d }: { d: any }) {
       {/* ─── ADD MODAL ─── */}
       {showAddForm && (
         <div style={{ position: 'fixed', inset: 0, padding: 16, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeSlide 0.2s ease-out', overflowY: 'auto' }}>
-          <div style={{ background: 'var(--card-bg)', width: '100%', maxWidth: 440, maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', borderRadius: 20, padding: 'clamp(20px, 5vw, 32px)', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
+          <div style={{ background: 'var(--card-bg)', width: '100%', maxWidth: 600, maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', borderRadius: 20, padding: 'clamp(20px, 5vw, 32px)', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
             <h2 style={{ margin: '0 0 24px', fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>{editingRow ? 'edit' : 'add_circle'}</span>
               {editingRow ? 'Editar Despesa' : 'Nova Despesa'}
@@ -886,13 +950,37 @@ export function CustosUnificado({ d }: { d: any }) {
             <div style={{ display: 'grid', gap: 16 }}>
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Nome da Despesa</label>
-                <input type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder="Ex: Aluguel, Internet..." style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
+                <input type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder={isProductExpense ? 'Ex: Compra de setembro, Fornecedor...' : 'Ex: Aluguel, Internet...'} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Categoria</label>
+                <CategorySelector
+                  value={addCategory}
+                  onChange={handleCategoryChange}
+                  categories={availableCategories}
+                  onCreateCategory={handleCreateCategory}
+                />
+              </div>
+
+              {isProductExpense && (
+                <ProductExpenseItemsEditor
+                  items={productItems}
+                  total={productItemsTotal}
+                  onChange={setProductItems}
+                />
+              )}
+
+              <div className="product-expense-value-date" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
                 <div style={{ minWidth: 0 }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Valor</label>
-                  <input type="text" value={addValue} onChange={e => setAddValue(formatCurrency(e.target.value))} placeholder="R$ 0,00" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 700 }} />
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>{isProductExpense ? 'Total dos Produtos' : 'Valor'}</label>
+                  {isProductExpense ? (
+                    <div aria-live="polite" style={{ width: '100%', minHeight: 46, padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.07)', color: '#f97316', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 850 }}>
+                      {fmt(productItemsTotal)}
+                    </div>
+                  ) : (
+                    <input type="text" inputMode="numeric" value={addValue} onChange={e => setAddValue(formatCurrency(e.target.value))} placeholder="R$ 0,00" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 700 }} />
+                  )}
                 </div>
                 <div style={{ minWidth: 0 }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>{recurrence === 'once' ? 'Vencimento' : 'Primeiro vencimento'}</label>
@@ -913,16 +1001,6 @@ export function CustosUnificado({ d }: { d: any }) {
                   <input type="month" value={addRefMonth} onChange={e => setAddRefMonth(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
                 </div>
               )}
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Categoria</label>
-                <CategorySelector
-                  value={addCategory}
-                  onChange={setAddCategory}
-                  categories={availableCategories}
-                  onCreateCategory={handleCreateCategory}
-                />
-              </div>
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>Recorrência</label>
@@ -973,6 +1051,14 @@ export function CustosUnificado({ d }: { d: any }) {
           to { opacity: 1; transform: translateY(0); }
         }
         @media (max-width: 640px) {
+          .product-expense-value-date { grid-template-columns: minmax(0, 1fr) !important; }
+          .product-expense-item-row {
+            grid-template-columns: minmax(0, 1fr) 44px !important;
+            align-items: end !important;
+          }
+          .product-expense-item-name { grid-column: 1; grid-row: 1; }
+          .product-expense-item-remove { grid-column: 2; grid-row: 1; }
+          .product-expense-item-value { grid-column: 1 / -1; grid-row: 2; }
           .cost-table-scroll { overflow-x: visible !important; }
           .cost-table,
           .cost-table tbody { display: block; width: 100%; }

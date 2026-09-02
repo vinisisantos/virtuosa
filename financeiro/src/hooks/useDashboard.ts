@@ -5,6 +5,7 @@ import { useGlobalUnit } from '@/contexts/UnitContext';
 import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
 import { formatCurrency as formatBRL } from '@/lib/currency';
 import { CostRecurrence, previousDateKey, recurringCostsTotalInMonth, resolveRecurringCostsInMonth } from '@/lib/cost-recurrence';
+import { normalizeProductExpenseItems, ProductExpenseItem, sumProductExpenseItems } from '@/lib/product-expense-items';
 import { isManualRevenue, isOperationalSale, isRevenueReceived } from '@/lib/revenue';
 
 /* ─── Constants ─── */
@@ -16,17 +17,17 @@ export const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Ju
 export const UNITS = ['SCS','SBC','Osasco'];
 export const COST_CATEGORIES = ['Salários','Produtos','Marketing','Aluguel','Equipamentos','Impostos','Serviços','Outros'];
 export const FIXED_CATEGORIES = ['Aluguel','Salários','Produtos','Internet','Luz','Marketing','Segurança','Sistema','Contabilidade','Royalties','Água','Parcela','Outros'];
-export const BILL_CATEGORIES = ['Aluguel','Salários','Internet','Luz','Impostos','Fornecedores','Marketing','Outros'];
+export const BILL_CATEGORIES = ['Aluguel','Salários','Produtos','Internet','Luz','Impostos','Fornecedores','Marketing','Outros'];
 
 /* ─── Types ─── */
 export type RevenueStatus = 'pending' | 'received';
 export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?:string; payment?:string; category?:string; obs?:string; date:string; id?:string; seller?:string; source?:'manual'; status?:RevenueStatus; receivedAt?:string; }
 export interface ManualRevenueDraft { name:string; value:string|number; date:string; category:string; payment?:string; obs?:string; unit?:string; status:RevenueStatus; }
-export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; recurrence?:'monthly'|'weekly'; effectiveFrom?:string; effectiveTo?:string; seriesId?:string; }
-export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; refMonth?:string; }
+export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; recurrence?:'monthly'|'weekly'; effectiveFrom?:string; effectiveTo?:string; seriesId?:string; items?:ProductExpenseItem[]; }
+export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; refMonth?:string; items?:ProductExpenseItem[]; }
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
-export interface FixedExpenseDraft { name:string; value:string; category:string; date?:string; unit?:string; obs?:string; recurrence?:Exclude<CostRecurrence,'once'>; effectiveFrom?:string; }
-export interface BillDraft { name:string; value:string; type:'fixo'|'variavel'; dueDay?:string; dueDate?:string; category:string; obs?:string; unit?:string; refMonth?:string; }
+export interface FixedExpenseDraft { name:string; value:string; category:string; date?:string; unit?:string; obs?:string; recurrence?:Exclude<CostRecurrence,'once'>; effectiveFrom?:string; items?:ProductExpenseItem[]; }
+export interface BillDraft { name:string; value:string; type:'fixo'|'variavel'; dueDay?:string; dueDate?:string; category:string; obs?:string; unit?:string; refMonth?:string; items?:ProductExpenseItem[]; }
 export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup'|'retention'|'forecast'|'professionals'|'birthdays'|'audit'|'waitlist'|'loyalty'|'nps'|'heatmap'|'communications';
 
 /* ─── Formatters ─── */
@@ -726,7 +727,8 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
 
   const addFixed = (draft?: FixedExpenseDraft) => {
     const name = draft?.name ?? fixedName;
-    const value = parseCur(draft?.value ?? fixedValue);
+    const items = draft?.items === undefined ? undefined : normalizeProductExpenseItems(draft.items);
+    const value = items?.length ? sumProductExpenseItems(items) : parseCur(draft?.value ?? fixedValue);
     if(!name.trim()||value<=0) { toast('Informe nome e valor.', 'warning'); return false; }
     const id = Date.now();
     const date = (draft?.date ?? fixedDate)||undefined;
@@ -741,6 +743,7 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
       recurrence:draft?.recurrence || 'monthly',
       effectiveFrom:draft?.effectiveFrom || date,
       seriesId:String(id),
+      items:items?.length ? items : undefined,
     }]);
     setFixedName(''); setFixedValue(''); setFixedDate(''); setFixedObs('');
     return true;
@@ -762,7 +765,8 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
 
   const addBill = (draft?: BillDraft) => {
     const name = draft?.name ?? billName;
-    const value = parseCur(draft?.value ?? billValue);
+    const items = draft?.items === undefined ? undefined : normalizeProductExpenseItems(draft.items);
+    const value = items?.length ? sumProductExpenseItems(items) : parseCur(draft?.value ?? billValue);
     const type = draft?.type ?? billType;
     const dueDayInput = draft?.dueDay ?? billDueDay;
     const dueDateInput = draft?.dueDate ?? billDueDate;
@@ -787,6 +791,7 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
       obs:(draft?.obs ?? billObs)||undefined,
       unit:draft?.unit ?? billUnit,
       refMonth:(draft?.refMonth ?? billRefMonth)||undefined,
+      items:items?.length ? items : undefined,
     }]);
     setBillName(''); setBillValue(''); setBillDueDay(''); setBillDueDate(''); setBillObs(''); setBillRefMonth('');
     return true;
@@ -838,7 +843,8 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
   const editFixed = (id:number, data: Partial<FixedExpense>) => saveFixed(fixedExpenses.map(f => f.id === id ? { ...f, ...data } : f));
   const reviseFixed = (id:number, draft:FixedExpenseDraft, effectiveFrom:string) => {
     const current = fixedExpenses.find(f => f.id === id);
-    const value = parseCur(draft.value);
+    const items = draft.items === undefined ? undefined : normalizeProductExpenseItems(draft.items);
+    const value = items?.length ? sumProductExpenseItems(items) : parseCur(draft.value);
     if (!current || !draft.name.trim() || value <= 0 || !draft.date) return false;
     const nextId = Date.now();
     const seriesId = current.seriesId || String(current.id);
@@ -860,6 +866,7 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
             effectiveFrom,
             effectiveTo: undefined,
             seriesId,
+            items:items?.length ? items : undefined,
           };
         }
         if (expenseSeriesId === seriesId && (!expense.effectiveTo || expense.effectiveTo >= effectiveFrom)) {
@@ -883,6 +890,7 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
       effectiveFrom,
       effectiveTo: undefined,
       seriesId,
+      items:items?.length ? items : undefined,
     }]);
     return true;
   };
