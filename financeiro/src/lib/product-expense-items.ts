@@ -62,3 +62,24 @@ export function sumProductExpenseTotal(
   const freightCents = Math.round(normalizeProductExpenseFreight(freight) * 100);
   return (itemsCents + freightCents) / 100;
 }
+
+export function buildAutomaticProductExpenseName(
+  sequence: number,
+  dueDate?: string | null,
+  referenceMonth?: string | null,
+) {
+  const safeSequence = Number.isInteger(sequence) && sequence > 0 ? sequence : 1;
+  const normalizedDueDate = typeof dueDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(dueDate)
+    ? dueDate
+    : null;
+  const normalizedReferenceMonth = typeof referenceMonth === 'string' && /^\d{4}-\d{2}$/.test(referenceMonth)
+    ? referenceMonth
+    : null;
+  const dateLabel = normalizedDueDate
+    ? `${normalizedDueDate.slice(8, 10)}/${normalizedDueDate.slice(5, 7)}`
+    : normalizedReferenceMonth
+      ? `${normalizedReferenceMonth.slice(5, 7)}/${normalizedReferenceMonth.slice(0, 4)}`
+      : null;
+
+  return `Pedido ${safeSequence}${dateLabel ? ` · ${dateLabel}` : ''}`;
+}

@@ -10,7 +10,15 @@ import { CostCalendar } from './cost-calendar';
 import { RevenueView } from './revenue-view';
 import { isManualRevenue } from '@/lib/revenue';
 import { CostRecurrence, currentMonthStartDateKey, recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth, todayDateKey } from '@/lib/cost-recurrence';
-import { isProductExpenseCategory, normalizeProductExpenseFreight, normalizeProductExpenseItems, sumProductExpenseItems, sumProductExpenseTotal } from '@/lib/product-expense-items';
+import {
+  buildAutomaticProductExpenseName,
+  isProductExpenseCategory,
+  normalizeProductExpenseFreight,
+  normalizeProductExpenseItems,
+  sumProductExpenseItems,
+  sumProductExpenseTotal,
+  type ProductExpenseItem,
+} from '@/lib/product-expense-items';
 import { costEntryMatchesMonth, normalizeCostReferenceMonth, resolveCostReferenceMonth } from '@/lib/cost-reference-month';
 import { resolveCostEntryUnit } from '@/lib/cost-entry-unit';
 
@@ -73,6 +81,22 @@ interface AutomaticCostsResponse {
   productOrdersTotal: number;
 }
 
+interface ProductCostEntry {
+  key: string;
+  title: string;
+  sourceLabel: string;
+  dueDate: string;
+  items: ProductExpenseItem[];
+  productsTotal: number;
+  freight: number;
+  total: number;
+  status: 'paid' | 'pending' | 'recognized';
+  row?: CostRow;
+  canEdit: boolean;
+  canTogglePaid: boolean;
+  canDelete: boolean;
+}
+
 const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 function normalizeCategoryLabel(value: string) {
@@ -99,6 +123,35 @@ function currencyInputValue(value: number) {
 function currencyInputToNumber(value: string) {
   const digits = value.replace(/[^\d]/g, '');
   return digits ? parseInt(digits, 10) / 100 : 0;
+}
+
+function formatDateKey(dateKey: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) return 'Sem vencimento';
+  return dateKey.split('-').reverse().join('/');
+}
+
+function productExpenseBreakdown(name: string, total: number, rawItems: unknown, rawFreight: unknown) {
+  const freight = Math.min(normalizeProductExpenseFreight(rawFreight), total);
+  const normalizedItems = normalizeProductExpenseItems(rawItems);
+  if (normalizedItems.length > 0) {
+    const productsTotal = sumProductExpenseItems(normalizedItems);
+    return {
+      items: normalizedItems,
+      productsTotal,
+      freight,
+      total: sumProductExpenseTotal(normalizedItems, freight),
+    };
+  }
+
+  const productsTotal = Math.max(0, Math.round((total - freight) * 100) / 100);
+  return {
+    items: productsTotal > 0
+      ? [{ id: `legado-${name}`, name, quantity: 1, value: productsTotal }]
+      : [],
+    productsTotal,
+    freight,
+    total: Math.round((productsTotal + freight) * 100) / 100,
+  };
 }
 
 function storedUserCanAccessOrders() {
@@ -205,13 +258,143 @@ function AutomaticCostDetails({ row, canOpenOrders }: { row: CostRow; canOpenOrd
   );
 }
 
+function ProductCostsView({
+  entries,
+  loading,
+  canOpenOrders,
+  onAdd,
+  onEdit,
+  onTogglePaid,
+  onDelete,
+}: {
+  entries: ProductCostEntry[];
+  loading: boolean;
+  canOpenOrders: boolean;
+  onAdd: () => void;
+  onEdit: (row: CostRow) => void;
+  onTogglePaid: (row: CostRow) => void;
+  onDelete: (row: CostRow) => void;
+}) {
+  const productsTotal = entries.reduce((sum, entry) => sum + entry.productsTotal, 0);
+  const freightTotal = entries.reduce((sum, entry) => sum + entry.freight, 0);
+  const grandTotal = entries.reduce((sum, entry) => sum + entry.total, 0);
+
+  return (
+    <section className="product-costs-view">
+      <div className="product-costs-heading">
+        <div>
+          <h2>Pedidos de produtos</h2>
+          <p>Cada compra permanece separada pelo próprio vencimento, com produtos e frete discriminados.</p>
+        </div>
+        <div className="product-costs-heading-actions">
+          {canOpenOrders && (
+            <a href="/pedidos">
+              <span className="material-symbols-outlined">open_in_new</span>
+              Pedidos do sistema
+            </a>
+          )}
+          <button type="button" onClick={onAdd}>
+            <span className="material-symbols-outlined">add</span>
+            Novo pedido
+          </button>
+        </div>
+      </div>
+
+      {entries.length === 0 ? (
+        <div className="product-costs-empty">
+          <span className="material-symbols-outlined">inventory_2</span>
+          <strong>{loading ? 'Atualizando produtos...' : 'Nenhum pedido de produtos neste mês'}</strong>
+          {!loading && <span>Cadastre o primeiro pedido para iniciar a categoria Produtos.</span>}
+        </div>
+      ) : (
+        <div className="product-costs-orders">
+          {entries.map((entry, index) => (
+            <article key={entry.key} className="product-cost-order">
+              <header className="product-cost-order-header">
+                <div className="product-cost-order-title">
+                  <span className="product-cost-order-index">Pedido {index + 1}</span>
+                  <h3>{entry.title}</h3>
+                  <div className="product-cost-order-meta">
+                    <span>{entry.sourceLabel}</span>
+                    <span className={`product-cost-status product-cost-status-${entry.status}`}>
+                      {entry.status === 'paid' ? 'Pago' : entry.status === 'recognized' ? 'Lançado' : 'Pendente'}
+                    </span>
+                  </div>
+                </div>
+                <div className="product-cost-order-due">
+                  <span>Vencimento</span>
+                  <strong>{formatDateKey(entry.dueDate)}</strong>
+                </div>
+                {entry.row && (entry.canEdit || entry.canTogglePaid || entry.canDelete) && (
+                  <div className="product-cost-order-actions">
+                    {entry.canEdit && (
+                      <button type="button" onClick={() => onEdit(entry.row!)} title="Editar pedido" aria-label={`Editar ${entry.title}`}>
+                        <span className="material-symbols-outlined">edit</span>
+                      </button>
+                    )}
+                    {entry.canTogglePaid && (
+                      <button
+                        type="button"
+                        onClick={() => onTogglePaid(entry.row!)}
+                        title={entry.status === 'paid' ? 'Desfazer pagamento' : 'Marcar como pago'}
+                        aria-label={entry.status === 'paid' ? `Desfazer pagamento de ${entry.title}` : `Marcar ${entry.title} como pago`}
+                        className={entry.status === 'paid' ? 'danger' : 'success'}
+                      >
+                        <span className="material-symbols-outlined">{entry.status === 'paid' ? 'close' : 'check'}</span>
+                      </button>
+                    )}
+                    {entry.canDelete && (
+                      <button type="button" onClick={() => onDelete(entry.row!)} title="Excluir pedido" aria-label={`Excluir ${entry.title}`} className="danger">
+                        <span className="material-symbols-outlined">delete</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </header>
+
+              <div className="product-cost-items">
+                <div className="product-cost-items-labels" aria-hidden="true">
+                  <span>Produto</span>
+                  <span>Qtd.</span>
+                  <span>Valor unitário</span>
+                  <span>Subtotal</span>
+                </div>
+                {entry.items.map(item => (
+                  <div key={`${entry.key}-${item.id}`} className="product-cost-item">
+                    <strong>{item.name}</strong>
+                    <span data-label="Qtd.">{item.quantity}</span>
+                    <span data-label="Valor unitário">{fmt(item.value)}</span>
+                    <span data-label="Subtotal">{fmt(item.quantity * item.value)}</span>
+                  </div>
+                ))}
+              </div>
+
+              <footer className="product-cost-order-summary">
+                <div><span>Produtos</span><strong>{fmt(entry.productsTotal)}</strong></div>
+                <div><span>Frete</span><strong>{fmt(entry.freight)}</strong></div>
+                <div className="product-cost-order-total"><span>Total do pedido</span><strong>{fmt(entry.total)}</strong></div>
+              </footer>
+            </article>
+          ))}
+        </div>
+      )}
+
+      <div className="product-costs-total">
+        <div><span>Total dos produtos</span><strong>{fmt(productsTotal)}</strong></div>
+        <div><span>Total dos fretes</span><strong>{fmt(freightTotal)}</strong></div>
+        <div className="product-costs-grand-total"><span>Total geral</span><strong>{fmt(grandTotal)}</strong></div>
+      </div>
+    </section>
+  );
+}
+
 /* ═══════════════════════════════════════════ */
 /* ─── MAIN COMPONENT ─── */
 /* ═══════════════════════════════════════════ */
 export function CustosUnificado({ d }: { d: any }) {
   /* ─── UI state ─── */
-  const [viewMode, setViewMode] = useState<'pagamentos' | 'receitas' | 'calendario' | 'lucratividade'>('pagamentos');
-  const [filterStatus, setFilterStatus] = useState<'all' | 'pago' | 'pendente' | 'lancado'>('all');
+  const [viewMode, setViewMode] = useState<'pagamentos' | 'produtos' | 'receitas' | 'calendario' | 'lucratividade'>('pagamentos');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'pago' | 'pendente'>('all');
   const [filterType, setFilterType] = useState<'all' | 'fixo' | 'variavel'>('all');
   const [showAddForm, setShowAddForm] = useState(false);
   const [recurrence, setRecurrence] = useState<CostRecurrence>('once');
@@ -291,7 +474,7 @@ export function CustosUnificado({ d }: { d: any }) {
     return Array.from(new Set([...baseCategories, ...savedCategories, ...customCategories]));
   }, [customCategories, filteredBills, filteredFixed, recurrence]);
 
-  const costRows: CostRow[] = useMemo(() => {
+  const allCostRows: CostRow[] = useMemo(() => {
     const rows: CostRow[] = [];
 
     const payroll = automaticCosts?.payroll;
@@ -370,10 +553,15 @@ export function CustosUnificado({ d }: { d: any }) {
         source: 'bill', raw: b,
       });
     });
-    return rows.filter(r => {
+    return rows.sort((a, b) => {
+      const automaticDifference = Number(b.source.startsWith('automatic-')) - Number(a.source.startsWith('automatic-'));
+      return automaticDifference || b.periodTotal - a.periodTotal;
+    });
+  }, [automaticCosts, d, filteredBills, filteredFixed, selectedMonthKey]);
+
+  const costRows = useMemo(() => allCostRows.filter(r => {
       if (filterStatus === 'pago' && r.paidPortion <= 0) return false;
       if (filterStatus === 'pendente' && r.pendingPortion <= 0) return false;
-      if (filterStatus === 'lancado' && r.recognizedPortion <= 0) return false;
       if (filterType === 'fixo' && r.type !== 'fixo') return false;
       if (filterType === 'variavel' && r.type !== 'variavel') return false;
       return true;
@@ -394,8 +582,7 @@ export function CustosUnificado({ d }: { d: any }) {
     }).sort((a, b) => {
       const automaticDifference = Number(b.source.startsWith('automatic-')) - Number(a.source.startsWith('automatic-'));
       return automaticDifference || b.periodTotal - a.periodTotal;
-    });
-  }, [automaticCosts, d, filteredBills, filteredFixed, filterStatus, filterType, selectedMonthKey]);
+    }), [allCostRows, filterStatus, filterType]);
 
   const automaticCalendarExpenses = useMemo(() => {
     const expenses: Array<{
@@ -486,6 +673,13 @@ export function CustosUnificado({ d }: { d: any }) {
     setShowAddForm(true);
   };
 
+  const openProductForm = () => {
+    resetForm();
+    setAddCategory('Produtos');
+    setProductItems([editableProductItem()]);
+    setShowAddForm(true);
+  };
+
   const getActiveFixedVersion = (row: CostRow) => {
     if (row.source !== 'fixed') return null;
     const seriesId = row.raw.seriesId || String(row.raw.id);
@@ -493,6 +687,106 @@ export function CustosUnificado({ d }: { d: any }) {
       !expense.effectiveTo && (expense.seriesId || String(expense.id)) === seriesId
     ) || null;
   };
+
+  const productCostEntries = useMemo(() => {
+    const entries: ProductCostEntry[] = [];
+
+    allCostRows.forEach(row => {
+      if (!isProductExpenseCategory(row.category)) return;
+
+      if (row.source === 'automatic-products') {
+        (row.raw as AutomaticProductOrder[]).forEach(order => {
+          const breakdown = productExpenseBreakdown(order.productName, order.totalPrice, null, 0);
+          entries.push({
+            key: `automatic-order-${order.id}`,
+            title: order.productName,
+            sourceLabel: 'Módulo Pedidos',
+            dueDate: order.costRecognizedAt.slice(0, 10),
+            ...breakdown,
+            status: 'recognized',
+            canEdit: false,
+            canTogglePaid: false,
+            canDelete: false,
+          });
+        });
+        return;
+      }
+
+      const breakdown = productExpenseBreakdown(row.name, row.value, row.raw.items, row.raw.freight);
+      const commonEntry = {
+        title: row.name,
+        sourceLabel: row.source === 'fixed' ? 'Manual recorrente' : 'Manual',
+        ...breakdown,
+        status: row.isPaid ? 'paid' as const : 'pending' as const,
+        row,
+        canEdit: !row.isPaid && (!row.isHistorical || Boolean(d.fixedExpenses.find((expense: FixedExpense) => (
+          !expense.effectiveTo
+          && (expense.seriesId || String(expense.id)) === (row.raw.seriesId || String(row.raw.id))
+        )))),
+        canTogglePaid: row.source === 'bill',
+        canDelete: !row.isHistorical,
+      };
+
+      if (row.source === 'fixed') {
+        recurringCostOccurrencesInMonth(row.raw, d.selectedYear, d.selectedMonth).forEach(date => {
+          entries.push({
+            key: `manual-fixed-${row.id}-${date}`,
+            dueDate: date,
+            ...commonEntry,
+          });
+        });
+        return;
+      }
+
+      const lastDay = new Date(d.selectedYear, d.selectedMonth + 1, 0).getDate();
+      const dueDay = Math.min(Math.max(Number(row.raw.dueDay) || 1, 1), lastDay);
+      entries.push({
+        key: `manual-bill-${row.id}`,
+        dueDate: row.raw.dueDateManual || `${selectedMonthKey}-${String(dueDay).padStart(2, '0')}`,
+        ...commonEntry,
+      });
+    });
+
+    return entries.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.title.localeCompare(b.title, 'pt-BR'));
+  }, [allCostRows, d.selectedMonth, d.selectedYear, d.fixedExpenses, selectedMonthKey]);
+
+  const productTargetMonthKey = useMemo(() => {
+    if (recurrence === 'once') {
+      const normalizedReference = normalizeCostReferenceMonth(
+        addRefMonth,
+        Number(addDueDate.slice(0, 4)) || d.selectedYear,
+      );
+      if (normalizedReference) return normalizedReference;
+    }
+    return addDueDate.slice(0, 7) || selectedMonthKey;
+  }, [addDueDate, addRefMonth, d.selectedYear, recurrence, selectedMonthKey]);
+
+  const existingProductLaunchCount = useMemo(() => {
+    const [targetYear, targetMonth] = productTargetMonthKey.split('-').map(Number);
+    if (!targetYear || !targetMonth) return 0;
+    const matchesUnit = (unit?: string | null) => d.selectedUnit === 'all' || !unit || unit === d.selectedUnit;
+    const manualBills = d.bills.filter((bill: Bill) => (
+      isProductExpenseCategory(bill.category)
+      && matchesUnit(bill.unit)
+      && (bill.type === 'fixo' || costEntryMatchesMonth(bill.refMonth, bill.dueDateManual, targetYear, targetMonth - 1))
+    )).length;
+    const manualFixed = resolveRecurringCostsInMonth<FixedExpense>(
+      d.fixedExpenses.filter((expense: FixedExpense) => isProductExpenseCategory(expense.category) && matchesUnit(expense.unit)),
+      targetYear,
+      targetMonth - 1,
+    ).length;
+    const automaticOrders = productTargetMonthKey === selectedMonthKey
+      ? automaticCosts?.productOrders.length || 0
+      : 0;
+    return manualBills + manualFixed + automaticOrders;
+  }, [automaticCosts?.productOrders.length, d.bills, d.fixedExpenses, d.selectedUnit, productTargetMonthKey, selectedMonthKey]);
+
+  const shouldRequestProductTitle = !isProductExpense || Boolean(editingRow) || existingProductLaunchCount === 0;
+  const automaticProductTitle = buildAutomaticProductExpenseName(
+    existingProductLaunchCount + 1,
+    addDueDate,
+    productTargetMonthKey,
+  );
 
   const openEditForm = (row: CostRow) => {
     if (row.source.startsWith('automatic-')) return;
@@ -557,7 +851,12 @@ export function CustosUnificado({ d }: { d: any }) {
     }
     const freight = isProductExpense ? normalizeProductExpenseFreight(currencyInputToNumber(productFreight)) : 0;
     const val = isProductExpense ? sumProductExpenseTotal(normalizedItems, freight) : currencyInputToNumber(addValue);
-    if (!addName.trim() || val <= 0) return alert('Informe nome e valor da despesa.');
+    const expenseName = isProductExpense && !shouldRequestProductTitle
+      ? automaticProductTitle
+      : addName.trim();
+    if (!expenseName || val <= 0) return alert(isProductExpense
+      ? 'Informe o título do primeiro pedido e os produtos.'
+      : 'Informe nome e valor da despesa.');
     if (!addDueDate) return alert('Informe a data.');
     const referenceMonth = recurrence === 'once'
       ? normalizeCostReferenceMonth(addRefMonth, Number(addDueDate.slice(0, 4)) || d.selectedYear)
@@ -569,7 +868,7 @@ export function CustosUnificado({ d }: { d: any }) {
     const billEntryUnit = resolveCostEntryUnit(d.selectedUnit, d.billUnit);
 
     const fixedDraft = {
-      name: addName,
+      name: expenseName,
       value: addValue,
       category: addCategory,
       date: addDueDate,
@@ -580,7 +879,7 @@ export function CustosUnificado({ d }: { d: any }) {
       freight: isProductExpense && freight > 0 ? freight : undefined,
     };
     const billDraft = {
-          name: addName,
+          name: expenseName,
           value: addValue,
           type: 'variavel',
           dueDate: addDueDate,
@@ -604,7 +903,7 @@ export function CustosUnificado({ d }: { d: any }) {
       }
     } else if (recurrence === 'once') {
       d.editBill(editingRow.id, {
-        name: addName.trim(), value: val, type: 'variavel', dueDay: null,
+        name: expenseName, value: val, type: 'variavel', dueDay: null,
         dueDateManual: addDueDate, category: addCategory, unit: billEntryUnit,
         refMonth: referenceMonth, obs: addObs || undefined,
         items: isProductExpense ? normalizedItems : undefined,
@@ -680,6 +979,7 @@ export function CustosUnificado({ d }: { d: any }) {
   const totalPago = costRows.reduce((sum, row) => sum + row.paidPortion, 0);
   const totalLancado = costRows.reduce((sum, row) => sum + row.recognizedPortion, 0);
   const totalDespesas = totalPendente + totalPago + totalLancado;
+  const displayedExpenseRows = costRows.filter(row => !isProductExpenseCategory(row.category));
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', paddingBottom: 60, fontFamily: 'Inter, sans-serif' }}>
@@ -692,6 +992,7 @@ export function CustosUnificado({ d }: { d: any }) {
         
         <div style={{ display: 'flex', maxWidth: '100%', overflowX: 'auto', background: 'var(--card-bg)', borderRadius: 12, padding: 4, border: '1px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
           <button onClick={() => setViewMode('pagamentos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'pagamentos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'pagamentos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'pagamentos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'pagamentos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Despesas</button>
+          <button onClick={() => setViewMode('produtos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'produtos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'produtos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'produtos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'produtos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Produtos</button>
           <button onClick={() => setViewMode('receitas')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'receitas' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'receitas' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'receitas' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'receitas' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Receitas</button>
           <button onClick={() => setViewMode('calendario')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'calendario' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'calendario' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'calendario' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'calendario' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Calendário</button>
           <button onClick={() => setViewMode('lucratividade')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'lucratividade' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'lucratividade' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'lucratividade' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'lucratividade' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Resultado gerencial</button>
@@ -735,6 +1036,16 @@ export function CustosUnificado({ d }: { d: any }) {
           automaticFixedCosts={automaticCosts?.payroll?.total || 0}
           automaticVariableCosts={automaticCosts?.productOrdersTotal || 0}
         />
+      ) : viewMode === 'produtos' ? (
+        <ProductCostsView
+          entries={productCostEntries}
+          loading={loadingAutomaticCosts}
+          canOpenOrders={canOpenOrders}
+          onAdd={openProductForm}
+          onEdit={openEditForm}
+          onTogglePaid={row => row.isPaid ? d.unmarkBillPaid(row.raw) : d.markPaid(row.id)}
+          onDelete={handleDelete}
+        />
       ) : viewMode === 'receitas' ? (
         <RevenueView d={d} />
       ) : viewMode === 'calendario' ? (
@@ -774,23 +1085,13 @@ export function CustosUnificado({ d }: { d: any }) {
         </div>
 
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(139,92,246,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--primary)' }}>inventory_2</span>
-          </div>
-          <div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>PEDIDOS LANÇADOS</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(totalLancado)}</div>
-            <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 650 }}>Sem baixa de pagamento</div>
-          </div>
-        </div>
-
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--text-muted)' }}>account_balance_wallet</span>
           </div>
           <div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>TOTAL DO MÊS</div>
             <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(totalDespesas)}</div>
+            {totalLancado > 0 && <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 650 }}>Inclui {fmt(totalLancado)} do módulo Pedidos</div>}
             {loadingAutomaticCosts && <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 600 }}>Atualizando folha e pedidos...</div>}
           </div>
         </div>
@@ -800,14 +1101,14 @@ export function CustosUnificado({ d }: { d: any }) {
       {/* ─── FILTERS ─── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', maxWidth: '100%', overflowX: 'auto', background: 'var(--bg)', borderRadius: 10, padding: 4, border: '1px solid var(--border)' }}>
-          {(['all', 'pendente', 'pago', 'lancado'] as const).map(opt => (
+          {(['all', 'pendente', 'pago'] as const).map(opt => (
             <button key={opt} onClick={() => setFilterStatus(opt)} style={{
               minHeight: 44, padding: '6px 14px', border: 'none', background: filterStatus === opt ? 'var(--card-bg)' : 'transparent',
               borderRadius: 8, color: filterStatus === opt ? 'var(--text-main)' : 'var(--text-muted)',
               fontWeight: filterStatus === opt ? 700 : 500, fontSize: '0.85rem', cursor: 'pointer',
               boxShadow: filterStatus === opt ? '0 2px 4px rgba(0,0,0,0.05)' : 'none', transition: 'all 0.2s'
             }}>
-              {opt === 'all' ? 'Todos os Status' : opt === 'pendente' ? 'Pendentes' : opt === 'pago' ? 'Pagos' : 'Lançados'}
+              {opt === 'all' ? 'Todos os Status' : opt === 'pendente' ? 'Pendentes' : 'Pagos'}
             </button>
           ))}
         </div>
@@ -839,7 +1140,7 @@ export function CustosUnificado({ d }: { d: any }) {
               </tr>
             </thead>
             <tbody>
-              {costRows.length === 0 ? (
+              {displayedExpenseRows.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 40, opacity: 0.5, marginBottom: 8 }}>receipt_long</span>
@@ -847,7 +1148,7 @@ export function CustosUnificado({ d }: { d: any }) {
                   </td>
                 </tr>
               ) : (
-                costRows.map(row => {
+                displayedExpenseRows.map(row => {
                   const rowId = String(row.id);
                   const isAutomatic = row.source.startsWith('automatic-');
                   const isExpanded = isAutomatic && expandedAutomaticRows.has(rowId);
@@ -969,14 +1270,30 @@ export function CustosUnificado({ d }: { d: any }) {
           <div style={{ background: 'var(--card-bg)', width: '100%', maxWidth: 600, maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', borderRadius: 20, padding: 'clamp(20px, 5vw, 32px)', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
             <h2 style={{ margin: '0 0 24px', fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>{editingRow ? 'edit' : 'add_circle'}</span>
-              {editingRow ? 'Editar Despesa' : 'Nova Despesa'}
+              {editingRow
+                ? isProductExpense ? 'Editar Pedido' : 'Editar Despesa'
+                : isProductExpense ? 'Novo Pedido' : 'Nova Despesa'}
             </h2>
             
             <div style={{ display: 'grid', gap: 16 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Nome da Despesa</label>
-                <input type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder={isProductExpense ? 'Ex: Compra de setembro, Fornecedor...' : 'Ex: Aluguel, Internet...'} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
-              </div>
+              {shouldRequestProductTitle ? (
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
+                    {isProductExpense
+                      ? editingRow ? 'Título do Pedido' : 'Título do primeiro pedido do mês'
+                      : 'Nome da Despesa'}
+                  </label>
+                  <input type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder={isProductExpense ? 'Ex: Compra de setembro, Fornecedor...' : 'Ex: Aluguel, Internet...'} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
+                </div>
+              ) : (
+                <div className="product-expense-auto-title" aria-live="polite">
+                  <span className="material-symbols-outlined">auto_awesome</span>
+                  <div>
+                    <strong>{automaticProductTitle}</strong>
+                    <p>Já existe lançamento de Produtos neste mês. A identificação será criada automaticamente.</p>
+                  </div>
+                </div>
+              )}
 
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Categoria</label>
@@ -1066,7 +1383,7 @@ export function CustosUnificado({ d }: { d: any }) {
                 Cancelar
               </button>
               <button onClick={handleSave} style={{ flex: 2, padding: '12px', borderRadius: 10, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(230, 0, 126, 0.2)' }}>
-                {editingRow ? 'Salvar Alterações' : 'Adicionar Despesa'}
+                {editingRow ? 'Salvar Alterações' : isProductExpense ? 'Adicionar Pedido' : 'Adicionar Despesa'}
               </button>
             </div>
           </div>
@@ -1082,8 +1399,174 @@ export function CustosUnificado({ d }: { d: any }) {
           from { opacity: 0; transform: translateY(-4px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        .product-expense-auto-title {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 12px 14px;
+          border: 1px solid rgba(139, 92, 246, 0.3);
+          border-radius: 10px;
+          background: rgba(139, 92, 246, 0.08);
+          color: var(--text-main);
+        }
+        .product-expense-auto-title > span { color: var(--primary); font-size: 20px; }
+        .product-expense-auto-title strong { display: block; font-size: 0.85rem; }
+        .product-expense-auto-title p { margin: 3px 0 0; color: var(--text-muted); font-size: 0.72rem; line-height: 1.4; }
+        .product-costs-view { display: grid; gap: 16px; }
+        .product-costs-heading {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 18px;
+          padding: 20px;
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          background: var(--card-bg);
+        }
+        .product-costs-heading h2 { margin: 0; color: var(--text-main); font-size: 1.1rem; font-weight: 850; }
+        .product-costs-heading p { max-width: 620px; margin: 5px 0 0; color: var(--text-muted); font-size: 0.78rem; line-height: 1.45; }
+        .product-costs-heading-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+        .product-costs-heading-actions a,
+        .product-costs-heading-actions button {
+          display: inline-flex;
+          min-height: 44px;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          padding: 9px 13px;
+          border-radius: 10px;
+          border: 1px solid var(--border);
+          background: var(--bg);
+          color: var(--text-main);
+          font: inherit;
+          font-size: 0.78rem;
+          font-weight: 800;
+          text-decoration: none;
+          cursor: pointer;
+        }
+        .product-costs-heading-actions button { border-color: var(--primary); background: var(--primary); color: #fff; }
+        .product-costs-heading-actions .material-symbols-outlined { font-size: 17px; }
+        .product-costs-empty {
+          display: grid;
+          min-height: 220px;
+          place-items: center;
+          align-content: center;
+          gap: 7px;
+          padding: 30px;
+          border: 1px dashed var(--border);
+          border-radius: 16px;
+          background: var(--card-bg);
+          color: var(--text-muted);
+          text-align: center;
+        }
+        .product-costs-empty .material-symbols-outlined { font-size: 40px; color: var(--primary); opacity: 0.8; }
+        .product-costs-empty strong { color: var(--text-main); font-size: 0.95rem; }
+        .product-costs-empty span:last-child { font-size: 0.78rem; }
+        .product-costs-orders { display: grid; gap: 14px; }
+        .product-cost-order {
+          overflow: hidden;
+          border: 1px solid var(--border);
+          border-radius: 16px;
+          background: var(--card-bg);
+          box-shadow: 0 3px 10px rgba(0, 0, 0, 0.025);
+        }
+        .product-cost-order-header {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto auto;
+          align-items: center;
+          gap: 16px;
+          padding: 17px 18px;
+          border-bottom: 1px solid var(--border);
+          background: var(--bg);
+        }
+        .product-cost-order-title { min-width: 0; }
+        .product-cost-order-index { color: var(--primary); font-size: 0.66rem; font-weight: 850; text-transform: uppercase; letter-spacing: 0.06em; }
+        .product-cost-order-title h3 { margin: 3px 0 0; overflow-wrap: anywhere; color: var(--text-main); font-size: 0.98rem; font-weight: 820; }
+        .product-cost-order-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 6px; color: var(--text-muted); font-size: 0.69rem; font-weight: 700; }
+        .product-cost-status { padding: 3px 7px; border-radius: 999px; }
+        .product-cost-status-paid { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+        .product-cost-status-pending { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+        .product-cost-status-recognized { background: rgba(139, 92, 246, 0.11); color: var(--primary); }
+        .product-cost-order-due { min-width: 105px; text-align: right; }
+        .product-cost-order-due span { display: block; color: var(--text-muted); font-size: 0.66rem; font-weight: 750; text-transform: uppercase; letter-spacing: 0.04em; }
+        .product-cost-order-due strong { display: block; margin-top: 4px; color: var(--text-main); font-size: 0.86rem; }
+        .product-cost-order-actions { display: flex; align-items: center; gap: 6px; }
+        .product-cost-order-actions button {
+          display: grid;
+          width: 40px;
+          height: 40px;
+          place-items: center;
+          border: 0;
+          border-radius: 9px;
+          background: rgba(139, 92, 246, 0.1);
+          color: var(--primary);
+          cursor: pointer;
+        }
+        .product-cost-order-actions button.success { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+        .product-cost-order-actions button.danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+        .product-cost-order-actions .material-symbols-outlined { font-size: 18px; }
+        .product-cost-items { display: grid; gap: 0; padding: 8px 18px; }
+        .product-cost-items-labels,
+        .product-cost-item {
+          display: grid;
+          grid-template-columns: minmax(180px, 1fr) 64px 130px 130px;
+          align-items: center;
+          gap: 12px;
+        }
+        .product-cost-items-labels { padding: 7px 10px; color: var(--text-muted); font-size: 0.66rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.035em; }
+        .product-cost-items-labels span:not(:first-child) { text-align: right; }
+        .product-cost-item { min-height: 48px; padding: 9px 10px; border-top: 1px solid var(--border); color: var(--text-main); font-size: 0.78rem; }
+        .product-cost-item strong { min-width: 0; overflow-wrap: anywhere; font-weight: 720; }
+        .product-cost-item > span { text-align: right; font-variant-numeric: tabular-nums; }
+        .product-cost-item > span:last-child { font-weight: 820; }
+        .product-cost-order-summary {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 8px;
+          padding: 14px 18px 18px;
+        }
+        .product-cost-order-summary > div,
+        .product-costs-total > div { display: grid; gap: 4px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+        .product-cost-order-summary span,
+        .product-costs-total span { color: var(--text-muted); font-size: 0.67rem; font-weight: 760; text-transform: uppercase; letter-spacing: 0.035em; }
+        .product-cost-order-summary strong { color: var(--text-main); font-size: 0.88rem; }
+        .product-cost-order-summary .product-cost-order-total { border-color: rgba(249, 115, 22, 0.32); background: rgba(249, 115, 22, 0.07); }
+        .product-cost-order-summary .product-cost-order-total strong { color: #f97316; }
+        .product-costs-total {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 12px;
+          padding: 16px;
+          border: 1px solid rgba(249, 115, 22, 0.32);
+          border-radius: 16px;
+          background: rgba(249, 115, 22, 0.055);
+        }
+        .product-costs-total > div { background: var(--card-bg); }
+        .product-costs-total strong { color: var(--text-main); font-size: 1.05rem; }
+        .product-costs-total .product-costs-grand-total { border-color: rgba(249, 115, 22, 0.4); background: rgba(249, 115, 22, 0.1); }
+        .product-costs-total .product-costs-grand-total strong { color: #f97316; font-size: 1.15rem; }
         @media (max-width: 640px) {
           .product-expense-value-date { grid-template-columns: minmax(0, 1fr) !important; }
+          .product-costs-heading { align-items: stretch; padding: 16px; }
+          .product-costs-heading,
+          .product-cost-order-header { grid-template-columns: minmax(0, 1fr); flex-direction: column; }
+          .product-costs-heading-actions { justify-content: stretch; }
+          .product-costs-heading-actions a,
+          .product-costs-heading-actions button { flex: 1 1 145px; }
+          .product-cost-order-header { gap: 12px; padding: 15px 14px; }
+          .product-cost-order-due { min-width: 0; text-align: left; }
+          .product-cost-order-actions { justify-content: flex-start; }
+          .product-cost-order-actions button { width: 44px; height: 44px; }
+          .product-cost-items { padding: 5px 14px; }
+          .product-cost-items-labels { display: none; }
+          .product-cost-item { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 12px 0; }
+          .product-cost-item strong { grid-column: 1 / -1; }
+          .product-cost-item > span { display: grid; gap: 3px; text-align: left; }
+          .product-cost-item > span::before { content: attr(data-label); color: var(--text-muted); font-size: 0.61rem; font-weight: 780; text-transform: uppercase; }
+          .product-cost-order-summary,
+          .product-costs-total { grid-template-columns: minmax(0, 1fr); }
+          .product-cost-order-summary { padding: 12px 14px 15px; }
+          .product-costs-total { gap: 8px; padding: 12px; }
           .cost-table-scroll { overflow-x: visible !important; }
           .cost-table,
           .cost-table tbody { display: block; width: 100%; }

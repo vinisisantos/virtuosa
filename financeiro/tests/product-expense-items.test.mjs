@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildAutomaticProductExpenseName,
   isProductExpenseCategory,
   normalizeProductExpenseFreight,
   normalizeProductExpenseItems,
@@ -48,4 +49,10 @@ test('soma o frete ao subtotal dos produtos sem erro decimal', () => {
     { quantity: 2, value: 10.1 },
     { quantity: 1, value: 20.2 },
   ], 12.35), 52.75);
+});
+
+test('gera identificação automática pelo número do pedido e vencimento', () => {
+  assert.equal(buildAutomaticProductExpenseName(3, '2026-09-15', '2026-09'), 'Pedido 3 · 15/09');
+  assert.equal(buildAutomaticProductExpenseName(2, '', '2026-09'), 'Pedido 2 · 09/2026');
+  assert.equal(buildAutomaticProductExpenseName(0), 'Pedido 1');
 });
