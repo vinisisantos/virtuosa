@@ -139,6 +139,7 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
       setSaleUnit(globalUnit);
       setCostUnit(globalUnit);
       setFixedUnit(globalUnit);
+      setBillUnit(globalUnit);
       setSelectedUnit(globalUnit);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps

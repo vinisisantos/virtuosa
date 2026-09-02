@@ -12,6 +12,7 @@ import { isManualRevenue } from '@/lib/revenue';
 import { CostRecurrence, currentMonthStartDateKey, recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth, todayDateKey } from '@/lib/cost-recurrence';
 import { isProductExpenseCategory, normalizeProductExpenseFreight, normalizeProductExpenseItems, sumProductExpenseItems, sumProductExpenseTotal } from '@/lib/product-expense-items';
 import { costEntryMatchesMonth, normalizeCostReferenceMonth, resolveCostReferenceMonth } from '@/lib/cost-reference-month';
+import { resolveCostEntryUnit } from '@/lib/cost-entry-unit';
 
 /* ─── Types ─── */
 interface CostRow {
@@ -564,13 +565,15 @@ export function CustosUnificado({ d }: { d: any }) {
     if (recurrence === 'once' && addRefMonth && !referenceMonth) {
       return alert('Selecione um mês de referência válido ou deixe o campo vazio.');
     }
+    const fixedEntryUnit = resolveCostEntryUnit(d.selectedUnit, d.fixedUnit);
+    const billEntryUnit = resolveCostEntryUnit(d.selectedUnit, d.billUnit);
 
     const fixedDraft = {
       name: addName,
       value: addValue,
       category: addCategory,
       date: addDueDate,
-      unit: d.fixedUnit,
+      unit: fixedEntryUnit,
       obs: addObs,
       recurrence: recurrence === 'weekly' ? 'weekly' : 'monthly',
       items: isProductExpense ? normalizedItems : undefined,
@@ -582,7 +585,7 @@ export function CustosUnificado({ d }: { d: any }) {
           type: 'variavel',
           dueDate: addDueDate,
           category: addCategory,
-          unit: d.billUnit,
+          unit: billEntryUnit,
           refMonth: referenceMonth || '',
           obs: addObs,
           items: isProductExpense ? normalizedItems : undefined,
@@ -602,7 +605,7 @@ export function CustosUnificado({ d }: { d: any }) {
     } else if (recurrence === 'once') {
       d.editBill(editingRow.id, {
         name: addName.trim(), value: val, type: 'variavel', dueDay: null,
-        dueDateManual: addDueDate, category: addCategory, unit: d.billUnit,
+        dueDateManual: addDueDate, category: addCategory, unit: billEntryUnit,
         refMonth: referenceMonth, obs: addObs || undefined,
         items: isProductExpense ? normalizedItems : undefined,
         freight: isProductExpense && freight > 0 ? freight : undefined,
