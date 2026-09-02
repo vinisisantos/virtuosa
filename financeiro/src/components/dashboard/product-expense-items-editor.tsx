@@ -2,10 +2,12 @@
 
 import { formatCurrency } from '@/hooks/useDashboard';
 import { formatCurrency as formatBRL } from '@/lib/currency';
+import { sumProductExpenseItems } from '@/lib/product-expense-items';
 
 export interface EditableProductExpenseItem {
   id: string;
   name: string;
+  quantity: string;
   value: string;
 }
 
@@ -19,8 +21,21 @@ function createItem(): EditableProductExpenseItem {
   return {
     id: `produto-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: '',
+    quantity: '1',
     value: '',
   };
+}
+
+function currencyInputToNumber(value: string) {
+  const digits = value.replace(/[^\d]/g, '');
+  return digits ? parseInt(digits, 10) / 100 : 0;
+}
+
+function itemSubtotal(item: EditableProductExpenseItem) {
+  return sumProductExpenseItems([{
+    quantity: Number(item.quantity),
+    value: currencyInputToNumber(item.value),
+  }]);
 }
 
 export function ProductExpenseItemsEditor({ items, total, onChange }: ProductExpenseItemsEditorProps) {
@@ -38,14 +53,14 @@ export function ProductExpenseItemsEditor({ items, total, onChange }: ProductExp
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
         <div>
           <div id="product-expense-items-title" style={{ color: 'var(--text-main)', fontSize: '0.84rem', fontWeight: 800 }}>Itens da despesa</div>
-          <div style={{ marginTop: 2, color: 'var(--text-muted)', fontSize: '0.7rem', lineHeight: 1.4 }}>Informe cada produto e seu valor.</div>
+          <div style={{ marginTop: 2, color: 'var(--text-muted)', fontSize: '0.7rem', lineHeight: 1.4 }}>Informe cada produto, sua quantidade e o valor unitário.</div>
         </div>
         <span style={{ flexShrink: 0, color: '#f97316', fontSize: '0.78rem', fontWeight: 850 }}>{formatBRL(total)}</span>
       </div>
 
       <div style={{ display: 'grid', gap: 10 }}>
         {items.map((item, index) => (
-          <div className="product-expense-item-row" key={item.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 132px 44px', gap: 8, alignItems: 'end' }}>
+          <div className="product-expense-item-row" key={item.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 84px 124px 44px', gap: 8, alignItems: 'end' }}>
             <div className="product-expense-item-name" style={{ minWidth: 0 }}>
               <label htmlFor={`product-expense-name-${item.id}`} style={{ display: 'block', marginBottom: 5, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 700 }}>Produto {index + 1}</label>
               <input
@@ -56,8 +71,22 @@ export function ProductExpenseItemsEditor({ items, total, onChange }: ProductExp
                 style={{ width: '100%', height: 44, padding: '10px 11px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', font: 'inherit', fontSize: '0.82rem' }}
               />
             </div>
+            <div className="product-expense-item-quantity" style={{ minWidth: 0 }}>
+              <label htmlFor={`product-expense-quantity-${item.id}`} style={{ display: 'block', marginBottom: 5, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 700 }}>Qtd.</label>
+              <input
+                id={`product-expense-quantity-${item.id}`}
+                type="number"
+                inputMode="numeric"
+                min="1"
+                step="1"
+                value={item.quantity}
+                onChange={event => updateItem(item.id, { quantity: event.target.value.replace(/\D/g, '') })}
+                placeholder="1"
+                style={{ width: '100%', height: 44, padding: '10px 8px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', font: 'inherit', fontSize: '0.82rem', fontWeight: 750, textAlign: 'center' }}
+              />
+            </div>
             <div className="product-expense-item-value" style={{ minWidth: 0 }}>
-              <label htmlFor={`product-expense-value-${item.id}`} style={{ display: 'block', marginBottom: 5, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 700 }}>Valor</label>
+              <label htmlFor={`product-expense-value-${item.id}`} style={{ display: 'block', marginBottom: 5, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 700 }}>Valor unitário</label>
               <input
                 id={`product-expense-value-${item.id}`}
                 inputMode="numeric"
@@ -66,6 +95,9 @@ export function ProductExpenseItemsEditor({ items, total, onChange }: ProductExp
                 placeholder="0,00"
                 style={{ width: '100%', height: 44, padding: '10px 11px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', font: 'inherit', fontSize: '0.82rem', fontWeight: 750 }}
               />
+              <div aria-live="polite" style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: '0.64rem', fontWeight: 700, textAlign: 'right' }}>
+                Subtotal {formatBRL(itemSubtotal(item))}
+              </div>
             </div>
             <button
               className="product-expense-item-remove"

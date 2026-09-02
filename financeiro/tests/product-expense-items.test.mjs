@@ -14,21 +14,22 @@ test('reconhece a categoria Produtos sem depender de caixa ou espaços', () => {
 
 test('normaliza itens válidos e descarta linhas incompletas', () => {
   assert.deepEqual(normalizeProductExpenseItems([
-    { id: 'item-a', name: '  Toxina  ', value: 123.456 },
+    { id: 'item-a', name: '  Toxina  ', quantity: 2, value: 123.456 },
     { id: '', name: 'Luvas', value: 49.9 },
-    { id: 'sem-nome', name: '   ', value: 10 },
-    { id: 'sem-valor', name: 'Seringa', value: 0 },
+    { id: 'sem-nome', name: '   ', quantity: 1, value: 10 },
+    { id: 'sem-valor', name: 'Seringa', quantity: 1, value: 0 },
+    { id: 'quantidade-fracionada', name: 'Agulha', quantity: 1.5, value: 20 },
     null,
   ]), [
-    { id: 'item-a', name: 'Toxina', value: 123.46 },
-    { id: 'produto-2', name: 'Luvas', value: 49.9 },
+    { id: 'item-a', name: 'Toxina', quantity: 2, value: 123.46 },
+    { id: 'produto-2', name: 'Luvas', quantity: 1, value: 49.9 },
   ]);
 });
 
-test('soma os itens em centavos sem acumular erro decimal', () => {
+test('multiplica quantidade pelo valor unitário e soma em centavos', () => {
   assert.equal(sumProductExpenseItems([
-    { value: 10.1 },
-    { value: 20.2 },
-    { value: 0.3 },
-  ]), 30.6);
+    { quantity: 2, value: 10.1 },
+    { quantity: 3, value: 20.2 },
+    { quantity: 1, value: 0.3 },
+  ]), 81.1);
 });

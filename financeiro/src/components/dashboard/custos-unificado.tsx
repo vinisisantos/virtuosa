@@ -84,6 +84,7 @@ function editableProductItem(name = '', value = ''): EditableProductExpenseItem 
   return {
     id: `produto-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name,
+    quantity: '1',
     value,
   };
 }
@@ -228,10 +229,10 @@ export function CustosUnificado({ d }: { d: any }) {
   const [canOpenOrders] = useState(storedUserCanAccessOrders);
 
   const isProductExpense = isProductExpenseCategory(addCategory);
-  const productItemsTotal = useMemo(() => {
-    const cents = productItems.reduce((sum, item) => sum + Math.round(currencyInputToNumber(item.value) * 100), 0);
-    return cents / 100;
-  }, [productItems]);
+  const productItemsTotal = useMemo(() => sumProductExpenseItems(productItems.map(item => ({
+    quantity: Number(item.quantity),
+    value: currencyInputToNumber(item.value),
+  }))), [productItems]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -512,10 +513,11 @@ export function CustosUnificado({ d }: { d: any }) {
       const storedItems = normalizeProductExpenseItems(editableRow.raw.items);
       const items = storedItems.length > 0
         ? storedItems
-        : [{ id: `legado-${editableRow.id}`, name: editableRow.name, value: editableRow.value }];
+        : [{ id: `legado-${editableRow.id}`, name: editableRow.name, quantity: 1, value: editableRow.value }];
       setProductItems(items.map(item => ({
         id: item.id,
         name: item.name,
+        quantity: String(item.quantity),
         value: currencyInputValue(item.value),
       })));
     } else {
@@ -537,11 +539,12 @@ export function CustosUnificado({ d }: { d: any }) {
       ? normalizeProductExpenseItems(productItems.map(item => ({
           id: item.id,
           name: item.name,
+          quantity: Number(item.quantity),
           value: currencyInputToNumber(item.value),
         })))
       : [];
     if (isProductExpense && normalizedItems.length !== productItems.length) {
-      return alert('Informe o nome e um valor maior que zero para todos os produtos.');
+      return alert('Informe nome, quantidade inteira maior que zero e valor unitário para todos os produtos.');
     }
     const val = isProductExpense ? sumProductExpenseItems(normalizedItems) : currencyInputToNumber(addValue);
     if (!addName.trim() || val <= 0) return alert('Informe nome e valor da despesa.');
@@ -854,8 +857,8 @@ export function CustosUnificado({ d }: { d: any }) {
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{row.category}</span>
                           </div>
                           {manualProductItems.length > 0 && (
-                            <div title={manualProductItems.map(item => item.name).join(', ')} style={{ maxWidth: 420, marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                              {manualProductItems.length} {manualProductItems.length === 1 ? 'produto' : 'produtos'} · {manualProductItems.map(item => item.name).join(', ')}
+                            <div title={manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')} style={{ maxWidth: 420, marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                              {manualProductItems.length} {manualProductItems.length === 1 ? 'produto' : 'produtos'} · {manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')}
                             </div>
                           )}
                         </td>
@@ -1053,12 +1056,13 @@ export function CustosUnificado({ d }: { d: any }) {
         @media (max-width: 640px) {
           .product-expense-value-date { grid-template-columns: minmax(0, 1fr) !important; }
           .product-expense-item-row {
-            grid-template-columns: minmax(0, 1fr) 44px !important;
+            grid-template-columns: 84px minmax(0, 1fr) 44px !important;
             align-items: end !important;
           }
-          .product-expense-item-name { grid-column: 1; grid-row: 1; }
-          .product-expense-item-remove { grid-column: 2; grid-row: 1; }
-          .product-expense-item-value { grid-column: 1 / -1; grid-row: 2; }
+          .product-expense-item-name { grid-column: 1 / 3; grid-row: 1; }
+          .product-expense-item-remove { grid-column: 3; grid-row: 1; }
+          .product-expense-item-quantity { grid-column: 1; grid-row: 2; }
+          .product-expense-item-value { grid-column: 2 / 4; grid-row: 2; }
           .cost-table-scroll { overflow-x: visible !important; }
           .cost-table,
           .cost-table tbody { display: block; width: 100%; }
