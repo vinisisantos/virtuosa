@@ -4,12 +4,14 @@ import { FixedExpense, Bill, LogEntry, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, M
 import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
 import { EditableProductExpenseItem, ProductExpenseItemsEditor, ProductExpenseSummary } from './product-expense-items-editor';
+import { CostReferenceMonthPicker } from './cost-reference-month-picker';
 import { LucratividadeView } from './lucratividade-view';
 import { CostCalendar } from './cost-calendar';
 import { RevenueView } from './revenue-view';
 import { isManualRevenue } from '@/lib/revenue';
 import { CostRecurrence, currentMonthStartDateKey, recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth, todayDateKey } from '@/lib/cost-recurrence';
 import { isProductExpenseCategory, normalizeProductExpenseFreight, normalizeProductExpenseItems, sumProductExpenseItems, sumProductExpenseTotal } from '@/lib/product-expense-items';
+import { costEntryMatchesMonth, normalizeCostReferenceMonth, resolveCostReferenceMonth } from '@/lib/cost-reference-month';
 
 /* ─── Types ─── */
 interface CostRow {
@@ -276,8 +278,7 @@ export function CustosUnificado({ d }: { d: any }) {
   const unitFilteredBills = d.bills.filter((b: Bill) => d.selectedUnit === 'all' || !b.unit || b.unit === d.selectedUnit);
   const filteredBills = unitFilteredBills.filter((b: Bill) => {
     if (b.type === 'fixo') return true;
-    if (b.refMonth) return b.refMonth === selectedMonthKey;
-    return Boolean(b.dueDateManual?.startsWith(selectedMonthKey));
+    return costEntryMatchesMonth(b.refMonth, b.dueDateManual, d.selectedYear, d.selectedMonth);
   });
 
   const availableCategories = useMemo(() => {
@@ -534,7 +535,7 @@ export function CustosUnificado({ d }: { d: any }) {
       ? `${d.selectedYear}-${String(d.selectedMonth + 1).padStart(2, '0')}-${String(editableRow.raw.dueDay || 1).padStart(2, '0')}`
       : '';
     setAddDueDate(editableRow.source === 'fixed' ? editableRow.raw.date || '' : editableRow.raw.dueDateManual || legacyFixedBillDate);
-    setAddRefMonth(editableRow.raw.refMonth || '');
+    setAddRefMonth(resolveCostReferenceMonth(editableRow.raw.refMonth, editableRow.raw.dueDateManual, d.selectedYear) || '');
     setAddObs(editableRow.raw.obs || '');
     setRecurrence(editableRow.recurrence);
     setShowAddForm(true);
@@ -557,6 +558,12 @@ export function CustosUnificado({ d }: { d: any }) {
     const val = isProductExpense ? sumProductExpenseTotal(normalizedItems, freight) : currencyInputToNumber(addValue);
     if (!addName.trim() || val <= 0) return alert('Informe nome e valor da despesa.');
     if (!addDueDate) return alert('Informe a data.');
+    const referenceMonth = recurrence === 'once'
+      ? normalizeCostReferenceMonth(addRefMonth, Number(addDueDate.slice(0, 4)) || d.selectedYear)
+      : undefined;
+    if (recurrence === 'once' && addRefMonth && !referenceMonth) {
+      return alert('Selecione um mês de referência válido ou deixe o campo vazio.');
+    }
 
     const fixedDraft = {
       name: addName,
@@ -576,7 +583,7 @@ export function CustosUnificado({ d }: { d: any }) {
           dueDate: addDueDate,
           category: addCategory,
           unit: d.billUnit,
-          refMonth: addRefMonth,
+          refMonth: referenceMonth || '',
           obs: addObs,
           items: isProductExpense ? normalizedItems : undefined,
           freight: isProductExpense && freight > 0 ? freight : undefined,
@@ -596,7 +603,7 @@ export function CustosUnificado({ d }: { d: any }) {
       d.editBill(editingRow.id, {
         name: addName.trim(), value: val, type: 'variavel', dueDay: null,
         dueDateManual: addDueDate, category: addCategory, unit: d.billUnit,
-        refMonth: addRefMonth || undefined, obs: addObs || undefined,
+        refMonth: referenceMonth, obs: addObs || undefined,
         items: isProductExpense ? normalizedItems : undefined,
         freight: isProductExpense && freight > 0 ? freight : undefined,
       });
@@ -1016,10 +1023,12 @@ export function CustosUnificado({ d }: { d: any }) {
               </div>
 
               {recurrence === 'once' && (
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Mês de Referência (Opcional, ex: Maio 2024)</label>
-                  <input type="month" value={addRefMonth} onChange={e => setAddRefMonth(e.target.value)} style={{ width: '100%', padding: '11px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
-                </div>
+                <CostReferenceMonthPicker
+                  value={addRefMonth}
+                  dueDate={addDueDate}
+                  selectedYear={d.selectedYear}
+                  onChange={setAddRefMonth}
+                />
               )}
 
               <div>
