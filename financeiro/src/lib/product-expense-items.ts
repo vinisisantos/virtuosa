@@ -47,3 +47,18 @@ export function sumProductExpenseItems(items: readonly Pick<ProductExpenseItem, 
   ), 0);
   return cents / 100;
 }
+
+export function normalizeProductExpenseFreight(input: unknown) {
+  const freight = typeof input === 'number' ? input : Number(input);
+  if (!Number.isFinite(freight) || freight < 0) return 0;
+  return Math.round((freight + Number.EPSILON) * 100) / 100;
+}
+
+export function sumProductExpenseTotal(
+  items: readonly Pick<ProductExpenseItem, 'quantity' | 'value'>[],
+  freight: unknown,
+) {
+  const itemsCents = Math.round(sumProductExpenseItems(items) * 100);
+  const freightCents = Math.round(normalizeProductExpenseFreight(freight) * 100);
+  return (itemsCents + freightCents) / 100;
+}

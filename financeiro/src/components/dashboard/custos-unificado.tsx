@@ -3,13 +3,13 @@ import { Fragment, useState, useRef, useEffect, useMemo } from 'react';
 import { FixedExpense, Bill, LogEntry, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, formatCurrency } from '@/hooks/useDashboard';
 import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
-import { EditableProductExpenseItem, ProductExpenseItemsEditor } from './product-expense-items-editor';
+import { EditableProductExpenseItem, ProductExpenseItemsEditor, ProductExpenseSummary } from './product-expense-items-editor';
 import { LucratividadeView } from './lucratividade-view';
 import { CostCalendar } from './cost-calendar';
 import { RevenueView } from './revenue-view';
 import { isManualRevenue } from '@/lib/revenue';
 import { CostRecurrence, currentMonthStartDateKey, recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth, todayDateKey } from '@/lib/cost-recurrence';
-import { isProductExpenseCategory, normalizeProductExpenseItems, sumProductExpenseItems } from '@/lib/product-expense-items';
+import { isProductExpenseCategory, normalizeProductExpenseFreight, normalizeProductExpenseItems, sumProductExpenseItems, sumProductExpenseTotal } from '@/lib/product-expense-items';
 
 /* ─── Types ─── */
 interface CostRow {
@@ -220,6 +220,7 @@ export function CustosUnificado({ d }: { d: any }) {
   const [addRefMonth, setAddRefMonth] = useState('');
   const [addObs, setAddObs] = useState('');
   const [productItems, setProductItems] = useState<EditableProductExpenseItem[]>([]);
+  const [productFreight, setProductFreight] = useState('');
   const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [generatingReport, setGeneratingReport] = useState(false);
   const [automaticCosts, setAutomaticCosts] = useState<AutomaticCostsResponse | null>(null);
@@ -229,10 +230,13 @@ export function CustosUnificado({ d }: { d: any }) {
   const [canOpenOrders] = useState(storedUserCanAccessOrders);
 
   const isProductExpense = isProductExpenseCategory(addCategory);
-  const productItemsTotal = useMemo(() => sumProductExpenseItems(productItems.map(item => ({
+  const calculatedProductItems = useMemo(() => productItems.map(item => ({
     quantity: Number(item.quantity),
     value: currencyInputToNumber(item.value),
-  }))), [productItems]);
+  })), [productItems]);
+  const productItemsSubtotal = useMemo(() => sumProductExpenseItems(calculatedProductItems), [calculatedProductItems]);
+  const productFreightValue = useMemo(() => normalizeProductExpenseFreight(currencyInputToNumber(productFreight)), [productFreight]);
+  const productExpenseTotal = useMemo(() => sumProductExpenseTotal(calculatedProductItems, productFreightValue), [calculatedProductItems, productFreightValue]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -472,7 +476,7 @@ export function CustosUnificado({ d }: { d: any }) {
 
   const resetForm = () => {
     setAddName(''); setAddValue(''); setAddCategory('Outros');
-    setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setProductItems([]); setRecurrence('once'); setEditingRow(null);
+    setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setProductItems([]); setProductFreight(''); setRecurrence('once'); setEditingRow(null);
   };
 
   const openAddForm = () => {
@@ -520,8 +524,11 @@ export function CustosUnificado({ d }: { d: any }) {
         quantity: String(item.quantity),
         value: currencyInputValue(item.value),
       })));
+      const storedFreight = normalizeProductExpenseFreight(editableRow.raw.freight);
+      setProductFreight(storedFreight > 0 ? currencyInputValue(storedFreight) : '');
     } else {
       setProductItems([]);
+      setProductFreight('');
     }
     const legacyFixedBillDate = editableRow.source === 'bill' && editableRow.raw.type === 'fixo'
       ? `${d.selectedYear}-${String(d.selectedMonth + 1).padStart(2, '0')}-${String(editableRow.raw.dueDay || 1).padStart(2, '0')}`
@@ -546,7 +553,8 @@ export function CustosUnificado({ d }: { d: any }) {
     if (isProductExpense && normalizedItems.length !== productItems.length) {
       return alert('Informe nome, quantidade inteira maior que zero e valor unitário para todos os produtos.');
     }
-    const val = isProductExpense ? sumProductExpenseItems(normalizedItems) : currencyInputToNumber(addValue);
+    const freight = isProductExpense ? normalizeProductExpenseFreight(currencyInputToNumber(productFreight)) : 0;
+    const val = isProductExpense ? sumProductExpenseTotal(normalizedItems, freight) : currencyInputToNumber(addValue);
     if (!addName.trim() || val <= 0) return alert('Informe nome e valor da despesa.');
     if (!addDueDate) return alert('Informe a data.');
 
@@ -559,6 +567,7 @@ export function CustosUnificado({ d }: { d: any }) {
       obs: addObs,
       recurrence: recurrence === 'weekly' ? 'weekly' : 'monthly',
       items: isProductExpense ? normalizedItems : undefined,
+      freight: isProductExpense && freight > 0 ? freight : undefined,
     };
     const billDraft = {
           name: addName,
@@ -570,6 +579,7 @@ export function CustosUnificado({ d }: { d: any }) {
           refMonth: addRefMonth,
           obs: addObs,
           items: isProductExpense ? normalizedItems : undefined,
+          freight: isProductExpense && freight > 0 ? freight : undefined,
     };
 
     let saved = false;
@@ -588,6 +598,7 @@ export function CustosUnificado({ d }: { d: any }) {
         dueDateManual: addDueDate, category: addCategory, unit: d.billUnit,
         refMonth: addRefMonth || undefined, obs: addObs || undefined,
         items: isProductExpense ? normalizedItems : undefined,
+        freight: isProductExpense && freight > 0 ? freight : undefined,
       });
       saved = true;
     } else {
@@ -832,6 +843,7 @@ export function CustosUnificado({ d }: { d: any }) {
                   const isExpanded = isAutomatic && expandedAutomaticRows.has(rowId);
                   const isManualProduct = !isAutomatic && normalizeCategoryLabel(row.category) === 'produtos';
                   const manualProductItems = isManualProduct ? normalizeProductExpenseItems(row.raw.items) : [];
+                  const manualProductFreight = isManualProduct ? normalizeProductExpenseFreight(row.raw.freight) : 0;
                   const sourceLabel = row.source === 'automatic-payroll'
                     ? 'Automático · Folha'
                     : row.source === 'automatic-products'
@@ -857,8 +869,8 @@ export function CustosUnificado({ d }: { d: any }) {
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{row.category}</span>
                           </div>
                           {manualProductItems.length > 0 && (
-                            <div title={manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')} style={{ maxWidth: 420, marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                              {manualProductItems.length} {manualProductItems.length === 1 ? 'produto' : 'produtos'} · {manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')}
+                            <div title={`${manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')}${manualProductFreight > 0 ? ` · Frete ${fmt(manualProductFreight)}` : ''}`} style={{ maxWidth: 420, marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                              {manualProductItems.length} {manualProductItems.length === 1 ? 'produto' : 'produtos'} · {manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')}{manualProductFreight > 0 ? ` · Frete ${fmt(manualProductFreight)}` : ''}
                             </div>
                           )}
                         </td>
@@ -969,22 +981,27 @@ export function CustosUnificado({ d }: { d: any }) {
               {isProductExpense && (
                 <ProductExpenseItemsEditor
                   items={productItems}
-                  total={productItemsTotal}
+                  total={productItemsSubtotal}
                   onChange={setProductItems}
                 />
               )}
 
-              <div className="product-expense-value-date" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
-                <div style={{ minWidth: 0 }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>{isProductExpense ? 'Total dos Produtos' : 'Valor'}</label>
-                  {isProductExpense ? (
-                    <div aria-live="polite" style={{ width: '100%', minHeight: 46, padding: '12px 14px', borderRadius: 10, border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.07)', color: '#f97316', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 850 }}>
-                      {fmt(productItemsTotal)}
-                    </div>
-                  ) : (
+              {isProductExpense && (
+                <ProductExpenseSummary
+                  itemsSubtotal={productItemsSubtotal}
+                  freight={productFreight}
+                  total={productExpenseTotal}
+                  onFreightChange={setProductFreight}
+                />
+              )}
+
+              <div className="product-expense-value-date" style={{ display: 'grid', gridTemplateColumns: isProductExpense ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
+                {!isProductExpense && (
+                  <div style={{ minWidth: 0 }}>
+                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Valor</label>
                     <input type="text" inputMode="numeric" value={addValue} onChange={e => setAddValue(formatCurrency(e.target.value))} placeholder="R$ 0,00" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 700 }} />
-                  )}
-                </div>
+                  </div>
+                )}
                 <div style={{ minWidth: 0 }}>
                   <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>{recurrence === 'once' ? 'Vencimento' : 'Primeiro vencimento'}</label>
                   <DatePicker
@@ -1055,14 +1072,6 @@ export function CustosUnificado({ d }: { d: any }) {
         }
         @media (max-width: 640px) {
           .product-expense-value-date { grid-template-columns: minmax(0, 1fr) !important; }
-          .product-expense-item-row {
-            grid-template-columns: 84px minmax(0, 1fr) 44px !important;
-            align-items: end !important;
-          }
-          .product-expense-item-name { grid-column: 1 / 3; grid-row: 1; }
-          .product-expense-item-remove { grid-column: 3; grid-row: 1; }
-          .product-expense-item-quantity { grid-column: 1; grid-row: 2; }
-          .product-expense-item-value { grid-column: 2 / 4; grid-row: 2; }
           .cost-table-scroll { overflow-x: visible !important; }
           .cost-table,
           .cost-table tbody { display: block; width: 100%; }

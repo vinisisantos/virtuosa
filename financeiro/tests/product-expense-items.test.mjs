@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   isProductExpenseCategory,
+  normalizeProductExpenseFreight,
   normalizeProductExpenseItems,
   sumProductExpenseItems,
+  sumProductExpenseTotal,
 } from '../src/lib/product-expense-items.ts';
 
 test('reconhece a categoria Produtos sem depender de caixa ou espaços', () => {
@@ -32,4 +34,18 @@ test('multiplica quantidade pelo valor unitário e soma em centavos', () => {
     { quantity: 3, value: 20.2 },
     { quantity: 1, value: 0.3 },
   ]), 81.1);
+});
+
+test('normaliza frete opcional sem permitir valor negativo ou inválido', () => {
+  assert.equal(normalizeProductExpenseFreight(15.456), 15.46);
+  assert.equal(normalizeProductExpenseFreight('20.1'), 20.1);
+  assert.equal(normalizeProductExpenseFreight(-1), 0);
+  assert.equal(normalizeProductExpenseFreight('inválido'), 0);
+});
+
+test('soma o frete ao subtotal dos produtos sem erro decimal', () => {
+  assert.equal(sumProductExpenseTotal([
+    { quantity: 2, value: 10.1 },
+    { quantity: 1, value: 20.2 },
+  ], 12.35), 52.75);
 });
