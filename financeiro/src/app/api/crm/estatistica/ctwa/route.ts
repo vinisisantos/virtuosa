@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
 import { NOT_LEAD_SOURCE } from "@/lib/lead-source";
 import { extractDirectFormLeadName } from "@/lib/whatsapp/form-lead-welcome";
+import { leadArrivalMatchesEventDay } from "@/lib/whatsapp/lead-arrival-date";
 
 const SP_OFFSET = "-03:00";
 const SAO_PAULO_DAY = new Intl.DateTimeFormat("en-CA", {
@@ -138,7 +139,9 @@ export async function GET(req: NextRequest) {
       ? await prisma.client.findMany({
           where: {
             OR: phones.map((phone) => ({ phone: { contains: phone.slice(-8) } })),
-            ...(guard.unitFilter ? { unit: guard.unitFilter } : {}),
+            ...(guard.unitFilter
+              ? { AND: [{ OR: [{ unit: guard.unitFilter }, { originUnit: guard.unitFilter }] }] }
+              : {}),
           },
           orderBy: { updatedAt: "desc" },
         })
@@ -162,12 +165,14 @@ export async function GET(req: NextRequest) {
       if (!phoneKey) continue;
 
       const relatedClients = clientsByPhone.get(phoneKey) || [];
-      const clickToWhatsappClient = pickBestCampaignClient(
-        relatedClients.filter((item) => isClickToWhatsappLead(item))
-      );
-      const client = clickToWhatsappClient || (
-        event.isDirectFormLead ? pickBestCampaignClient(relatedClients) : null
-      );
+      const clickToWhatsappClients = relatedClients.filter((item) => isClickToWhatsappLead(item));
+      const client = event.isDirectFormLead
+        ? pickBestCampaignClient(clickToWhatsappClients) || pickBestCampaignClient(relatedClients)
+        : pickBestCampaignClient(
+            clickToWhatsappClients.filter((candidate) =>
+              leadArrivalMatchesEventDay(candidate, event.arrivedAt)
+            )
+          );
       if (!client) continue;
 
       const dayKey = SAO_PAULO_DAY.format(event.arrivedAt);
@@ -209,8 +214,9 @@ export async function GET(req: NextRequest) {
       },
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" } }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("[CRM Estatistica CTWA]", error);
-    return NextResponse.json({ error: "Falha ao carregar leads CTWA", details: error?.message }, { status: 500 });
+    const details = error instanceof Error ? error.message : "Erro desconhecido";
+    return NextResponse.json({ error: "Falha ao carregar leads CTWA", details }, { status: 500 });
   }
 }

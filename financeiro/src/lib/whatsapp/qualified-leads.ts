@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { extractDirectFormLeadName } from "@/lib/whatsapp/form-lead-welcome";
+import { leadArrivalMatchesEventDay } from "@/lib/whatsapp/lead-arrival-date";
 import { qualifiedLeadInstanceFilter } from "@/lib/whatsapp/qualified-lead-scope";
 
 const SP_TZ = "America/Sao_Paulo";
@@ -178,8 +179,14 @@ export async function getQualifiedWhatsappLeads(params: {
     const phoneKey = normalizedWhatsappPhone(event.phone);
     if (!phoneKey) continue;
     const relatedClients = clientsByPhone.get(phoneKey) || [];
-    const client = pickBestCampaignClient(relatedClients.filter(isClickToWhatsappLead))
-      || (event.isDirectFormLead ? pickBestCampaignClient(relatedClients) : null);
+    const clickToWhatsappClients = relatedClients.filter(isClickToWhatsappLead);
+    const client = event.isDirectFormLead
+      ? pickBestCampaignClient(clickToWhatsappClients) || pickBestCampaignClient(relatedClients)
+      : pickBestCampaignClient(
+          clickToWhatsappClients.filter((candidate) =>
+            leadArrivalMatchesEventDay(candidate, event.receivedAt)
+          )
+        );
     if (!client) continue;
 
     const dedupeKey = `${spDateKey(event.receivedAt)}:${phoneKey}`;
