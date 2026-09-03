@@ -417,26 +417,58 @@ model Client {
 }
 
 model Package {
-  id                String   @id @default(uuid())
-  clientName        String
-  clientId          String?
-  services          String
-  totalValue        Float
-  paidValue         Float    @default(0)
-  paymentMethod     String   @default("pix")
-  installments      Int      @default(1)
-  totalSessions     Int      @default(1)
-  completedSessions Int      @default(0)
-  status            String   @default("ativo")
-  unit              String   @default("Barueri")
-  notes             String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id                     String                  @id @default(uuid())
+  clientName             String
+  clientId               String?
+  services               String
+  totalValue             Float
+  paidValue              Float                   @default(0)
+  paymentMethod          String                  @default("pix")
+  installments           Int                     @default(1)
+  paymentFeeConfigId     String?
+  paymentProvider        String?
+  paymentBrand           String?
+  paymentFixedFee        Float                   @default(0)
+  paymentFixedRate       Float                   @default(0)
+  paymentInstallmentRate Float                   @default(0)
+  paymentFeePayer        String                  @default("clinic")
+  paymentFeeAmount       Float                   @default(0)
+  chargedValue           Float?
+  netValue               Float?
+  installmentValues      Json?
+  totalSessions          Int                     @default(1)
+  completedSessions      Int                     @default(0)
+  status                 String                  @default("ativo")
+  unit                   String                  @default("Barueri")
+  notes                  String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  paymentFeeConfig       PaymentMethodFeeConfig? @relation(fields: [paymentFeeConfigId], references: [id], onDelete: SetNull)
 
   @@index([clientName])
   @@index([clientId])
   @@index([status])
   @@index([unit])
+  @@index([paymentFeeConfigId])
+}
+
+model PaymentMethodFeeConfig {
+  id               String    @id @default(uuid())
+  name             String
+  method           String
+  brand            String?
+  unit             String    @default("Barueri")
+  fixedFee         Float     @default(0)
+  fixedRate        Float     @default(0)
+  installmentRates Json      @default("{}")
+  feePayer         String    @default("clinic")
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  packages         Package[]
+
+  @@index([unit, method, isActive])
+  @@index([unit, name])
 }
 
 model TreatmentSession {

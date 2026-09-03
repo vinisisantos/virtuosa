@@ -8,6 +8,7 @@ import { ProcedureSelector } from '@/components/procedure-selector';
 import { DatePicker } from '@/components/ui/date-picker';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
+import { PaymentFeeSection } from '@/components/sales/payment-fee-section';
 import { AdminKpiGrid, AdminPageHeader, AdminPrimaryAction } from '@/components/admin/admin-ui';
 import { adminCardStyle as cardS, adminCompactInputStyle as inputS, adminLabelStyle as labelS } from '@/components/admin/admin-styles';
 import { formatCurrency as fmt } from '@/lib/currency';
@@ -17,6 +18,9 @@ interface Package {
   id: string; clientName: string; clientId: string | null;
   services: string; totalValue: number; paidValue: number;
   paymentMethod: string; installments: number;
+  paymentFeeConfigId: string | null; paymentProvider: string | null; paymentBrand: string | null;
+  paymentFeePayer: string; paymentFeeAmount: number; chargedValue: number | null; netValue: number | null;
+  installmentValues: unknown;
   totalSessions: number; completedSessions: number;
   status: string; unit: string; notes: string | null; createdAt: string;
 }
@@ -94,6 +98,21 @@ const PackageCard = memo(function PackageCard({ pkg, onEdit, onDelete, onMarkSes
           <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
             {METHODS[pkg.paymentMethod] || pkg.paymentMethod} • {pkg.installments}x
           </div>
+          {pkg.paymentProvider && (
+            <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)' }}>
+              {[pkg.paymentProvider, pkg.paymentBrand].filter(Boolean).join(' · ')}
+            </div>
+          )}
+          {pkg.paymentFeeAmount > 0 && (
+            <div style={{ fontSize: '0.68rem', color: pkg.paymentFeePayer === 'client' ? '#f59e0b' : '#ef4444' }}>
+              Taxa {fmt(pkg.paymentFeeAmount)} • líquido {fmt(pkg.netValue ?? pkg.totalValue)}
+            </div>
+          )}
+          {pkg.paymentFeePayer === 'client' && (pkg.chargedValue ?? pkg.totalValue) > pkg.totalValue && (
+            <div style={{ fontSize: '0.68rem', fontWeight: 700, color: '#f59e0b' }}>
+              Cobrado: {fmt(pkg.chargedValue ?? pkg.totalValue)}
+            </div>
+          )}
           {pkg.paidValue > 0 && <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#10b981' }}>Pago: {fmt(pkg.paidValue)}</div>}
           <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
             {pkg.status === 'ativo' && (
@@ -138,6 +157,7 @@ export default function PacotesPage() {
   const [serviceLines, setServiceLines] = useState<ServiceLine[]>([{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [installments, setInstallments] = useState('1');
+  const [paymentFeeConfigId, setPaymentFeeConfigId] = useState<string | null>(null);
   const [unit, setUnit] = useState('SCS');
   const [notes, setNotes] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -194,7 +214,8 @@ export default function PacotesPage() {
     setClientName(''); setClientId(''); setSelectedPatient(null); setVendedor(''); setCategoria('Receitas de serviços');
     setDataVenda(new Date().toISOString().split('T')[0]); setDescricao(''); setDataValidade('');
     setServiceLines([{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
-    setPaymentMethod('pix'); setInstallments('1'); setUnit('SCS'); setNotes('');
+    const defaultUnit = globalUnit && UNITS.includes(globalUnit) ? globalUnit : 'SCS';
+    setPaymentMethod('pix'); setInstallments('1'); setPaymentFeeConfigId(null); setUnit(defaultUnit); setNotes('');
     setEditingPkg(null); setShowAdvanced(false);
   };
 
@@ -207,6 +228,7 @@ export default function PacotesPage() {
     setServiceLines(storedServices.length > 0 ? storedServices : [{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
     setPaymentMethod(pkg.paymentMethod);
     setInstallments(String(pkg.installments));
+    setPaymentFeeConfigId(null);
     setUnit(pkg.unit);
     setNotes(pkg.notes || '');
     setShowModal(true);
@@ -222,6 +244,7 @@ export default function PacotesPage() {
       clientName, clientId: clientId || null,
       services: validLines, totalValue, totalSessions,
       paymentMethod, installments: parseInt(installments),
+      ...(editingPkg ? {} : { paymentFeeConfigId }),
       unit, notes: notes || null,
       ...(editingPkg ? {} : { paidValue: 0, completedSessions: 0 }),
     };
@@ -231,6 +254,9 @@ export default function PacotesPage() {
     if (res.ok) {
       toast(editingPkg ? 'Pacote atualizado!' : 'Pacote criado!', 'success');
       setShowModal(false); resetForm(); fetchPackages();
+    } else {
+      const data = await res.json().catch(() => ({}));
+      toast(data.error || 'Não foi possível salvar a venda.', 'error');
     }
   };
 
@@ -335,8 +361,8 @@ export default function PacotesPage() {
 
       {/* ═══════════ CREATE/EDIT MODAL ═══════════ */}
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 20 }} onClick={() => { setShowModal(false); resetForm(); }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: 0, maxWidth: 780, width: '100%', maxHeight: '92vh', overflowY: 'auto', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+        <div className="package-modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10000, padding: 20 }} onClick={() => { setShowModal(false); resetForm(); }}>
+          <div className="package-modal" onClick={e => e.stopPropagation()} style={{ background: 'var(--card-bg)', borderRadius: 24, padding: 0, maxWidth: 780, width: '100%', maxHeight: '92vh', overflowY: 'auto', overflowX: 'hidden', border: '1px solid var(--border)', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
             
             {/* Header */}
             <div style={{ padding: '20px 28px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, position: 'sticky', top: 0, background: 'var(--card-bg)', zIndex: 10, borderRadius: '24px 24px 0 0' }}>
@@ -347,10 +373,10 @@ export default function PacotesPage() {
               </button>
             </div>
 
-            <div style={{ padding: '20px 28px' }}>
+            <div className="package-modal-body" style={{ padding: '20px 28px' }}>
               {/* ──── SECTION 1: Client & Sale Info ──── */}
               <div style={sectionS}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                <div className="package-client-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                   {/* Cliente — Autocomplete Inteligente */}
                   <div>
                     <PatientAutocomplete
@@ -376,7 +402,7 @@ export default function PacotesPage() {
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+                <div className="package-sale-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
                   {/* Categoria */}
                   <div>
                     <label style={labelS}>Categoria *</label>
@@ -403,19 +429,19 @@ export default function PacotesPage() {
                 </button>
 
                 {showAdvanced && (
-                  <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-                    <div>
+                  <div className="package-advanced-grid" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
+                    {editingPkg && <div>
                       <label style={labelS}>Pagamento</label>
-                      <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
+                      <select value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)} disabled={Boolean(editingPkg.paymentFeeConfigId || editingPkg.paymentProvider || editingPkg.paymentFeeAmount > 0)} style={{ ...inputS, cursor: 'pointer' }}>
                         {Object.entries(METHODS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                       </select>
-                    </div>
-                    <div>
+                    </div>}
+                    {editingPkg && <div>
                       <label style={labelS}>Parcelas</label>
-                      <select value={installments} onChange={e => setInstallments(e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
-                        {Array.from({ length: 18 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}x{n > 1 && totalValue ? ` ${fmt(totalValue / n)}` : ''}</option>)}
+                      <select value={installments} onChange={e => setInstallments(e.target.value)} disabled={Boolean(editingPkg.paymentFeeConfigId || editingPkg.paymentProvider || editingPkg.paymentFeeAmount > 0)} style={{ ...inputS, cursor: 'pointer' }}>
+                        {Array.from({ length: 18 }, (_, i) => i + 1).map(n => <option key={n} value={n}>{n}x</option>)}
                       </select>
-                    </div>
+                    </div>}
                     <div>
                       <label style={labelS}>Unidade</label>
                       <select value={unit} onChange={e => setUnit(e.target.value)} style={{ ...inputS, cursor: 'pointer' }}>
@@ -430,6 +456,11 @@ export default function PacotesPage() {
                       <label style={labelS}>Observações</label>
                       <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} style={{ ...inputS, height: 'auto', resize: 'vertical' }} placeholder="Notas importantes sobre o pacote ou cliente" />
                     </div>
+                    {editingPkg && (editingPkg.paymentFeeConfigId || editingPkg.paymentProvider || editingPkg.paymentFeeAmount > 0) && (
+                      <div style={{ gridColumn: '1 / -1', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                        Método e parcelas ficam bloqueados nesta edição para preservar a taxa registrada na venda. Alterações no valor reutilizam a mesma taxa histórica.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -439,7 +470,7 @@ export default function PacotesPage() {
                 <h3 style={{ margin: '0 0 14px', fontSize: '1rem', fontWeight: 900 }}>Procedimentos/Produtos</h3>
 
                 {/* Column headers */}
-                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 60px 100px 100px 100px 36px', gap: 8, marginBottom: 6, padding: '0 2px' }}>
+                <div className="package-service-header" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 60px 100px 100px 100px 36px', gap: 8, marginBottom: 6, padding: '0 2px' }}>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Nome</span>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Profissional</span>
                   <span style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', textAlign: 'center' }}>Qtd.</span>
@@ -454,30 +485,50 @@ export default function PacotesPage() {
                   {serviceLines.map((line, i) => {
                     const lineTotal = Math.max(0, line.quantity * line.unitPrice - line.discount * line.quantity);
                     return (
-                      <div key={i} style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 60px 100px 100px 100px 36px', gap: 8, alignItems: 'center' }}>
-                        <ProcedureSelector
-                          value={line.name}
-                          onChange={(name, price) => {
-                            updateLine(i, 'name', name);
-                            if (price !== undefined) updateLine(i, 'unitPrice', price);
-                          }}
-                          services={catalogServices}
-                          placeholder="Buscar procedimento..."
-                        />
-                        <select value={line.profissional} onChange={e => updateLine(i, 'profissional', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', cursor: 'pointer' }}>
-                          <option value="">Pesquise/Selecione</option>
-                          {profissionais.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
-                          {UNITS.map(u => <option key={`u-${u}`} value={`Virtuosa ${u}`}>Virtuosa {u}</option>)}
-                        </select>
-                        <input type="number" min={1} value={line.quantity} onChange={e => updateLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 42, textAlign: 'center', fontSize: '0.82rem', padding: '0 4px' }} />
-                        <input type="number" step="0.01" value={line.unitPrice} onChange={e => updateLine(i, 'unitPrice', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
-                        <input type="number" step="0.01" value={line.discount} onChange={e => updateLine(i, 'discount', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
-                        <div style={{ height: 42, display: 'flex', alignItems: 'center', padding: '0 8px', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>
-                          {lineTotal.toFixed(2)}
+                      <div key={i} className="package-service-row" style={{ display: 'grid', gridTemplateColumns: '2fr 1.5fr 60px 100px 100px 100px 36px', gap: 8, alignItems: 'end' }}>
+                        <div className="package-service-field package-service-name">
+                          <span className="package-service-mobile-label">Nome</span>
+                          <ProcedureSelector
+                            value={line.name}
+                            onChange={(name, price) => {
+                              updateLine(i, 'name', name);
+                              if (price !== undefined) updateLine(i, 'unitPrice', price);
+                            }}
+                            services={catalogServices}
+                            placeholder="Buscar procedimento..."
+                          />
                         </div>
-                        <button onClick={() => removeLine(i)} style={{ width: 36, height: 42, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                          <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
-                        </button>
+                        <div className="package-service-field package-service-professional">
+                          <span className="package-service-mobile-label">Profissional</span>
+                          <select value={line.profissional} onChange={e => updateLine(i, 'profissional', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', cursor: 'pointer' }}>
+                            <option value="">Pesquise/Selecione</option>
+                            {profissionais.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                            {UNITS.map(u => <option key={`u-${u}`} value={`Virtuosa ${u}`}>Virtuosa {u}</option>)}
+                          </select>
+                        </div>
+                        <label className="package-service-field">
+                          <span className="package-service-mobile-label">Qtd.</span>
+                          <input type="number" min={1} value={line.quantity} onChange={e => updateLine(i, 'quantity', e.target.value)} style={{ ...inputS, height: 42, textAlign: 'center', fontSize: '0.82rem', padding: '0 4px' }} />
+                        </label>
+                        <label className="package-service-field">
+                          <span className="package-service-mobile-label">Valor (R$)</span>
+                          <input type="number" step="0.01" value={line.unitPrice} onChange={e => updateLine(i, 'unitPrice', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
+                        </label>
+                        <label className="package-service-field">
+                          <span className="package-service-mobile-label">Desconto un.</span>
+                          <input type="number" step="0.01" value={line.discount} onChange={e => updateLine(i, 'discount', e.target.value)} style={{ ...inputS, height: 42, fontSize: '0.82rem', padding: '0 8px' }} />
+                        </label>
+                        <div className="package-service-field">
+                          <span className="package-service-mobile-label">Total (R$)</span>
+                          <div className="package-service-total" style={{ height: 42, display: 'flex', alignItems: 'center', padding: '0 8px', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                            {lineTotal.toFixed(2)}
+                          </div>
+                        </div>
+                        <div className="package-service-delete">
+                          <button onClick={() => removeLine(i)} aria-label={`Excluir item ${i + 1}`} style={{ width: 36, height: 42, borderRadius: 8, border: '1px solid rgba(239,68,68,0.15)', background: 'rgba(239,68,68,0.03)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>delete</span>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -498,7 +549,7 @@ export default function PacotesPage() {
                   </div>
                 )}
 
-                {parseInt(installments) > 1 && totalValue > 0 && (
+                {editingPkg && parseInt(installments) > 1 && totalValue > 0 && (
                   <div style={{ marginTop: 8, padding: '8px 14px', borderRadius: 10, background: 'rgba(99,102,241,0.06)', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 16, color: '#6366f1' }}>info</span>
                     <span style={{ fontSize: '0.78rem', fontWeight: 600, color: '#6366f1' }}>
@@ -507,6 +558,19 @@ export default function PacotesPage() {
                   </div>
                 )}
               </div>
+
+              {!editingPkg && (
+                <PaymentFeeSection
+                  unit={unit}
+                  baseAmount={totalValue}
+                  paymentMethod={paymentMethod}
+                  installments={Number(installments)}
+                  selectedConfigId={paymentFeeConfigId}
+                  onPaymentMethodChange={setPaymentMethod}
+                  onInstallmentsChange={value => setInstallments(String(value))}
+                  onConfigChange={setPaymentFeeConfigId}
+                />
+              )}
 
               {/* ──── Action Buttons ──── */}
               <div style={{ display: 'flex', justifyContent: 'center', gap: 10, paddingTop: 4 }}>
@@ -523,6 +587,25 @@ export default function PacotesPage() {
           </div>
         </div>
       )}
+      <style jsx>{`
+        .package-service-field { min-width: 0; }
+        .package-service-mobile-label { display: none; }
+        @media (max-width: 760px) {
+          .package-modal-overlay { padding: 8px !important; align-items: center !important; }
+          .package-modal { width: 100% !important; max-height: calc(100dvh - 16px) !important; border-radius: 18px !important; }
+          .package-modal-body { padding: 16px !important; }
+          .package-client-grid, .package-sale-grid, .package-advanced-grid { grid-template-columns: minmax(0, 1fr) !important; }
+          .package-service-header { display: none !important; }
+          .package-service-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; gap: 10px !important; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+          .package-service-name, .package-service-professional, .package-service-delete { grid-column: 1 / -1; }
+          .package-service-mobile-label { display: block; margin: 0 0 5px 2px; color: var(--text-muted); font-size: .64rem; font-weight: 800; text-transform: uppercase; }
+          .package-service-total { border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); }
+          .package-service-delete > button { width: 100% !important; }
+        }
+        @media (max-width: 430px) {
+          .package-modal-body { padding: 12px !important; }
+        }
+      `}</style>
     </AuthGuard>
   );
 }
