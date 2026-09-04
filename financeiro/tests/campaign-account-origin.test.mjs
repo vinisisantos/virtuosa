@@ -20,6 +20,13 @@ const OSASCO_SECONDARY_ACCOUNT_TRACK_IDS = [
 const SBC_LEADS_INSTANCE_ID = "a6871ee7-8352-4b66-bfb2-b8dba9e4f8e3";
 const SBC_COMMERCIAL_INSTANCE_ID = "b1977b09-5ce5-445c-8da8-11c805126a0c";
 const SBC_FACIAL_SECONDARY_TRACK_ID = "120249699105390006";
+const SHARED_GLUTEO_PERFEITO_SECONDARY_TRACK_ID = "120249304650490006";
+const FORMER_SCS_SECONDARY_TRACK_IDS = [
+  "120249051596890006",
+  "120249310857180006",
+  "120249310857190006",
+  "120249321328780006",
+];
 
 test("identifica a campanha e os quatro anúncios como conta secundária somente em Osasco", () => {
   for (const trackId of OSASCO_SECONDARY_ACCOUNT_TRACK_IDS) {
@@ -75,6 +82,24 @@ test("identifica a nova campanha facial de SBC como conta secundária", () => {
   assert.equal(campaignAccountOriginFromTrackId(SBC_FACIAL_SECONDARY_TRACK_ID, "SBC"), "secondary");
   assert.equal(campaignAccountOriginFromTrackId(SBC_FACIAL_SECONDARY_TRACK_ID, "Osasco"), null);
   assert.equal(campaignAccountOriginFromTrackId(SBC_FACIAL_SECONDARY_TRACK_ID, "SCS"), null);
+});
+
+test("mantém o código compartilhado como conta secundária em SBC e SCS", () => {
+  assert.equal(
+    campaignAccountOriginFromTrackId(SHARED_GLUTEO_PERFEITO_SECONDARY_TRACK_ID, "SBC"),
+    "secondary",
+  );
+  assert.equal(
+    campaignAccountOriginFromTrackId(SHARED_GLUTEO_PERFEITO_SECONDARY_TRACK_ID, "SCS"),
+    "secondary",
+  );
+});
+
+test("restringe SCS ao único código secundário compartilhado", () => {
+  for (const trackId of FORMER_SCS_SECONDARY_TRACK_IDS) {
+    assert.equal(campaignAccountOriginFromTrackId(trackId, "SCS"), null);
+  }
+  assert.equal(campaignAccountOriginFromTrackId("120249051596890006", "SBC"), "secondary");
 });
 
 test("não altera a origem das conversas da instância Comercial SBC", () => {
