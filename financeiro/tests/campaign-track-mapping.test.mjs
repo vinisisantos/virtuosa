@@ -13,9 +13,14 @@ import {
   GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
   GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
   GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
+  HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+  HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID,
+  HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID,
 } from "../src/lib/campaign-track-mapping.ts";
 
 const exactAdCases = [
+  ["Osasco", HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID, HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME],
+  ["SCS", HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID, HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME],
   ["Osasco", "120249502709450006", "Preenchimento Facial"],
   ["Osasco", "120249502628370006", "Glúteo Perfeito"],
   ["Osasco", "120249502294110006", "Harmonização de Glúteos"],
@@ -318,6 +323,43 @@ test("não transforma a campanha pai de Osasco em um procedimento", () => {
   );
 });
 
+test("reconhece o post Harmonização de Mamas nas três unidades", () => {
+  for (const unit of ["Osasco", "SBC", "SCS"]) {
+    assert.equal(
+      campaignNameFromMetaSignals(
+        null,
+        "https://www.instagram.com/p/Dc2YOMms4wI/",
+        unit,
+      ),
+      HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+      unit,
+    );
+  }
+});
+
+test("não aplica o post Harmonização de Mamas fora das unidades ativas", () => {
+  assert.equal(
+    campaignNameFromMetaSignals(
+      null,
+      "https://www.instagram.com/p/Dc2YOMms4wI/",
+      "Barueri",
+    ),
+    null,
+  );
+});
+
+test("prioriza Harmonização de Mamas sobre o nome genérico devolvido pela Meta em SCS", () => {
+  assert.equal(
+    campaignNameFromMetaAdAndTrackSignals(
+      null,
+      HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID,
+      "https://www.instagram.com/p/Dc2YOMms4wI/",
+      "SCS",
+    ),
+    HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+  );
+});
+
 test("recupera a campanha 120ml pela mensagem CTWA predefinida quando a Meta omite o anúncio", () => {
   assert.deepEqual(
     campaignFromPrefilledMetaLeadMessage(
@@ -425,6 +467,33 @@ test("não classifica conversa comum que apenas menciona rosto cansado", () => {
     campaignFromPrefilledMetaLeadMessage(
       "Meu rosto parece cansado; qual tratamento vocês indicam?",
       "SBC",
+    ),
+    null,
+  );
+});
+
+test("recupera Harmonização de Mamas pela mensagem CTWA nas três unidades", () => {
+  const message = "Olá! Vim pela HARMONIZAÇÃO DE MAMAS, posso ter mais informações sobre isso?";
+
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, "Osasco"), {
+    campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+    campaignTrackId: HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID,
+  });
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, "SCS"), {
+    campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+    campaignTrackId: HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID,
+  });
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, "SBC"), {
+    campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+    campaignTrackId: null,
+  });
+});
+
+test("não classifica conversa comum que apenas menciona harmonização de mamas", () => {
+  assert.equal(
+    campaignFromPrefilledMetaLeadMessage(
+      "Como funciona a harmonização de mamas?",
+      "SCS",
     ),
     null,
   );

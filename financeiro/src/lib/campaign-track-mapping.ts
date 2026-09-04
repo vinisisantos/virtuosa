@@ -7,6 +7,9 @@ export const COMBO_HARMONIZACAO_OSASCO_PARENT_CAMPAIGN_ID = "120249763449990006"
 export const GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME = "Glúteos Perfeitos 120ml";
 export const GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID = "120249766005370006";
 export const GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID = "120249766070900006";
+export const HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME = "Harmonização de Mamas";
+export const HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID = "120249951529480006";
+export const HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID = "120249648815820109";
 
 export type PrefilledMetaLeadCampaign = {
   campaignName: string;
@@ -63,6 +66,16 @@ export function campaignFromPrefilledMetaLeadMessage(
     };
   }
 
+  if (/\bvim pela harmonizacao de mamas\b/.test(normalizedMessage)) {
+    return {
+      campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+      campaignTrackId: campaignTrackIdForUnit(normalizedUnit, {
+        osasco: HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID,
+        scs: HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID,
+      }),
+    };
+  }
+
   if (!/\bvim pelo gluteos perfeitos 120 ?ml\b/.test(normalizedMessage)) return null;
 
   return {
@@ -96,6 +109,11 @@ type CampaignSourceUrlRule = {
 // A Meta pode reutilizar o mesmo sourceId em criativos diferentes. Quando o
 // post/reel foi confirmado, o link do criativo é o sinal mais específico.
 const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
+  {
+    campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+    sourceMarkers: ["Dc2YOMms4wI"],
+    units: ["Osasco", "SBC", "SCS"],
+  },
   {
     campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
     sourceMarkers: [
@@ -136,6 +154,8 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
 ];
 
 const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
+  { adId: HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID, campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME, unit: "Osasco" },
+  { adId: HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID, campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME, unit: "SCS" },
   { adId: "120249502709450006", campaignName: FACIAL_FILLER_CAMPAIGN_NAME, unit: "Osasco" },
   { adId: "120249502628370006", campaignName: "Glúteo Perfeito", unit: "Osasco" },
   { adId: "120249502294110006", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
