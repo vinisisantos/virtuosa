@@ -45,6 +45,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260901183000_payroll_entry_exclusions/migration.sql",
     "prisma/migrations/20260901195000_saved_reply_location_by_unit/migration.sql",
     "prisma/migrations/20260903143000_payment_method_fee_configs/migration.sql",
+    "prisma/migrations/20260904010000_saved_reply_category_campaign_binding/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {

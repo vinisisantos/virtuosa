@@ -15,8 +15,14 @@ export type SavedReply = {
 export type SavedReplyCategory = {
   id: string;
   title: string;
+  campaignName: string | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type SavedReplyCampaignOption = {
+  name: string;
+  units: string[];
 };
 
 type SavedReplyInput = {
@@ -29,6 +35,7 @@ type SavedReplyInput = {
 type SavedReplyCategoryInput = {
   id?: string | null;
   title: string;
+  campaignName?: string | null;
 };
 
 async function readResponse(response: Response) {
@@ -46,6 +53,7 @@ function sortRepliesByPosition(replies: SavedReply[]) {
 export function useWhatsAppSavedReplies() {
   const [replies, setReplies] = useState<SavedReply[]>([]);
   const [categories, setCategories] = useState<SavedReplyCategory[]>([]);
+  const [campaignOptions, setCampaignOptions] = useState<SavedReplyCampaignOption[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
   const [reordering, setReordering] = useState(false);
@@ -64,8 +72,12 @@ export function useWhatsAppSavedReplies() {
         if (!response.ok) throw new Error(data.error || "Não foi possível carregar as respostas rápidas.");
         const nextReplies = sortRepliesByPosition(Array.isArray(data.replies) ? data.replies as SavedReply[] : []);
         const nextCategories = Array.isArray(data.categories) ? data.categories as SavedReplyCategory[] : [];
+        const nextCampaignOptions = Array.isArray(data.campaignOptions)
+          ? data.campaignOptions as SavedReplyCampaignOption[]
+          : [];
         setReplies(nextReplies);
         setCategories(nextCategories);
+        setCampaignOptions(nextCampaignOptions);
         repliesRef.current = nextReplies;
         setLoaded(true);
         loadedRef.current = true;
@@ -106,14 +118,14 @@ export function useWhatsAppSavedReplies() {
     return reply;
   }, []);
 
-  const saveCategory = useCallback(async ({ id, title }: SavedReplyCategoryInput) => {
+  const saveCategory = useCallback(async ({ id, title, campaignName }: SavedReplyCategoryInput) => {
     const endpoint = id
       ? `/api/whatsapp/saved-replies/categories/${id}`
       : "/api/whatsapp/saved-replies/categories";
     const response = await fetch(endpoint, {
       method: id ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify({ title, campaignName: campaignName || null }),
     });
     const data = await readResponse(response);
     if (!response.ok || !data.category) {
@@ -191,6 +203,7 @@ export function useWhatsAppSavedReplies() {
   return {
     replies,
     categories,
+    campaignOptions,
     loaded,
     loading,
     reordering,

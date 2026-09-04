@@ -39,6 +39,7 @@ export async function POST(req: Request) {
       select: {
         id: true,
         title: true,
+        campaignName: true,
         createdAt: true,
         updatedAt: true,
       },

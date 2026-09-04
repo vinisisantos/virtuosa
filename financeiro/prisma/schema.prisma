@@ -1497,6 +1497,7 @@ model WhatsAppSavedReplyCategory {
   userId          String
   title           String
   normalizedTitle String
+  campaignName    String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)

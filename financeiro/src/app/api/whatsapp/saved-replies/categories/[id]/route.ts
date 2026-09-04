@@ -37,6 +37,7 @@ export async function PATCH(
       select: {
         id: true,
         title: true,
+        campaignName: true,
         createdAt: true,
         updatedAt: true,
       },

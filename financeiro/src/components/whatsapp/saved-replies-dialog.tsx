@@ -47,12 +47,14 @@ import {
 import { confirmDialog } from "@/components/ui/confirm-dialog";
 import {
   SAVED_REPLY_CONTENT_MAX_LENGTH,
+  SAVED_REPLY_CATEGORY_CAMPAIGN_NAME_MAX_LENGTH,
   SAVED_REPLY_CATEGORY_MAX_PER_USER,
   SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH,
   SAVED_REPLY_MAX_PER_USER,
   SAVED_REPLY_TITLE_MAX_LENGTH,
   filterSavedRepliesByCampaign,
   reorderSavedRepliesByVisibleIds,
+  savedReplyCampaignKey,
   savedReplyCategoryIdsForCampaign,
   savedReplyIsAvailableInCategory,
 } from "@/lib/whatsapp/saved-replies";
@@ -86,6 +88,7 @@ export function SavedRepliesDialog({
   const {
     replies,
     categories,
+    campaignOptions,
     loading,
     reordering,
     load,
@@ -101,12 +104,14 @@ export function SavedRepliesDialog({
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState<"list" | "form" | "categories">("list");
+  const [replyFormReturnMode, setReplyFormReturnMode] = useState<"list" | "categories">("list");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [categoryTitle, setCategoryTitle] = useState("");
+  const [categoryCampaignName, setCategoryCampaignName] = useState("");
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const sensors = useSensors(
@@ -126,12 +131,14 @@ export function SavedRepliesDialog({
   useEffect(() => {
     if (open) return;
     setMode("list");
+    setReplyFormReturnMode("list");
     setEditingId(null);
     setTitle("");
     setContent("");
     setCategoryId(null);
     setEditingCategoryId(null);
     setCategoryTitle("");
+    setCategoryCampaignName("");
     setError(null);
   }, [open]);
 
@@ -139,6 +146,23 @@ export function SavedRepliesDialog({
     () => new Map(categories.map((category) => [category.id, category.title])),
     [categories],
   );
+
+  const selectableCampaignOptions = useMemo(() => {
+    const optionsByKey = new Map(campaignOptions.map((option) => [
+      savedReplyCampaignKey(option.name),
+      { ...option },
+    ]));
+    for (const name of [campaignName, categoryCampaignName]) {
+      const normalized = name?.trim();
+      if (!normalized) continue;
+      const key = savedReplyCampaignKey(normalized);
+      optionsByKey.set(key, {
+        name: normalized,
+        units: optionsByKey.get(key)?.units || [],
+      });
+    }
+    return [...optionsByKey.values()].sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
+  }, [campaignName, campaignOptions, categoryCampaignName]);
 
   const campaignCategoryIds = useMemo(
     () => savedReplyCategoryIdsForCampaign(campaignName, categories),
@@ -185,11 +209,15 @@ export function SavedRepliesDialog({
     return groups.filter((group) => group.title.toLocaleLowerCase("pt-BR").includes(term) || group.replies.length > 0);
   }, [campaignCategoryIds, filteredReplies, search, visibleCategories]);
 
-  const beginCreate = (nextCategoryId: string | null = null) => {
+  const beginCreate = (
+    nextCategoryId: string | null = null,
+    returnMode: "list" | "categories" = "list",
+  ) => {
     setEditingId(null);
     setTitle("");
     setContent(draftText.trim().slice(0, SAVED_REPLY_CONTENT_MAX_LENGTH));
     setCategoryId(nextCategoryId);
+    setReplyFormReturnMode(returnMode);
     setError(null);
     setMode("form");
   };
@@ -199,6 +227,7 @@ export function SavedRepliesDialog({
     setTitle(reply.title);
     setContent(reply.content);
     setCategoryId(reply.categoryId);
+    setReplyFormReturnMode("list");
     setError(null);
     setMode("form");
   };
@@ -210,7 +239,7 @@ export function SavedRepliesDialog({
     setError(null);
     try {
       await save({ id: editingId, title, content, categoryId });
-      setMode("list");
+      setMode(replyFormReturnMode);
       setEditingId(null);
       setTitle("");
       setContent("");
@@ -227,9 +256,14 @@ export function SavedRepliesDialog({
     setSavingCategory(true);
     setError(null);
     try {
-      await saveCategory({ id: editingCategoryId, title: categoryTitle });
+      await saveCategory({
+        id: editingCategoryId,
+        title: categoryTitle,
+        campaignName: categoryCampaignName,
+      });
       setEditingCategoryId(null);
       setCategoryTitle("");
+      setCategoryCampaignName(campaignName?.trim() || "");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Não foi possível salvar a categoria.");
     } finally {
@@ -240,6 +274,7 @@ export function SavedRepliesDialog({
   const beginEditCategory = (category: SavedReplyCategory) => {
     setEditingCategoryId(category.id);
     setCategoryTitle(category.title);
+    setCategoryCampaignName(category.campaignName || "");
     setError(null);
   };
 
@@ -261,6 +296,7 @@ export function SavedRepliesDialog({
       if (editingCategoryId === category.id) {
         setEditingCategoryId(null);
         setCategoryTitle("");
+        setCategoryCampaignName(campaignName?.trim() || "");
       }
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Não foi possível excluir a categoria.");
@@ -338,9 +374,12 @@ export function SavedRepliesDialog({
               <button
                 type="button"
                 onClick={() => {
-                  setMode("list");
-                  setEditingCategoryId(null);
-                  setCategoryTitle("");
+                  setMode(mode === "form" ? replyFormReturnMode : "list");
+                  if (mode !== "form") {
+                    setEditingCategoryId(null);
+                    setCategoryTitle("");
+                    setCategoryCampaignName("");
+                  }
                   setError(null);
                 }}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors hover:text-foreground"
@@ -365,7 +404,7 @@ export function SavedRepliesDialog({
                 {mode === "form"
                   ? "Salve um texto para reutilizar em qualquer uma das suas instâncias."
                   : mode === "categories"
-                    ? "Crie grupos para organizar sua biblioteca pessoal."
+                    ? "Associe cada pasta à campanha correspondente."
                     : "Somente você pode ver e usar estas mensagens."}
               </DialogDescription>
             </div>
@@ -390,6 +429,7 @@ export function SavedRepliesDialog({
                   setMode("categories");
                   setEditingCategoryId(null);
                   setCategoryTitle("");
+                  setCategoryCampaignName(campaignName?.trim() || "");
                   setError(null);
                 }}
                 aria-label="Gerenciar categorias"
@@ -567,7 +607,7 @@ export function SavedRepliesDialog({
               <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
                 <button
                   type="button"
-                  onClick={() => { setMode("list"); setError(null); }}
+                  onClick={() => { setMode(replyFormReturnMode); setError(null); }}
                   disabled={saving}
                   className="inline-flex h-11 items-center justify-center rounded-xl border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50"
                 >
@@ -595,15 +635,52 @@ export function SavedRepliesDialog({
                   </label>
                   <span className="text-[11px] text-muted-foreground">{categoryTitle.length}/{SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH}</span>
                 </div>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                  <input
-                    id="saved-reply-category-title"
-                    value={categoryTitle}
-                    onChange={(event) => setCategoryTitle(event.target.value.slice(0, SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH))}
-                    placeholder="Ex.: Glúteos Perfeito"
-                    autoFocus
-                    className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
-                  />
+                <input
+                  id="saved-reply-category-title"
+                  value={categoryTitle}
+                  onChange={(event) => setCategoryTitle(event.target.value.slice(0, SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH))}
+                  placeholder="Ex.: Harmonização de Mamas"
+                  autoFocus
+                  className="mt-2 h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
+                />
+
+                <div className="mt-3 space-y-1.5">
+                  <label htmlFor="saved-reply-category-campaign" className="text-xs font-semibold text-foreground">
+                    Campanha associada
+                  </label>
+                  <select
+                    id="saved-reply-category-campaign"
+                    value={categoryCampaignName}
+                    onChange={(event) => setCategoryCampaignName(event.target.value.slice(0, SAVED_REPLY_CATEGORY_CAMPAIGN_NAME_MAX_LENGTH))}
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm text-foreground outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">Associar automaticamente pelo nome da pasta</option>
+                    {selectableCampaignOptions.map((option) => (
+                      <option key={option.name} value={option.name}>
+                        {option.name}{option.units.length > 0 ? ` · ${option.units.join(", ")}` : " · campanha atual"}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] leading-4 text-muted-foreground">
+                    A pasta aparecerá nas conversas classificadas com esta campanha.
+                  </p>
+                </div>
+
+                <div className="mt-3 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  {editingCategoryId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingCategoryId(null);
+                        setCategoryTitle("");
+                        setCategoryCampaignName(campaignName?.trim() || "");
+                        setError(null);
+                      }}
+                      className="inline-flex h-11 items-center justify-center rounded-xl border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted"
+                    >
+                      Cancelar edição
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => void saveReplyCategory()}
@@ -614,15 +691,6 @@ export function SavedRepliesDialog({
                     {savingCategory ? "Salvando..." : editingCategoryId ? "Salvar" : "Criar"}
                   </button>
                 </div>
-                {editingCategoryId && (
-                  <button
-                    type="button"
-                    onClick={() => { setEditingCategoryId(null); setCategoryTitle(""); setError(null); }}
-                    className="mt-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-                  >
-                    Cancelar edição
-                  </button>
-                )}
               </div>
 
               {error && (
@@ -633,14 +701,26 @@ export function SavedRepliesDialog({
 
               <div className="space-y-2">
                 {categories.length > 0 ? categories.map((category) => {
-                  const replyCount = replies.filter((reply) => savedReplyIsAvailableInCategory(reply.categoryId, category.id)).length;
+                  const replyCount = replies.filter((reply) => reply.categoryId === category.id).length;
                   return (
                     <div key={category.id} className="flex min-h-14 items-center gap-2 rounded-xl border border-border bg-background p-2 pl-3">
                       <Folder className="h-4 w-4 shrink-0 text-primary" />
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-foreground">{category.title}</p>
-                        <p className="text-[11px] text-muted-foreground">{replyCount} {replyCount === 1 ? "resposta disponível" : "respostas disponíveis"}</p>
+                        <p className="truncate text-[11px] text-muted-foreground" title={category.campaignName || "Associação automática pelo nome da pasta"}>
+                          {category.campaignName ? `Campanha: ${category.campaignName}` : "Campanha: mesmo nome da pasta"}
+                          {` · ${replyCount} ${replyCount === 1 ? "resposta" : "respostas"}`}
+                        </p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => beginCreate(category.id, "categories")}
+                        disabled={replies.length >= SAVED_REPLY_MAX_PER_USER}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-primary transition-colors hover:bg-primary/10 disabled:opacity-40"
+                        aria-label={`Adicionar resposta em ${category.title}`}
+                      >
+                        <Plus className="h-4 w-4" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => beginEditCategory(category)}
@@ -670,7 +750,7 @@ export function SavedRepliesDialog({
               </div>
 
               <p className="rounded-xl bg-muted/40 px-3 py-2.5 text-[11px] leading-5 text-muted-foreground">
-                Ao excluir uma categoria, suas respostas não são apagadas: elas passam a aparecer em todas as categorias.
+                Use o botão + de uma pasta para criar mensagens nela. Ao excluir uma categoria, suas respostas não são apagadas: elas passam a aparecer em todas as categorias.
               </p>
             </div>
           </div>

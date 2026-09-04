@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH,
+  buildSavedReplyCampaignOptions,
   filterSavedRepliesByCampaign,
   normalizeSavedReplyCategoryTitle,
   reorderSavedRepliesByVisibleIds,
@@ -43,6 +44,17 @@ test("valida o nome e o limite de uma categoria", () => {
     value: {
       title: "Glúteos Perfeito",
       normalizedTitle: "gluteos perfeito",
+      campaignName: null,
+    },
+  });
+  assert.deepEqual(validateSavedReplyCategoryInput({
+    title: "  Pasta de textos  ",
+    campaignName: "  Harmonização   Mamas  ",
+  }), {
+    value: {
+      title: "Pasta de textos",
+      normalizedTitle: "pasta de textos",
+      campaignName: "Harmonização Mamas",
     },
   });
 });
@@ -139,6 +151,32 @@ test("conecta as duas novas campanhas às categorias exclusivas de respostas rá
     savedReplyCategoryIdsForCampaign("Adeus Rosto Cansado", categories),
     ["rosto"],
   );
+});
+
+test("associa explicitamente uma pasta com nome livre à campanha escolhida", () => {
+  const categories = [
+    { id: "mamas", title: "Mensagens para avaliação", campaignName: "Harmonização de Mamas" },
+    { id: "botox", title: "Botox", campaignName: "Harmonização de Mamas" },
+  ];
+
+  assert.deepEqual(
+    savedReplyCategoryIdsForCampaign("Harmonização Mamas", categories),
+    ["mamas", "botox"],
+  );
+  assert.deepEqual(savedReplyCategoryIdsForCampaign("Botox", categories), []);
+});
+
+test("agrupa variações da mesma campanha e mostra as unidades disponíveis", () => {
+  assert.deepEqual(buildSavedReplyCampaignOptions([
+    { name: "Harmonização de Mamas", unit: "Osasco" },
+    { name: "Harmonização Mamas", unit: "Osasco" },
+    { name: "Harmonização Mamas", unit: "SBC" },
+    { name: "Harmonização Mamas", unit: "SCS" },
+    { name: "Botox", unit: "SCS" },
+  ]), [
+    { name: "Botox", units: ["SCS"] },
+    { name: "Harmonização Mamas", units: ["Osasco", "SBC", "SCS"] },
+  ]);
 });
 
 test("filtra pela campanha e preserva somente respostas globais quando a categoria não existe", () => {

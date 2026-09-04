@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import {
   SAVED_REPLY_CATEGORY_MAX_PER_USER,
   SAVED_REPLY_MAX_PER_USER,
+  buildSavedReplyCampaignOptions,
   validateSavedReplyInput,
 } from "@/lib/whatsapp/saved-replies";
 import { withSavedReplyCategorySchema } from "@/lib/whatsapp/saved-replies-schema";
@@ -32,7 +33,7 @@ export async function GET(req: Request) {
     const userId = authenticatedUserId(req);
     if (!userId) return NextResponse.json({ error: "Usuário não identificado" }, { status: 401 });
 
-    const [replies, categories] = await withSavedReplyCategorySchema(() => Promise.all([
+    const [replies, categories, campaignRows] = await withSavedReplyCategorySchema(() => Promise.all([
       prisma.whatsAppSavedReply.findMany({
         where: { userId },
         select: {
@@ -52,15 +53,29 @@ export async function GET(req: Request) {
         select: {
           id: true,
           title: true,
+          campaignName: true,
           createdAt: true,
           updatedAt: true,
         },
         orderBy: [{ title: "asc" }, { id: "asc" }],
         take: SAVED_REPLY_CATEGORY_MAX_PER_USER,
       }),
+      prisma.campaign.findMany({
+        where: {
+          unit: { in: ["Osasco", "SBC", "SCS"] },
+          status: { not: "encerrada" },
+        },
+        select: { name: true, unit: true },
+        orderBy: [{ name: "asc" }, { unit: "asc" }],
+        take: 200,
+      }),
     ]));
 
-    return NextResponse.json({ replies, categories }, {
+    return NextResponse.json({
+      replies,
+      categories,
+      campaignOptions: buildSavedReplyCampaignOptions(campaignRows),
+    }, {
       headers: { "Cache-Control": "private, no-store" },
     });
   } catch (error) {

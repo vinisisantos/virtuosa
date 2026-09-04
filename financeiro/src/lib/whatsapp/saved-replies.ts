@@ -2,6 +2,7 @@ export const SAVED_REPLY_TITLE_MAX_LENGTH = 80;
 export const SAVED_REPLY_CONTENT_MAX_LENGTH = 4096;
 export const SAVED_REPLY_MAX_PER_USER = 100;
 export const SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH = 60;
+export const SAVED_REPLY_CATEGORY_CAMPAIGN_NAME_MAX_LENGTH = 120;
 export const SAVED_REPLY_CATEGORY_MAX_PER_USER = 30;
 
 export function validateSavedReplyOrderInput(input: unknown) {
@@ -57,7 +58,7 @@ export function savedReplyIsAvailableInCategory(
   return !replyCategoryId || replyCategoryId === categoryId;
 }
 
-function savedReplyProcedureKey(value: string) {
+export function savedReplyCampaignKey(value: string) {
   const normalized = normalizeSavedReplyCategoryTitle(value)
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
@@ -73,6 +74,9 @@ function savedReplyProcedureKey(value: string) {
     || (/\bmicrofocado\b/.test(normalized) && /\bbioestimulador\b/.test(normalized))
   ) {
     return "adeus-rosto-cansado";
+  }
+  if (/\bharmonizacao\b/.test(normalized) && /\bmamas?\b/.test(normalized)) {
+    return "harmonizacao-mamas";
   }
   if (/\bharmonizacao\b/.test(normalized) && /\bgluteos?\b/.test(normalized)) {
     return "harmonizacao-gluteos";
@@ -94,20 +98,20 @@ function savedReplyProcedureKey(value: string) {
 
 export function savedReplyCategoryIdsForCampaign(
   campaignName: string | null | undefined,
-  categories: Array<{ id: string; title: string }>,
+  categories: Array<{ id: string; title: string; campaignName?: string | null }>,
 ) {
   if (!campaignName?.trim()) return null;
 
-  const campaignKey = savedReplyProcedureKey(campaignName);
+  const campaignKey = savedReplyCampaignKey(campaignName);
   return categories
-    .filter((category) => savedReplyProcedureKey(category.title) === campaignKey)
+    .filter((category) => savedReplyCampaignKey(category.campaignName?.trim() || category.title) === campaignKey)
     .map((category) => category.id);
 }
 
 export function filterSavedRepliesByCampaign<T extends { categoryId: string | null }>(
   replies: T[],
   campaignName: string | null | undefined,
-  categories: Array<{ id: string; title: string }>,
+  categories: Array<{ id: string; title: string; campaignName?: string | null }>,
 ) {
   const categoryIds = savedReplyCategoryIdsForCampaign(campaignName, categories);
   if (categoryIds === null) return replies;
@@ -119,18 +123,65 @@ export function filterSavedRepliesByCampaign<T extends { categoryId: string | nu
 export function validateSavedReplyCategoryInput(input: unknown) {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const title = typeof record.title === "string" ? record.title.trim().replace(/\s+/g, " ") : "";
+  const campaignName = typeof record.campaignName === "string"
+    ? record.campaignName.trim().replace(/\s+/g, " ")
+    : "";
 
   if (!title) return { error: "Informe um nome para a categoria" } as const;
   if (title.length > SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH) {
     return { error: `O nome pode ter até ${SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH} caracteres` } as const;
+  }
+  if (campaignName.length > SAVED_REPLY_CATEGORY_CAMPAIGN_NAME_MAX_LENGTH) {
+    return { error: `A campanha pode ter até ${SAVED_REPLY_CATEGORY_CAMPAIGN_NAME_MAX_LENGTH} caracteres` } as const;
   }
 
   return {
     value: {
       title,
       normalizedTitle: normalizeSavedReplyCategoryTitle(title),
+      campaignName: campaignName || null,
     },
   } as const;
+}
+
+export type SavedReplyCampaignOption = {
+  name: string;
+  units: string[];
+};
+
+export function buildSavedReplyCampaignOptions(
+  campaigns: Array<{ name: string; unit: string }>,
+): SavedReplyCampaignOption[] {
+  const groups = new Map<string, {
+    variants: Map<string, { name: string; count: number }>;
+    units: Set<string>;
+  }>();
+
+  for (const campaign of campaigns) {
+    const name = campaign.name.trim().replace(/\s+/g, " ");
+    const unit = campaign.unit.trim();
+    if (!name || !unit) continue;
+
+    const key = savedReplyCampaignKey(name);
+    const group = groups.get(key) || { variants: new Map(), units: new Set<string>() };
+    const variantKey = normalizeSavedReplyCategoryTitle(name);
+    const variant = group.variants.get(variantKey);
+    group.variants.set(variantKey, {
+      name: variant?.name || name,
+      count: (variant?.count || 0) + 1,
+    });
+    group.units.add(unit);
+    groups.set(key, group);
+  }
+
+  return [...groups.values()]
+    .map((group) => ({
+      name: [...group.variants.values()].sort((left, right) => (
+        right.count - left.count || left.name.localeCompare(right.name, "pt-BR")
+      ))[0].name,
+      units: [...group.units].sort((left, right) => left.localeCompare(right, "pt-BR")),
+    }))
+    .sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
 }
 
 export function validateSavedReplyInput(input: unknown) {
