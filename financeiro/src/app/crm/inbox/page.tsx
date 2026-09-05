@@ -25,6 +25,8 @@ import {
   type SavedReply,
 } from "@/hooks/use-whatsapp-saved-replies";
 import { useWhatsAppInstanceNotificationMutes } from "@/hooks/use-whatsapp-instance-notification-mutes";
+import { useCompatibleAudioSource } from "@/hooks/use-compatible-audio-source";
+import { audioPlaybackErrorMessage } from "@/lib/whatsapp/audio-compatibility";
 import {
   INBOX_INCREMENTAL_FULL_REFRESH_EVERY,
   INBOX_FULL_CONVERSATION_LIMIT,
@@ -61,6 +63,7 @@ import { findQuotedImagePreviewTarget } from "@/lib/whatsapp/quoted-media";
 import {
   fixRecordedWebmDuration,
   pauseRecordingDurationClock,
+  preferredRecordingMimeType,
   recordingDurationMs,
   resumeRecordingDurationClock,
   startRecordingDurationClock,
@@ -1933,6 +1936,13 @@ function VoiceMessagePlayer({
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackRate, setPlaybackRate] = useState<AudioPlaybackRate>(1);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const { audioSource, isPreparing, prepare } = useCompatibleAudioSource({
+    mediaId: msg.id,
+    url: msg.mediaUrl,
+    mimeType: msg.mediaMimeType,
+    fileName: msg.mediaFileName,
+  });
   const waveform = useMemo(
     () => voiceWaveformHeights(msg.messageId || msg.id || msg.mediaUrl || "audio"),
     [msg.id, msg.mediaUrl, msg.messageId],
@@ -1945,13 +1955,23 @@ function VoiceMessagePlayer({
 
   const togglePlayback = async () => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || isPreparing) return;
 
     if (audio.paused) {
       try {
+        setPlaybackError(null);
+        const source = await prepare();
+        if (audioRef.current !== audio) return;
+        if (audio.getAttribute("src") !== source) audio.src = source;
+        audio.muted = false;
+        audio.volume = 1;
+        audio.playbackRate = playbackRate;
         await audio.play();
-      } catch {
+      } catch (error) {
+        if (audioRef.current !== audio) return;
         setIsPlaying(false);
+        onPlaybackChange(msg.id, false);
+        setPlaybackError(audioPlaybackErrorMessage(error));
       }
       return;
     }
@@ -1975,7 +1995,7 @@ function VoiceMessagePlayer({
   };
 
   return (
-    <div className="flex w-[min(74vw,360px)] min-w-[250px] items-center gap-2.5 pb-4 pt-0.5 sm:min-w-[300px]">
+    <div className="flex w-[min(74vw,360px)] min-w-[250px] flex-wrap items-center gap-2.5 pb-4 pt-0.5 sm:min-w-[300px]">
       <div className="relative shrink-0">
         <ContactAvatar
           contact={avatarContact}
@@ -1994,14 +2014,15 @@ function VoiceMessagePlayer({
       <button
         type="button"
         onClick={() => void togglePlayback()}
+        disabled={isPreparing}
         className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-colors ${
           isMe
             ? "text-[#54656f] hover:bg-black/10 dark:text-[#e9edef] dark:hover:bg-white/10"
             : "text-[#8696a0] hover:bg-black/10 dark:text-[#d1d7db] dark:hover:bg-white/10"
         }`}
-        aria-label={isPlaying ? "Pausar áudio" : "Reproduzir áudio"}
+        aria-label={isPreparing ? "Preparando áudio" : isPlaying ? "Pausar áudio" : "Reproduzir áudio"}
       >
-        {isPlaying ? <Pause className="h-5 w-5 fill-current" /> : <Play className="ml-0.5 h-5 w-5 fill-current" />}
+        {isPreparing ? <Loader2 className="h-5 w-5 animate-spin" /> : isPlaying ? <Pause className="h-5 w-5 fill-current" /> : <Play className="ml-0.5 h-5 w-5 fill-current" />}
       </button>
 
       <div className="min-w-0 flex-1">
@@ -2045,10 +2066,13 @@ function VoiceMessagePlayer({
         </div>
       </div>
 
+      {playbackError && (
+        <p role="status" className="basis-full text-xs leading-relaxed text-inherit">{playbackError}</p>
+      )}
       <audio
         ref={audioRef}
         preload="metadata"
-        src={msg.mediaUrl || undefined}
+        src={audioSource}
         onLoadedMetadata={(event) => {
           const nextDuration = Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0;
           setDuration(nextDuration);
@@ -2058,6 +2082,7 @@ function VoiceMessagePlayer({
         onDurationChange={(event) => setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)}
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
         onPlay={() => {
+          setPlaybackError(null);
           setIsPlaying(true);
           onPlaybackChange(msg.id, true);
         }}
@@ -2070,7 +2095,11 @@ function VoiceMessagePlayer({
           setCurrentTime(0);
           onPlaybackChange(msg.id, false);
         }}
-        onError={() => onPlaybackChange(msg.id, false)}
+        onError={() => {
+          setIsPlaying(false);
+          onPlaybackChange(msg.id, false);
+          setPlaybackError(audioPlaybackErrorMessage());
+        }}
         className="hidden"
       />
     </div>
@@ -5238,10 +5267,7 @@ export default function InboxPage() {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
-      // Usa webm/opus se disponível, senão fallback para o default
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : undefined;
+      const mimeType = preferredRecordingMimeType((type) => MediaRecorder.isTypeSupported(type));
       const mediaRecorder = mimeType
         ? new MediaRecorder(stream, { mimeType })
         : new MediaRecorder(stream);
@@ -7958,6 +7984,7 @@ export default function InboxPage() {
                 <RecordedAudioPreview
                   key={selectedPendingRecordedAudio.previewUrl}
                   previewUrl={selectedPendingRecordedAudio.previewUrl}
+                  mimeType={selectedPendingRecordedAudio.file.type}
                   durationSeconds={selectedPendingRecordedAudio.durationSeconds}
                   isSending={isSending}
                   onDiscard={() => replacePendingRecordedAudio(null)}

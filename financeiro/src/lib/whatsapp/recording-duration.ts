@@ -3,6 +3,12 @@ export type RecordingDurationClock = {
   activeSinceMs: number | null;
 };
 
+export function preferredRecordingMimeType(isTypeSupported: (mimeType: string) => boolean) {
+  // Safari anuncia suporte a WebM/Opus, mas pode não reproduzir a própria gravação.
+  return ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/ogg;codecs=opus", "audio/webm;codecs=opus"]
+    .find((mimeType) => isTypeSupported(mimeType));
+}
+
 export function startRecordingDurationClock(nowMs: number): RecordingDurationClock {
   return { elapsedMs: 0, activeSinceMs: nowMs };
 }

@@ -2,6 +2,8 @@
 
 import { useRef, useState } from "react";
 import { Loader2, Pause, Play, Send, Trash2 } from "lucide-react";
+import { useCompatibleAudioSource } from "@/hooks/use-compatible-audio-source";
+import { audioPlaybackErrorMessage } from "@/lib/whatsapp/audio-compatibility";
 
 import {
   audioPlaybackRateLabel,
@@ -12,6 +14,7 @@ import {
 
 type Props = {
   previewUrl: string;
+  mimeType?: string;
   durationSeconds: number;
   isSending: boolean;
   onDiscard: () => void;
@@ -20,6 +23,7 @@ type Props = {
 
 export function RecordedAudioPreview({
   previewUrl,
+  mimeType,
   durationSeconds,
   isSending,
   onDiscard,
@@ -30,16 +34,31 @@ export function RecordedAudioPreview({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(durationSeconds);
   const [playbackRate, setPlaybackRate] = useState<AudioPlaybackRate>(1);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const { audioSource, isPreparing, prepare } = useCompatibleAudioSource({
+    mediaId: previewUrl,
+    url: previewUrl,
+    mimeType,
+  });
 
   const togglePlayback = async () => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || isPreparing) return;
 
     if (audio.paused) {
       try {
+        setPlaybackError(null);
+        const source = await prepare();
+        if (audioRef.current !== audio) return;
+        if (audio.getAttribute("src") !== source) audio.src = source;
+        audio.muted = false;
+        audio.volume = 1;
+        audio.playbackRate = playbackRate;
         await audio.play();
-      } catch {
+      } catch (error) {
+        if (audioRef.current !== audio) return;
         setIsPlaying(false);
+        setPlaybackError(audioPlaybackErrorMessage(error));
       }
       return;
     }
@@ -59,7 +78,7 @@ export function RecordedAudioPreview({
 
   return (
     <div
-      className="inbox-composer-field flex min-h-12 items-center gap-1 rounded-xl px-1.5 shadow-sm sm:gap-2"
+      className="inbox-composer-field flex min-h-12 flex-wrap items-center gap-1 rounded-xl px-1.5 shadow-sm sm:gap-2"
       aria-label="Prévia do áudio gravado"
     >
       <button
@@ -75,12 +94,12 @@ export function RecordedAudioPreview({
       <button
         type="button"
         onClick={() => void togglePlayback()}
-        disabled={isSending}
+        disabled={isSending || isPreparing}
         className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[#54656f] transition-colors hover:bg-black/5 hover:text-[#111b21] disabled:opacity-50 dark:text-[#aebac1] dark:hover:bg-white/10 dark:hover:text-[#e9edef] sm:h-10 sm:w-10"
         title={isPlaying ? "Pausar prévia" : "Ouvir gravação"}
-        aria-label={isPlaying ? "Pausar prévia" : "Ouvir gravação"}
+        aria-label={isPreparing ? "Preparando áudio" : isPlaying ? "Pausar prévia" : "Ouvir gravação"}
       >
-        {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
+        {isPreparing ? <Loader2 className="h-5 w-5 animate-spin" /> : isPlaying ? <Pause className="h-5 w-5" /> : <Play className="ml-0.5 h-5 w-5" />}
       </button>
       <div className="min-w-0 flex-1 px-0.5">
         <input
@@ -124,10 +143,13 @@ export function RecordedAudioPreview({
       >
         {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="ml-0.5 h-4 w-4" />}
       </button>
+      {playbackError && (
+        <p role="status" className="basis-full px-2 pb-2 text-xs leading-relaxed text-muted-foreground">{playbackError}</p>
+      )}
       <audio
         ref={audioRef}
         preload="metadata"
-        src={previewUrl}
+        src={audioSource}
         onLoadedMetadata={(event) => {
           const nextDuration = event.currentTarget.duration;
           if (Number.isFinite(nextDuration) && nextDuration > 0) setDuration(nextDuration);
@@ -138,14 +160,20 @@ export function RecordedAudioPreview({
           if (Number.isFinite(nextDuration) && nextDuration > 0) setDuration(nextDuration);
         }}
         onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-        onPlay={() => setIsPlaying(true)}
+        onPlay={() => {
+          setPlaybackError(null);
+          setIsPlaying(true);
+        }}
         onPause={() => setIsPlaying(false)}
         onEnded={(event) => {
           event.currentTarget.currentTime = 0;
           setCurrentTime(0);
           setIsPlaying(false);
         }}
-        onError={() => setIsPlaying(false)}
+        onError={() => {
+          setIsPlaying(false);
+          setPlaybackError(audioPlaybackErrorMessage());
+        }}
         className="hidden"
       />
     </div>
