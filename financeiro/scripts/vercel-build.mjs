@@ -50,6 +50,12 @@ if (process.env.VERCEL_ENV === "production") {
     ...process.env,
     DATABASE_URL: migrationUrl,
   });
+  if (process.env.LEGACY_MODULE_CLEANUP_ON_DEPLOY === "confirmed-after-cutover") {
+    run(process.execPath, ["--experimental-strip-types", "scripts/retire-legacy-modules.mjs"], {
+      ...process.env,
+      DATABASE_URL: migrationUrl,
+    });
+  }
 }
 
 run("npm", ["run", "build"]);
