@@ -1,4 +1,4 @@
-import { prisma } from "../src/lib/db";
+import { prisma } from "#lib/db";
 
 // Administrative activation, deliberately not run by the normal Vercel build.
 // Never use --apply until the additive migration and API tests have passed.

@@ -58,6 +58,12 @@ if (process.env.VERCEL_ENV === "production") {
     ...process.env,
     DATABASE_URL: migrationUrl,
   });
+  if (process.env.AI_INBOX_PREPARE_ON_DEPLOY === "true") {
+    run(process.execPath, ["--experimental-strip-types", "scripts/prepare-ai-inbox-scs.mjs"], {
+      ...process.env,
+      DATABASE_URL: migrationUrl,
+    });
+  }
 }
 
 run("npm", ["run", "build"]);

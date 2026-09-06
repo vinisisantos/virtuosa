@@ -30,6 +30,12 @@ Depois de verificar schema, script, credencial e rollout, habilitar no ambiente 
 
 Ambos exigem publicação da configuração correta. `enabled` do AppSetting é um terceiro gate; pausar a configuração mantém envio manual intacto. Instâncias de Osasco/SBC/Todas não participam implicitamente.
 
+### Preparação administrativa pelo deploy da Vercel
+
+Alternativa autorizada em 05/09/2026: no ambiente de produção já configurado da Vercel, cadastrar os IDs acima e `AI_INBOX_PREPARE_ON_DEPLOY=true`. Esta opção executa o preparador antes do build, usando a conexão de migração já existente, sem baixar segredos. O preparador verifica privilégios administrativos, schema de vector, alvos e credenciais presentes; executa a migração em transação e configura somente o job próprio. Falta de privilégios interrompe o deploy, sem conceder permissões adicionais ou contornar o acesso somente leitura local. O runtime usa o mesmo papel da conexão de migração.
+
+Depois da preparação bem-sucedida, remover/desativar `AI_INBOX_PREPARE_ON_DEPLOY`; builds comuns não alteram schema/configuração/job da IA. A opção não valida a qualidade de respostas nem a validade real da chave. Habilitar os dois flags de runtime/interface somente após conferir preparação e rotas. Revisores aprovados por Vinicius: Alisson, Vinicius Santos e Claudenice. Nenhum revisor técnico foi designado; manter lista clínica vazia.
+
 ## Homologação controlada antes do atendimento real
 
 1. Validar credencial/modelo com uma pergunta operacional sem dados pessoais e orçamento reservado. Presença de variável em Vercel não prova chave válida ou acesso ao modelo. Os testes locais usam provider fictício.
