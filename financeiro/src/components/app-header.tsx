@@ -7,7 +7,7 @@ import { NotificationBell } from '@/components/notification-bell';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { applyColorMode, savedColorMode } from '@/lib/color-mode';
 
-type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'insumos' | 'financeiro' | 'perfil' | 'usuarios' | 'chat' | 'termos' | 'clientes' | 'ouvidoria' | 'crm-estatistica' | 'crm-campanhas' | 'crm-inbox' | 'config-whatsapp' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios' | 'calculadora' | 'atendimentos';
+type ActivePage = 'dashboard' | 'agenda' | 'cancelamentos' | 'pedidos' | 'financeiro' | 'perfil' | 'usuarios' | 'termos' | 'clientes' | 'ouvidoria' | 'crm-estatistica' | 'crm-campanhas' | 'crm-inbox' | 'config-whatsapp' | 'estoque' | 'pagamentos' | 'catalogo' | 'pacotes' | 'pacotes-vendas' | 'pacotes-orcamento' | 'pacotes-procedimentos' | 'pacotes-pacientes' | 'contratos' | 'relatorios' | 'calculadora' | 'atendimentos';
 
 interface AppHeaderProps {
     activePage?: ActivePage;
@@ -165,11 +165,9 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             agenda: 'Agenda',
             cancelamentos: 'Cancelamentos',
             pedidos: 'Pedidos',
-            insumos: 'Insumos',
             financeiro: 'Financeiro',
             perfil: 'Perfil',
             usuarios: 'Usuários',
-            chat: 'Chat IA',
             termos: 'Modelo de Contrato',
             contratos: 'Contratos',
             clientes: 'CRM — Pipeline',

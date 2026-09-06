@@ -1,28 +1,4 @@
-/**
- * Payroll Extraction Engine
- * 
- * Intelligent parser that extracts employee names and net salaries
- * from payroll PDF text content.
- * 
- * HOW TO IMPROVE ACCURACY:
- * 1. Add more patterns for different payroll formats
- * 2. Use NLP for name detection (e.g., compromise.js)
- * 3. Integrate AI model (OpenAI/Gemini) for complex layouts
- * 4. Train on specific payroll templates from each provider
- * 
- * HOW TO ADAPT FOR DIFFERENT PAYROLL FORMATS:
- * - Each accounting provider formats payrolls differently
- * - Add new regex patterns to NET_SALARY_LABELS
- * - Adjust the block splitting logic for new formats
- * - The confidence scoring will help identify parsing issues
- * 
- * HOW TO EXPAND AI CAPABILITIES:
- * - Replace extractEmployees() with an AI call:
- *   const result = await openai.chat.completions.create({
- *     model: "gpt-4",
- *     messages: [{ role: "user", content: `Extract employees and salaries: ${text}` }]
- *   });
- */
+/** Extrai nomes e salários do texto do PDF usando os padrões da folha. */
 
 import { ExtractedEmployee } from './types';
 

@@ -37,7 +37,6 @@ async function exportData() {
     ['procedimentos', () => db.procedimento.findMany()],
     ['financeiros', () => db.financeiro.findMany()],
     ['checkins', () => db.checkin.findMany()],
-    ['insumoUploads', () => db.insumoUpload.findMany()],
     ['reembolsoTickets', () => db.reembolsoTicket.findMany()],
     ['reembolsoItems', () => db.reembolsoItem.findMany()],
     ['reembolsoAttachments', () => db.reembolsoAttachment.findMany()],
@@ -148,7 +147,6 @@ async function importData() {
   await insert('Procedimento', dump.procedimentos, (r) => db.procedimento.create({ data: r }));
   await insert('Financeiro', dump.financeiros, (r) => db.financeiro.create({ data: r }));
   await insert('Checkin', dump.checkins, (r) => db.checkin.create({ data: r }));
-  await insert('InsumoUpload', dump.insumoUploads, (r) => db.insumoUpload.create({ data: r }));
   await insert('ReembolsoTicket', dump.reembolsoTickets, (r) => db.reembolsoTicket.create({ data: r }));
   await insert('ReembolsoItem', dump.reembolsoItems, (r) => db.reembolsoItem.create({ data: r }));
   await insert('ReembolsoAttachment', dump.reembolsoAttachments, (r) => db.reembolsoAttachment.create({ data: r }));

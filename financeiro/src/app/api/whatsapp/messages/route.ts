@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { enqueueObservation } from "@/lib/ai-inbox/observer";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
@@ -688,7 +687,6 @@ export async function PATCH(req: Request) {
       });
     }
 
-    await enqueueObservation(updated, message.conversation.instance);
     return NextResponse.json({ success: true, message: updated });
   } catch (error: any) {
     console.error("[WhatsApp Messages PATCH Error]:", error);

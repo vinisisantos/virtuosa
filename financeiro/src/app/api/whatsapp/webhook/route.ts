@@ -1,4 +1,4 @@
-import { after, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { resolveDefaultPipelineForUnit } from "@/lib/pipeline/default-pipeline";
@@ -26,13 +26,6 @@ import {
   normalizeCampaignNameForWrite,
   VIA_LINK_CAMPAIGN_LABEL,
 } from "@/lib/campaign-labels";
-import { analyzeConversationSilently } from "@/lib/crm-silent-analysis";
-import { enqueueAiShadowEvaluation } from "@/lib/ai-shadow";
-import { processAiWhatsAppCanaryIncoming } from "@/lib/ai-whatsapp-canary";
-import {
-  matchesAiWhatsAppCanaryTarget,
-  readAiWhatsAppCanaryConfig,
-} from "@/lib/ai-whatsapp-canary-policy";
 import { ensureCallRejectApplied } from "@/lib/whatsapp-call-block-sync";
 import {
   extractWahaMessageId,
@@ -2190,7 +2183,6 @@ async function processMessage(
   });
   let persistedMessageDbId = existingMsg?.id || null;
   let persistedMessageType = existingMsg?.type || null;
-  let persistedMessageMediaUrl = existingMsg?.mediaUrl || null;
   let isNewMessagePersisted = false;
 
   if (!existingMsg) {
@@ -2295,7 +2287,6 @@ async function processMessage(
       });
       persistedMessageDbId = savedMessage.id;
       persistedMessageType = savedMessage.type;
-      persistedMessageMediaUrl = savedMessage.mediaUrl;
       isNewMessagePersisted = true;
     } catch (error) {
       if (!isPrismaUniqueConstraintError(error)) throw error;
@@ -2328,7 +2319,6 @@ async function processMessage(
 
       persistedMessageDbId = currentMessage.id;
       persistedMessageType = currentMessage.type;
-      persistedMessageMediaUrl = currentMessage.mediaUrl;
     }
   } else {
     // Atualiza status de mensagem existente
@@ -2356,7 +2346,6 @@ async function processMessage(
         data: dataToUpdate,
       });
       persistedMessageType = updatedMessage.type;
-      persistedMessageMediaUrl = updatedMessage.mediaUrl;
 
       if (existingMsg.fromMe && dataToUpdate.status) {
         await prisma.webhookLog.create({
@@ -2424,68 +2413,6 @@ async function processMessage(
     });
   }
 
-  if (isNewMessagePersisted && isSendablePhone) {
-    analyzeConversationSilently(conversation.id).catch((e) => {
-      console.error("[Webhook] Erro na análise silenciosa:", e);
-    });
-
-    if (!persistedMessageDbId) return;
-
-    const canaryConfig = readAiWhatsAppCanaryConfig();
-    if (
-      !isFromMe
-      && persistedMessageType === "text"
-      && messageBody.trim()
-      && matchesAiWhatsAppCanaryTarget(canaryConfig, {
-        instanceId: dbInstance.id,
-        contactPhone,
-        lastKnownJid: conversation.lastKnownJid,
-      })
-    ) {
-      const canaryMessageId = persistedMessageDbId;
-      after(async () => {
-        await processAiWhatsAppCanaryIncoming({
-          conversationId: conversation.id,
-          incomingMessageId: canaryMessageId,
-        }).catch((error) => {
-          console.error("[Webhook] Erro no canário privado da IA:", error);
-        });
-      });
-    }
-
-    if ((persistedMessageType === "audio" || persistedMessageType === "ptt") && persistedMessageMediaUrl) {
-      prisma.whatsAppMessageTranscript.upsert({
-        where: { whatsAppMessageId: persistedMessageDbId },
-        update: { status: "pending", error: null, provider: "gemini", model: "gemini-2.5-flash" },
-        create: {
-          whatsAppMessageId: persistedMessageDbId,
-          status: "pending",
-          provider: "gemini",
-          model: "gemini-2.5-flash",
-        },
-      }).catch((e) => {
-        console.error("[Webhook] Erro ao marcar áudio para transcrição:", e);
-      });
-    }
-
-    enqueueAiShadowEvaluation({
-      conversationId: conversation.id,
-      incomingMessageId: persistedMessageDbId,
-      instanceId: dbInstance.id,
-      instanceUnit: dbInstance.unit,
-      capturesLeads: dbInstance.capturesLeads,
-      assignedTo: conversation.assignedTo,
-      contactId: contact.id,
-      contactPhone,
-      contactName: contact.name,
-      messageBody,
-      messageType: msgType,
-      isFromMe,
-      isSendablePhone,
-    }).catch((e) => {
-      console.error("[Webhook] Erro ao enfileirar sombra IA:", e);
-    });
-  }
 }
 
 function isMessageStatusUpdateEvent(payload: any) {

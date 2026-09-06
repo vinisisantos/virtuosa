@@ -267,16 +267,9 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
             }
         } catch {}
 
-        // STEP 3: AI + Server scrape + Edge scrape — ALL IN PARALLEL
+        // STEP 3: Server scrape + Edge scrape — in parallel
         if (!foundPrice) {
             const results = await Promise.allSettled([
-                // AI extraction via Gemini (uses Google Search grounding — most reliable for ML)
-                fetch('/api/orders/ai-price', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ url, productName: foundName }),
-                    signal: AbortSignal.timeout(20000),
-                }).then(r => r.ok ? r.json() : null),
                 // Server-side HTML scrape
                 fetch('/api/orders/scrape', {
                     method: 'POST',
@@ -298,7 +291,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                     const data = result.value;
                     if (data.price) foundPrice = data.price;
                     if (data.productName && data.productName.length > 5 && data.productName !== 'Produto não identificado') {
-                        if (!foundName || data.source === 'gemini-ai') foundName = data.productName;
+                        if (!foundName) foundName = data.productName;
                     }
                 }
             }

@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { enqueueObservation } from "@/lib/ai-inbox/observer";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 import {
   extractWahaMessageId,
@@ -839,7 +838,6 @@ export async function POST(req: Request) {
       };
     });
 
-    await enqueueObservation(message, dbInstance);
     const [responseMessage] = await signPrivateMediaUrls([message]);
     return NextResponse.json({ success: true, message: responseMessage, callbackTracking });
 

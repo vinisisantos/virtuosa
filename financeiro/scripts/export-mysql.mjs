@@ -38,7 +38,6 @@ await pull('profissionais', () => db.profissional.findMany());
 await pull('procedimentos', () => db.procedimento.findMany());
 await pull('financeiros', () => db.financeiro.findMany());
 await pull('checkins', () => db.checkin.findMany());
-await pull('insumoUploads', () => db.insumoUpload.findMany());
 await pull('reembolsoTickets', () => db.reembolsoTicket.findMany());
 await pull('reembolsoItems', () => db.reembolsoItem.findMany());
 await pull('reembolsoAttachments', () => db.reembolsoAttachment.findMany());

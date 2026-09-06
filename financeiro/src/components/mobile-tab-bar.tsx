@@ -143,7 +143,6 @@ export function MobileTabBar() {
         && !pathname.startsWith('/avaliar')
         && !pathname.startsWith('/avaliacao')
         && !pathname.startsWith('/assinar')
-        && !pathname.startsWith('/testar-ia')
         && !pathname.startsWith('/crm');
 
     useEffect(() => {

@@ -1,10 +1,6 @@
 'use client';
-import React, { useState } from 'react';
+import React from 'react';
 import { LogEntry, fmt, cardS } from '@/hooks/useDashboard';
-import DOMPurify from 'dompurify';
-
-const MONTHS = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-const MONTHS_FULL = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
 interface Props {
   logs: LogEntry[];
@@ -16,24 +12,7 @@ interface Props {
   margin: number;
 }
 
-export function CashflowForecast({ logs, selectedMonth, selectedYear, monthlyEvolution, totalRev, totalCost, margin }: Props) {
-  const [forecast, setForecast] = useState<{ prediction: string; confidence: string; analysis: string } | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const loadForecast = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/forecast', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ monthlyEvolution, currentMonth: MONTHS[selectedMonth], currentYear: selectedYear, totalRev, totalCost, margin }),
-      });
-      const data = await res.json();
-      if (data.success) setForecast(data.forecast);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
-  };
-
+export function CashflowForecast({ monthlyEvolution, totalRev, totalCost, margin }: Props) {
   // Build simple bar chart data from monthly evolution
   const chartData = monthlyEvolution.slice(-6);
   const maxVal = Math.max(...chartData.map(m => Math.max(m.rev, m.cost)), 1);
@@ -95,61 +74,6 @@ export function CashflowForecast({ logs, selectedMonth, selectedYear, monthlyEvo
         ))}
       </div>
 
-      {/* AI Forecast Section */}
-      <div style={{ ...cardS, border: '1px solid rgba(99,102,241,0.15)', background: 'rgba(99,102,241,0.02)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 22, color: '#6366f1' }}>auto_awesome</span>
-            <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: 'var(--text-main)' }}>Previsão de Faturamento (IA)</h3>
-          </div>
-          {!forecast && (
-            <button onClick={loadForecast} disabled={loading} style={{
-              padding: '10px 20px', borderRadius: 12, border: 'none',
-              background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: '#fff',
-              fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
-              opacity: loading ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{loading ? 'progress_activity' : 'auto_awesome'}</span>
-              {loading ? 'Analisando...' : 'Gerar Previsão'}
-            </button>
-          )}
-        </div>
-
-        {!forecast && !loading && (
-          <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-muted)' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 40, opacity: 0.3 }}>query_stats</span>
-            <p style={{ fontSize: '0.85rem', marginTop: 8 }}>Clique em "Gerar Previsão" para a IA analisar seus dados e projetar o próximo mês</p>
-          </div>
-        )}
-
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '30px 0' }}>
-            <div style={{ width: 40, height: 40, border: '3px solid var(--border)', borderTop: '3px solid #6366f1', borderRadius: '50%', margin: '0 auto', animation: 'spin 1s linear infinite' }} />
-            <p style={{ color: 'var(--text-muted)', marginTop: 12, fontSize: '0.85rem' }}>Analisando tendências com IA...</p>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-          </div>
-        )}
-
-        {forecast && (
-          <div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-              <div style={{ padding: 16, borderRadius: 14, background: 'rgba(99,102,241,0.06)' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, marginBottom: 4 }}>Previsão Próximo Mês</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#6366f1' }}>{forecast.prediction}</div>
-              </div>
-              <div style={{ padding: 16, borderRadius: 14, background: 'rgba(16,185,129,0.06)' }}>
-                <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, marginBottom: 4 }}>Nível de Confiança</div>
-                <div style={{ fontSize: '1.5rem', fontWeight: 900, color: '#10b981' }}>{forecast.confidence}</div>
-              </div>
-            </div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-main)', lineHeight: 1.7, padding: '12px 16px', borderRadius: 12, background: 'var(--bg)' }}
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(forecast.analysis.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>')) }} />
-            <button onClick={() => setForecast(null)} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-muted)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.78rem' }}>
-              Gerar Nova Previsão
-            </button>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

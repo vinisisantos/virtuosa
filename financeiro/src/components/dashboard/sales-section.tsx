@@ -1,6 +1,5 @@
 'use client';
 import { useState, useRef, useEffect, useCallback } from 'react';
-import DOMPurify from 'dompurify';
 import { LogEntry, fmt, UNITS, cardS, inputS, labelS, btnPrimary, STORAGE_KEY_LOGS, formatCurrency } from '@/hooks/useDashboard';
 import * as XLSX from 'xlsx';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -313,138 +312,6 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     }
   };
 
-  interface ChatMsg { role: 'user'|'assistant'; text: string; fileName?: string; importData?: ExtractedItem[]; }
-  const [showChat, setShowChat] = useState(false);
-  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([
-    { role: 'assistant', text: '📊 Envie o relatório de **Vendas Detalhadas** (PDF, imagem ou **Excel**) e eu extraio e importo direto! Ou faça qualquer pergunta.' },
-  ]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatFile, setChatFile] = useState<File|null>(null);
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatModel, setChatModel] = useState<'flash'|'pro'>('flash');
-  const chatFileRef = useRef<HTMLInputElement>(null);
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMsgs]);
-
-  const importFromChat = async (items: ExtractedItem[]) => {
-    if (items.length === 0) return;
-    const savedLogs = await idbLoadLogs(STORAGE_KEY_LOGS);
-    const existingLogs: LogEntry[] = savedLogs ? JSON.parse(savedLogs) : [];
-    const newEntries: LogEntry[] = items.map(item => ({
-      type: 'sale' as const, name: item.clientName || 'Venda', value: item.totalLiquido, unit: item.unit,
-      payment: item.installments > 1 ? `${item.paymentType} ${item.installments}x` : item.paymentType || 'À vista',
-      obs: [item.procedures.map(p => `${p.qty}x ${p.name}`).join(', '), item.phone && `📱${item.phone}`, item.discountPercent > 0 && `Desc: ${item.discountPercent}%`, item.seller && `👤${item.seller}`].filter(Boolean).join(' | '),
-      date: item.date ? new Date(item.date + 'T12:00:00Z').toISOString() : new Date().toISOString(),
-      id: `chat-import-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      seller: item.seller || '',
-    }));
-    const updated = [...existingLogs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')), ...newEntries];
-    await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(updated));
-    // Only create Package records if registerPatients is ON
-    if (registerPatients) {
-      items.forEach(item => {
-        fetch('/api/packages', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            clientName: item.clientName || 'Venda',
-            services: JSON.stringify(item.procedures.map(p => ({ name: p.name, quantity: p.qty, unitPrice: String(p.unitPrice), discount: '0' }))),
-            totalValue: item.totalLiquido,
-            paidValue: 0,
-            paymentMethod: item.paymentType || 'pix',
-            installments: item.installments || 1,
-            totalSessions: item.procedures.reduce((s, p) => s + p.qty, 0) || 1,
-            completedSessions: 0,
-            status: 'ativo',
-            unit: item.unit || 'SCS',
-          }),
-        }).catch(() => {});
-      });
-    }
-    const total = items.reduce((s, i) => s + i.totalLiquido, 0);
-    const modeLabel = registerPatients ? '' : '\n\n📊 _Modo somente análise — pacientes não foram cadastrados._';
-    setChatMsgs(prev => [...prev, { role: 'assistant', text: `✅ **${items.length} vendas importadas** com sucesso!\n\nTotal: **${fmt(total)}**${modeLabel}\n\nA página será recarregada para mostrar os novos dados.` }]);
-    setTimeout(() => window.location.reload(), 1500);
-  };
-
-  const sendChat = async () => {
-    if (!chatInput.trim() && !chatFile) return;
-    if (chatLoading) return;
-    const userMsg: ChatMsg = { role: 'user', text: chatInput.trim() || `📎 ${chatFile?.name}`, fileName: chatFile?.name };
-    setChatMsgs(prev => [...prev, userMsg]);
-    const inputText = chatInput.trim();
-    setChatInput('');
-    setChatLoading(true);
-    const currentFile = chatFile;
-    setChatFile(null);
-
-    // If file attached: try sales extraction first
-    // Excel file in chat
-    if (currentFile && /\.(xlsx|xls)$/i.test(currentFile.name)) {
-      setChatMsgs(prev => [...prev, { role: 'assistant', text: '📊 Processando planilha Excel...' }]);
-      const result = await parseExcelFile(currentFile);
-      if (result.items.length > 0) {
-        const total = result.items.reduce((s, i) => s + i.totalLiquido, 0);
-        const summary = `📋 Encontrei **${result.items.length} vendas** no Excel!\n\n` +
-          `💰 Total: **${fmt(total)}**\n` +
-          `📍 Unidade: **${uploadUnit}**\n\n` +
-          result.items.slice(0, 5).map((i, idx) =>
-            `${idx + 1}. **${i.clientName}** — ${fmt(i.totalLiquido)} (${i.procedures.map(p => p.name).join(', ')})`
-          ).join('\n') +
-          (result.items.length > 5 ? `\n... e mais ${result.items.length - 5} vendas` : '') +
-          `\n\n👇 Clique no botão abaixo para importar:`;
-        setChatMsgs(prev => [...prev.slice(0, -1), { role: 'assistant', text: summary, importData: result.items }]);
-      } else {
-        setChatMsgs(prev => [...prev.slice(0, -1), { role: 'assistant', text: `❌ ${result.error || 'Nenhum dado encontrado no Excel.'}` }]);
-      }
-      setChatLoading(false);
-      return;
-    }
-    if (currentFile && /\.(pdf|png|jpg|jpeg|webp)$/i.test(currentFile.name)) {
-      const fd = new FormData();
-      fd.append('file', currentFile);
-      fd.append('unit', uploadUnit);
-      try {
-        const res = await fetch('/api/sales/extract', { method: 'POST', body: fd });
-        const data = await res.json();
-        if (data.success && data.items && data.items.length > 0) {
-          const total = data.items.reduce((s: number, i: ExtractedItem) => s + i.totalLiquido, 0);
-          const summary = `📋 Encontrei **${data.items.length} vendas** no relatório!\n\n` +
-            `💰 Total: **${fmt(total)}**\n` +
-            `📍 Unidade: **${uploadUnit}**\n\n` +
-            data.items.slice(0, 5).map((i: ExtractedItem, idx: number) =>
-              `${idx + 1}. **${i.clientName}** — ${fmt(i.totalLiquido)} (${i.procedures.map(p => p.name).join(', ')})`
-            ).join('\n') +
-            (data.items.length > 5 ? `\n... e mais ${data.items.length - 5} vendas` : '') +
-            `\n\n👇 Clique no botão abaixo para importar:`;
-          setChatMsgs(prev => [...prev, { role: 'assistant', text: summary, importData: data.items }]);
-          setChatLoading(false);
-          return;
-        }
-      } catch { /* fallthrough to normal chat */ }
-    }
-
-    // Normal chat flow
-    const fd = new FormData();
-    fd.append('message', inputText || 'Analise este relatório de vendas detalhadas.');
-    fd.append('model', chatModel);
-    if (currentFile) fd.append('file', currentFile);
-    const history = chatMsgs.slice(-8).map(m => ({ role: m.role === 'user' ? 'user' : 'model', text: m.text }));
-    fd.append('history', JSON.stringify(history));
-    try {
-      const res = await fetch('/api/chat', { method: 'POST', body: fd });
-      const data = await res.json();
-      setChatMsgs(prev => [...prev, { role: 'assistant', text: data.success ? data.response : `❌ ${data.error || 'Erro'}` }]);
-    } catch { setChatMsgs(prev => [...prev, { role: 'assistant', text: '❌ Erro de conexão.' }]); }
-    finally { setChatLoading(false); }
-  };
-
-  const formatChat = (text: string) => text
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/`(.*?)`/g, '<code style="background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:0.85em">$1</code>')
-    .replace(/\n/g, '<br/>');
-
   const startEdit = (item: LogEntry, idx: number) => {
     setEditingIdx(idx);
     setEditName(item.name);
@@ -459,86 +326,10 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
     setEditingIdx(null);
   };
 
-  // Convert a single PDF page to a PNG blob
-  const pdfPageToImage = async (pdfData: ArrayBuffer, pageNum: number): Promise<File> => {
-    const pdfjsLib = await import('pdfjs-dist');
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-    
-    const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
-    const page = await pdf.getPage(pageNum);
-    const scale = 2; // 2x resolution for better OCR
-    const viewport = page.getViewport({ scale });
-    
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d')!;
-    await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
-    
-    const blob = await new Promise<Blob>((resolve) => canvas.toBlob(b => resolve(b!), 'image/png'));
-    return new File([blob], `page-${pageNum}.png`, { type: 'image/png' });
-  };
-
-  /* ─── Core single‑file processor ─── */
-  const processSingleFile = async (file: File, queueId: string): Promise<{items: any[]; error?: string}> => {
-    const isExcel = /\.(xlsx|xls)$/i.test(file.name);
-    const isPdf = file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
-    let newItems: any[] = [];
-
-    const updateQueueProgress = (progress: string) => {
-      setFileQueue(prev => prev.map(q => q.id === queueId ? { ...q, progress } : q));
-    };
-
-    try {
-      if (isExcel) {
-        updateQueueProgress('Lendo Excel...');
-        const result = await parseExcelFile(file);
-        if (result.error) return { items: [], error: result.error };
-        newItems = result.items;
-      } else if (isPdf) {
-        updateQueueProgress('Convertendo PDF...');
-        const pdfData = await file.arrayBuffer();
-        const pdfjsLib = await import('pdfjs-dist');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-        const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
-        const totalPages = pdf.numPages;
-
-        for (let p = 1; p <= totalPages; p++) {
-          updateQueueProgress(`Página ${p}/${totalPages}`);
-          const pageImage = await pdfPageToImage(pdfData, p);
-          const formData = new FormData();
-          formData.append('file', pageImage);
-          formData.append('unit', uploadUnit);
-          const res = await fetch('/api/sales/extract', { method: 'POST', body: formData });
-          const contentType = res.headers.get('content-type') || '';
-          if (!contentType.includes('application/json')) continue;
-          const data = await res.json();
-          if (data.success && data.items) newItems = [...newItems, ...data.items];
-        }
-      } else {
-        updateQueueProgress('Enviando...');
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('unit', uploadUnit);
-        const res = await fetch('/api/sales/extract', { method: 'POST', body: formData });
-        const contentType = res.headers.get('content-type') || '';
-        if (!contentType.includes('application/json')) {
-          const text = await res.text();
-          return { items: [], error: `Servidor retornou ${res.status}: ${text.substring(0, 100)}` };
-        }
-        const data = await res.json();
-        if (!res.ok || !data.success) return { items: [], error: data.error || 'Erro ao processar.' };
-        newItems = data.items || [];
-      }
-
-      if (newItems.length === 0) return { items: [], error: 'Nenhum dado encontrado.' };
-      return { items: newItems };
-    } catch (err: any) {
-      const msg = err?.message || String(err);
-      if (msg.includes('abort') || msg.includes('timeout')) return { items: [], error: 'Timeout: servidor demorou muito.' };
-      if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) return { items: [], error: 'Erro de rede.' };
-      return { items: [], error: msg.substring(0, 200) };
-    }
+  const processSingleFile = async (file: File, queueId: string): Promise<{items: ExtractedItem[]; error?: string}> => {
+    if (!/\.(xlsx|xls)$/i.test(file.name)) return { items: [], error: 'Selecione uma planilha Excel (.xlsx ou .xls).' };
+    setFileQueue(prev => prev.map(q => q.id === queueId ? { ...q, progress: 'Lendo Excel...' } : q));
+    return parseExcelFile(file);
   };
 
   /* ─── Queue processor: runs files one by one ─── */
@@ -593,7 +384,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
   };
 
   const enqueueFiles = (files: File[]) => {
-    const validFiles = Array.from(files).filter(f => /\.(pdf|png|jpg|jpeg|xlsx|xls)$/i.test(f.name)).slice(0, 30);
+    const validFiles = Array.from(files).filter(f => /\.(xlsx|xls)$/i.test(f.name)).slice(0, 30);
     if (validFiles.length === 0) return;
 
     const existing = queueRef.current.filter(q => q.status === 'pending' || q.status === 'processing');
@@ -877,15 +668,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
             </div>
           </div>
           <div style={{display:'flex',gap:5,alignItems:'center',flexShrink:0,flexWrap:'wrap',justifyContent:'flex-end'}}>
-            <button onClick={e => { e.stopPropagation(); setShowChat(!showChat); setShowUpload(false); }} style={{
-              display:'flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:9,
-              border:'1px solid var(--border)',background:showChat?'linear-gradient(135deg,var(--primary),#ff4db1)':'var(--card-bg)',
-              color:showChat?'#fff':'var(--text-main)',fontFamily:'inherit',fontWeight:700,fontSize:'0.75rem',cursor:'pointer',whiteSpace:'nowrap',
-            }}>
-              <span className="material-symbols-outlined" style={{fontSize:15}}>smart_toy</span>
-              {showChat ? 'Fechar' : 'Chat IA'}
-            </button>
-            <button onClick={e => { e.stopPropagation(); setShowUpload(!showUpload); setShowChat(false); }} style={{
+            <button onClick={e => { e.stopPropagation(); setShowUpload(!showUpload); }} style={{
               display:'flex',alignItems:'center',gap:5,padding:'6px 10px',borderRadius:9,
               border:'1px solid var(--border)',background:showUpload?'var(--primary)':'var(--card-bg)',
               color:showUpload?'#fff':'var(--text-main)',fontFamily:'inherit',fontWeight:700,fontSize:'0.75rem',cursor:'pointer',whiteSpace:'nowrap',
@@ -931,73 +714,6 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
           </button>
         </div>
       </div>
-
-      {/* Chat IA panel */}
-      {showChat && (
-        <div style={{ ...cardS, marginTop: 16, border: '1px solid rgba(230,0,126,0.15)', overflow: 'hidden', padding: 0 }}>
-          <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border)', background: 'rgba(230,0,126,0.02)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>smart_toy</span>
-              <span style={{ fontWeight: 800, fontSize: '0.95rem' }}>Chat IA — Importar Vendas</span>
-            </div>
-            <div style={{ display: 'flex', gap: 2 }}>
-              <button onClick={() => setChatModel('flash')} style={{ padding: '4px 10px', borderRadius: '6px 0 0 6px', border: '1px solid var(--border)', background: chatModel === 'flash' ? 'var(--primary)' : 'transparent', color: chatModel === 'flash' ? '#fff' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit' }}>⚡ Flash</button>
-              <button onClick={() => setChatModel('pro')} style={{ padding: '4px 10px', borderRadius: '0 6px 6px 0', border: '1px solid var(--border)', borderLeft: 'none', background: chatModel === 'pro' ? '#6366f1' : 'transparent', color: chatModel === 'pro' ? '#fff' : 'var(--text-muted)', fontWeight: 700, fontSize: '0.7rem', cursor: 'pointer', fontFamily: 'inherit' }}>🧠 Pro</button>
-            </div>
-          </div>
-          {/* Messages */}
-          <div style={{ height: 350, overflowY: 'auto', padding: '14px 14px 6px' }}>
-            {chatMsgs.map((msg, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}>
-                {msg.role === 'assistant' && <div style={{ width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg, var(--primary), #ff4db1)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginRight: 6, flexShrink: 0 }}><span className="material-symbols-outlined" style={{ fontSize: 14, color: '#fff' }}>smart_toy</span></div>}
-                <div style={{ maxWidth: '80%', padding: '10px 14px', borderRadius: msg.role === 'user' ? '14px 14px 4px 14px' : '14px 14px 14px 4px', background: msg.role === 'user' ? 'linear-gradient(135deg, var(--primary), #ff4db1)' : 'rgba(0,0,0,0.03)', color: msg.role === 'user' ? '#fff' : 'var(--text-main)', fontSize: '0.82rem', lineHeight: 1.5 }}>
-                  <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(formatChat(msg.text)) }} />
-                  {msg.importData && msg.importData.length > 0 && (
-                    <button onClick={() => importFromChat(msg.importData!)} style={{
-                      marginTop: 10, width: '100%', padding: '10px 16px', borderRadius: 10, border: 'none',
-                      background: 'linear-gradient(135deg, #10b981, #059669)', color: '#fff',
-                      fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer', fontFamily: 'inherit',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      boxShadow: '0 4px 12px rgba(16,185,129,0.3)',
-                    }}>
-                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>download</span>
-                      🚀 Importar {msg.importData.length} vendas
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-            {chatLoading && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                <div style={{ width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg, var(--primary), #ff4db1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><span className="material-symbols-outlined" style={{ fontSize: 14, color: '#fff', animation: 'spin 1.5s linear infinite' }}>progress_activity</span></div>
-                <div style={{ padding: '8px 12px', borderRadius: '14px 14px 14px 4px', background: 'rgba(0,0,0,0.03)', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Analisando...</div>
-              </div>
-            )}
-            <div ref={chatEndRef} />
-          </div>
-          {/* File preview */}
-          {chatFile && (
-            <div style={{ padding: '6px 14px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(230,0,126,0.02)', fontSize: '0.78rem' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--primary)' }}>attach_file</span>
-              <span style={{ fontWeight: 600, flex: 1 }}>{chatFile.name}</span>
-              <button onClick={() => setChatFile(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 2 }}><span className="material-symbols-outlined" style={{ fontSize: 14, color: '#ef4444' }}>close</span></button>
-            </div>
-          )}
-          {/* Input */}
-          <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', display: 'flex', gap: 6, alignItems: 'center', background: 'var(--card-bg)' }}>
-            <button onClick={() => chatFileRef.current?.click()} style={{ background: 'none', border: '1px solid var(--border)', borderRadius: 8, padding: 6, cursor: 'pointer', display: 'flex' }}>
-              <span className="material-symbols-outlined" style={{ fontSize: 18, color: 'var(--primary)' }}>attach_file</span>
-            </button>
-            <input ref={chatFileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls" hidden onChange={e => { const f = e.target.files?.[0]; if (f) setChatFile(f); e.target.value = ''; }} />
-            <input value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); sendChat(); } }}
-              placeholder="Digite ou envie um arquivo..." style={{ flex: 1, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.82rem', fontFamily: 'inherit', outline: 'none', color: 'var(--text-main)' }} />
-            <button onClick={sendChat} disabled={chatLoading || (!chatInput.trim() && !chatFile)} style={{
-              background: chatLoading || (!chatInput.trim() && !chatFile) ? 'var(--border)' : 'linear-gradient(135deg, var(--primary), #ff4db1)',
-              border: 'none', borderRadius: 8, padding: 6, cursor: chatLoading ? 'not-allowed' : 'pointer', display: 'flex',
-            }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: '#fff' }}>send</span></button>
-          </div>
-        </div>
-      )}
 
       {/* Upload section */}
       {showUpload && (
@@ -1066,13 +782,13 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
             {uploading ? (
               <><span className="material-symbols-outlined" style={{ fontSize: 40, color: 'var(--primary)', animation: 'spin 1s linear infinite' }}>progress_activity</span>
               <p style={{ marginTop: 12, fontWeight: 700 }}>Processando fila ({fileQueue.filter(q=>q.status==='done').length}/{fileQueue.length})...</p>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Extraindo dados com IA — não feche a página</p></>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>Lendo planilhas — não feche a página</p></>
             ) : (
               <><span className="material-symbols-outlined" style={{ fontSize: 40, color: 'var(--primary)', opacity: 0.6 }}>cloud_upload</span>
               <p style={{ marginTop: 12, fontWeight: 700 }}>Arraste relatórios ou clique para selecionar</p>
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>PDF, PNG, JPG ou <strong style={{color:'#10b981'}}>Excel (.xlsx)</strong> — múltiplos arquivos (máx. 30)</p>
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}><strong style={{color:'#10b981'}}>Excel (.xlsx ou .xls)</strong> — múltiplos arquivos (máx. 30)</p>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 10, flexWrap: 'wrap' }}>
-                {[{ext: 'XLSX', icon: 'table_chart', color: '#10b981', label: 'Excel'}, {ext: 'PDF', icon: 'picture_as_pdf', color: '#ef4444', label: 'PDF'}, {ext: 'PNG', icon: 'image', color: '#6366f1', label: 'Imagem'}].map(t => (
+                {[{ext: 'XLSX', icon: 'table_chart', color: '#10b981', label: 'Excel'}].map(t => (
                   <div key={t.ext} style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 12px', borderRadius: 8, background: `${t.color}08`, border: `1px solid ${t.color}20`, fontSize: '0.72rem', fontWeight: 700, color: t.color }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{t.icon}</span> {t.label}
                   </div>
@@ -1080,7 +796,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
               </div></>
             )}
           </div>
-          <input ref={fileRef} type="file" accept=".pdf,.png,.jpg,.jpeg,.xlsx,.xls" multiple hidden onChange={e => { const files = e.target.files; if (files && files.length > 0) enqueueFiles(Array.from(files)); e.target.value = ''; }} />
+          <input ref={fileRef} type="file" accept=".xlsx,.xls" multiple hidden onChange={e => { const files = e.target.files; if (files && files.length > 0) enqueueFiles(Array.from(files)); e.target.value = ''; }} />
 
           {/* Queue progress panel */}
           {fileQueue.length > 0 && (
@@ -1184,7 +900,7 @@ export function SalesSection({ saleName, setSaleName, saleValue, setSaleValue, s
                 </div>
               )}
               <p style={{ fontSize: '0.85rem', color: 'var(--md-outline, #666)', marginTop: 8 }}>
-                💡 Arraste mais arquivos (PDF, imagem ou <strong>Excel</strong>) para acumular os dados antes de importar.
+                💡 Arraste mais planilhas <strong>Excel</strong> para acumular os dados antes de importar.
               </p>
             </div>
           )}

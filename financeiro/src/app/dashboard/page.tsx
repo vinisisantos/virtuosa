@@ -21,7 +21,6 @@ const CashflowForecast = dynamic(() => import('@/components/dashboard/cashflow-f
 const ProfessionalDashboard = dynamic(() => import('@/components/dashboard/professional-dashboard').then(m => ({ default: m.ProfessionalDashboard })));
 const BirthdayTracker = dynamic(() => import('@/components/dashboard/birthday-tracker').then(m => ({ default: m.BirthdayTracker })));
 const AuditTrail = dynamic(() => import('@/components/dashboard/audit-trail').then(m => ({ default: m.AuditTrail })));
-const BiDashboard = dynamic(() => import('@/components/dashboard/bi-dashboard').then(m => ({ default: m.BiDashboard })));
 const WaitlistPanel = dynamic(() => import('@/components/dashboard/waitlist-panel').then(m => ({ default: m.WaitlistPanel })));
 const LoyaltyProgram = dynamic(() => import('@/components/dashboard/loyalty-program').then(m => ({ default: m.LoyaltyProgram })));
 const NpsDashboard = dynamic(() => import('@/components/dashboard/nps-dashboard').then(m => ({ default: m.NpsDashboard })));
@@ -611,7 +610,7 @@ export default function DashboardPage() {
           {d.activeTab==='sales'&&<SalesSection saleName={d.saleName} setSaleName={d.setSaleName} saleValue={d.saleValue} setSaleValue={d.setSaleValue} saleDate={d.saleDate} setSaleDate={d.setSaleDate} salePayment={d.salePayment} setSalePayment={d.setSalePayment} saleUnit={d.saleUnit} setSaleUnit={d.setSaleUnit} saleObs={d.saleObs} setSaleObs={d.setSaleObs} saleSeller={d.saleSeller} setSaleSeller={d.setSaleSeller} addSale={d.addSale} items={d.filteredLogs} deleteLogByDate={d.deleteLogByDate} updateLog={d.updateLog} clearSalesByUnit={d.clearSalesByUnit} clearAllSales={d.clearAllSales} clearSalesByUnitAllMonths={d.clearSalesByUnitAllMonths} clearAllSalesAllMonths={d.clearAllSalesAllMonths} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} setSelectedMonth={d.setSelectedMonth} setSelectedYear={d.setSelectedYear} selectedUnit={d.selectedUnit} />}
 
           {d.activeTab==='goals'&&<GoalsSection selectedMonth={d.selectedMonth} goalInput={d.goalInput} setGoalInput={d.setGoalInput} goalUnits={d.goalUnits} setGoalUnits={d.setGoalUnits} handleSaveGoal={d.handleSaveGoal} />}
-          {d.activeTab==='analytics'&&<><AnalyticsSection logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} selectedUnit={d.selectedUnit} /><div style={{marginTop:24}}><BiDashboard logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} monthlyEvolution={d.monthlyEvolution} totalRev={d.totalRev} totalCost={d.totalCost} margin={d.margin} /></div></>}
+          {d.activeTab==='analytics'&&<><AnalyticsSection logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} selectedUnit={d.selectedUnit} /></>}
           {d.activeTab==='commissions'&&<CommissionsView logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}
           {d.activeTab==='units'&&<UnitComparisonView logs={d.logs} selectedMonth={d.selectedMonth} selectedYear={d.selectedYear} />}
           {d.activeTab==='activity'&&<ActivityLogViewer />}

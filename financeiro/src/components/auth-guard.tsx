@@ -12,7 +12,6 @@ interface AuthGuardProps {
 const PERMISSION_ROUTES: Record<string, string> = {
     cancelamento: '/cancelamentos',
     pedidos: '/pedidos',
-    insumos: '/insumos',
     dashboard: '/dashboard',
     financeiro: '/',
     finReembolso: '/?tab=reembolso',
@@ -21,7 +20,6 @@ const PERMISSION_ROUTES: Record<string, string> = {
     finCustos: '/?tab=custos',
     finAnalise: '/?tab=analise',
     crm: '/crm',
-    crmSilentAnalysis: '/crm/ai-insights',
     perfil: '/perfil',
 };
 

@@ -19,18 +19,10 @@ if (process.env.VERCEL_ENV === "production") {
   if (!process.env.DATABASE_URL) process.exit(1);
   const migrationUrl = migrationDatabaseUrl(process.env.DATABASE_URL);
   const requiredMigrations = [
-    "prisma/migrations/20260725143000_ai_public_test_links/migration.sql",
-    "prisma/migrations/20260727113000_ai_training_campaign_creatives/migration.sql",
-    "prisma/migrations/20260728123000_seed_approved_campaign_knowledge/migration.sql",
-    "prisma/migrations/20260728170000_ai_public_price_audit/migration.sql",
-    "prisma/migrations/20260728223000_ai_public_campaign_binding/migration.sql",
-    "prisma/migrations/20260728234500_ai_public_sdr_state/migration.sql",
-    "prisma/migrations/20260729123000_seed_ai_unit_addresses/migration.sql",
     "prisma/migrations/20260730143000_whatsapp_conversation_archiving/migration.sql",
     "prisma/migrations/20260730200000_crm_lead_count_adjustments/migration.sql",
     "prisma/migrations/20260730213000_whatsapp_saved_replies/migration.sql",
     "prisma/migrations/20260801153000_whatsapp_instance_members/migration.sql",
-    "prisma/migrations/20260806133000_ai_public_v6_links/migration.sql",
     "prisma/migrations/20260811120000_whatsapp_contact_blocking/migration.sql",
     "prisma/migrations/20260811154500_whatsapp_instance_notification_preferences/migration.sql",
     "prisma/migrations/20260812120000_whatsapp_scheduled_follow_ups/migration.sql",
@@ -58,12 +50,6 @@ if (process.env.VERCEL_ENV === "production") {
     ...process.env,
     DATABASE_URL: migrationUrl,
   });
-  if (process.env.AI_INBOX_PREPARE_ON_DEPLOY === "true") {
-    run(process.execPath, ["--experimental-strip-types", "scripts/prepare-ai-inbox-scs.mjs"], {
-      ...process.env,
-      DATABASE_URL: migrationUrl,
-    });
-  }
 }
 
 run("npm", ["run", "build"]);

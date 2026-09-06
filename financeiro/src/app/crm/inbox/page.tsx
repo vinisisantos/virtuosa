@@ -10,7 +10,6 @@ import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import { EvaluationAvailabilityDialog } from "@/components/whatsapp/evaluation-availability-dialog";
-import { AiInboxAssistant } from "@/components/whatsapp/ai-inbox-assistant";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
@@ -7864,18 +7863,6 @@ export default function InboxPage() {
             )}
 
 
-
-            {process.env.NEXT_PUBLIC_AI_INBOX_SCS_ENABLED === "true" && selectedConversationUnit === "SCS" && (canReplyToSelectedConversation || (process.env.NEXT_PUBLIC_AI_INBOX_REVIEWER_IDS || "").split(",").includes(currentUser?.id || "__none__")) && !selectedConv.blockedAt && !selectedConversationNeedsStart && (
-              <AiInboxAssistant
-                canSuggest={canReplyToSelectedConversation}
-                key={`${selectedConv.id}:${selectedConv.instanceId}:${currentUser?.id}`}
-                conversationId={selectedConv.id}
-                contextKey={JSON.stringify([selectedConv.id, selectedConv.lastMessageAt, selectedConv.activeFollowUp, selectedConv.contact.tags, messages.map((m) => [m.id, m.body, m.status])])}
-                buildUrl={(url, extra) => buildUrl(url, { ...extra, targetInstanceId: selectedConv.instanceId || "", unit: "SCS" })}
-                hasDraft={!!newMessage.trim()}
-                onInsert={(text) => setNewMessage((current) => current.trim() ? `${current}\n\n${text}` : text)}
-              />
-            )}
 
             {/* Input Bar */}
             {selectedConv.blockedAt ? (

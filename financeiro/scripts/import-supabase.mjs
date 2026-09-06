@@ -37,7 +37,6 @@ await ins('Package', dump.packages, (r) => db.package.create({ data: r }));
 await ins('Agendamento', dump.agendamentos, (r) => db.agendamento.create({ data: r }));
 await ins('Adiantamento', dump.adiantamentos, (r) => db.adiantamento.create({ data: r }));
 await ins('Profissional', dump.profissionais, (r) => db.profissional.create({ data: r }));
-await ins('InsumoUpload', dump.insumoUploads, (r) => db.insumoUpload.create({ data: r }));
 await ins('ReembolsoTicket', dump.reembolsoTickets, (r) => db.reembolsoTicket.create({ data: r }));
 await ins('ReembolsoItem', dump.reembolsoItems, (r) => db.reembolsoItem.create({ data: r }));
 await ins('ReembolsoAttachment', dump.reembolsoAttachments, (r) => db.reembolsoAttachment.create({ data: r }));

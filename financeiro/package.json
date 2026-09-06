@@ -11,7 +11,7 @@
     "vercel-build": "node scripts/vercel-build.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test:ai": "node --experimental-strip-types --test tests/ai-public-contracts.test.mjs tests/ai-training-diagram-v6.test.mjs tests/ai-training-diagram-v7.test.mjs tests/ai-training-barriga-learned.test.mjs tests/ai-whatsapp-canary.test.mjs tests/ai-whatsapp-canary-barriga.test.mjs",
+    "test": "node --experimental-strip-types --import ./tests/register-paths.mjs --test tests/*.test.mjs",
     "ctwa:retroclassify": "node scripts/safe-retroclassify-ctwa.js"
   },
   "dependencies": {
@@ -19,7 +19,6 @@
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@google/generative-ai": "^0.24.1",
     "@prisma/client": "^6.19.2",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.6.1",
@@ -59,8 +58,6 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.5.8",
-    "@electric-sql/pglite-pgvector": "^0.0.9",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pdf-parse": "^1.1.5",
