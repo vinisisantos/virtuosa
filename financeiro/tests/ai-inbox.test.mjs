@@ -341,7 +341,7 @@ async function seedKnowledge(
       id,
       policy.vectorLiteral(embedding(axis)),
       policy.EMBEDDING_MODEL,
-      content.clinical ? "owner" : null,
+      status === "approved" && content.clinical ? "owner" : null,
     ],
   );
 }
@@ -447,6 +447,70 @@ test("editing invalidates approval, preserves history and rejects stale edits", 
     reviewKnowledge(request(), { id: "k1", version: 1, action: "disable" }),
     /alterada/,
   );
+});
+test("responsável técnico designado ainda precisa confirmar e datar cada aprovação clínica", async () => {
+  const { requirePilotAccess } = await import("../src/lib/ai-inbox/access.ts");
+  const { reviewKnowledge } = await import("../src/lib/ai-inbox/knowledge.ts");
+  await seedKnowledge(
+    { ...sample, clinical: true, procedure: "Protocolo de teste" },
+    "pending",
+  );
+  assert.equal(
+    (await requirePilotAccess(request(), undefined, "knowledge")).canReviewClinical,
+    false,
+  );
+  await pg.query('UPDATE "AppSetting" SET value=$1 WHERE key=$2', [
+    JSON.stringify({ ...config, clinicalReviewerIds: ["owner"] }),
+    policy.CONFIG_KEY,
+  ]);
+  assert.equal(
+    (await requirePilotAccess(request(), undefined, "knowledge")).canReviewClinical,
+    true,
+  );
+  const pending = (
+    await pg.query(
+      'SELECT status, "clinicalReviewedBy" FROM "AiInboxKnowledge" WHERE id=$1',
+      ["k1"],
+    )
+  ).rows[0];
+  assert.equal(pending.status, "pending");
+  assert.equal(pending.clinicalReviewedBy, null);
+
+  const input = { id: "k1", version: 1, action: "approve", confirmed: true };
+  const expiresAt = new Date(Date.now() + 86400000).toISOString();
+  await assert.rejects(
+    reviewKnowledge(request(), { ...input, expiresAt, confirmed: false }),
+    /Confirme conteúdo/,
+  );
+  await assert.rejects(reviewKnowledge(request(), input), /validade futura/);
+  await assert.rejects(
+    reviewKnowledge(request(), {
+      ...input,
+      expiresAt: new Date(Date.now() + 91 * 86400000).toISOString(),
+    }),
+    /validade futura/,
+  );
+
+  let calls = 0;
+  globalThis.fetch = async (url) => {
+    calls++;
+    assert.ok(url.endsWith("embeddings"));
+    return Response.json({
+      data: [{ index: 0, embedding: embedding() }],
+      usage: { total_tokens: 100 },
+    });
+  };
+  await reviewKnowledge(request(), { ...input, expiresAt });
+  const approved = (
+    await pg.query(
+      'SELECT status, "clinicalReviewedBy", "reviewedBy" FROM "AiInboxKnowledge" WHERE id=$1',
+      ["k1"],
+    )
+  ).rows[0];
+  assert.equal(calls, 1);
+  assert.equal(approved.status, "approved");
+  assert.equal(approved.clinicalReviewedBy, "owner");
+  assert.equal(approved.reviewedBy, "owner");
 });
 test("provider uses structured JSON, store=false, no tool execution and no automatic retry", async () => {
   const { generateJson } = await import("../src/lib/ai-inbox/provider.ts");

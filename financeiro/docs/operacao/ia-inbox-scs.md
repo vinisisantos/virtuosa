@@ -35,7 +35,15 @@ Ambos exigem publicação da configuração correta. `enabled` do AppSetting é 
 
 Alternativa autorizada em 05/09/2026: no ambiente de produção já configurado da Vercel, cadastrar os IDs acima e `AI_INBOX_PREPARE_ON_DEPLOY=true`. Esta opção executa o preparador antes do build, usando a conexão de migração já existente, sem baixar segredos. O preparador verifica privilégios administrativos, schema de vector, alvos e credenciais presentes; executa a migração em transação e configura somente o job próprio. Falta de privilégios interrompe o deploy, sem conceder permissões adicionais ou contornar o acesso somente leitura local. O runtime usa o mesmo papel da conexão de migração.
 
-Depois da preparação bem-sucedida, remover/desativar `AI_INBOX_PREPARE_ON_DEPLOY`; builds comuns não alteram schema/configuração/job da IA. A opção não valida a qualidade de respostas nem a validade real da chave. Habilitar os dois flags de runtime/interface somente após conferir preparação e rotas. Revisores aprovados por Vinicius: Alisson, Vinicius Santos e Claudenice. Nenhum revisor técnico foi designado; manter lista clínica vazia.
+Depois da preparação bem-sucedida, remover/desativar `AI_INBOX_PREPARE_ON_DEPLOY`; builds comuns não alteram schema/configuração/job da IA. A opção não valida a qualidade de respostas nem a validade real da chave. Habilitar os dois flags de runtime/interface somente após conferir preparação e rotas.
+
+### Responsáveis pela revisão de SCS
+
+Alisson, Vinicius Santos e Claudenice foram indicados como revisores do conhecimento. Em 06/09/2026, Vinicius também designou os mesmos três usuários para a aprovação técnica neste recurso: `AI_INBOX_CLINICAL_REVIEWER_IDS` deve conter os mesmos IDs de `AI_INBOX_REVIEWER_IDS`. Esta designação configura a permissão no sistema, não verifica habilitação profissional.
+
+A autorização efetiva vem de `clinicalReviewerIds` no AppSetting `ai_inbox_scs_v1`, não apenas da variável de ambiente. Para aplicá-la pelo preparador existente, conferir antes que as listas de instâncias e revisores correspondem à configuração atual, habilitar a preparação em um único deploy e desabilitá-la após verificar a gravação. Preservar a data de ativação e o escopo exclusivo de SCS.
+
+Nenhuma ficha é aprovada por essa configuração. Após atualizar/reabrir Aprendizados, o revisor deve salvar eventuais correções, preencher a validade futura de até 90 dias e confirmar a conferência antes de aprovar cada ficha. Continuam valendo o acesso à caixa de origem, a auditoria da aprovação e as permissões de envio existentes.
 
 ## Homologação controlada antes do atendimento real
 
