@@ -1399,6 +1399,9 @@ model WhatsAppConversation {
   followUps                 WhatsAppConversationFollowUp[]
   callbackAttempts          WhatsAppCallbackAttempt[]
   internalNotes             WhatsAppConversationInternalNote[]
+  aiInboxObservation        AiInboxObservation?
+  aiInboxKnowledge          AiInboxKnowledge[]
+  aiInboxOperations         AiInboxOperation[]
 
   @@unique([contactId, instanceId])
   @@index([instanceId])
@@ -1410,6 +1413,68 @@ model WhatsAppConversation {
   @@index([unreadCount])
   @@index([callbackDueAt, callbackStreakCount, status])
   @@index([instanceId, callbackQueueStatus, lastMessageAt])
+}
+
+// Pilot tables are provisioned explicitly before activating AI_INBOX_SCS_ENABLED.
+model AiInboxObservation {
+  conversationId    String   @id
+  unit              String   @default("SCS")
+  revision          Int      @default(1)
+  processedRevision Int      @default(0)
+  lastEventKey      String
+  leaseToken        String?
+  leaseUntil        DateTime?
+  dueAt             DateTime @default(now())
+  attempts          Int      @default(0)
+  error             String?
+  updatedAt         DateTime @default(now())
+  conversation      WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  // Partial due index lives in the SQL migration.
+}
+
+model AiInboxKnowledge {
+  id                   String @id
+  unit                 String @default("SCS")
+  content              Json
+  status               String @default("pending")
+  version              Int @default(1)
+  sourceConversationId String?
+  sourceMessageIds     Json @default("[]")
+  sourceFingerprint    String @unique
+  relatedIds           Json @default("[]")
+  embedding            Unsupported("vector(512)")?
+  embeddingModel       String?
+  reviewedBy           String?
+  reviewedAt           DateTime?
+  clinicalReviewedBy   String?
+  expiresAt            DateTime?
+  history              Json @default("[]")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @default(now())
+  sourceConversation   WhatsAppConversation? @relation(fields: [sourceConversationId], references: [id], onDelete: SetNull)
+  @@index([unit, status, updatedAt], map: "AiInboxKnowledge_scope_idx")
+}
+
+model AiInboxOperation {
+  id                String @id
+  unit              String @default("SCS")
+  kind              String
+  idempotencyKey    String @unique
+  userId            String?
+  conversationId    String?
+  status            String @default("running")
+  snapshot          String
+  knowledgeVersions Json @default("[]")
+  result            Json?
+  replyHash         String?
+  reservedMicroUsd  Int
+  actualMicroUsd    Int?
+  usage             Json?
+  error             String?
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+  conversation      WhatsAppConversation? @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@index([unit, createdAt, kind], map: "AiInboxOperation_day_idx")
 }
 
 model WhatsAppCallbackAttempt {

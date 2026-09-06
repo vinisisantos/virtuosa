@@ -18,6 +18,7 @@ const PUBLIC_API_ROUTES = [
   '/api/whatsapp/mega/webhook',
   // A própria rota valida CRON_SECRET; o middleware não deve tratá-lo como JWT.
   '/api/cron/whatsapp-callbacks',
+  '/api/cron/ai-inbox-observe',
   '/api/surveys/',
   '/api/public/ai-test/',
 ];
