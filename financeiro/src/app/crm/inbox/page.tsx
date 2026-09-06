@@ -7865,8 +7865,9 @@ export default function InboxPage() {
 
 
 
-            {process.env.NEXT_PUBLIC_AI_INBOX_SCS_ENABLED === "true" && selectedConversationUnit === "SCS" && canReplyToSelectedConversation && !selectedConv.blockedAt && !selectedConversationNeedsStart && (
+            {process.env.NEXT_PUBLIC_AI_INBOX_SCS_ENABLED === "true" && selectedConversationUnit === "SCS" && (canReplyToSelectedConversation || (process.env.NEXT_PUBLIC_AI_INBOX_REVIEWER_IDS || "").split(",").includes(currentUser?.id || "__none__")) && !selectedConv.blockedAt && !selectedConversationNeedsStart && (
               <AiInboxAssistant
+                canSuggest={canReplyToSelectedConversation}
                 key={`${selectedConv.id}:${selectedConv.instanceId}:${currentUser?.id}`}
                 conversationId={selectedConv.id}
                 contextKey={JSON.stringify([selectedConv.id, selectedConv.lastMessageAt, selectedConv.activeFollowUp, selectedConv.contact.tags, messages.map((m) => [m.id, m.body, m.status])])}

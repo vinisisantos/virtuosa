@@ -42,6 +42,7 @@ type Listing = {
   summary: { queued: number; failed: number; budget: string | null };
 };
 type Props = {
+  canSuggest?: boolean;
   conversationId: string;
   contextKey: string;
   buildUrl: (url: string, extra?: Record<string, string>) => string;
@@ -235,6 +236,7 @@ export function AiInboxAssistant({
   buildUrl,
   onInsert,
   hasDraft,
+  canSuggest = true,
 }: Props) {
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null);
   const [suggestionKey, setSuggestionKey] = useState("");
@@ -370,19 +372,21 @@ export function AiInboxAssistant({
       aria-label="Assistente de respostas SCS"
     >
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void generate()}
-          disabled={busy}
-          className={`${button} text-primary`}
-        >
-          {busy ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Sparkles className="h-4 w-4" />
-          )}{" "}
-          {busy ? "Analisando…" : "Sugerir resposta"}
-        </button>
+        {canSuggest && (
+          <button
+            type="button"
+            onClick={() => void generate()}
+            disabled={busy}
+            className={`${button} text-primary`}
+          >
+            {busy ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}{" "}
+            {busy ? "Analisando…" : "Sugerir resposta"}
+          </button>
+        )}
         <button
           type="button"
           className={button}

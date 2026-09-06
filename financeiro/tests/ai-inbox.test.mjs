@@ -182,6 +182,7 @@ test.before(async () => {
               unit: "SCS",
               status: "connected",
               canReply: req.headers.get("x-test-role") !== "VIEWER",
+              canView: true,
             },
           ],
   });
@@ -234,6 +235,15 @@ test("config fails closed; date uses São Paulo and reservations are conservativ
     policy.redact("Pessoa Teste: 11999999999 e x@y.com", ["Pessoa Teste"]),
     "[pessoa]: [identificador] e [email]",
   );
+});
+
+test("revisor com acesso de consulta pode revisar sem receber permissão de sugestão ou envio", async () => {
+  const { requirePilotAccess } = await import('../src/lib/ai-inbox/access.ts');
+  const req = request('owner', 'scs', 'VIEWER');
+  assert.equal((await requirePilotAccess(req, undefined, 'knowledge')).canReview, true);
+  await assert.rejects(requirePilotAccess(req));
+  await pg.query('UPDATE "AppSetting" SET value=$1 WHERE key=$2', [JSON.stringify({ ...config, reviewerIds: [] }), policy.CONFIG_KEY]);
+  await assert.rejects(requirePilotAccess(req, undefined, 'knowledge'));
 });
 test("queue coalesces repeated events, excludes other units, AI copies and disabled pilot", async () => {
   const { enqueueObservation } =

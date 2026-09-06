@@ -18,6 +18,7 @@ export async function pilotConfig() {
 export async function requirePilotAccess(
   req: Request,
   conversationId?: string,
+  mode: "suggest" | "knowledge" = "suggest",
 ) {
   const userId = req.headers.get("x-user-id");
   if (!userId) throw new InboxAiError("Não autorizado", 401);
@@ -41,7 +42,10 @@ export async function requirePilotAccess(
       (i) =>
         i.unit === "SCS" &&
         i.status !== "archived" &&
-        i.canReply === true &&
+        (i.canReply === true ||
+          (mode === "knowledge" &&
+            config.reviewerIds.includes(userId) &&
+            i.canView === true)) &&
         config.instanceIds.includes(i.id),
     )
     .map((i) => i.id);

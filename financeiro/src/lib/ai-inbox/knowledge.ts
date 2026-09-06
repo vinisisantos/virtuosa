@@ -117,7 +117,7 @@ export async function reviewKnowledge(
     confirmed?: boolean;
   },
 ) {
-  const access = await requirePilotAccess(req);
+  const access = await requirePilotAccess(req, undefined, "knowledge");
   if (!access.canReview)
     throw new InboxAiError(
       "Somente revisores autorizados podem alterar aprendizados",
@@ -207,7 +207,7 @@ export async function reviewKnowledge(
   }
   try {
     // Re-read access after network work, not just before charging/indexing.
-    const freshAccess = await requirePilotAccess(req);
+    const freshAccess = await requirePilotAccess(req, undefined, "knowledge");
     if (
       !freshAccess.canReview ||
       (action === "approve" &&

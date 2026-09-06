@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   try {
-    const access = await requirePilotAccess(req);
+    const access = await requirePilotAccess(req, undefined, "knowledge");
     const params = new URL(req.url).searchParams;
     const status = params.get("status") || "pending";
     if (!["pending", "approved", "rejected", "disabled"].includes(status))
@@ -59,7 +59,7 @@ export async function PATCH(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const access = await requirePilotAccess(req);
+    const access = await requirePilotAccess(req, undefined, "knowledge");
     if (!access.canReview)
       throw new InboxAiError("Somente revisores podem retomar falhas", 403);
     const body = await req.json();

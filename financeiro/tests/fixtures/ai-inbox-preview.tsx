@@ -5,6 +5,7 @@ import { AiInboxAssistant } from "../../src/components/whatsapp/ai-inbox-assista
 export default function AiInboxPreview() {
   const [draft, setDraft] = useState("Meu texto já digitado.");
   const [version, setVersion] = useState(0);
+  const [reviewOnly, setReviewOnly] = useState(false);
   return (
     <main className="mx-auto flex h-dvh w-full max-w-5xl flex-col bg-background text-foreground">
       <header className="border-b p-4">Inbox · SCS · ambiente de teste</header>
@@ -16,8 +17,10 @@ export default function AiInboxPreview() {
         >
           Simular mensagem nova
         </button>
+        <button className="ml-2 min-h-11 rounded border p-2" onClick={() => setReviewOnly(true)}>Modo revisor</button>
       </div>
       <AiInboxAssistant
+        canSuggest={!reviewOnly}
         conversationId="test-conversation"
         contextKey={String(version)}
         buildUrl={(url, extra) =>

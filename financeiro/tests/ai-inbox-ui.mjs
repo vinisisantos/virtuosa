@@ -190,6 +190,11 @@ try {
       "::-p-text(Cota diária atingida; continue manualmente.)",
     );
     await fits();
+    await click("Modo revisor");
+    assert.equal(await page.$("::-p-text(Sugerir resposta)"), null);
+    await click("Aprendizados");
+    await page.waitForSelector("::-p-text(Revisar ficha)");
+    await fits();
     assert.deepEqual(errors, []);
     results.push({ width, generations, result: "passed" });
     await page.close();

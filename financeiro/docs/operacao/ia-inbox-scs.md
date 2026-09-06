@@ -27,6 +27,7 @@ Depois de verificar schema, script, credencial e rollout, habilitar no ambiente 
 
 - `AI_INBOX_SCS_ENABLED=true`: gate do servidor e da captura.
 - `NEXT_PUBLIC_AI_INBOX_SCS_ENABLED=true`: gate de build para mostrar controles no Inbox.
+- `NEXT_PUBLIC_AI_INBOX_REVIEWER_IDS`: os mesmos IDs dos revisores, somente para mostrar Aprendizados também aos revisores em modo de consulta. Esta lista pública não autoriza APIs: a configuração e o acesso à caixa são revalidados no servidor. Não concede envio ou geração de sugestões ao perfil de consulta.
 
 Ambos exigem publicação da configuração correta. `enabled` do AppSetting é um terceiro gate; pausar a configuração mantém envio manual intacto. Instâncias de Osasco/SBC/Todas não participam implicitamente.
 
