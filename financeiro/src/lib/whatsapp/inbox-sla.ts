@@ -3,7 +3,7 @@ const MINUTE_MS = 60_000;
 export const INBOX_SLA_ATTENTION_AFTER_MINUTES = 5;
 export const INBOX_SLA_OVERDUE_AFTER_MINUTES = 15;
 
-export type InboxSlaState = "not_waiting" | "waiting";
+export type InboxSlaState = "not_waiting" | "waiting" | "scheduled";
 export type InboxSlaLevel = "green" | "attention" | "overdue";
 
 export type InboxSlaSnapshot = {
@@ -14,6 +14,7 @@ export type InboxSlaSnapshot = {
 };
 
 type InboxSlaInput = {
+  isScheduled?: boolean;
   lastInboundAt?: Date | string | null;
   lastOutboundAt?: Date | string | null;
   now?: Date;
@@ -38,10 +39,14 @@ function waitingLabel(minutes: number) {
 }
 
 export function inboxSlaSnapshot({
+  isScheduled = false,
   lastInboundAt,
   lastOutboundAt,
   now = new Date(),
 }: InboxSlaInput): InboxSlaSnapshot {
+  if (isScheduled) {
+    return { state: "scheduled", label: "Avaliação agendada", minutes: null, level: null };
+  }
   const inboundTimestamp = timestampFrom(lastInboundAt);
   const outboundTimestamp = timestampFrom(lastOutboundAt);
 

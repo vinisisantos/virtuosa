@@ -1,4 +1,5 @@
 import { parseCrmMediaBatchMarkerBody } from "@/lib/whatsapp/media-batch";
+import type { InboxAppointment } from "@/lib/whatsapp/inbox-appointments";
 
 export interface Contact {
   id: string;
@@ -34,6 +35,7 @@ export interface Conversation {
   campaignAccountOrigin?: "secondary" | null;
   lastInboundAt?: string | null;
   lastOutboundAt?: string | null;
+  scheduledEvaluation?: InboxAppointment | null;
   callbackDueAt?: string | null;
   callbackTrackingStartedAt?: string | null;
   callbackStreakCount?: number;

@@ -14,6 +14,7 @@ import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
 import { DatePicker } from "@/components/ui/date-picker";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   SavedRepliesComposerMenu,
   filterSavedReplies,
@@ -70,6 +71,7 @@ import {
   type RecordingDurationClock,
 } from "@/lib/whatsapp/recording-duration";
 import { inboxSlaSnapshot } from "@/lib/whatsapp/inbox-sla";
+import { withInboxAppointment, type InboxAppointmentSnapshot } from "@/lib/whatsapp/inbox-appointments";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import {
   hasWhatsAppTextFormatting,
@@ -775,17 +777,19 @@ function PipelineStageSelector({
   showFallback,
   openEvolutionSignal,
   onPipelineChanged,
+  onScheduleClose,
 }: {
   contactPhone: string;
   contactName?: string;
   unit?: string | null;
   whatsappConversationId?: string | null;
   whatsappInstanceId?: string | null;
-  layout?: "sidebar" | "header" | "headerPill" | "inline";
+  layout?: "sidebar" | "header" | "headerPill" | "inline" | "schedule";
   refreshTrigger?: number;
   showFallback?: boolean;
   openEvolutionSignal?: number;
   onPipelineChanged?: () => void;
+  onScheduleClose?: () => void;
 }) {
   const [deal, setDeal] = useState<any>(null);
   const [stages, setStages] = useState<any[]>([]);
@@ -808,6 +812,7 @@ function PipelineStageSelector({
   const [loadingAssignees, setLoadingAssignees] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
   const [scheduleConflict, setScheduleConflict] = useState<ScheduleConflict | null>(null);
+  const [scheduleLoadError, setScheduleLoadError] = useState<string | null>(null);
 
   const effectiveUnit = unit || clientData?.unit || deal?.unit || "";
   const isOsascoSchedule = effectiveUnit === "Osasco";
@@ -854,20 +859,25 @@ function PipelineStageSelector({
   }, [openDropdown, updateStageMenuPos]);
 
   useEffect(() => {
+    const controller = new AbortController();
     async function load() {
       try {
         setLoading(true);
+        setScheduleLoadError(null);
         // 1. Encontrar o client
         const clientParams = new URLSearchParams({ search: contactPhone });
         if (unit) clientParams.set("unit", unit);
-        const cRes = await fetch(`/api/clients?${clientParams.toString()}`);
+        const cRes = await fetch(`/api/clients?${clientParams.toString()}`, { signal: controller.signal });
+        if (!cRes.ok) throw new Error("Não foi possível consultar o contato.");
         const clientList = await cRes.json();
         const client = clientList.clients?.[0];
         setClientData(client || null);
 
         // 2. Encontrar os stages do pipeline default
-        const pRes = await fetch('/api/pipelines');
+        const pRes = await fetch('/api/pipelines', { signal: controller.signal });
+        if (!pRes.ok) throw new Error("Não foi possível consultar o funil.");
         const pipes = await pRes.json();
+        // O funil legado é compartilhado; a API isola cada negócio/agenda por unit.
         const defaultPipeline = pipes.find((p: any) => !unit || p.unit === unit) || pipes[0];
         if (defaultPipeline) {
           setPipelineId(defaultPipeline.id);
@@ -877,22 +887,38 @@ function PipelineStageSelector({
           const dealParams = new URLSearchParams({ phone: contactPhone });
           if (unit) dealParams.set("unit", unit);
           if (whatsappInstanceId) dealParams.set("targetInstanceId", whatsappInstanceId);
-          const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`);
+          const dRes = await fetch(`/api/pipeline?${dealParams.toString()}`, { signal: controller.signal });
+          if (!dRes.ok) throw new Error("Não foi possível consultar o negócio.");
           const deals = await dRes.json();
           const clientDeal = client
             ? deals.find((d: any) => d.clientId === client.id) || deals[0]
             : deals[0];
           setDeal(clientDeal || null);
           setEvolutionNotes(clientDeal?.notes || "");
+          if (layout === "schedule") {
+            const schedulePipeline = clientDeal?.pipelineId
+              ? pipes.find((pipe: any) => pipe.id === clientDeal.pipelineId)
+              : defaultPipeline;
+            if (!schedulePipeline) throw new Error("O negócio não pertence a um funil disponível nesta unidade.");
+            setPipelineId(schedulePipeline.id);
+            setStages(schedulePipeline.stages || []);
+            const scheduledStage = schedulePipeline.stages?.find((stage: any) => isScheduledPipelineStageName(stage.name));
+            if (!scheduledStage) throw new Error("A unidade não possui a etapa Agendado configurada.");
+            setPendingScheduledStageId(scheduledStage.id);
+            setScheduleModalOpen(true);
+          }
+        } else if (layout === "schedule") {
+          throw new Error("Nenhum funil disponível para esta unidade.");
         }
-      } catch {
-        // error
+      } catch (error) {
+        if (!controller.signal.aborted) setScheduleLoadError(error instanceof Error ? error.message : "Não foi possível carregar o agendamento.");
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
     load();
-  }, [contactPhone, refreshTrigger, unit, whatsappInstanceId]);
+    return () => controller.abort();
+  }, [contactPhone, refreshTrigger, unit, whatsappInstanceId, layout]);
 
   // Abre a modal de evolução quando o menu "⋯" do header dispara o sinal.
   useEffect(() => {
@@ -910,13 +936,17 @@ function PipelineStageSelector({
         if (effectiveUnit) params.set("unit", effectiveUnit);
         const res = await fetch(`/api/crm/evaluations/assignees${params.toString() ? `?${params.toString()}` : ""}`);
         const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error("Não foi possível consultar as responsáveis.");
         const assignees = Array.isArray(data.assignees) ? data.assignees : [];
         if (cancelled) return;
         setEvaluationAssignees(assignees);
         const defaultAssignee = pickDefaultAssignee(assignees);
         setScheduleAssigneeUserId((current) => current || defaultAssignee);
       } catch {
-        if (!cancelled) setEvaluationAssignees([]);
+        if (!cancelled) {
+          setEvaluationAssignees([]);
+          toast("Não foi possível carregar as responsáveis. Feche e tente novamente.", "error");
+        }
       } finally {
         if (!cancelled) setLoadingAssignees(false);
       }
@@ -934,6 +964,7 @@ function PipelineStageSelector({
     setScheduleAssigneeUserId("");
     setIsScheduling(false);
     setScheduleConflict(null);
+    onScheduleClose?.();
   };
 
   const updateStage = async (
@@ -1130,6 +1161,16 @@ function PipelineStageSelector({
     }
   };
 
+  if (layout === "schedule" && (loading || scheduleLoadError)) return (
+    <Dialog open onOpenChange={(open) => { if (!open) onScheduleClose?.(); }}>
+      <DialogContent className="z-[80] max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
+        <DialogTitle>Agendar avaliação</DialogTitle>
+        <DialogDescription>{scheduleLoadError || "Carregando contato e funil da unidade…"}</DialogDescription>
+        {loading && <Loader2 className="h-6 w-6 animate-spin text-primary" aria-label="Carregando" />}
+        <button type="button" onClick={onScheduleClose} className="min-h-11 rounded-lg border border-border px-4">Fechar</button>
+      </DialogContent>
+    </Dialog>
+  );
   if (loading) return null;
   if (stages.length === 0) {
     if (showFallback) return <p className="text-xs text-muted-foreground italic">Contato sem registro no funil.</p>;
@@ -1168,17 +1209,17 @@ function PipelineStageSelector({
   ) : null;
 
   const scheduleModal = scheduleModalOpen ? (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
+    <Dialog open onOpenChange={(open) => { if (!open && !isScheduling) closeScheduleModal(); }}>
+      <DialogContent showCloseButton={!isScheduling} className="z-[80] max-h-[calc(100dvh-2rem)] overflow-y-auto bg-card p-4 sm:max-w-md sm:p-6">
         <div className="mb-5 flex items-start gap-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <CalendarDays className="h-5 w-5" />
           </span>
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Agendar avaliação</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Informe a data e o horário antes de mover o lead para Agendado.
-            </p>
+            <DialogTitle className="pr-6 text-lg font-semibold text-foreground">Agendar avaliação</DialogTitle>
+            <DialogDescription className="mt-1 break-words text-sm text-muted-foreground">
+              {contactName || contactPhone} · {effectiveUnit}. Informe a data, o horário e a responsável.
+            </DialogDescription>
           </div>
         </div>
 
@@ -1186,27 +1227,28 @@ function PipelineStageSelector({
           <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
             <div className="grid gap-1.5">
               <label className="text-sm font-medium text-foreground">Data</label>
-              <DatePicker
+              <input
+                type="date"
+                aria-label="Data da avaliação"
                 value={scheduleDate}
-                onChange={(value) => {
-                  setScheduleDate(value);
+                onChange={(event) => {
+                  setScheduleDate(event.target.value);
                   setScheduleConflict(null);
                 }}
-                variant="input"
-                calendarSize="small"
-                placeholder="Data da avaliação"
+                className="h-11 min-w-0 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 dark:[color-scheme:dark]"
               />
             </div>
             <label className="grid gap-1.5 text-sm font-medium text-foreground">
               Horário
               <input
+                aria-label="Horário da avaliação"
                 type="time"
                 value={scheduleTime}
                 onChange={(event) => {
                   setScheduleTime(event.target.value);
                   setScheduleConflict(null);
                 }}
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25"
+                className="h-11 min-w-0 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25"
               />
             </label>
           </div>
@@ -1214,10 +1256,11 @@ function PipelineStageSelector({
           <div className="grid gap-1.5">
             <label className="text-sm font-medium text-foreground">Responsável</label>
             <select
+              aria-label="Responsável pela avaliação"
               value={scheduleAssigneeUserId}
               onChange={(event) => setScheduleAssigneeUserId(event.target.value)}
               disabled={loadingAssignees}
-              className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-60"
+              className="h-11 min-w-0 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none transition-colors focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-60"
             >
               <option value="">{loadingAssignees ? "Carregando..." : "Selecione a responsável"}</option>
               {evaluationAssignees.map((assignee) => (
@@ -1245,7 +1288,7 @@ function PipelineStageSelector({
           )}
         </div>
 
-        <div className="mt-6 flex items-center justify-end gap-3">
+        <div className="mt-2 flex flex-wrap items-center justify-end gap-3 [&>button]:min-h-11">
           {scheduleConflict ? (
             <>
               <button
@@ -1284,9 +1327,11 @@ function PipelineStageSelector({
             </>
           )}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   ) : null;
+
+  if (layout === "schedule") return scheduleModal;
 
   const currentStageIndex = deal ? stages.findIndex(s => s.id === deal?.stageId) : -1;
   const canGoBack = currentStageIndex > 0;
@@ -2795,6 +2840,7 @@ function ConversationItem({
   const callbackStreakCount = conv.callbackStreakCount || 0;
   const followUpDue = isWhatsAppFollowUpDue(conv.activeFollowUp);
   const sla = inboxSlaSnapshot({
+    isScheduled: !!conv.scheduledEvaluation,
     lastInboundAt: conv.lastInboundAt,
     lastOutboundAt: conv.lastOutboundAt,
     now: new Date(slaClockNow),
@@ -2875,6 +2921,15 @@ function ConversationItem({
           </p>
           <div className="flex items-center gap-1.5 flex-shrink-0">
             {/* Status badges */}
+            {sla.state === "scheduled" && (
+              <span
+                className="inline-flex items-center rounded-full bg-emerald-500/15 p-1 text-emerald-700 dark:text-emerald-300"
+                title={`Avaliação agendada: ${formatScheduleConflictDateTime(conv.scheduledEvaluation!.startTime)}. Contador de espera suspenso.`}
+                aria-label="Avaliação agendada. Contador de espera suspenso."
+              >
+                <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+              </span>
+            )}
             {sla.state === "waiting" && ["open", "waiting_response"].includes(conv.status) && (
               <span
                 className={`inline-flex max-w-[6rem] items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
@@ -3035,6 +3090,8 @@ export default function InboxPage() {
   const [activeAttachmentId, setActiveAttachmentId] = useState<string | null>(null);
   const [isDraggingAttachment, setIsDraggingAttachment] = useState(false);
   const [contactSidebarOpen, setContactSidebarOpen] = useState(false);
+  const [showQuickSchedule, setShowQuickSchedule] = useState(false);
+  useEffect(() => { setShowQuickSchedule(false); }, [selectedConversationId]);
   const [contactPopoverOpen, setContactPopoverOpen] = useState(false);
   const [kebabOpen, setKebabOpen] = useState(false);
   const [isMarkingUnread, setIsMarkingUnread] = useState(false);
@@ -4117,6 +4174,12 @@ export default function InboxPage() {
               : sortConversationsByActivity(merged);
           });
           conversationsIncrementalPollsRef.current = 0;
+        }
+
+        if (data.appointmentSnapshot && typeof data.appointmentSnapshot === "object") {
+          const snapshot = data.appointmentSnapshot as InboxAppointmentSnapshot;
+          setConversations((previous) => previous.map((conversation) => withInboxAppointment(conversation, snapshot)));
+          setSelectedConv((previous) => previous ? withInboxAppointment(previous, snapshot) : previous);
         }
 
         if (!isPage) {
@@ -7258,6 +7321,18 @@ export default function InboxPage() {
                 {!selectedConv.blockedAt && canReplyToSelectedConversation && (
                   <button
                     type="button"
+                    onClick={() => setShowQuickSchedule(true)}
+                    disabled={!["SCS", "SBC", "Osasco"].includes(selectedConversationUnit)}
+                    className="hidden min-h-11 shrink-0 items-center gap-2 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 lg:flex"
+                    title="Agendar avaliação deste contato"
+                  >
+                    <CalendarDays className="h-4 w-4" aria-hidden="true" /> AGENDAR
+                  </button>
+                )}
+
+                {!selectedConv.blockedAt && canReplyToSelectedConversation && (
+                  <button
+                    type="button"
                     onClick={() => setShowEvaluationAvailabilityDialog(true)}
                     className="hidden h-8 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15 lg:flex"
                     title="Consultar e enviar horários livres"
@@ -7452,6 +7527,21 @@ export default function InboxPage() {
             </div>
 
             {/* Messages */}
+            {!selectedConv.blockedAt && canReplyToSelectedConversation && (
+              <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-3 py-1.5 lg:hidden">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickSchedule(true)}
+                  disabled={!["SCS", "SBC", "Osasco"].includes(selectedConversationUnit)}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  <CalendarDays className="h-4 w-4" aria-hidden="true" /> AGENDAR
+                </button>
+                <span className="min-w-0 text-xs text-muted-foreground">
+                  {selectedConv.scheduledEvaluation ? "Avaliação agendada · contador suspenso" : "Marcar avaliação deste contato"}
+                </span>
+              </div>
+            )}
             <div ref={messagesViewportRef} className="inbox-thread-messages min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
@@ -8167,7 +8257,10 @@ export default function InboxPage() {
               refreshProfilePicUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
               onProfilePicResolved={updateContactProfilePic}
               onRenameContact={renameContact}
-              onPipelineChanged={() => setEvaluationConfirmationRefreshKey((current) => current + 1)}
+              onPipelineChanged={() => {
+                setEvaluationConfirmationRefreshKey((current) => current + 1);
+                void fetchConversations({ incremental: true });
+              }}
             />
           </div>
         </>
@@ -8910,6 +9003,24 @@ export default function InboxPage() {
         onOpenChange={setShowNewConversationDialog}
         onConversationReady={handleNewConversationReady}
       />
+      {showQuickSchedule && selectedConv && canReplyToSelectedConversation && !selectedConv.blockedAt && (
+        <PipelineStageSelector
+          key={`schedule:${selectedConv.id}:${selectedConversationUnit}`}
+          contactPhone={selectedConv.contact.phone}
+          contactName={displayContactName(selectedConv.contact)}
+          unit={selectedConversationUnit}
+          whatsappConversationId={selectedConv.id}
+          whatsappInstanceId={selectedConv.instanceId}
+          layout="schedule"
+          onScheduleClose={() => setShowQuickSchedule(false)}
+          onPipelineChanged={() => {
+            setPipelineRefreshKey((current) => current + 1);
+            setEvaluationConfirmationRefreshKey((current) => current + 1);
+            void fetchConversations({ incremental: true });
+          }}
+        />
+      )}
+
       <EvaluationAvailabilityDialog
         open={showEvaluationAvailabilityDialog}
         unit={selectedConversationUnit}

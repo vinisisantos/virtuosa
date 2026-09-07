@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
+import { getUserFromHeaders } from "@/lib/auth";
+import { permittedUnitsForAccess } from "@/lib/role-access";
 import { Prisma } from "@prisma/client";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
@@ -8,6 +10,7 @@ import {
   campaignAccountOriginFromTrackId,
 } from "@/lib/campaign-account-origin";
 import { prisma } from "@/lib/db";
+import { inboxAppointmentsQuery, inboxAppointmentSnapshot } from "@/lib/whatsapp/inbox-appointments-query";
 import {
   WHATSAPP_CALLBACK_LOST_STATUS,
   WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
@@ -372,7 +375,7 @@ function ensureWhatsappPerformanceIndexes() {
   return whatsappPerformanceIndexesPromise;
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "all";
@@ -401,6 +404,7 @@ export async function GET(req: Request) {
         nextCursor: null,
         serverTime,
         searchTooShort,
+        appointmentSnapshot: {},
         queueCounts: { open: 0, unread: 0, callback: 0, followup: 0, lost: 0 },
       });
     }
@@ -708,6 +712,24 @@ export async function GET(req: Request) {
         accountOrigin,
       });
     }
+    const appointmentUser = getUserFromHeaders(req);
+    const appointmentUnits = [...new Set([
+      ...permittedUnitsForAccess({
+        role: appointmentUser?.role,
+        userUnit: appointmentUser?.unit,
+        permissions: appointmentUser?.permissions,
+      }),
+      ...dbInstances.map((instance) => instance.unit).filter((unit): unit is string => !!unit && unit !== "Todas"),
+    ])];
+    const requestedAppointmentUnit = searchParams.get("unit");
+    const appointmentRows = await prisma.$queryRaw<Array<{
+      conversationId: string; id: string; unit: string; startTime: Date;
+    }>>(inboxAppointmentsQuery(
+      instanceIds,
+      ["Todas", "all"].includes(requestedAppointmentUnit || "") ? null : requestedAppointmentUnit,
+      appointmentUnits,
+    ));
+    const appointmentSnapshot = inboxAppointmentSnapshot(appointmentRows);
     const conversationsWithTags = visibleConversations.map((c) => {
       const { followUps, ...conversation } = c;
       const campaign = campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone));
@@ -717,6 +739,7 @@ export async function GET(req: Request) {
       );
       return {
         ...conversation,
+        scheduledEvaluation: appointmentSnapshot[c.id] || null,
         activeFollowUp: followUps[0] || null,
         ...(includeCampaigns ? {
           campaignName: campaign?.name || null,
@@ -775,6 +798,7 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       conversations: conversationsWithTags,
+      appointmentSnapshot,
       incremental: isIncremental,
       hasMore,
       limit,
