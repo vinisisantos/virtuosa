@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -20,6 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   ArrowLeft,
+  Check,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -30,10 +31,12 @@ import {
   GripVertical,
   Loader2,
   MessageSquareText,
+  MoreVertical,
   Pencil,
   Plus,
   Save,
   Search,
+  Settings2,
   Trash2,
 } from "lucide-react";
 
@@ -45,6 +48,12 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { confirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   SAVED_REPLY_CONTENT_MAX_LENGTH,
   SAVED_REPLY_CATEGORY_CAMPAIGN_NAME_MAX_LENGTH,
@@ -113,6 +122,9 @@ export function SavedRepliesDialog({
   const [categoryTitle, setCategoryTitle] = useState("");
   const [categoryCampaignName, setCategoryCampaignName] = useState("");
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set());
+  // Respostas globais aparecem em várias pastas, mas só uma ocorrência deve expandir.
+  const [expandedReply, setExpandedReply] = useState<{ groupId: string; replyId: string } | null>(null);
+  const [organizing, setOrganizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -139,6 +151,8 @@ export function SavedRepliesDialog({
     setEditingCategoryId(null);
     setCategoryTitle("");
     setCategoryCampaignName("");
+    setExpandedReply(null);
+    setOrganizing(false);
     setError(null);
   }, [open]);
 
@@ -306,6 +320,7 @@ export function SavedRepliesDialog({
   };
 
   const toggleCategory = (id: string) => {
+    setExpandedReply(null);
     setCollapsedCategoryIds((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
@@ -367,7 +382,17 @@ export function SavedRepliesDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <DialogContent
+        className="saved-replies-dialog flex max-h-[calc(100dvh-1rem)] w-[calc(100%-1rem)] max-w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl [&>[data-slot=dialog-close]]:h-11 [&>[data-slot=dialog-close]]:w-11"
+        onKeyDown={(event) => {
+          // Base UI retém as setas no popup; o sensor do dnd-kit as escuta no document.
+          const handle = event.target instanceof Element ? event.target.closest('.saved-reply-drag-handle') : null;
+          const sortingKey = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Enter"].includes(event.key);
+          if (organizing && handle && sortingKey) {
+            event.preventBaseUIHandler();
+          }
+        }}
+      >
         <DialogHeader className="border-b border-border px-4 pb-3 pt-4 pr-12 sm:px-5 sm:pt-5">
           <div className="flex items-start gap-3">
             {mode !== "list" ? (
@@ -382,7 +407,7 @@ export function SavedRepliesDialog({
                   }
                   setError(null);
                 }}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors hover:text-foreground"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground transition-colors hover:text-foreground"
                 aria-label="Voltar para respostas rápidas"
               >
                 <ArrowLeft className="h-5 w-5" />
@@ -405,7 +430,7 @@ export function SavedRepliesDialog({
                   ? "Salve um texto para reutilizar em qualquer uma das suas instâncias."
                   : mode === "categories"
                     ? "Associe cada pasta à campanha correspondente."
-                    : "Somente você pode ver e usar estas mensagens."}
+                    : "Suas mensagens salvas. Só você tem acesso."}
               </DialogDescription>
             </div>
           </div>
@@ -413,14 +438,15 @@ export function SavedRepliesDialog({
 
         {mode === "list" ? (
           <>
-            <div className="flex items-center gap-2 border-b border-border px-4 py-3 sm:px-5">
-              <div className="relative min-w-0 flex-1">
+            <div className="grid grid-cols-2 gap-2 border-b border-border px-4 py-3 sm:flex sm:items-center sm:px-5">
+              <div className="relative col-span-2 min-w-0 sm:flex-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <input
                   value={search}
-                  onChange={(event) => setSearch(event.target.value)}
+                  onChange={(event) => { setSearch(event.target.value); setExpandedReply(null); }}
                   placeholder="Buscar resposta"
-                  className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary"
+                  aria-label="Buscar resposta"
+                  className="h-11 w-full rounded-xl border border-input bg-background pl-9 pr-3 text-base text-foreground outline-none placeholder:text-muted-foreground focus:ring-1 focus:ring-primary sm:text-sm"
                 />
               </div>
               <button
@@ -436,7 +462,7 @@ export function SavedRepliesDialog({
                 className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-border bg-background px-3 text-sm font-semibold text-foreground transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
               >
                 <FolderCog className="h-4 w-4" />
-                <span className="hidden md:inline">Categorias</span>
+                <span>Categorias</span>
               </button>
               <button
                 type="button"
@@ -446,11 +472,17 @@ export function SavedRepliesDialog({
                 className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-3 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 sm:px-4"
               >
                 <Plus className="h-4 w-4" />
-                <span className="hidden sm:inline">Nova</span>
+                <span>Nova</span>
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-3 py-3 [-webkit-overflow-scrolling:touch] sm:max-h-[56dvh] sm:px-4">
+            {organizing && (
+              <p role="status" className="shrink-0 border-b border-border bg-primary/5 px-4 py-2 text-xs text-muted-foreground sm:px-5">
+                <span className="saved-reply-drag-hint">Arraste pelo puxador ou use o teclado para ordenar.</span>
+                <span className="saved-reply-touch-hint hidden">Use as setas para mover as respostas. Deslize a lista para rolar.</span>
+              </p>
+            )}
+            <div className="saved-replies-list min-h-0 flex-1 touch-pan-y overflow-x-hidden overflow-y-auto overscroll-contain px-3 py-3 [-webkit-overflow-scrolling:touch] sm:max-h-[64dvh] sm:px-4" aria-busy={loading}>
               {loading ? (
                 <div className="flex min-h-[220px] items-center justify-center text-muted-foreground">
                   <Loader2 className="h-6 w-6 animate-spin" />
@@ -465,19 +497,19 @@ export function SavedRepliesDialog({
                           <button
                             type="button"
                             onClick={() => toggleCategory(group.id)}
-                            className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2 text-left transition-colors hover:bg-background/70"
+                            className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-2 text-left transition-colors hover:bg-background/70"
                             aria-expanded={!collapsed}
                           >
                             {collapsed ? <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
                             <Folder className="h-4 w-4 shrink-0 text-primary" />
-                            <span className="truncate text-xs font-bold uppercase tracking-wide text-foreground">{group.title}</span>
+                            <span className="min-w-0 text-sm font-semibold text-foreground [overflow-wrap:anywhere]">{group.title}</span>
                             <span className="ml-auto shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{group.replies.length}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => beginCreate(group.category?.id || null)}
                             disabled={replies.length >= SAVED_REPLY_MAX_PER_USER}
-                            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-40"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-40"
                             aria-label={`Adicionar resposta em ${group.title}`}
                           >
                             <Plus className="h-4 w-4" />
@@ -496,18 +528,25 @@ export function SavedRepliesDialog({
                                   items={group.replies.map((reply) => reply.id)}
                                   strategy={verticalListSortingStrategy}
                                 >
-                                  <div className="space-y-2">
+                                  <div className="overflow-hidden rounded-xl border border-border bg-background">
                                     {group.replies.map((reply) => (
                                       <SortableSavedReplyRow
                                         key={reply.id}
                                         reply={reply}
                                         contentPreview={renderContentPreview(reply.content)}
+                                        expanded={expandedReply?.groupId === group.id && expandedReply.replyId === reply.id && !organizing}
+                                        organizing={organizing}
                                         disabled={reordering}
                                         deleting={deletingId === reply.id}
                                         canMoveUp={group.replies[0]?.id !== reply.id}
                                         canMoveDown={group.replies[group.replies.length - 1]?.id !== reply.id}
                                         onMoveUp={() => void moveReplyByOffset(group.replies, reply.id, -1)}
                                         onMoveDown={() => void moveReplyByOffset(group.replies, reply.id, 1)}
+                                        onToggle={() => setExpandedReply((current) => (
+                                          current?.groupId === group.id && current.replyId === reply.id
+                                            ? null
+                                            : { groupId: group.id, replyId: reply.id }
+                                        ))}
                                         onSelect={() => onSelect(reply.content)}
                                         onEdit={() => beginEdit(reply)}
                                         onDelete={() => void deleteReply(reply)}
@@ -544,9 +583,20 @@ export function SavedRepliesDialog({
               )}
             </div>
 
-            <div className="flex items-center justify-between border-t border-border bg-muted/30 px-4 py-3 text-[11px] text-muted-foreground sm:px-5">
-              <span>{replies.length}/{SAVED_REPLY_MAX_PER_USER} respostas · {categories.length}/{SAVED_REPLY_CATEGORY_MAX_PER_USER} categorias</span>
-              <span className="hidden sm:inline">Arraste pelo puxador para reorganizar</span>
+            <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border bg-muted/30 px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-xs text-muted-foreground sm:px-5">
+              <span title={`Limite: ${SAVED_REPLY_MAX_PER_USER} respostas e ${SAVED_REPLY_CATEGORY_MAX_PER_USER} categorias por pessoa`}>
+                {replies.length} respostas · {categories.length} categorias
+              </span>
+              <button
+                type="button"
+                aria-pressed={organizing}
+                disabled={loading || reordering}
+                onClick={() => { setOrganizing((current) => !current); setExpandedReply(null); }}
+                className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-2 font-medium hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+              >
+                {organizing ? <Check className="h-4 w-4" /> : <Settings2 className="h-4 w-4" />}
+                {organizing ? "Concluir" : "Organizar"}
+              </button>
             </div>
           </>
         ) : mode === "form" ? (
@@ -770,6 +820,12 @@ export function SavedRepliesDialog({
             .saved-reply-touch-order {
               display: flex !important;
             }
+            .saved-reply-drag-hint {
+              display: none;
+            }
+            .saved-reply-touch-hint {
+              display: inline;
+            }
           }
         `}</style>
       </DialogContent>
@@ -780,102 +836,146 @@ export function SavedRepliesDialog({
 function SortableSavedReplyRow({
   reply,
   contentPreview,
+  expanded,
+  organizing,
   disabled,
   deleting,
   canMoveUp,
   canMoveDown,
   onMoveUp,
   onMoveDown,
+  onToggle,
   onSelect,
   onEdit,
   onDelete,
 }: {
   reply: SavedReply;
   contentPreview: string;
+  expanded: boolean;
+  organizing: boolean;
   disabled: boolean;
   deleting: boolean;
   canMoveUp: boolean;
   canMoveDown: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onToggle: () => void;
   onSelect: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const panelId = useId();
+  const titleId = useId();
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const deletingFromMenuRef = useRef(false);
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: reply.id,
-    disabled,
+    disabled: disabled || !organizing,
   });
 
   return (
     <div
       ref={setNodeRef}
+      data-saved-reply-id={reply.id}
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.65 : 1,
         zIndex: isDragging ? 20 : undefined,
       }}
-      className="group relative flex items-stretch gap-1 rounded-xl border border-border bg-background p-1 transition-colors hover:border-primary/30 hover:bg-muted/40"
+      className={`relative border-b border-border last:border-b-0 ${expanded ? "bg-primary/5" : "bg-background"}`}
     >
-      <button
-        type="button"
-        {...attributes}
-        {...listeners}
-        disabled={disabled}
-        className="saved-reply-drag-handle flex h-11 w-9 shrink-0 cursor-grab select-none items-center justify-center self-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary active:cursor-grabbing disabled:cursor-wait disabled:opacity-50 sm:w-10"
-        aria-label={`Arraste para mover ${reply.title}`}
-        title="Arraste para reorganizar"
-      >
-        {disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <GripVertical className="h-4 w-4" />}
-      </button>
-      <div className="saved-reply-touch-order hidden shrink-0 flex-col justify-center gap-1 self-center">
-        <button
-          type="button"
-          onClick={onMoveUp}
-          disabled={disabled || !canMoveUp}
-          className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-primary/15 active:text-primary disabled:opacity-25"
-          aria-label={`Mover ${reply.title} para cima`}
-        >
-          <ChevronUp className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onMoveDown}
-          disabled={disabled || !canMoveDown}
-          className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors active:bg-primary/15 active:text-primary disabled:opacity-25"
-          aria-label={`Mover ${reply.title} para baixo`}
-        >
-          <ChevronDown className="h-4 w-4" />
-        </button>
+      <div className="flex min-w-0 items-center">
+        {organizing ? (
+          <>
+            <button
+              ref={setActivatorNodeRef}
+              type="button"
+              {...attributes}
+              {...listeners}
+              disabled={disabled}
+              className="saved-reply-drag-handle ml-1 flex h-11 w-11 shrink-0 cursor-grab select-none items-center justify-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary active:cursor-grabbing disabled:opacity-50"
+              aria-label={`Arraste para mover ${reply.title}`}
+              title="Arraste para reorganizar"
+            >
+              {disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <GripVertical className="h-4 w-4" />}
+            </button>
+            <span className="min-w-0 flex-1 px-3 py-3 text-sm font-medium text-foreground [overflow-wrap:anywhere]">{reply.title}</span>
+            <div className="saved-reply-touch-order hidden shrink-0 items-center pr-1">
+              <button
+                type="button"
+                onClick={onMoveUp}
+                disabled={disabled || !canMoveUp}
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground active:bg-primary/15 active:text-primary disabled:opacity-25"
+                aria-label={`Mover ${reply.title} para cima`}
+              >
+                <ChevronUp className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={onMoveDown}
+                disabled={disabled || !canMoveDown}
+                className="flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground active:bg-primary/15 active:text-primary disabled:opacity-25"
+                aria-label={`Mover ${reply.title} para baixo`}
+              >
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+          </>
+        ) : (
+          <button
+            type="button"
+            id={titleId}
+            aria-expanded={expanded}
+            aria-controls={expanded ? panelId : undefined}
+            onClick={onToggle}
+            className="flex min-h-12 min-w-0 flex-1 items-center justify-between gap-3 px-3 py-3 text-left text-sm font-medium text-foreground outline-none hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary sm:px-4"
+          >
+            <span className="min-w-0 [overflow-wrap:anywhere]">{reply.title}</span>
+            {expanded ? <ChevronUp className="h-4 w-4 shrink-0 text-primary" /> : <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />}
+          </button>
+        )}
       </div>
-      <button
-        type="button"
-        onClick={onSelect}
-        className="min-w-0 flex-1 rounded-lg px-2 py-2.5 text-left sm:px-3"
-      >
-        <span className="block truncate text-sm font-semibold text-foreground">{reply.title}</span>
-        <span className="mt-1 line-clamp-2 block whitespace-pre-line text-xs leading-5 text-muted-foreground">{contentPreview}</span>
-      </button>
-      <div className="flex shrink-0 items-center gap-0.5 pr-1">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="flex h-10 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary sm:w-10"
-          aria-label={`Editar ${reply.title}`}
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          disabled={deleting}
-          className="flex h-10 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50 sm:w-10"
-          aria-label={`Excluir ${reply.title}`}
-        >
-          {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-        </button>
-      </div>
+      {expanded && (
+        <div id={panelId} role="region" aria-labelledby={titleId} className="space-y-3 px-3 pb-3 sm:px-4 sm:pb-4">
+          <p className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">{contentPreview}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={onSelect}
+              className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground hover:bg-primary/90 sm:w-auto"
+            >
+              <MessageSquareText className="h-4 w-4" />
+              Usar resposta
+            </button>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm text-muted-foreground hover:bg-primary/10 hover:text-primary"
+              aria-label={`Editar ${reply.title}`}
+            >
+              <Pencil className="h-4 w-4" />
+              Editar
+            </button>
+            <DropdownMenu onOpenChange={(open) => { if (open) deletingFromMenuRef.current = false; }}>
+              <DropdownMenuTrigger
+                ref={menuTriggerRef}
+                aria-label={`Mais ações de ${reply.title}`}
+                disabled={deleting}
+                className="ml-auto flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+              >
+                {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <MoreVertical className="h-4 w-4" />}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52 max-w-[calc(100vw-2rem)]" finalFocus={() => deletingFromMenuRef.current ? false : menuTriggerRef.current}>
+                <DropdownMenuItem variant="destructive" className="min-h-11 px-3" onClick={() => { deletingFromMenuRef.current = true; onDelete(); }}>
+                  <Trash2 className="h-4 w-4" />
+                  Excluir resposta
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
