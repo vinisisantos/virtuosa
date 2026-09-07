@@ -13,6 +13,7 @@ import { EvaluationAvailabilityDialog } from "@/components/whatsapp/evaluation-a
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
+import { InboxChatHeader } from "@/components/whatsapp/inbox-chat-header";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
@@ -1636,6 +1637,7 @@ function ContactSidebar({
   onProfilePicResolved,
   onRenameContact,
   onPipelineChanged,
+  openEvolutionSignal,
 }: {
   conversation: Conversation;
   unit?: string | null;
@@ -1646,6 +1648,7 @@ function ContactSidebar({
   onProfilePicResolved?: (phone: string, url: string) => void;
   onRenameContact: (conversationId: string, name: string) => Promise<Contact>;
   onPipelineChanged?: () => void;
+  openEvolutionSignal?: number;
 }) {
   const { contact } = conversation;
   const operationalUnit = unit || contact.unit || "";
@@ -1830,6 +1833,7 @@ function ContactSidebar({
             whatsappInstanceId={conversation.instanceId}
             layout="sidebar"
             refreshTrigger={pipelineRefreshKey}
+            openEvolutionSignal={openEvolutionSignal}
             showFallback
             onPipelineChanged={onPipelineChanged}
           />
@@ -3773,9 +3777,9 @@ export default function InboxPage() {
     const dialog = internalNotesDialogRef.current;
     if (!dialog) return;
 
-    const previouslyFocused = document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : internalNotesTriggerRef.current;
+    const previouslyFocused = internalNotesTriggerRef.current || (
+      document.activeElement instanceof HTMLElement ? document.activeElement : null
+    );
     window.requestAnimationFrame(() => (internalNoteTextareaRef.current || dialog).focus());
 
     const handleDialogKeyDown = (event: KeyboardEvent) => {
@@ -4671,7 +4675,7 @@ export default function InboxPage() {
       if (event.key !== "Escape" || event.defaultPrevented) return;
 
       // Overlays consume Escape first; a second press then leaves the chat.
-      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog) {
+      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog || showQuickSchedule || internalNotesOpen) {
         return;
       }
       if (bulkFollowUpConfirmOpen) {
@@ -4708,6 +4712,8 @@ export default function InboxPage() {
     showNewConversationDialog,
     showSavedRepliesDialog,
     showEvaluationAvailabilityDialog,
+    showQuickSchedule,
+    internalNotesOpen,
   ]);
 
   // ─── File attachment ──────────────────────────────────────
@@ -7213,335 +7219,100 @@ export default function InboxPage() {
               </div>
             )}
 
-            {/* Thread Header */}
-            <div className="inbox-thread-header z-10 flex h-[68px] shrink-0 items-center justify-between gap-1 border-b border-border/70 bg-card/95 px-3 shadow-[0_1px_8px_rgba(0,0,0,0.04)] backdrop-blur sm:h-16 sm:gap-0 sm:px-5">
-              <div className="relative flex min-w-0 flex-1 items-center gap-1 sm:w-auto sm:gap-2">
-                {/* Back (mobile) */}
-                <button
-                  onClick={() => leaveConversation(archivedView ? { archived: "1" } : undefined)}
-                  aria-label="Voltar para a lista de conversas"
-                  className="-ml-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted lg:hidden"
-                >
-                  <ChevronLeft className="h-6 w-6" />
-                </button>
-
-                {/* Avatar + nome — abre a barra lateral do contato */}
-                <button
-                  onClick={() => setContactSidebarOpen(true)}
-                  className="flex min-w-0 items-center gap-2 rounded-xl py-1 pl-1 pr-2 transition-colors hover:bg-muted/50 sm:gap-3 sm:py-1.5 sm:pl-1.5 sm:pr-3"
-                  title="Ver perfil completo"
-                >
-                  <ContactAvatar
-                    contact={selectedConv.contact}
-                    sizeClassName="h-10 w-10"
-                    textClassName="text-sm shadow-inner"
-                    fetchUrl={profilePicUrlFor(selectedConv.contact.phone)}
-                    refreshUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
-                    onResolved={(url) => updateContactProfilePic(selectedConv.contact.phone, url)}
-                  />
-                  <span className="flex min-w-0 flex-col text-left">
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate text-base font-semibold leading-tight text-foreground sm:text-[15px]">
-                        {displayContactName(selectedConv.contact)}
-                      </span>
-                      {selectedConv.campaignAccountOrigin === "secondary" && <SecondaryMetaAccountBadge />}
-                      {selectedConv.blockedAt && (
-                        <span
-                          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-destructive/10 text-destructive"
-                          title="Contato bloqueado"
-                        >
-                          <Ban className="h-3 w-3" />
-                        </span>
-                      )}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground font-mono mt-0.5 opacity-80">
-                      {selectedConv.contact.phone}
-                    </span>
-                  </span>
-                </button>
-              </div>
-
-              <div className="flex w-auto shrink-0 items-center justify-end gap-1 sm:gap-2">
-                <a
-                  href={`tel:${selectedConv.contact.phone.replace(/\D/g, "")}`}
-                  aria-label={`Ligar para ${selectedConv.contact.name || selectedConv.contact.phone}`}
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
-                >
-                  <Phone className="h-5 w-5" />
-                </a>
-
-                {/* Chip discreto de conversa finalizada */}
-                {selectedConv && (selectedConv.status === 'resolved' || selectedConv.status === 'closed') && (
-                  <span className="hidden sm:flex h-8 items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 text-xs font-medium text-emerald-600" title="Conversa finalizada">
-                    <Check className="h-3.5 w-3.5" />
-                    Finalizada
-                  </span>
-                )}
-
-                {selectedConv.blockedAt && (
-                  <span className="hidden h-8 items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/10 px-3 text-xs font-medium text-destructive sm:flex">
-                    <Ban className="h-3.5 w-3.5" />
-                    Bloqueado
-                  </span>
-                )}
-
-                {!canReplyToSelectedConversation && (
-                  <span className="hidden h-8 items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 text-xs font-medium text-amber-700 dark:text-amber-300 sm:flex">
-                    <Eye className="h-3.5 w-3.5" />
-                    Somente consulta
-                  </span>
-                )}
-
-                {!selectedConv.blockedAt && evaluationConfirmation?.visible && (
-                  <button
-                    type="button"
-                    onClick={() => void handleSendEvaluationConfirmation()}
-                    disabled={isSendingEvaluationConfirmation || evaluationConfirmation.alreadySent}
-                    aria-label={evaluationConfirmation.alreadySent ? "Confirmação já enviada" : "Enviar confirmação da avaliação"}
-                    title={evaluationConfirmation.alreadySent ? "Confirmação já enviada" : "Enviar confirmação da avaliação"}
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-xs font-semibold transition-colors sm:h-8 sm:w-auto sm:gap-2 sm:px-3 ${
-                      evaluationConfirmation.alreadySent
-                        ? "cursor-default border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
-                        : "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
-                    } disabled:opacity-80`}
-                  >
-                    {isSendingEvaluationConfirmation ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : evaluationConfirmation.alreadySent ? (
-                      <CheckCheck className="h-4 w-4" />
-                    ) : (
-                      <CalendarDays className="h-4 w-4" />
-                    )}
-                    <span className="hidden sm:inline">
-                      {evaluationConfirmation.alreadySent ? "Enviado" : "Confirmar"}
-                    </span>
-                  </button>
-                )}
-
-                {!selectedConv.blockedAt && canReplyToSelectedConversation && (
-                  <button
-                    type="button"
-                    onClick={() => setShowQuickSchedule(true)}
-                    disabled={!["SCS", "SBC", "Osasco"].includes(selectedConversationUnit)}
-                    className="hidden min-h-11 shrink-0 items-center gap-2 rounded-full bg-primary px-3 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 lg:flex"
-                    title="Agendar avaliação deste contato"
-                  >
-                    <CalendarDays className="h-4 w-4" aria-hidden="true" /> AGENDAR
-                  </button>
-                )}
-
-                {!selectedConv.blockedAt && canReplyToSelectedConversation && (
-                  <button
-                    type="button"
-                    onClick={() => setShowEvaluationAvailabilityDialog(true)}
-                    className="hidden h-8 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15 lg:flex"
-                    title="Consultar e enviar horários livres"
-                  >
-                    <Clock3 className="h-3.5 w-3.5" />
-                    Horários
-                  </button>
-                )}
-
-                <button
-                  ref={internalNotesTriggerRef}
-                  type="button"
-                  onClick={() => setInternalNotesOpen(true)}
-                  className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-amber-500/30 bg-amber-500/10 text-amber-800 transition-colors hover:bg-amber-500/15 dark:text-amber-300 sm:h-8 sm:w-auto sm:gap-2 sm:px-3"
-                  aria-label={`Abrir notas internas${internalNotes.length ? `, ${internalNotes.length} salvas` : ""}`}
-                  title="Notas internas — visíveis somente para a equipe"
-                >
-                  <MessageSquareText className="h-4 w-4" />
-                  <span className="hidden sm:inline">Notas</span>
-                  {internalNotes.length > 0 && (
-                    <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-amber-500 px-1 text-[9px] font-bold text-black sm:static sm:h-4">
-                      {internalNotes.length > 99 ? "99+" : internalNotes.length}
-                    </span>
-                  )}
-                </button>
-
-                {selectedConv?.campaignUrl && (
-                  <a
-                    href={selectedConv.campaignUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hidden sm:flex h-8 items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 text-xs font-medium text-primary transition-colors hover:bg-primary/15"
-                    title={selectedConv.campaignName ? `Abrir anúncio: ${selectedConv.campaignName}` : "Abrir anúncio"}
-                  >
-                    <Megaphone className="h-3.5 w-3.5" />
-                    Ver anúncio
-                  </a>
-                )}
-
-                {/* Botão de abrir barra lateral */}
-                <button
-                  onClick={() => setContactSidebarOpen(true)}
-                  className="hidden sm:flex h-8 items-center gap-2 rounded-full border border-border bg-background px-3 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
-                >
-                  <FileText className="h-3.5 w-3.5" />
-                  Perfil & Funil
-                </button>
-
-                {/* Menu "⋯" — ações da conversa */}
-                <div className="relative shrink-0">
-                  <button
-                    onClick={() => setKebabOpen((o) => !o)}
-                    className={`flex h-10 w-10 items-center justify-center rounded-full border-0 transition-colors sm:h-9 sm:w-9 sm:border sm:border-border ${
-                      kebabOpen ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                    }`}
-                    title="Mais ações"
-                  >
-                    <MoreVertical className="h-4 w-4" />
-                  </button>
-
-                  {kebabOpen && (
-                    <>
-                      <div className="fixed inset-0 z-40" onClick={() => setKebabOpen(false)} />
-                      <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-lg border border-border bg-card py-1 shadow-2xl">
-                        {canReplyToSelectedConversation ? (
-                          <>
-                            <button
-                              onClick={() => {
-                                setShowEvaluationAvailabilityDialog(true);
-                                setKebabOpen(false);
-                              }}
-                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
-                            >
-                              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                              Enviar disponibilidade
-                            </button>
-
-                            <button
-                              onClick={() => { setEvoSignal((s) => s + 1); setKebabOpen(false); }}
-                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
-                            >
-                              <FileText className="h-4 w-4 text-muted-foreground" />
-                              Adicionar observação
-                            </button>
-
-                            <button
-                              onClick={() => { openFollowUpModal(); setKebabOpen(false); }}
-                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
-                            >
-                              <Clock3 className="h-4 w-4 text-muted-foreground" />
-                              {selectedConv?.activeFollowUp ? "Reagendar retorno" : "Agendar retorno"}
-                            </button>
-
-                            <button
-                              onClick={() => { void handleMarkConversationUnread(); setKebabOpen(false); }}
-                              disabled={isMarkingUnread}
-                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {isMarkingUnread ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                              ) : (
-                                <Mail className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              Marcar como não lida
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                void handleArchiveConversation(!selectedConv?.archivedAt);
-                                setKebabOpen(false);
-                              }}
-                              disabled={isArchivingConversation}
-                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-                            >
-                              {isArchivingConversation ? (
-                                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                              ) : selectedConv?.archivedAt ? (
-                                <ArchiveRestore className="h-4 w-4 text-muted-foreground" />
-                              ) : (
-                                <Archive className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              {selectedConv?.archivedAt ? "Restaurar conversa" : "Arquivar conversa"}
-                            </button>
-
-                            <div className="my-1 h-px bg-border" />
-
-                            {selectedConv && selectedConv.status !== 'resolved' && selectedConv.status !== 'closed' ? (
-                              <button
-                                onClick={() => { setShowCloseModal(true); setKebabOpen(false); }}
-                                className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-emerald-600 transition-colors hover:bg-emerald-500/10"
-                              >
-                                <Check className="h-4 w-4" />
-                                Finalizar conversa
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => { handleReopenConversation(); setKebabOpen(false); }}
-                                className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted"
-                              >
-                                <RotateCcw className="h-4 w-4 text-muted-foreground" />
-                                Reabrir conversa
-                              </button>
-                            )}
-                          </>
-                        ) : (
-                          <div className="mx-2 my-1 flex items-start gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs leading-5 text-amber-800 dark:text-amber-300">
-                            <Eye className="mt-0.5 h-4 w-4 shrink-0" />
-                            Histórico disponível para consulta. O bloqueio do contato continua disponível abaixo.
-                          </div>
-                        )}
-
-                        {selectedConv && (
-                          <>
-                            <div className="my-1 h-px bg-border" />
-                            <button
-                              onClick={() => { setShowBlockModal(true); setKebabOpen(false); }}
-                              disabled={isUpdatingContactBlock}
-                              className={`flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                                selectedConv.blockedAt
-                                  ? "text-foreground hover:bg-muted"
-                                  : "text-destructive hover:bg-destructive/10"
-                              }`}
-                            >
-                              {isUpdatingContactBlock ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Ban className="h-4 w-4" />
-                              )}
-                              {selectedConv.blockedAt ? "Desbloquear contato" : "Bloquear contato"}
-                            </button>
-                          </>
-                        )}
-
-                        {/* Excluir — apenas ADMINISTRADOR */}
-                        {isAdmin && selectedConv && (
-                          <>
-                            <div className="my-1 h-px bg-border" />
-                            <button
-                              onClick={() => { setShowDeleteModal(true); setKebabOpen(false); }}
-                              className="flex min-h-11 w-full items-center gap-2.5 px-3 py-2 text-left text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              Excluir conversa
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            </div>
+            <InboxChatHeader
+              key={selectedConv.id}
+              name={displayContactName(selectedConv.contact)}
+              phone={isLidPlaceholderContact(selectedConv.contact) ? "" : selectedConv.contact.phone}
+              avatar={<ContactAvatar
+                contact={selectedConv.contact}
+                sizeClassName="h-8 w-8 sm:h-10 sm:w-10"
+                textClassName="text-sm"
+                fetchUrl={profilePicUrlFor(selectedConv.contact.phone)}
+                refreshUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
+                onResolved={(url) => updateContactProfilePic(selectedConv.contact.phone, url)}
+              />}
+              secondary={selectedConv.campaignAccountOrigin === "secondary"}
+              blocked={!!selectedConv.blockedAt}
+              readOnly={!canReplyToSelectedConversation}
+              closed={["resolved", "closed"].includes(selectedConv.status)}
+              scheduled={!!selectedConv.scheduledEvaluation}
+              canSchedule={!selectedConv.blockedAt && canReplyToSelectedConversation}
+              scheduleDisabled={!["SCS", "SBC", "Osasco"].includes(selectedConversationUnit)}
+              onSchedule={() => setShowQuickSchedule(true)}
+              onBack={() => leaveConversation(archivedView ? { archived: "1" } : undefined)}
+              onProfile={() => { setEvoSignal(0); setContactSidebarOpen(true); }}
+              menuOpen={kebabOpen}
+              onMenuOpenChange={setKebabOpen}
+              menuTriggerRef={internalNotesTriggerRef}
+              actions={[
+                ...(canReplyToSelectedConversation ? [{
+                  id: "availability", label: "Horários", icon: Clock3,
+                  onClick: () => setShowEvaluationAvailabilityDialog(true),
+                }] : []),
+                {
+                  id: "notes", label: "Notas", icon: MessageSquareText, count: internalNotes.length,
+                  onClick: () => setInternalNotesOpen(true),
+                },
+                ...(selectedConv.campaignUrl ? [{
+                  id: "ad", label: "Ver anúncio", icon: Megaphone,
+                  href: selectedConv.campaignUrl, external: true,
+                }] : []),
+                {
+                  id: "profile", label: "Perfil & Funil", icon: FileText,
+                  onClick: () => { setEvoSignal(0); setContactSidebarOpen(true); },
+                },
+                ...(!selectedConv.blockedAt && evaluationConfirmation?.visible ? [{
+                  id: "confirmation",
+                  label: evaluationConfirmation.alreadySent ? "Confirmação já enviada" : "Confirmar avaliação",
+                  icon: isSendingEvaluationConfirmation ? Loader2 : evaluationConfirmation.alreadySent ? CheckCheck : CalendarDays,
+                  disabled: isSendingEvaluationConfirmation || evaluationConfirmation.alreadySent,
+                  onClick: () => { void handleSendEvaluationConfirmation(); },
+                }] : []),
+                ...(!isLidPlaceholderContact(selectedConv.contact) && selectedConv.contact.phone.replace(/\D/g, "") ? [{
+                  id: "call", label: "Ligar para contato", icon: Phone,
+                  href: "tel:" + selectedConv.contact.phone.replace(/\D/g, ""),
+                }] : []),
+              ]}
+              moreActions={[
+                ...(canReplyToSelectedConversation ? [
+                  {
+                    id: "observation", label: "Adicionar observação", icon: FileText,
+                    onClick: () => { setEvoSignal((signal) => signal + 1); setContactSidebarOpen(true); },
+                  },
+                  {
+                    id: "followup", label: selectedConv.activeFollowUp ? "Reagendar retorno" : "Agendar retorno", icon: Clock3,
+                    onClick: openFollowUpModal,
+                  },
+                  {
+                    id: "unread", label: "Marcar como não lida", icon: Mail, disabled: isMarkingUnread,
+                    onClick: () => { void handleMarkConversationUnread(); },
+                  },
+                  {
+                    id: "archive", label: selectedConv.archivedAt ? "Restaurar conversa" : "Arquivar conversa",
+                    icon: selectedConv.archivedAt ? ArchiveRestore : Archive, disabled: isArchivingConversation,
+                    onClick: () => { void handleArchiveConversation(!selectedConv.archivedAt); },
+                  },
+                  ...(!["resolved", "closed"].includes(selectedConv.status) ? [{
+                    id: "finish", label: "Finalizar conversa", icon: Check,
+                    onClick: () => setShowCloseModal(true),
+                  }] : [{
+                    id: "reopen", label: "Reabrir conversa", icon: RotateCcw,
+                    onClick: () => { void handleReopenConversation(); },
+                  }]),
+                ] : []),
+                {
+                  id: "block", label: selectedConv.blockedAt ? "Desbloquear contato" : "Bloquear contato", icon: Ban,
+                  disabled: isUpdatingContactBlock, destructive: !selectedConv.blockedAt,
+                  onClick: () => setShowBlockModal(true),
+                },
+                ...(isAdmin ? [{
+                  id: "delete", label: "Excluir conversa", icon: Trash2, destructive: true,
+                  onClick: () => setShowDeleteModal(true),
+                }] : []),
+              ]}
+            />
 
             {/* Messages */}
-            {!selectedConv.blockedAt && canReplyToSelectedConversation && (
-              <div className="flex shrink-0 items-center gap-3 border-b border-border bg-card px-3 py-1.5 lg:hidden">
-                <button
-                  type="button"
-                  onClick={() => setShowQuickSchedule(true)}
-                  disabled={!["SCS", "SBC", "Osasco"].includes(selectedConversationUnit)}
-                  className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                >
-                  <CalendarDays className="h-4 w-4" aria-hidden="true" /> AGENDAR
-                </button>
-                <span className="min-w-0 text-xs text-muted-foreground">
-                  {selectedConv.scheduledEvaluation ? "Avaliação agendada · contador suspenso" : "Marcar avaliação deste contato"}
-                </span>
-              </div>
-            )}
             <div ref={messagesViewportRef} className="inbox-thread-messages min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-3 py-3 sm:px-6 sm:py-4 lg:px-8">
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
@@ -8257,6 +8028,7 @@ export default function InboxPage() {
               refreshProfilePicUrl={profilePicUrlFor(selectedConv.contact.phone, true)}
               onProfilePicResolved={updateContactProfilePic}
               onRenameContact={renameContact}
+              openEvolutionSignal={evoSignal}
               onPipelineChanged={() => {
                 setEvaluationConfirmationRefreshKey((current) => current + 1);
                 void fetchConversations({ incremental: true });

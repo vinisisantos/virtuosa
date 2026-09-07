@@ -4,7 +4,7 @@ Regra aprovada em 07/09/2026 para SCS, SBC e Osasco.
 
 ## Comportamento
 
-- O botão **AGENDAR** abre o formulário existente do Pipeline com o contato e a unidade do chat. No computador fica no cabeçalho; no celular fica logo abaixo dele.
+- O botão **Agendar** abre o formulário existente do Pipeline com o contato e a unidade do chat. Fica no cabeçalho, na mesma linha da identificação, tanto no computador como no celular.
 - O formulário exige data, horário e responsável da unidade. Usa os mesmos endpoints, validações de conflito e confirmações de WhatsApp já existentes no agendamento do Pipeline. Não cria uma agenda paralela.
 - Uma avaliação ativa em `Agendamento` substitui o relógio de espera por um calendário. Não basta ter um estágio chamado Agendado.
 - Estados ativos: `pendente`, `confirmado`, `nao_confirmou` e aliases explícitos. Cancelamento, falta, encerramento ou status desconhecido não suspendem o relógio.
@@ -31,8 +31,17 @@ npm test
 npx tsc --noEmit
 # Com o servidor de desenvolvimento em 127.0.0.1:3210:
 node tests/inbox-scheduling-ui.mjs
+node tests/inbox-header-ui.mjs
 ```
 
 O teste de UI intercepta todas as APIs e bloqueia acessos externos: não grava clientes, agendas nem envia mensagens reais. Exercita SCS/SBC/Osasco em 390, 430 e 1440 px, contato novo/existente, validação, conflito, erro, agendamento e cancelamento com snapshot incremental vazio. Capturas ficam em diretório temporário informado na saída.
 
 Teste manual de produção durante um atendimento real: atualizar o Inbox, abrir AGENDAR, conferir unidade/data/responsável, salvar e verificar a avaliação na aba Avaliações. O card deve trocar os minutos pelo calendário sem apagar mensagens não lidas. Não criar agendamento fictício em produção: o fluxo pode enviar confirmação automática.
+
+## Cabeçalho compacto — 07/09/2026
+
+Agendar é a única ação destacada. Ferramentas (ou ⋯ no celular) agrupa Horários, Notas, Ver anúncio quando há URL, Perfil & Funil, confirmação de avaliação quando elegível e ligação. Mais ações abre uma segunda lista no mesmo popup, evitando submenus que saem da tela: observação, retorno, não lida, arquivo, finalização/reabertura, bloqueio e exclusão administrativa. As condições de acesso e callbacks existentes permanecem; abrir o menu não faz consultas.
+
+O nome ou telefone não é duplicado. Conta secundária continua identificada por texto ciano, discretamente abaixo do nome. Ícones acessíveis preservam estados de bloqueio, consulta, finalização e avaliação ativa. Avatar/nome continuam abrindo Perfil & Funil. A ação de observação encaminha o sinal à barra lateral e ao formulário já existente, sem criar novo campo ou endpoint.
+
+O menu usa portal, limite da viewport, alvos de 44 px, navegação por teclado e retorno de foco; Escape fecha primeiro o overlay aberto. QA adicional cobre três unidades/larguras, consulta, bloqueio, contato sem nome, conversa finalizada, tema claro e confirmação elegível/já enviada com APIs simuladas. Nenhum envio ou gravação real em produção foi realizado pelo QA.

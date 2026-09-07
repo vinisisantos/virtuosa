@@ -108,7 +108,7 @@ try {
             assert.equal(calls.includes('/api/clients'), false, 'sem leitura extra ao abrir chat');
             await fit(page, width);
             await page.screenshot({ path: join(output, `${unit}-${width}-chat.png`), fullPage: true });
-            await button(page, 'AGENDAR');
+            await button(page, 'Agendar');
             await page.waitForSelector('[role=dialog]');
             await fit(page, width);
             await page.waitForSelector('[aria-label="Responsável pela avaliação"] option[value="assignee-test"]');
@@ -162,7 +162,7 @@ try {
             // Erro de carregamento tem saída e não cria agendamento silenciosamente.
             if (unit === 'SCS' && width === 430) {
                 loadFailure = true;
-                await button(page, 'AGENDAR');
+                await button(page, 'Agendar');
                 await page.waitForFunction(() => document.body.innerText.includes('Não foi possível consultar o contato.'));
                 await fit(page, width);
                 await button(page, 'Fechar');
