@@ -56,6 +56,12 @@ if (process.env.VERCEL_ENV === "production") {
       DATABASE_URL: migrationUrl,
     });
   }
+  if (process.env.SCS_CATALOG_IMPORT_ON_DEPLOY === "pdf-2026-09-06-confirmed") {
+    run(process.execPath, ["--experimental-strip-types", "scripts/import-scs-catalog.mjs", "--apply"], {
+      ...process.env,
+      DATABASE_URL: migrationUrl,
+    });
+  }
 }
 
 run("npm", ["run", "build"]);
