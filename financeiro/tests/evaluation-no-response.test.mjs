@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import test, { before, beforeEach, after } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
-import { DEFAULT_NO_RESPONSE_DELAY_HOURS, EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig, noResponseExecutionId, validNoResponseDelay } from '../src/lib/whatsapp/evaluation-no-response-policy.ts';
+import { DEFAULT_NO_RESPONSE_DELAY_HOURS, noResponseConfig, noResponseExecutionId, validNoResponseDelay } from '../src/lib/whatsapp/evaluation-no-response-policy.ts';
 import { noResponseAutomationData, updatedNoResponseConfig } from '../src/lib/whatsapp/evaluation-no-response-automation.ts';
 import { noResponseCandidatesQuery } from '../src/lib/whatsapp/evaluation-no-response-query.ts';
 import { sendEvaluationNoResponseReminder } from '../src/lib/whatsapp/evaluation-no-response.ts';
 import { readFile } from 'node:fs/promises';
-import { EVALUATION_SCHEDULE_UNIT_CONFIGS, EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER } from '../src/lib/whatsapp/evaluation-schedule-confirmation-message.ts';
+import { EVALUATION_SCHEDULE_UNIT_CONFIGS, EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER, buildEvaluationConfirmationRequestMessage, buildEvaluationDayReminderMessage, buildEvaluationRescheduledMessage } from '../src/lib/whatsapp/evaluation-schedule-confirmation-message.ts';
 
 // PostgreSQL local efêmero: não carrega .env nem acessa o banco/provedor reais.
 // Prisma interpreta timestamp sem fuso em UTC; o parser padrão do PGlite usa o fuso local.
@@ -27,13 +27,13 @@ const candidates = async (scopes = [scope('SCS')], when = now, revalidate, conve
 
 before(async () => {
   await pg.exec(`
-    CREATE TABLE "Automation" (id text PRIMARY KEY, unit text, "triggerType" text, "isActive" boolean, "updatedAt" timestamp);
+    CREATE TABLE "Automation" (id text PRIMARY KEY, unit text, "triggerType" text, "isActive" boolean, "updatedAt" timestamp, steps jsonb);
     CREATE TABLE "AutomationLog" (id text PRIMARY KEY, "automationId" text, result text, "triggerData" jsonb, "executedAt" timestamp DEFAULT current_timestamp, error text);
     CREATE INDEX ON "AutomationLog" ("automationId"); CREATE INDEX ON "AutomationLog" ("executedAt");
     CREATE TABLE "WhatsAppConversation" (id text PRIMARY KEY, "instanceId" text, "contactId" text, "lastKnownJid" text, status text, "blockedAt" timestamp, "archivedAt" timestamp, "lastInboundAt" timestamp);
     CREATE TABLE "WhatsAppInstance" (id text PRIMARY KEY, unit text, name text, provider text, status text);
     CREATE TABLE "WhatsAppContact" (id text PRIMARY KEY, phone text);
-    CREATE TABLE "WhatsAppMessage" (id text PRIMARY KEY, "conversationId" text, "messageId" text, "fromMe" boolean, timestamp timestamp, "createdAt" timestamp, status text);
+    CREATE TABLE "WhatsAppMessage" (id text PRIMARY KEY, "conversationId" text, "messageId" text, "fromMe" boolean, timestamp timestamp, "createdAt" timestamp, status text, body text, type text DEFAULT 'text', "respondedByName" text);
     CREATE UNIQUE INDEX ON "WhatsAppMessage" ("conversationId", "messageId"); CREATE INDEX ON "WhatsAppMessage" ("conversationId", timestamp);
     CREATE TABLE "Agendamento" (id text PRIMARY KEY, unit text, "startTime" timestamp, "clientName" text, "clientPhone" text, status text, procedimento text, notes text);
     CREATE TABLE "SalesPipeline" (id text PRIMARY KEY, unit text, stage text);
@@ -241,4 +241,101 @@ test('passar das 21h entre clique e revalidação não cancela envio elegível',
   let sends=0;
   const result=await run(adapter(),async p=>{time+=2000;await p.beforeSend();sends++;return {messageId:'sent',sentAt:new Date(time)};},{clock:()=>time});
   assert.equal(result.sent,1);assert.equal(sends,1);
+});
+
+async function legacyConfirmation(unit = 'SCS', template) {
+  const body = buildEvaluationConfirmationRequestMessage({unit, clientName:'Pessoa Teste', startTime, template});
+  await pg.query(`UPDATE "AutomationLog" SET "triggerData"=("triggerData" - 'confirmationMessageId') || '{"source":"manual"}'::jsonb WHERE id=$1`, [`source-${unit}`]);
+  await pg.query(`UPDATE "WhatsAppMessage" SET body=$1,"respondedByName"='Automação de agenda' WHERE id=$2`, [body,`message-${unit}`]);
+  if (template) await pg.query('UPDATE "Automation" SET steps=$1 WHERE id=$2', [JSON.stringify([{type:'send_message',config:{message:template}}]),`request-${unit}`]);
+}
+const simulatedSend = async p => { await p.beforeSend(); return {messageId:'sent',sentAt:now}; };
+const mustNotSend = async () => { throw new Error('Não deveria chamar o provedor.'); };
+
+for (const {unit,instanceId} of EVALUATION_SCHEDULE_UNIT_CONFIGS) {
+  test(`${unit}: confirmação antiga auditada permite clique, registra vínculo e não duplica`,async()=>{
+    await legacyConfirmation(unit);
+    const row=(await candidates([scope(unit)]))[0];
+    assert.equal(row.confirmationReference,'legacy_audit');assert.equal(row.confirmationMessageId,'same-provider-id');
+    let queries=0;
+    const db=adapter({beforeQuery:n=>{queries=n;}});
+    const ctx={...context,unit,instanceId,conversationId:`chat-${unit}`};
+    assert.equal((await sendEvaluationNoResponseReminder(ctx,{database:db,sendText:simulatedSend,clock:()=>now.getTime()})).sent,1);
+    assert.equal(queries,2); // Seleção e revalidação, sem consultas novas para recuperar o vínculo.
+    const audit=(await pg.query('SELECT "triggerData" FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId(`appointment-${unit}`,startTime)])).rows[0].triggerData;
+    assert.equal(audit.confirmationReference,'legacy_audit');assert.equal(audit.confirmationMessageId,'same-provider-id');
+    assert.equal(audit.confirmationSentAt,sentAt.toISOString());
+    assert.equal((await sendEvaluationNoResponseReminder(ctx,{database:db,sendText:mustNotSend,clock:()=>now.getTime()})).sent,0);
+  });
+}
+test('confirmação antiga aceita texto personalizado integral e padrão anterior à edição do modelo',async()=>{
+  await legacyConfirmation('SCS','Olá {{nome}}, confirma sua avaliação em {{data}} às {{hora}}?');
+  assert.equal((await run(adapter(),simulatedSend)).sent,1);
+  await pg.query('DELETE FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId('appointment-SCS',startTime)]);
+  await legacyConfirmation(); // Mensagem padrão antiga; configuração personalizada continua salva.
+  assert.equal((await run(adapter(),simulatedSend)).sent,1);
+});
+for (const [name,sql] of [
+  ['envio sem auditoria de sucesso',`UPDATE "AutomationLog" SET result='failed'`],
+  ['auditoria de outro tipo',`UPDATE "AutomationLog" SET "triggerData"="triggerData" || '{"action":"evaluation_day_reminder"}'::jsonb`],
+  ['origem antiga desconhecida',`UPDATE "AutomationLog" SET "triggerData"="triggerData" - 'source'`],
+  ['autoria humana',`UPDATE "WhatsAppMessage" SET "respondedByName"='Pessoa Operadora'`],
+  ['outra conversa',`UPDATE "WhatsAppMessage" SET "conversationId"='outro-chat' WHERE id='message-SCS'`],
+  ['mensagem recebida',`UPDATE "WhatsAppMessage" SET "fromMe"=false`],
+  ['mensagem excluída',`UPDATE "WhatsAppMessage" SET status='deleted'`],
+  ['mensagem com falha',`UPDATE "WhatsAppMessage" SET status='failed'`],
+  ['envio fora da janela de auditoria',`UPDATE "WhatsAppMessage" SET timestamp=timestamp+interval '2 minutes',"createdAt"="createdAt"+interval '2 minutes'`],
+  ['mensagem importada mais tarde',`UPDATE "WhatsAppMessage" SET "createdAt"="createdAt"+interval '2 minutes'`],
+  ['mensagem anterior ao log',`UPDATE "WhatsAppMessage" SET timestamp=timestamp-interval '6 seconds'`],
+  ['ID explícito inexistente',`UPDATE "AutomationLog" SET "triggerData"="triggerData" || '{"confirmationMessageId":"inexistente"}'::jsonb`],
+  ['outro agendamento',`UPDATE "AutomationLog" SET "triggerData"="triggerData" || '{"appointmentId":"outro"}'::jsonb`],
+]) test(`legado não libera ${name}`,async()=>{
+  await legacyConfirmation();await pg.exec(sql);
+  assert.equal((await candidates()).length,0);
+  assert.equal((await run(adapter(),mustNotSend)).sent,0);
+});
+for (const [name,body] of [
+  ['texto genérico','Olá, tudo bem?'],
+  ['lembrete do dia',buildEvaluationDayReminderMessage({unit:'SCS',clientName:'Pessoa Teste',startTime})],
+  ['reagendamento',buildEvaluationRescheduledMessage({unit:'SCS',clientName:'Pessoa Teste',startTime})],
+  ['outro horário',buildEvaluationConfirmationRequestMessage({unit:'SCS',clientName:'Pessoa Teste',startTime:new Date(startTime.getTime()+3600000)})],
+  ['outra unidade',buildEvaluationConfirmationRequestMessage({unit:'Osasco',clientName:'Pessoa Teste',startTime})],
+]) test(`autoria e horário não bastam para recuperar ${name}`,async()=>{
+  await legacyConfirmation();
+  await pg.query('UPDATE "WhatsAppMessage" SET body=$1',[body]);
+  assert.equal((await candidates()).length,1);
+  assert.equal((await run(adapter(),mustNotSend)).skipped,1);
+  assert.equal((await pg.query('SELECT count(*)::int AS n FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId('appointment-SCS',startTime)])).rows[0].n,0);
+});
+for (const status of ['sent','failed','deleted']) test(`duas mensagens da agenda na janela são ambíguas mesmo com segunda ${status}`,async()=>{
+  await legacyConfirmation();
+  await pg.query(`INSERT INTO "WhatsAppMessage" SELECT 'second',"conversationId",'second',"fromMe",timestamp,"createdAt",$1,body,type,"respondedByName" FROM "WhatsAppMessage" WHERE id='message-SCS'`,[status]);
+  assert.equal((await candidates()).length,0);
+  await pg.exec(`UPDATE "AutomationLog" SET "triggerData"="triggerData" || '{"confirmationMessageId":"same-provider-id"}'::jsonb`);
+  assert.equal((await candidates())[0].confirmationReference,'message_id');
+  assert.equal((await run(adapter(),simulatedSend)).sent,1);
+});
+test('confirmação antiga não ignora resposta recebida ou importada',async()=>{
+  await legacyConfirmation();
+  await pg.query('INSERT INTO "WhatsAppMessage" VALUES ($1,$2,$3,false,$4,$5,$6)',['response','chat-SCS','response',activatedAt,now,'received']);
+  assert.equal((await run(adapter(),mustNotSend)).sent,0);
+});
+for (const [name,sql] of [
+  ['nova resposta',`UPDATE "WhatsAppConversation" SET "lastInboundAt"='2026-09-08 14:00:00'`],
+  ['mensagem substituída',`UPDATE "WhatsAppMessage" SET "messageId"='replacement'`],
+  ['horário do envio alterado',`UPDATE "WhatsAppMessage" SET timestamp=timestamp-interval '1 second'`],
+  ['conteúdo alterado',`UPDATE "WhatsAppMessage" SET body='Outro aviso'`],
+]) test(`revalidação de legado cancela com ${name}`,async()=>{
+  await legacyConfirmation();
+  const db=adapter({beforeQuery:async n=>{if(n===2)await pg.exec(sql);}});
+  let sends=0;
+  const result=await run(db,async p=>{await p.beforeSend();sends++;return {messageId:'sent',sentAt:now};});
+  assert.equal(result.skipped,1);assert.equal(sends,0);
+});
+test('legado respeita prazo personalizado de 1h, sem substituir pelo padrão de 2h',async()=>{
+  await legacyConfirmation();
+  automations=automations.map(a=>({...a,triggerConfig:{...a.triggerConfig,delayHours:1}}));
+  const due=sentAt.getTime()+3600000;
+  assert.equal((await run(adapter(),mustNotSend,{clock:()=>due-1})).sent,0);
+  assert.equal((await run(adapter(),simulatedSend,{clock:()=>due})).sent,1);
 });

@@ -8,6 +8,17 @@ import { buildEvaluationConfirmationRequestMessage, getEvaluationScheduleAutomat
 
 class NoResponseCancelled extends Error {}
 
+function hasVerifiedConfirmation(candidate: NoResponseCandidate) {
+  if (candidate.confirmationReference === "message_id") return true;
+  const unit = getEvaluationScheduleUnitConfigByUnit(candidate.unit);
+  if (!unit || candidate.confirmationReference !== "legacy_audit" || !candidate.confirmationBody) return false;
+  const templates = [unit.confirmationRequestTemplate, getEvaluationScheduleAutomationMessage(candidate.confirmationSteps)];
+  // A autoria é compartilhada com outros avisos de agenda: horário/autoria sozinhos não comprovam confirmação.
+  return templates.some(template => template && candidate.confirmationBody === buildEvaluationConfirmationRequestMessage({
+    unit: unit.unit, clientName: candidate.clientName, startTime: candidate.startTime, template,
+  }));
+}
+
 export async function sendEvaluationNoResponseReminder(context: {
   conversationId: string; instanceId: string; unit: string; actorId: string; actorName: string;
 }, options: {
@@ -38,7 +49,8 @@ export async function sendEvaluationNoResponseReminder(context: {
   const [candidate] = await database.$queryRaw<NoResponseCandidate[]>(noResponseCandidatesQuery([scope], now, context.conversationId));
   if (!candidate || !hasTime()) return result;
   result.checked = 1;
-  if (!phoneLookupKey(candidate.clientPhone) || phoneLookupKey(candidate.clientPhone) !== phoneLookupKey(candidate.contactPhone)) {
+  if (!hasVerifiedConfirmation(candidate) || !phoneLookupKey(candidate.clientPhone)
+    || phoneLookupKey(candidate.clientPhone) !== phoneLookupKey(candidate.contactPhone)) {
     result.skipped = 1;
     return result;
   }
@@ -49,6 +61,7 @@ export async function sendEvaluationNoResponseReminder(context: {
     sourceLogId: candidate.sourceLogId, appointmentId: candidate.appointmentId,
     startTime: candidate.startTime.toISOString(), conversationId: candidate.conversationId,
     instanceId: candidate.instanceId, unit: candidate.unit, confirmationSentAt: candidate.sentAt.toISOString(),
+    confirmationMessageId: candidate.confirmationMessageId, confirmationReference: candidate.confirmationReference,
   };
   try {
     await database.automationLog.create({ data: {
@@ -78,7 +91,9 @@ export async function sendEvaluationNoResponseReminder(context: {
         const [fresh] = await database.$queryRaw<NoResponseCandidate[]>(noResponseCandidatesQuery([scope], currentTime, context.conversationId, {
           sourceLogId: candidate.sourceLogId, claimId,
         }));
-        if (!fresh || fresh.conversationId !== candidate.conversationId
+        if (!fresh || !hasVerifiedConfirmation(fresh) || fresh.conversationId !== candidate.conversationId
+          || fresh.confirmationMessageId !== candidate.confirmationMessageId
+          || fresh.sentAt.getTime() !== candidate.sentAt.getTime()
           || fresh.contactPhone !== candidate.contactPhone || fresh.lastKnownJid !== candidate.lastKnownJid
           || fresh.clientName !== candidate.clientName || fresh.instanceName !== candidate.instanceName
           || fresh.provider !== candidate.provider) {

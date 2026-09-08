@@ -12,6 +12,8 @@ export type NoResponseCandidate = {
   clientName: string; clientPhone: string; contactPhone: string; conversationId: string;
   instanceId: string; instanceName: string; provider: string; lastKnownJid: string | null;
   unit: string; sentAt: Date;
+  confirmationMessageId: string; confirmationReference: "message_id" | "legacy_audit";
+  confirmationBody: string; confirmationSteps: unknown;
 };
 
 function phoneKeySql(column: Prisma.Sql) {
@@ -29,7 +31,9 @@ export function noResponseCandidatesQuery(scopes: NoResponseScope[], now: Date, 
     SELECT source.id AS "sourceLogId", target.id AS "automationId", a.id AS "appointmentId",
       a."startTime", a."clientName", a."clientPhone", contact.phone AS "contactPhone",
       c.id AS "conversationId", i.id AS "instanceId", i.name AS "instanceName", i.provider,
-      c."lastKnownJid", a.unit, sent.timestamp AS "sentAt"
+      c."lastKnownJid", a.unit, sent.timestamp AS "sentAt",
+      sent."messageId" AS "confirmationMessageId", sent.reference AS "confirmationReference",
+      sent.body AS "confirmationBody", request.steps AS "confirmationSteps"
     FROM scopes s
     JOIN "Automation" target ON target.id = s.id AND target."isActive" = true
       AND target."triggerType" = ${EVALUATION_NO_RESPONSE_TRIGGER} AND target.unit = s.unit
@@ -46,9 +50,28 @@ export function noResponseCandidatesQuery(scopes: NoResponseScope[], now: Date, 
       AND c.status NOT IN ('closed', 'resolved', 'lost')
     JOIN "WhatsAppInstance" i ON i.id = c."instanceId" AND i.unit = s.unit AND i.status = 'connected'
     JOIN "WhatsAppContact" contact ON contact.id = c."contactId"
-    JOIN "WhatsAppMessage" sent ON sent."conversationId" = c.id
-      AND sent."messageId" = source."triggerData"->>'confirmationMessageId' AND sent."fromMe" = true
-      AND sent.status NOT IN ('failed', 'error', 'deleted')
+    JOIN LATERAL (
+      SELECT m."messageId", m.timestamp, m.body, 'message_id' AS reference
+      FROM "WhatsAppMessage" m
+      WHERE m."conversationId" = c.id AND m."messageId" = source."triggerData"->>'confirmationMessageId'
+        AND m."fromMe" = true AND m.status NOT IN ('failed', 'error', 'deleted')
+      UNION ALL
+      SELECT legacy."messageId", legacy.timestamp, legacy.body, 'legacy_audit' AS reference
+      FROM (
+        -- Envios antigos não gravavam o ID. A janela acompanha o limite da reserva de envio;
+        -- só uma mensagem da automação pode existir nela, e o serviço ainda confere o texto integral.
+        SELECT m."messageId", m.timestamp, m.body, m.status, m.type, count(*) OVER () AS matches
+        FROM "WhatsAppMessage" m
+        WHERE source."triggerData"->>'confirmationMessageId' IS NULL
+          AND source."triggerData"->>'source' = 'manual'
+          AND m."conversationId" = c.id AND m."fromMe" = true
+          AND m."respondedByName" = 'Automação de agenda'
+          AND m.timestamp BETWEEN source."executedAt" AND source."executedAt" + interval '2 minutes'
+          AND m."createdAt" BETWEEN source."executedAt" AND source."executedAt" + interval '2 minutes'
+      ) legacy
+      WHERE legacy.matches = 1 AND legacy.type = 'text'
+        AND legacy.status NOT IN ('failed', 'error', 'deleted')
+    ) sent ON true
     JOIN "Agendamento" a ON a.id = source."triggerData"->>'appointmentId' AND a.unit = s.unit
       AND a.status IN ('pendente', 'nao_confirmou') AND a.procedimento ILIKE '%avalia%'
       AND a."startTime" > ${now}::timestamp

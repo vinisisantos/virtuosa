@@ -16,22 +16,34 @@ Vinicius pediu que o envio aconteça **somente quando clicar no botão**, substi
 - Pelo menos o prazo configurado sem qualquer entrada do lead, padrão 2h (editável de 1 a 24h). **Sem restrição de horário do dia**, inclusive após 21h e antes de 8h. Continua exigindo avaliação futura. Campos legados `earliestHour`/`latestHour` não limitam o envio e deixam de ser gravados na criação/edição da configuração; não é necessária migração.
 - Avaliação futura, pendente ou `nao_confirmou`, mesma data da solicitação, Pipeline ainda `agendado`, telefone correspondente, unidade/instância homologadas e conectadas. Conversa não bloqueada, arquivada ou encerrada.
 - Resumo `lastInboundAt` e histórico são consultados, inclusive entradas antigas importadas depois da solicitação. Resposta, confirmação, cancelamento, reagendamento ou mudança de configuração/destinatário antes do envio impedem o disparo.
-- O clique individual pode usar confirmação vinculada anterior ao cadastro do modelo: o marco de ativação da antiga rotina automática não é mais uma barreira. Não há varredura/disparo retroativo ou em lote. Logs legados sem `confirmationMessageId` continuam inelegíveis; não se adivinha qual mensagem foi enviada.
+- O clique individual pode usar confirmação vinculada anterior ao cadastro do modelo: o marco de ativação da antiga rotina automática não é mais uma barreira. Não há varredura/disparo retroativo ou em lote. Confirmações antigas sem `confirmationMessageId` podem ser recuperadas somente com as evidências abaixo.
 - Consulta restrita ao ID do chat escolhido desde a seleção até a revalidação final; nunca usa outro contato como fallback.
-- Não confirma/cancela/libera horário nem move Pipeline. Registra `source: manual`, identidade do operador e mensagem no histórico.
+- Não confirma/cancela/libera horário nem move Pipeline. Registra `source: manual`, identidade do operador, ID da confirmação, método do vínculo e mensagem no histórico.
+
+### Compatibilidade com confirmações antigas
+
+Em 08/09, um caso de Osasco tinha confirmação enviada em 07/09 às 16h16, avaliação futura/pendente e nenhuma resposta posterior, mas o log era anterior à gravação de `confirmationMessageId`. O bloqueio não era causado pelo prazo nem pela faixa horária.
+
+- O caminho novo continua usando exclusivamente o ID explícito e a conversa. Um ID explícito inválido não autoriza fallback.
+- Quando falta esse ID, exige log `success` de `evaluation_confirmation_request`, origem manual, mesma conversa/instância/unidade/agendamento/data e **uma única** saída com autoria `Automação de agenda` na janela de dois minutos após o início registrado da execução. Timestamp e criação devem estar nessa janela; mensagens excluídas/com falha também contam para detectar ambiguidade, mas nunca são elegíveis.
+- O corpo integral deve corresponder ao modelo de confirmação atual ou padrão da mesma unidade, renderizado com nome/data/hora do agendamento. Autoria/horário isolados não bastam, pois lembrete do dia e reagendamento compartilham a autoria. Texto diferente ou vínculo ambíguo continuam bloqueados.
+- Seleção e revalidação resolvem a mesma mensagem; alteração de ID, timestamp ou evidência antes do provedor cancela o envio. Auditoria do lembrete grava `confirmationMessageId`, `confirmationSentAt` e `confirmationReference` (`message_id` ou `legacy_audit`). Logs antigos não são reescritos.
+- Configurações existentes permanecem intactas. Na leitura de diagnóstico, Osasco estava com prazo de **1h**, e não o padrão de 2h; esse valor foi preservado.
 
 ## Carga e idempotência
 
 - Sem tabela/migração/índice novo. `Automation` e `AutomationLog` mantêm configuração/auditoria. Configuração ausente é criada por upsert de ID fixo no primeiro envio autorizado da unidade ou na abertura administrativa; não exige cadastro manual no banco.
 - Zero chamadas/queries extras ao abrir chat/menu e **zero trabalho deste lembrete no cron**. Um POST por clique, sem polling ou GET de elegibilidade por conversa.
 - Caminho habitual: 1–3 leituras de acesso, 1 da conversa, 1 da configuração e 1 seleção SQL; se elegível, mais 7 operações para reserva, bloqueio, revalidação, balão/conversa e log/contador. Aproximadamente 11–13 operações por envio, mais 1 upsert se faltar configuração. Uma chamada ao provedor, sem fan-out.
+- Recuperação de legado não acrescenta queries: usa as mesmas duas consultas de seleção/revalidação, com busca lateral indexada por conversa/horário e comparação local do texto. Sem migração ou escrita retroativa. `EXPLAIN ANALYZE` somente leitura do caso elegível: execução 0,737 ms, planejamento 12,835 ms (amostra pontual, não teste de carga).
 - Reserva determinística tipo + agendamento + horário, compartilhada com tentativas históricas da versão automática. Todos os estados reservados bloqueiam novo envio: processing, success, skipped, uncertain ou erro. Não reutilizar retry de outras confirmações.
 - Falha externa, timeout ou falha de auditoria após aceite fica incerta e não libera repetição. A interface não mostra sucesso nesses casos. Sucesso comprova aceite/persistência, não leitura ou entrega no aparelho.
 - Revalidação não é transação distribuída com WhatsApp: entradas ainda não recebidas pelo webhook ou concorrentes após a última checagem não podem ser antecipadas.
 
 ## Validação e teste operacional
 
-- `npm test`: **324 testes passaram**, cobrindo política, SQL PostgreSQL efêmero/PGlite, isolamento, clique concorrente, revalidação, falhas e API real com JWT/banco sintéticos. Inclui 12 cenários de madrugada/antes de 8h/a partir de 21h nas três unidades, limite exato de 2h, não repetição e um cenário que atravessa 21h entre clique e envio. Timestamp sem fuso interpretado como UTC no fixture, como no Prisma.
+- `npm test`: **355 testes passaram**, cobrindo política, SQL PostgreSQL efêmero/PGlite, isolamento, clique concorrente, revalidação, falhas e API real com JWT/banco sintéticos. Inclui 31 regressões de legado, prazo personalizado de 1h, confirmações nas três unidades, corpo/modelo exatos, mensagens ambíguas, respostas e substituição de mensagem antes do envio. Preserva 12 cenários de madrugada/antes de 8h/a partir de 21h e travessia das 21h. Timestamp sem fuso interpretado como UTC no fixture, como no Prisma.
+- Caso do print validado com banco real em transação `READ ONLY`: as duas consultas resolveram a mesma confirmação original, e o serviço passou todas as verificações. Provedor, reserva e gravações foram substituídos por simulação local: **zero envios e zero escritas em produção**. Não comprova entrega no aparelho.
 - `node --experimental-strip-types tests/evaluation-no-response-ui.mjs`: **15 cenários passaram**, com servidor local porta 3210, APIs simuladas e saídas externas bloqueadas. Desktop/mobile 390/430/1440, três unidades, permissões, envio direto, loading, erro, botão desabilitado e configuração sem envio. Capturas também revisadas no tema claro.
 - Antes do commit: `npx tsc --noEmit`, lint direcionado, build e `git diff --check`.
 - Após deploy: atualizar o Inbox e, em atendimento real elegível, abrir Ferramentas/⋯ e clicar **Enviar lembrete sem resposta**; conferir balão/log e recebimento. Não enviar testes a leads reais. O acesso local ao banco é de auditoria, sem INSERT em Automation; usar o fluxo normal autenticado.
@@ -41,3 +53,5 @@ Vinicius pediu que o envio aconteça **somente quando clicar no botão**, substi
 O commit `cbfd915` havia publicado processamento automático no cron a cada 15 minutos, após marco de ativação e no máximo um envio por ciclo. A mudança para envio manual remove explicitamente esse comportamento a pedido de Vinicius. Mensagens, configurações e reservas históricas não são apagadas.
 
 O commit `b1e7f0f` tornou o envio manual, mas ainda mantinha a faixa 08–21h. Vinicius pediu retirar essa trava; a liberação atual vale somente para este lembrete manual, sem mudar horários de outras automações.
+
+Até `63d34427`, logs sem `confirmationMessageId` eram sempre inelegíveis. Essa regra bloqueava confirmações reais anteriores ao novo vínculo e foi substituída pela recuperação auditada e conservadora acima.
