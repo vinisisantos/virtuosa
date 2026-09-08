@@ -8,10 +8,10 @@ export function noResponseAutomationData(unit: string, now = new Date(), created
   return {
     id: `${EVALUATION_NO_RESPONSE_TRIGGER}:${unit}`,
     name: `Lembrete sem resposta — ${unit}`,
-    description: "Lembra quem recebeu a solicitação de confirmação e não respondeu, sem cancelar o horário.",
+    description: "Envio manual pelo botão do chat para quem não respondeu à confirmação. Não envia automaticamente.",
     triggerType: EVALUATION_NO_RESPONSE_TRIGGER,
     triggerConfig: {
-      topic: "AGENDA", units: [unit], instanceIds: [config.instanceId],
+      topic: "AGENDA", units: [unit], instanceIds: [config.instanceId], deliveryMode: "manual",
       delayHours: DEFAULT_NO_RESPONSE_DELAY_HOURS, activatedAt: now.toISOString(),
       earliestHour: 8, latestHour: 21,
     },
@@ -27,13 +27,21 @@ export async function ensureEvaluationNoResponseAutomations(createdBy?: string, 
   const result = [];
   for (const { unit } of EVALUATION_SCHEDULE_UNIT_CONFIGS) {
     const current = existing.find((automation) => automation.unit === unit);
-    // ID fixo + upsert impedem duplicação entre o cron e a abertura da tela.
+    // ID fixo + upsert impedem duplicação entre envio manual e abertura da tela.
     result.push(current || await database.automation.upsert({
       where: { id: `${EVALUATION_NO_RESPONSE_TRIGGER}:${unit}` },
       create: noResponseAutomationData(unit, new Date(), createdBy), update: {},
     }));
   }
   return result;
+}
+
+export async function ensureEvaluationNoResponseAutomation(unit: string, createdBy: string, database = prisma) {
+  const data = noResponseAutomationData(unit, new Date(), createdBy);
+  const existing = await database.automation.findFirst({
+    where: { triggerType: EVALUATION_NO_RESPONSE_TRIGGER, unit }, orderBy: { createdAt: "asc" },
+  });
+  return existing || database.automation.upsert({ where: { id: data.id }, create: data, update: {} });
 }
 
 export function updatedNoResponseConfig(existing: { unit: string | null; isActive: boolean; triggerConfig: unknown }, data: { isActive?: unknown; triggerConfig?: unknown }, now = new Date()) {
@@ -47,7 +55,7 @@ export function updatedNoResponseConfig(existing: { unit: string | null; isActiv
   if (!validNoResponseDelay(delayHours)) throw new Error("O prazo deve ser um número inteiro de 1 a 24 horas.");
   const activating = data.isActive === true && !existing.isActive;
   return {
-    topic: "AGENDA", units: [unit.unit], instanceIds: [unit.instanceId], delayHours,
+    topic: "AGENDA", units: [unit.unit], instanceIds: [unit.instanceId], deliveryMode: "manual", delayHours,
     // Nunca aceitar um marco retroativo enviado pelo navegador.
     activatedAt: (activating || !previous.activatedAt ? now : previous.activatedAt).toISOString(),
     earliestHour: 8, latestHour: 21,

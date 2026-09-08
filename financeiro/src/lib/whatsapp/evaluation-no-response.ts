@@ -1,14 +1,16 @@
 import { prisma } from "@/lib/db";
 import { phoneLookupKey } from "@/lib/phone";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
-import { ensureEvaluationNoResponseAutomations } from "@/lib/whatsapp/evaluation-no-response-automation";
+import { ensureEvaluationNoResponseAutomation } from "@/lib/whatsapp/evaluation-no-response-automation";
 import { EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig, noResponseExecutionId, noResponseSendingHours } from "@/lib/whatsapp/evaluation-no-response-policy";
 import { noResponseCandidatesQuery, type NoResponseCandidate, type NoResponseScope } from "@/lib/whatsapp/evaluation-no-response-query";
 import { buildEvaluationConfirmationRequestMessage, getEvaluationScheduleAutomationMessage, getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 
 class NoResponseCancelled extends Error {}
 
-export async function processEvaluationNoResponseReminders(now = new Date(), options: {
+export async function sendEvaluationNoResponseReminder(context: {
+  conversationId: string; instanceId: string; unit: string; actorId: string; actorName: string;
+}, options: {
   deadlineAt?: number;
   database?: typeof prisma;
   sendText?: typeof sendAutomationText;
@@ -17,32 +19,34 @@ export async function processEvaluationNoResponseReminders(now = new Date(), opt
   const database = options.database || prisma;
   const sendText = options.sendText || sendAutomationText;
   const clock = options.clock || Date.now;
+  const now = new Date(clock());
   const hasTime = () => !options.deadlineAt || clock() + 20000 < options.deadlineAt;
   const result = { checked: 0, sent: 0, skipped: 0, uncertain: 0 };
-  if (!noResponseSendingHours(now) || !hasTime()) return result;
+  const unit = getEvaluationScheduleUnitConfigByUnit(context.unit);
+  if (!context.conversationId || !context.actorId || !unit || unit.instanceId !== context.instanceId) {
+    throw new Error("Contexto de envio inválido.");
+  }
+  if (!noResponseSendingHours(now)) return { ...result, reason: "outside_hours" as const };
+  if (!hasTime()) return { ...result, reason: "timeout" as const };
 
-  const automations = await ensureEvaluationNoResponseAutomations(undefined, database);
-  const scopes: NoResponseScope[] = automations.flatMap((automation) => {
-    const unit = getEvaluationScheduleUnitConfigByUnit(automation.unit);
-    const config = noResponseConfig(automation.triggerConfig);
-    if (!automation.isActive || !unit || !config.activatedAt || !getEvaluationScheduleAutomationMessage(automation.steps)) return [];
-    return [{ id: automation.id, unit: unit.unit, instanceId: unit.instanceId,
-      ...config, activatedAt: config.activatedAt, updatedAt: automation.updatedAt }];
-  });
-  if (!scopes.length || !hasTime()) return result;
-  const [candidate] = await database.$queryRaw<NoResponseCandidate[]>(noResponseCandidatesQuery(scopes, now));
+  const automation = await ensureEvaluationNoResponseAutomation(unit.unit, context.actorName, database);
+  const config = noResponseConfig(automation.triggerConfig);
+  if (!automation.isActive || !getEvaluationScheduleAutomationMessage(automation.steps)) {
+    return { ...result, reason: "disabled" as const };
+  }
+  const scope: NoResponseScope = { id: automation.id, unit: unit.unit, instanceId: unit.instanceId,
+    delayHours: config.delayHours, updatedAt: automation.updatedAt };
+  const [candidate] = await database.$queryRaw<NoResponseCandidate[]>(noResponseCandidatesQuery([scope], now, context.conversationId));
   if (!candidate || !hasTime()) return result;
   result.checked = 1;
-  const automation = automations.find((item) => item.id === candidate.automationId)!;
-  const scope = scopes.find((item) => item.id === candidate.automationId)!;
-  const unit = getEvaluationScheduleUnitConfigByUnit(candidate.unit)!;
   if (!phoneLookupKey(candidate.clientPhone) || phoneLookupKey(candidate.clientPhone) !== phoneLookupKey(candidate.contactPhone)) {
     result.skipped = 1;
     return result;
   }
   const claimId = noResponseExecutionId(candidate.appointmentId, candidate.startTime);
   const triggerData = {
-    topic: "AGENDA", action: EVALUATION_NO_RESPONSE_TRIGGER, source: "automatic",
+    topic: "AGENDA", action: EVALUATION_NO_RESPONSE_TRIGGER, source: "manual",
+    actorId: context.actorId, actorName: context.actorName,
     sourceLogId: candidate.sourceLogId, appointmentId: candidate.appointmentId,
     startTime: candidate.startTime.toISOString(), conversationId: candidate.conversationId,
     instanceId: candidate.instanceId, unit: candidate.unit, confirmationSentAt: candidate.sentAt.toISOString(),
@@ -64,7 +68,7 @@ export async function processEvaluationNoResponseReminders(now = new Date(), opt
     const sent = await sendText({
       dbInstance: { name: candidate.instanceName, provider: candidate.provider },
       conversationId: candidate.conversationId, contactPhone: candidate.contactPhone,
-      lastKnownJid: candidate.lastKnownJid, respondedByName: "Lembrete de confirmação",
+      lastKnownJid: candidate.lastKnownJid, respondedByName: context.actorName,
       message: buildEvaluationConfirmationRequestMessage({
         unit: unit.unit, clientName: candidate.clientName, startTime: candidate.startTime,
         template: getEvaluationScheduleAutomationMessage(automation.steps)!,
@@ -72,7 +76,7 @@ export async function processEvaluationNoResponseReminders(now = new Date(), opt
       beforeSend: async () => {
         const currentTime = new Date(clock());
         if (!hasTime() || !noResponseSendingHours(currentTime)) throw new NoResponseCancelled("Fora da janela de envio.");
-        const [fresh] = await database.$queryRaw<NoResponseCandidate[]>(noResponseCandidatesQuery([scope], currentTime, {
+        const [fresh] = await database.$queryRaw<NoResponseCandidate[]>(noResponseCandidatesQuery([scope], currentTime, context.conversationId, {
           sourceLogId: candidate.sourceLogId, claimId,
         }));
         if (!fresh || fresh.conversationId !== candidate.conversationId

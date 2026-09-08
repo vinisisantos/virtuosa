@@ -10,7 +10,6 @@ import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import { EvaluationAvailabilityDialog } from "@/components/whatsapp/evaluation-availability-dialog";
-import { EvaluationNoResponseDialog } from "@/components/whatsapp/evaluation-no-response-dialog";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
@@ -3141,7 +3140,6 @@ export default function InboxPage() {
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
   const [showSavedRepliesDialog, setShowSavedRepliesDialog] = useState(false);
   const [showEvaluationAvailabilityDialog, setShowEvaluationAvailabilityDialog] = useState(false);
-  const [noResponseUnit, setNoResponseUnit] = useState<string | null>(null);
   const savedRepliesLibrary = useWhatsAppSavedReplies();
   const {
     replies: savedReplies,
@@ -3488,6 +3486,9 @@ export default function InboxPage() {
   const [pipelineRefreshKey, setPipelineRefreshKey] = useState(0);
   const [evaluationConfirmation, setEvaluationConfirmation] = useState<EvaluationConfirmationAvailability | null>(null);
   const [evaluationConfirmationRefreshKey, setEvaluationConfirmationRefreshKey] = useState(0);
+  const [sendingNoResponse, setSendingNoResponse] = useState(false);
+  const sendingNoResponseRef = useRef(false);
+  const [noResponseSentKey, setNoResponseSentKey] = useState<string | null>(null);
   const [isSendingEvaluationConfirmation, setIsSendingEvaluationConfirmation] = useState(false);
 
   // Close modal
@@ -4449,6 +4450,30 @@ export default function InboxPage() {
     }
   }, [buildUrl, evaluationConfirmation, fetchMessages]);
 
+  const handleSendNoResponseReminder = useCallback(async () => {
+    const conversation = selectedConvRef.current;
+    if (!conversation?.instanceId || !canReplyToSelectedConversation || sendingNoResponseRef.current) return;
+    const sentKey = `${conversation.id}:${evaluationConfirmation?.startTime || ""}`;
+    if (noResponseSentKey === sentKey) return;
+    sendingNoResponseRef.current = true;
+    setSendingNoResponse(true);
+    try {
+      const endpoint = new URL(buildUrl(`/api/whatsapp/conversations/${conversation.id}/evaluation-no-response`), window.location.origin);
+      endpoint.searchParams.set("targetInstanceId", conversation.instanceId);
+      const response = await fetch(endpoint.toString(), { method: "POST" });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível enviar o lembrete.");
+      setNoResponseSentKey(sentKey);
+      toast("Lembrete enviado com sucesso!", "success");
+      if (selectedConversationIdRef.current === conversation.id) await fetchMessages(conversation.id, false);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Falha de conexão. Confira o histórico antes de tentar novamente.", "error");
+    } finally {
+      sendingNoResponseRef.current = false;
+      setSendingNoResponse(false);
+    }
+  }, [buildUrl, canReplyToSelectedConversation, evaluationConfirmation?.startTime, fetchMessages, noResponseSentKey]);
+
   // Ao trocar o escopo do inbox (instância, colaborador ou unidade), zera a
   // seleção atual e invalida respostas antigas ainda em voo.
   useEffect(() => {
@@ -4678,7 +4703,7 @@ export default function InboxPage() {
       if (event.key !== "Escape" || event.defaultPrevented) return;
 
       // Overlays consume Escape first; a second press then leaves the chat.
-      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog || noResponseUnit || showQuickSchedule || internalNotesOpen) {
+      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog || showQuickSchedule || internalNotesOpen) {
         return;
       }
       if (bulkFollowUpConfirmOpen) {
@@ -4715,7 +4740,6 @@ export default function InboxPage() {
     showNewConversationDialog,
     showSavedRepliesDialog,
     showEvaluationAvailabilityDialog,
-    noResponseUnit,
     showQuickSchedule,
     internalNotesOpen,
   ]);
@@ -7276,9 +7300,13 @@ export default function InboxPage() {
                   id: "call", label: "Ligar para contato", icon: Phone,
                   href: "tel:" + selectedConv.contact.phone.replace(/\D/g, ""),
                 }] : []),
-                ...(isAdmin && getEvaluationScheduleUnitConfigByUnit(selectedConversationUnit)?.instanceId === selectedConv.instanceId ? [{
-                  id: "confirmation-reminder", label: "Lembrete sem resposta", icon: BellRing,
-                  onClick: () => setNoResponseUnit(selectedConversationUnit),
+                ...(canReplyToSelectedConversation && !selectedConv.blockedAt && getEvaluationScheduleUnitConfigByUnit(selectedConversationUnit)?.instanceId === selectedConv.instanceId ? [{
+                  id: "confirmation-reminder",
+                  label: sendingNoResponse ? "Enviando lembrete…" : noResponseSentKey === `${selectedConv.id}:${evaluationConfirmation?.startTime || ""}` ? "Lembrete já enviado" : "Enviar lembrete sem resposta",
+                  icon: sendingNoResponse ? Loader2 : BellRing,
+                  disabled: sendingNoResponse || noResponseSentKey === `${selectedConv.id}:${evaluationConfirmation?.startTime || ""}`,
+                  returnFocus: true,
+                  onClick: () => void handleSendNoResponseReminder(),
                 }] : []),
               ]}
               moreActions={[
@@ -8806,13 +8834,6 @@ export default function InboxPage() {
         unit={selectedConversationUnit}
         onOpenChange={setShowEvaluationAvailabilityDialog}
         onInsertMessage={handleEvaluationAvailabilityInsert}
-      />
-      <EvaluationNoResponseDialog
-        open={noResponseUnit !== null}
-        unit={noResponseUnit || ""}
-        returnFocusRef={internalNotesTriggerRef}
-        onOpenChange={(open) => { if (!open) setNoResponseUnit(null); }}
-        onSaved={() => toast("Lembrete da unidade atualizado.", "success")}
       />
       <SavedRepliesDialog
         open={showSavedRepliesDialog}

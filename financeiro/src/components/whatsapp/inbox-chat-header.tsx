@@ -20,6 +20,7 @@ export type InboxChatAction = {
   disabled?: boolean;
   destructive?: boolean;
   count?: number;
+  returnFocus?: boolean;
 };
 
 function ChatMenuAction({ action }: { action: InboxChatAction }) {
@@ -91,7 +92,7 @@ export function InboxChatHeader({
     <ChatMenuAction key={action.id} action={{
       ...action,
       onClick: () => {
-        actionSelectedRef.current = true;
+        actionSelectedRef.current = !action.returnFocus;
         action.onClick?.();
       },
     }} />

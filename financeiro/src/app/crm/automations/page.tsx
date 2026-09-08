@@ -82,7 +82,7 @@ interface CallBlockSettings {
 
 // ─── Constants ───────────────────────────────────────────────
 const TRIGGER_TYPES = [
-  { key: EVALUATION_NO_RESPONSE_TRIGGER, label: "AGENDA · Sem resposta", desc: "Lembra quem não respondeu à confirmação", icon: Clock },
+  { key: EVALUATION_NO_RESPONSE_TRIGGER, label: "AGENDA · Sem resposta", desc: "Envio manual pelo botão do chat", icon: Clock },
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
   { key: "evaluation_scheduled", label: "AGENDA · Agendamento", desc: "Confirmação após agendamento", icon: CalendarDays },
   { key: "evaluation_confirmation_request", label: "AGENDA · Confirmação", desc: "Janela configurável para confirmar presença", icon: CalendarDays },
@@ -277,7 +277,7 @@ function AutomationCard({
             )}
             {automation.triggerType === EVALUATION_NO_RESPONSE_TRIGGER && (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                {noResponseConfig(automation.triggerConfig).delayHours}h sem resposta · 8h–21h
+                Manual · {noResponseConfig(automation.triggerConfig).delayHours}h sem resposta · 8h–21h
               </span>
             )}
           </div>

@@ -88,22 +88,22 @@ export function EvaluationNoResponseDialog({ open, unit, onOpenChange, initial, 
         <div className="relative border-b border-border p-4 pr-16 sm:p-6 sm:pr-16">
           <p className="mb-2 text-xs text-muted-foreground">Automações / {unit} / Agenda</p>
           <DialogTitle className="flex items-center gap-2 text-lg leading-snug"><BellRing className="h-5 w-5 shrink-0 text-primary" />Lembrete sem resposta</DialogTitle>
-          <DialogDescription className="mt-2 text-sm">Esta configuração vale para a unidade {unit}, não apenas para este chat.</DialogDescription>
+          <DialogDescription className="mt-2 text-sm">Envio manual pelo botão do chat. Esta configuração vale para a unidade {unit}.</DialogDescription>
           <Button variant="ghost" size="icon" aria-label="Fechar lembrete" disabled={saving} onClick={() => onOpenChange(false)} className="absolute right-2 top-2 h-11 w-11"><X className="h-5 w-5" /></Button>
         </div>
         <div className="min-h-0 space-y-5 overflow-y-auto p-4 sm:p-6">
           {loading ? <p role="status" className="flex items-center gap-2 py-8"><Loader2 className="h-5 w-5 animate-spin" />Carregando configuração…</p> : record ? <>
             <label className="flex min-h-14 cursor-pointer items-center justify-between gap-4 rounded-lg border border-border bg-muted/20 px-3 py-2">
-              <span className="font-medium">Ativar lembrete automático</span>
-              <input aria-label="Ativar lembrete automático" type="checkbox" role="switch" checked={enabled} disabled={saving} onChange={(event) => setEnabled(event.target.checked)} className="h-6 w-6 shrink-0 accent-primary" />
+              <span className="font-medium">Habilitar envio pelo botão</span>
+              <input aria-label="Habilitar envio pelo botão" type="checkbox" role="switch" checked={enabled} disabled={saving} onChange={(event) => setEnabled(event.target.checked)} className="h-6 w-6 shrink-0 accent-primary" />
             </label>
             <div className="space-y-2">
-              <label htmlFor="no-response-delay" className="block font-medium">Enviar após</label>
+              <label htmlFor="no-response-delay" className="block font-medium">Permitir envio após</label>
               <div className="flex items-center gap-3">
                 <input id="no-response-delay" type="number" inputMode="numeric" min={1} max={MAX_NO_RESPONSE_DELAY_HOURS} step={1} value={delay} disabled={saving} onChange={(event) => setDelay(event.target.value)} className="h-11 w-24 rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-primary" />
                 <span>horas sem resposta</span>
               </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">De 1 a 24 horas após o envio da solicitação de confirmação. Verificação a cada 15 minutos, das 8h às 21h (São Paulo), antes da avaliação.</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">De 1 a 24 horas após a solicitação de confirmação. O envio só acontece ao clicar em “Enviar lembrete sem resposta” no chat, das 8h às 21h (São Paulo), antes da avaliação.</p>
             </div>
             <div className="space-y-2">
               <label htmlFor="no-response-message" className="block font-medium">Mensagem</label>
@@ -111,7 +111,7 @@ export function EvaluationNoResponseDialog({ open, unit, onOpenChange, initial, 
               <p className="break-words text-xs leading-relaxed text-muted-foreground">Use {"{{primeiro_nome}}"}, {"{{data}}"}, {"{{hora}}"} e {"{{unidade}}"} para personalizar.</p>
             </div>
             <p className="flex items-start gap-2 text-xs leading-relaxed text-muted-foreground"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />Qualquer resposta interrompe o lembrete. Não envia se a avaliação for confirmada, cancelada ou reagendada. Uma mensagem por agendamento; não cancela o horário.</p>
-            {!record.isActive && enabled && <p className="rounded-lg bg-primary/10 p-3 text-xs leading-relaxed">Ao ativar, somente novas solicitações de confirmação entram na regra. Contatos antigos não receberão disparos retroativos.</p>}
+            <p className="rounded-lg bg-primary/10 p-3 text-xs leading-relaxed">Salvar ou habilitar não envia mensagens. Não há disparo automático nem em lote; cada envio depende do botão na conversa escolhida.</p>
           </> : null}
           {error && <div role="alert" className="space-y-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive"><p>{error}</p>{!record && !loading && <Button variant="outline" className="min-h-11" onClick={() => setRetry((value) => value + 1)}>Tentar novamente</Button>}</div>}
         </div>

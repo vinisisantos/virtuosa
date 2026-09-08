@@ -4,7 +4,8 @@ import { PGlite } from '@electric-sql/pglite';
 import { DEFAULT_NO_RESPONSE_DELAY_HOURS, EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig, noResponseSendingHours, noResponseExecutionId, validNoResponseDelay } from '../src/lib/whatsapp/evaluation-no-response-policy.ts';
 import { noResponseAutomationData, updatedNoResponseConfig } from '../src/lib/whatsapp/evaluation-no-response-automation.ts';
 import { noResponseCandidatesQuery } from '../src/lib/whatsapp/evaluation-no-response-query.ts';
-import { processEvaluationNoResponseReminders } from '../src/lib/whatsapp/evaluation-no-response.ts';
+import { sendEvaluationNoResponseReminder } from '../src/lib/whatsapp/evaluation-no-response.ts';
+import { readFile } from 'node:fs/promises';
 import { EVALUATION_SCHEDULE_UNIT_CONFIGS, EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER } from '../src/lib/whatsapp/evaluation-schedule-confirmation-message.ts';
 
 // PostgreSQL local efêmero: não carrega .env nem acessa o banco/provedor reais.
@@ -19,8 +20,8 @@ const scope = unit => {
   const a = automations.find(a => a.unit === unit);
   return { id: a.id, unit, instanceId: EVALUATION_SCHEDULE_UNIT_CONFIGS.find(c => c.unit === unit).instanceId, delayHours: 2, activatedAt, updatedAt: activatedAt };
 };
-const candidates = async (scopes = [scope('SCS')], when = now, revalidate) => {
-  const q = noResponseCandidatesQuery(scopes, when, revalidate);
+const candidates = async (scopes = [scope('SCS')], when = now, revalidate, conversationId = `chat-${scopes[0].unit}`) => {
+  const q = noResponseCandidatesQuery(scopes, when, conversationId, revalidate);
   return (await pg.query(q.text, q.values)).rows;
 };
 
@@ -85,8 +86,8 @@ test('limite exato das 2h e agendamento já iniciado', async () => {
   assert.equal((await candidates()).length,1);
   assert.equal((await candidates(undefined,startTime)).length,0);
 });
-test('não pega confirmação anterior à ativação nem log legado sem mensagem vinculada', async () => {
-  assert.equal((await candidates([{...scope('SCS'),activatedAt:new Date(sentAt.getTime()+1)}])).length,0);
+test('clique individual aceita confirmação vinculada anterior ao cadastro, nunca log sem mensagem exata', async () => {
+  assert.equal((await candidates([{...scope('SCS'),activatedAt:new Date(sentAt.getTime()+1)}])).length,1);
   await pg.exec(`UPDATE "AutomationLog" SET "triggerData" = "triggerData" - 'confirmationMessageId'`);
   assert.equal((await candidates()).length,0);
 });
@@ -140,7 +141,7 @@ for (const status of ['processing','success','failed','uncertain','skipped']) te
 function adapter({beforeQuery,failLogSuccess=false}={}) {
   let queryCount=0;
   return {
-    automation:{findMany:async()=>automations,update:async()=>({})},
+    automation:{findFirst:async({where})=>automations.find(a=>a.unit===where.unit),update:async()=>({})},
     $queryRaw:async q=>{queryCount++;await beforeQuery?.(queryCount);return (await pg.query(q.text,q.values)).rows;},
     automationLog:{
       create:async({data})=>{try{await pg.query('INSERT INTO "AutomationLog" (id,"automationId",result,"triggerData") VALUES ($1,$2,$3,$4)',[data.id,data.automationId,data.result,JSON.stringify(data.triggerData)]);}catch(e){if(e.code==='23505')throw {code:'P2002'};throw e;}return data;},
@@ -148,13 +149,17 @@ function adapter({beforeQuery,failLogSuccess=false}={}) {
     },
   };
 }
-const run=(database,sendText,extra={})=>processEvaluationNoResponseReminders(now,{database,sendText,clock:()=>now.getTime(),...extra});
-test('processador envia uma vez por ciclo, usa JID e texto personalizados',async()=>{
+const context={conversationId:'chat-SCS',instanceId:EVALUATION_SCHEDULE_UNIT_CONFIGS.find(c=>c.unit==='SCS').instanceId,unit:'SCS',actorId:'operator',actorName:'Pessoa Operadora'};
+const run=(database,sendText,extra={})=>sendEvaluationNoResponseReminder(context,{database,sendText,clock:()=>now.getTime(),...extra});
+test('clique envia somente à conversa escolhida, com JID, texto e autoria corretos',async()=>{
   let sends=0;let payload;
   const db=adapter();
   const result=await run(db,async params=>{await params.beforeSend();payload=params;sends++;return {messageId:'sent',sentAt:now};});
   assert.equal(result.sent,1);assert.equal(sends,1);
   assert.equal(payload.lastKnownJid,'123@lid');assert.match(payload.message,/Olá, Pessoa!/);assert.match(payload.message,/08\/09\/2026 às 15:00/);
+  assert.equal(payload.conversationId,'chat-SCS');assert.equal(payload.respondedByName,'Pessoa Operadora');
+  const audit=(await pg.query('SELECT "triggerData" FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId('appointment-SCS',startTime)])).rows[0].triggerData;
+  assert.equal(audit.source,'manual');assert.equal(audit.actorId,'operator');
   assert.equal((await pg.query(`SELECT count(*)::int AS n FROM "AutomationLog" WHERE result='success' AND "automationId" LIKE 'evaluation_confirmation_no_response:%'`)).rows[0].n,1);
 });
 test('resposta entre seleção e envio cancela a tentativa',async()=>{
@@ -179,7 +184,7 @@ test('timeout do provedor preserva reserva sem retry',async()=>{
   assert.equal((await run(db,send)).checked,0);assert.equal(sends,1);
 });
 test('sem orçamento de execução não consulta nem envia',async()=>{
-  const database={automation:{findMany:async()=>{throw new Error('não deveria consultar');}}};
+  const database={automation:{findFirst:async()=>{throw new Error('não deveria consultar');}}};
   assert.equal((await run(database,async()=>{throw new Error('não envia');},{deadlineAt:now.getTime()+19000})).checked,0);
 });
 test('duas execuções concorrentes disputam a mesma chave primária',async()=>{
@@ -193,4 +198,16 @@ test('troca de configuração entre seleção e envio cancela',async()=>{
   const db=adapter({beforeQuery:async n=>{if(n===2)await pg.exec(`UPDATE "Automation" SET "updatedAt"="updatedAt"+interval '1 second'`);}});
   let sends=0;const result=await run(db,async p=>{await p.beforeSend();sends++;return {messageId:'sent',sentAt:now};});
   assert.equal(result.skipped,1);assert.equal(sends,0);
+});
+test('seleção exige conversa e não usa candidato de outra caixa como fallback',async()=>{
+  assert.throws(()=>noResponseCandidatesQuery([scope('SCS')],now,''));
+  assert.equal((await candidates(undefined,now,undefined,'chat-Osasco')).length,0);
+  assert.equal((await candidates(undefined,now,undefined,'nao-existe')).length,0);
+  await assert.rejects(()=>sendEvaluationNoResponseReminder({...context,instanceId:'outra'},{database:adapter()}));
+});
+test('fora do horário não consulta e cron não chama mais o lembrete sem resposta',async()=>{
+  const result=await run({automation:{findFirst:()=>{throw new Error('não consulta');}}},()=>{throw new Error('não envia');},{clock:()=>new Date('2026-09-09T00:00:00Z').getTime()});
+  assert.equal(result.reason,'outside_hours');
+  const cron=await readFile(new URL('../src/app/api/cron/whatsapp-callbacks/route.ts',import.meta.url),'utf8');
+  assert.doesNotMatch(cron,/evaluation-no-response|[Pp]rocessEvaluationNoResponse|sendEvaluationNoResponse/);
 });
