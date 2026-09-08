@@ -14,6 +14,8 @@ export async function sendAutomationText(params: {
   message: string;
   respondedByName?: string;
   beforeSend?: () => Promise<void>;
+  providerTimeoutMs?: number;
+  requireProviderMessageId?: boolean;
 }) {
   const conversation = await prisma.whatsAppConversation.findUnique({
     where: { id: params.conversationId },
@@ -33,6 +35,7 @@ export async function sendAutomationText(params: {
       sessionName: params.dbInstance.name,
       chatId: toWahaChatId(params.contactPhone),
       text: params.message,
+      signal: params.providerTimeoutMs ? AbortSignal.timeout(params.providerTimeoutMs) : undefined,
     });
     sendData = send.data;
     if (!send.res.ok) {
@@ -57,9 +60,12 @@ export async function sendAutomationText(params: {
     }
   }
 
-  const messageId = provider === "waha"
-    ? extractWahaMessageId(sendData) || `auto_waha_${params.conversationId}_${Date.now()}`
-    : sendData?.key?.id || sendData?.id || `auto_${params.conversationId}_${Date.now()}`;
+  const providerMessageId = provider === "waha" ? extractWahaMessageId(sendData) : sendData?.key?.id || sendData?.id;
+  if (params.requireProviderMessageId && (typeof providerMessageId !== "string" || !providerMessageId.trim())) {
+    throw new Error("Provedor não confirmou o identificador da mensagem. Não repetir automaticamente.");
+  }
+  const messageId = providerMessageId || (provider === "waha"
+    ? `auto_waha_${params.conversationId}_${Date.now()}` : `auto_${params.conversationId}_${Date.now()}`);
   const sentAt = new Date();
 
   await prisma.whatsAppMessage.create({

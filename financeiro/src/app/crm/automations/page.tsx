@@ -48,6 +48,8 @@ import {
   normalizeEvaluationConfirmationWindowHours,
 } from "@/lib/whatsapp/evaluation-confirmation-window";
 import { useGlobalUnit } from "@/contexts/UnitContext";
+import { CampaignWelcomeDialog } from "@/components/whatsapp/campaign-welcome-dialog";
+import { CAMPAIGN_WELCOME_TRIGGER } from "@/lib/whatsapp/campaign-welcome-policy";
 import { EvaluationNoResponseDialog } from "@/components/whatsapp/evaluation-no-response-dialog";
 import { EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig } from "@/lib/whatsapp/evaluation-no-response-policy";
 
@@ -82,6 +84,7 @@ interface CallBlockSettings {
 
 // ─── Constants ───────────────────────────────────────────────
 const TRIGGER_TYPES = [
+  { key: CAMPAIGN_WELCOME_TRIGGER, label: "Recepção por campanha", desc: "Saudação e pergunta após 1 minuto", icon: MessageSquare },
   { key: EVALUATION_NO_RESPONSE_TRIGGER, label: "AGENDA · Sem resposta", desc: "Envio manual pelo botão do chat", icon: Clock },
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
   { key: "evaluation_scheduled", label: "AGENDA · Agendamento", desc: "Confirmação após agendamento", icon: CalendarDays },
@@ -96,6 +99,7 @@ const TRIGGER_TYPES = [
 ];
 
 const NATIVE_TRIGGER_TYPES = new Set([
+  CAMPAIGN_WELCOME_TRIGGER,
   EVALUATION_NO_RESPONSE_TRIGGER,
   "ctwa_welcome",
   "evaluation_scheduled",
@@ -979,6 +983,7 @@ export default function AutomationsPage() {
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editing, setEditing] = useState<Partial<Automation> | null>(null);
   const [noResponseEditing, setNoResponseEditing] = useState<Automation | null>(null);
+  const [welcomeEditing, setWelcomeEditing] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Automation | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1045,6 +1050,7 @@ export default function AutomationsPage() {
   }
 
   async function handleToggle(automation: Automation) {
+    if (automation.triggerType === CAMPAIGN_WELCOME_TRIGGER) { setWelcomeEditing(automation.unit); return; }
     if (automation.triggerType === EVALUATION_NO_RESPONSE_TRIGGER) {
       setNoResponseEditing(automation);
       return;
@@ -1247,7 +1253,8 @@ export default function AutomationsPage() {
               automation={a}
               onToggle={() => handleToggle(a)}
               onEdit={() => {
-                if (a.triggerType === EVALUATION_NO_RESPONSE_TRIGGER) setNoResponseEditing(a);
+                if (a.triggerType === CAMPAIGN_WELCOME_TRIGGER) setWelcomeEditing(a.unit);
+                else if (a.triggerType === EVALUATION_NO_RESPONSE_TRIGGER) setNoResponseEditing(a);
                 else { setEditing(a); setBuilderOpen(true); }
               }}
               onDuplicate={() => handleDuplicate(a)}
@@ -1258,6 +1265,7 @@ export default function AutomationsPage() {
       )}
 
       {/* Builder Dialog */}
+      <CampaignWelcomeDialog unit={welcomeEditing} onClose={() => setWelcomeEditing(null)} onSaved={() => { void fetchAutomations(); toast("Recepção da unidade atualizada.", "success"); }} />
       <EvaluationNoResponseDialog
         open={!!noResponseEditing}
         unit={noResponseEditing?.unit || ""}

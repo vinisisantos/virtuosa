@@ -26,7 +26,10 @@ import {
 } from "@/lib/whatsapp/evaluation-confirmation-window";
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
+import { CAMPAIGN_WELCOME_TRIGGER } from "@/lib/whatsapp/campaign-welcome-policy";
+import { loadWelcomeSettings, updateWelcomeSettings } from "@/lib/whatsapp/campaign-welcome-settings";
 const NATIVE_AUTOMATION_TRIGGERS = new Set([
+  CAMPAIGN_WELCOME_TRIGGER,
   CTWA_WELCOME_TRIGGER,
   EVALUATION_NO_RESPONSE_TRIGGER,
   EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
@@ -124,6 +127,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const { searchParams } = new URL(req.url);
+    const welcomeUnit = searchParams.get("welcomeUnit");
+    if (welcomeUnit) return NextResponse.json(await loadWelcomeSettings(welcomeUnit));
     const unit = searchParams.get("unit");
     await ensureCtwaWelcomeAutomation(auth.user.name || auth.user.email);
     await Promise.all([
@@ -208,6 +213,10 @@ export async function PUT(req: NextRequest) {
 
     const existing = await prisma.automation.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Automação não encontrada" }, { status: 404 });
+    if (existing.triggerType === CAMPAIGN_WELCOME_TRIGGER) {
+      try { return NextResponse.json({ automation: await updateWelcomeSettings(existing, data) }); }
+      catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "Configuração inválida" }, { status: 400 }); }
+    }
     if (existing.triggerType === EVALUATION_NO_RESPONSE_TRIGGER) {
       let triggerConfig;
       try {

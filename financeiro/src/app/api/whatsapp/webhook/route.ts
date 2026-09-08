@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isFreshWelcomeEvent } from "@/lib/whatsapp/campaign-welcome-policy";
+import { enqueueWelcome, findWelcomeReception } from "@/lib/whatsapp/campaign-welcome";
 
 import { prisma } from "@/lib/db";
 import { resolveDefaultPipelineForUnit } from "@/lib/pipeline/default-pipeline";
@@ -1942,6 +1944,17 @@ async function processMessage(
     }
   }
 
+  const welcomeInput = leadClient && leadUnit && isFreshWelcomeEvent({
+    fromMe: Boolean(isFromMe), sendable: isSendablePhone, capturesLeads: canCaptureLead,
+    unit: leadUnit, instanceId: dbInstance.id, conversationCreatedAt: conversation.createdAt, timestamp, payload,
+  }) ? { conversationId: conversation.id, clientId: leadClient.id, instanceId: dbInstance.id,
+    unit: leadUnit, messageId, timestamp, contactPhone } : null;
+  const welcomeReception = welcomeInput ? await findWelcomeReception(welcomeInput).catch(() => {
+    // Falha da recepção não pode impedir a persistência da entrada nem disparar o legado por engano.
+    console.error("[campaign-welcome] Falha ao verificar recepção; mensagem recebida será preservada.");
+    return { id: "", isActive: false };
+  }) : null;
+
   // Alguns formulários Meta chegam como a primeira mensagem do próprio lead,
   // com telefone e nome estruturados no texto, sem passar pelo endpoint Zapier.
   // O telefone embutido precisa coincidir com o remetente e a conversa precisa
@@ -1957,7 +1970,7 @@ async function processMessage(
           unit: leadUnit,
         });
 
-        await sendAutomationText({
+        if (!welcomeReception) await sendAutomationText({
           dbInstance,
           conversationId: conversation.id,
           contactPhone,
@@ -1971,7 +1984,7 @@ async function processMessage(
   }
 
   // ═══ 3.5 Automação nativa: saudação CTWA + captura de nome ═══
-  if (canCaptureLead && !isFromMe && isSendablePhone) {
+  if (canCaptureLead && !isFromMe && isSendablePhone && !welcomeReception) {
     try {
       const automation = await findCtwaWelcomeAutomation(leadUnit);
       const previousWaitingLog = automation ? await prisma.automationLog.findFirst({
@@ -2413,6 +2426,7 @@ async function processMessage(
     });
   }
 
+  if (welcomeInput && welcomeReception?.isActive) await enqueueWelcome(welcomeInput);
 }
 
 function isMessageStatusUpdateEvent(payload: any) {

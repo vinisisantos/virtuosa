@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { normalizedPhoneKeySql as phoneKeySql } from "@/lib/whatsapp/phone-sql";
 import { EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import { EVALUATION_NO_RESPONSE_TRIGGER } from "@/lib/whatsapp/evaluation-no-response-policy";
 
@@ -15,12 +16,6 @@ export type NoResponseCandidate = {
   confirmationMessageId: string; confirmationReference: "message_id" | "legacy_audit";
   confirmationBody: string; confirmationSteps: unknown;
 };
-
-function phoneKeySql(column: Prisma.Sql) {
-  const digits = Prisma.sql`regexp_replace(${column}, '[^0-9]', '', 'g')`;
-  return Prisma.sql`right(CASE WHEN length(${digits}) > 11 AND left(${digits}, 2) = '55'
-    THEN substring(${digits} from 3) ELSE ${digits} END, 11)`;
-}
 
 export function noResponseCandidatesQuery(scopes: NoResponseScope[], now: Date, conversationId: string, revalidate?: { sourceLogId: string; claimId: string }) {
   if (!scopes.length) throw new Error("Nenhuma unidade habilitada.");

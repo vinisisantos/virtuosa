@@ -38,6 +38,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260901195000_saved_reply_location_by_unit/migration.sql",
     "prisma/migrations/20260903143000_payment_method_fee_configs/migration.sql",
     "prisma/migrations/20260904010000_saved_reply_category_campaign_binding/migration.sql",
+    "prisma/migrations/20260908020000_campaign_welcome_queue/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {
@@ -56,6 +57,9 @@ if (process.env.VERCEL_ENV === "production") {
       DATABASE_URL: migrationUrl,
     });
   }
+  run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-campaign-welcome-cron.mjs"], {
+    ...process.env, DATABASE_URL: migrationUrl,
+  });
   if (process.env.SCS_CATALOG_IMPORT_ON_DEPLOY === "pdf-2026-09-06-confirmed") {
     run(process.execPath, ["--experimental-strip-types", "scripts/import-scs-catalog.mjs", "--apply"], {
       ...process.env,

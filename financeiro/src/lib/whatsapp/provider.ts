@@ -324,6 +324,7 @@ export async function sendWahaText(params: {
   text: string;
   replyTo?: string | null;
   linkPreview?: boolean;
+  signal?: AbortSignal;
 }) {
   const body: Record<string, unknown> = {
     session: params.sessionName,
@@ -340,6 +341,7 @@ export async function sendWahaText(params: {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: params.signal,
   });
   const data = await readProviderPayload(res);
   return { res, data, body };
