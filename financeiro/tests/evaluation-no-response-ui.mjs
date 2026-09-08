@@ -105,6 +105,7 @@ try{
     if(agent){assert.deepEqual(errors,[]);console.log(`PASS ${label}`);await page.close();continue;}
     // Edição fica somente em Automações e não dispara mensagens.
     await page.goto(`${origin}/crm/automations`,{waitUntil:'networkidle0'});
+    await page.waitForFunction(()=>document.body.innerText.includes('Sem restrição de horário'));
     const card=await page.waitForFunction(text=>[...document.querySelectorAll('button')].find(el=>el.textContent.includes(text)),{},`Lembrete sem resposta — ${unit}`);
     const count=calls.filter(p=>p==='/api/crm/automations').length;await card.asElement().click();await card.dispose();
     await page.waitForSelector('#no-response-message');
@@ -112,6 +113,8 @@ try{
     assert.equal(await page.$eval('#no-response-delay',el=>el.value),'2');
     assert.match(await page.$eval(root,el=>el.innerText),new RegExp(`unidade ${unit}`));
     assert.match(await page.$eval(root,el=>el.innerText),/Envio manual pelo botão do chat/);
+    assert.match(await page.$eval(root,el=>el.innerText),/sem restrição de horário/);
+    assert.doesNotMatch(await page.$eval(root,el=>el.innerText),/8h às 21h/);
     if(light)await page.evaluate(()=>{document.documentElement.classList.remove('dark');document.documentElement.dataset.theme='light';document.documentElement.dataset.mode='light';});
     await fit(page);await page.screenshot({path:join(output,`${label}-settings.png`)});
     await page.click('#no-response-delay',{clickCount:3});await page.keyboard.press('Backspace');await page.type('#no-response-delay','0');

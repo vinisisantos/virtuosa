@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test, { before, beforeEach, after } from 'node:test';
 import { PGlite } from '@electric-sql/pglite';
-import { DEFAULT_NO_RESPONSE_DELAY_HOURS, EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig, noResponseSendingHours, noResponseExecutionId, validNoResponseDelay } from '../src/lib/whatsapp/evaluation-no-response-policy.ts';
+import { DEFAULT_NO_RESPONSE_DELAY_HOURS, EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig, noResponseExecutionId, validNoResponseDelay } from '../src/lib/whatsapp/evaluation-no-response-policy.ts';
 import { noResponseAutomationData, updatedNoResponseConfig } from '../src/lib/whatsapp/evaluation-no-response-automation.ts';
 import { noResponseCandidatesQuery } from '../src/lib/whatsapp/evaluation-no-response-query.ts';
 import { sendEvaluationNoResponseReminder } from '../src/lib/whatsapp/evaluation-no-response.ts';
@@ -56,20 +56,23 @@ beforeEach(async () => {
 });
 after(() => pg.close());
 
-test('padrão 2h, prazo válido e fronteiras 08–21h em São Paulo', () => {
+test('padrão 2h e prazo válido, sem faixa de horário na configuração', () => {
   assert.equal(DEFAULT_NO_RESPONSE_DELAY_HOURS, 2);
   for (const value of [0,-1,1.5,25,Infinity,null,'2']) assert.equal(validNoResponseDelay(value),false);
   assert.equal(validNoResponseDelay(2),true);
   assert.equal(noResponseConfig({ activatedAt:'invalido' }).activatedAt,null);
-  for (const [time,allowed] of [['10:59:59',false],['11:00:00',true],['23:59:59',true]]) assert.equal(noResponseSendingHours(new Date(`2026-09-08T${time}Z`)),allowed);
-  assert.equal(noResponseSendingHours(new Date('2026-09-09T00:00:00Z')),false);
+  for (const {unit} of EVALUATION_SCHEDULE_UNIT_CONFIGS) {
+    const config=noResponseAutomationData(unit).triggerConfig;
+    assert.equal(config.earliestHour,undefined);assert.equal(config.latestHour,undefined);
+  }
 });
 test('ativação não aceita retroatividade, não muda unidade e preserva prazo', () => {
-  const existing = {unit:'SCS',isActive:false,triggerConfig:{delayHours:2,activatedAt:activatedAt.toISOString()}};
-  const updated = updatedNoResponseConfig(existing,{isActive:true,triggerConfig:{activatedAt:'2000-01-01',units:['Osasco'],delayHours:3}},now);
+  const existing = {unit:'SCS',isActive:false,triggerConfig:{delayHours:2,activatedAt:activatedAt.toISOString(),earliestHour:8,latestHour:21}};
+  const updated = updatedNoResponseConfig(existing,{isActive:true,triggerConfig:{activatedAt:'2000-01-01',units:['Osasco'],delayHours:3,earliestHour:8,latestHour:21}},now);
   assert.equal(updated.activatedAt,now.toISOString());
   assert.deepEqual(updated.units,['SCS']);
   assert.equal(updated.delayHours,3);
+  assert.equal(updated.earliestHour,undefined);assert.equal(updated.latestHour,undefined);
   assert.equal(updatedNoResponseConfig({...existing,isActive:true},{isActive:true},now).activatedAt,activatedAt.toISOString());
   assert.throws(()=>updatedNoResponseConfig(existing,{triggerConfig:{delayHours:0}}));
 });
@@ -205,9 +208,37 @@ test('seleção exige conversa e não usa candidato de outra caixa como fallback
   assert.equal((await candidates(undefined,now,undefined,'nao-existe')).length,0);
   await assert.rejects(()=>sendEvaluationNoResponseReminder({...context,instanceId:'outra'},{database:adapter()}));
 });
-test('fora do horário não consulta e cron não chama mais o lembrete sem resposta',async()=>{
-  const result=await run({automation:{findFirst:()=>{throw new Error('não consulta');}}},()=>{throw new Error('não envia');},{clock:()=>new Date('2026-09-09T00:00:00Z').getTime()});
-  assert.equal(result.reason,'outside_hours');
+test('cron não chama o lembrete sem resposta',async()=>{
   const cron=await readFile(new URL('../src/app/api/cron/whatsapp-callbacks/route.ts',import.meta.url),'utf8');
   assert.doesNotMatch(cron,/evaluation-no-response|[Pp]rocessEvaluationNoResponse|sendEvaluationNoResponse/);
+});
+
+async function retimeConfirmation(unit, at) {
+  const future=new Date(at.getTime()+6*3600000);
+  const confirmation=new Date(at.getTime()-2*3600000);
+  await pg.query('UPDATE "Agendamento" SET "startTime"=$1 WHERE unit=$2',[future,unit]);
+  await pg.query('UPDATE "WhatsAppMessage" SET timestamp=$1,"createdAt"=$1 WHERE "conversationId"=$2',[confirmation,`chat-${unit}`]);
+  await pg.query('UPDATE "AutomationLog" SET "executedAt"=$1,"triggerData"="triggerData" || $2::jsonb WHERE id=$3',[new Date(confirmation.getTime()-5000),JSON.stringify({startTime:future.toISOString()}),`source-${unit}`]);
+}
+for (const {unit,instanceId} of EVALUATION_SCHEDULE_UNIT_CONFIGS) {
+  for (const time of ['2026-09-08T03:00:00Z','2026-09-08T10:59:59Z','2026-09-09T00:00:00Z','2026-09-09T02:59:59Z']) {
+    test(`${unit}: envio manual liberado em ${time}, mantendo prazo e não duplicando`,async()=>{
+      const at=new Date(time);await retimeConfirmation(unit,at);
+      // Campos legados ainda salvos não reintroduzem a restrição.
+      automations=automations.map(a=>({...a,triggerConfig:{...a.triggerConfig,earliestHour:8,latestHour:21}}));
+      const ctx={...context,unit,instanceId,conversationId:`chat-${unit}`};
+      let sends=0;const db=adapter();
+      const send=async p=>{await p.beforeSend();sends++;return {messageId:'sent',sentAt:at};};
+      assert.equal((await sendEvaluationNoResponseReminder(ctx,{database:db,sendText:send,clock:()=>at.getTime()-1})).sent,0);
+      assert.equal((await sendEvaluationNoResponseReminder(ctx,{database:db,sendText:send,clock:()=>at.getTime()})).sent,1);
+      assert.equal((await sendEvaluationNoResponseReminder(ctx,{database:db,sendText:send,clock:()=>at.getTime()})).sent,0);
+      assert.equal(sends,1);
+    });
+  }
+}
+test('passar das 21h entre clique e revalidação não cancela envio elegível',async()=>{
+  let time=new Date('2026-09-08T23:59:59Z').getTime();await retimeConfirmation('SCS',new Date(time));
+  let sends=0;
+  const result=await run(adapter(),async p=>{time+=2000;await p.beforeSend();sends++;return {messageId:'sent',sentAt:new Date(time)};},{clock:()=>time});
+  assert.equal(result.sent,1);assert.equal(sends,1);
 });

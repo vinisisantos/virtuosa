@@ -13,7 +13,6 @@ export function noResponseAutomationData(unit: string, now = new Date(), created
     triggerConfig: {
       topic: "AGENDA", units: [unit], instanceIds: [config.instanceId], deliveryMode: "manual",
       delayHours: DEFAULT_NO_RESPONSE_DELAY_HOURS, activatedAt: now.toISOString(),
-      earliestHour: 8, latestHour: 21,
     },
     steps: [{ type: "send_message", config: { message: DEFAULT_NO_RESPONSE_MESSAGE } }],
     isActive: true, unit, createdBy,
@@ -58,6 +57,5 @@ export function updatedNoResponseConfig(existing: { unit: string | null; isActiv
     topic: "AGENDA", units: [unit.unit], instanceIds: [unit.instanceId], deliveryMode: "manual", delayHours,
     // Nunca aceitar um marco retroativo enviado pelo navegador.
     activatedAt: (activating || !previous.activatedAt ? now : previous.activatedAt).toISOString(),
-    earliestHour: 8, latestHour: 21,
   };
 }

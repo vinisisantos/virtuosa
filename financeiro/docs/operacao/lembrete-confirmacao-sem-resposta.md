@@ -13,7 +13,7 @@ Vinicius pediu que o envio aconteça **somente quando clicar no botão**, substi
 ## Regras antes do envio
 
 - Confirmação de presença enviada com sucesso e vinculada à mensagem exata por `conversationId + messageId`. Contagem pelo timestamp desse envio, não pela mensagem imediata de dados do agendamento.
-- Pelo menos o prazo configurado sem qualquer entrada do lead, padrão 2h (editável de 1 a 24h). Faixa mantida: 08h inclusive a 21h exclusive, America/Sao_Paulo.
+- Pelo menos o prazo configurado sem qualquer entrada do lead, padrão 2h (editável de 1 a 24h). **Sem restrição de horário do dia**, inclusive após 21h e antes de 8h. Continua exigindo avaliação futura. Campos legados `earliestHour`/`latestHour` não limitam o envio e deixam de ser gravados na criação/edição da configuração; não é necessária migração.
 - Avaliação futura, pendente ou `nao_confirmou`, mesma data da solicitação, Pipeline ainda `agendado`, telefone correspondente, unidade/instância homologadas e conectadas. Conversa não bloqueada, arquivada ou encerrada.
 - Resumo `lastInboundAt` e histórico são consultados, inclusive entradas antigas importadas depois da solicitação. Resposta, confirmação, cancelamento, reagendamento ou mudança de configuração/destinatário antes do envio impedem o disparo.
 - O clique individual pode usar confirmação vinculada anterior ao cadastro do modelo: o marco de ativação da antiga rotina automática não é mais uma barreira. Não há varredura/disparo retroativo ou em lote. Logs legados sem `confirmationMessageId` continuam inelegíveis; não se adivinha qual mensagem foi enviada.
@@ -31,7 +31,7 @@ Vinicius pediu que o envio aconteça **somente quando clicar no botão**, substi
 
 ## Validação e teste operacional
 
-- `npm test`: **311 testes passaram**, cobrindo política, SQL PostgreSQL efêmero/PGlite, isolamento, clique concorrente, revalidação, falhas e API real com JWT/banco sintéticos. Timestamp sem fuso interpretado como UTC no fixture, como no Prisma.
+- `npm test`: **324 testes passaram**, cobrindo política, SQL PostgreSQL efêmero/PGlite, isolamento, clique concorrente, revalidação, falhas e API real com JWT/banco sintéticos. Inclui 12 cenários de madrugada/antes de 8h/a partir de 21h nas três unidades, limite exato de 2h, não repetição e um cenário que atravessa 21h entre clique e envio. Timestamp sem fuso interpretado como UTC no fixture, como no Prisma.
 - `node --experimental-strip-types tests/evaluation-no-response-ui.mjs`: **15 cenários passaram**, com servidor local porta 3210, APIs simuladas e saídas externas bloqueadas. Desktop/mobile 390/430/1440, três unidades, permissões, envio direto, loading, erro, botão desabilitado e configuração sem envio. Capturas também revisadas no tema claro.
 - Antes do commit: `npx tsc --noEmit`, lint direcionado, build e `git diff --check`.
 - Após deploy: atualizar o Inbox e, em atendimento real elegível, abrir Ferramentas/⋯ e clicar **Enviar lembrete sem resposta**; conferir balão/log e recebimento. Não enviar testes a leads reais. O acesso local ao banco é de auditoria, sem INSERT em Automation; usar o fluxo normal autenticado.
@@ -39,3 +39,5 @@ Vinicius pediu que o envio aconteça **somente quando clicar no botão**, substi
 ## Versão anterior preservada
 
 O commit `cbfd915` havia publicado processamento automático no cron a cada 15 minutos, após marco de ativação e no máximo um envio por ciclo. A mudança para envio manual remove explicitamente esse comportamento a pedido de Vinicius. Mensagens, configurações e reservas históricas não são apagadas.
+
+O commit `b1e7f0f` tornou o envio manual, mas ainda mantinha a faixa 08–21h. Vinicius pediu retirar essa trava; a liberação atual vale somente para este lembrete manual, sem mudar horários de outras automações.

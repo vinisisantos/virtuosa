@@ -88,7 +88,7 @@ test('consulta e unidade divergente não podem enviar, mesmo sendo proprietário
   assert.equal(rawQueries.length,0);assert.equal(writes,0);
 });
 test('membro AGENT usa apenas o chat selecionado e recebe erro quando não elegível',async t=>{
-  t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-08T15:00:00Z')});
+  t.mock.timers.enable({apis:['Date'],now:new Date('2026-09-09T02:00:00Z')});
   instance.userId='another-owner';instance.members=[{userId:'synthetic',role:'AGENT',isActive:true}];
   assert.equal((await sendRequest({id:'other-chat'})).status,403);
   const res=await sendRequest();assert.equal(res.status,409);

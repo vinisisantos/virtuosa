@@ -37,8 +37,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (result.sent) return NextResponse.json({ status: "sent" });
     if (result.uncertain) return NextResponse.json({ error: "O resultado do envio ficou incerto. Confira o histórico da conversa antes de qualquer nova ação; o lembrete não será repetido." }, { status: 502 });
     const reason = "reason" in result ? result.reason : null;
-    const error = reason === "outside_hours" ? "O lembrete pode ser enviado das 8h às 21h (São Paulo)."
-      : reason === "disabled" ? "O envio de lembrete está desabilitado para esta unidade em Automações."
+    const error = reason === "disabled" ? "O envio de lembrete está desabilitado para esta unidade em Automações."
       : reason === "timeout" ? "Não foi possível concluir a verificação. Tente novamente."
       : "Lembrete não enviado. É necessário ter confirmação enviada há pelo menos o prazo configurado (padrão: 2 horas), avaliação pendente e futura, sem resposta e sem lembrete anterior. Confira também a conexão da caixa.";
     return NextResponse.json({ error }, { status: 409 });

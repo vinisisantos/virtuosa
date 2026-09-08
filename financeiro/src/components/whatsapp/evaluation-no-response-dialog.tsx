@@ -103,7 +103,7 @@ export function EvaluationNoResponseDialog({ open, unit, onOpenChange, initial, 
                 <input id="no-response-delay" type="number" inputMode="numeric" min={1} max={MAX_NO_RESPONSE_DELAY_HOURS} step={1} value={delay} disabled={saving} onChange={(event) => setDelay(event.target.value)} className="h-11 w-24 rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-primary" />
                 <span>horas sem resposta</span>
               </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">De 1 a 24 horas após a solicitação de confirmação. O envio só acontece ao clicar em “Enviar lembrete sem resposta” no chat, das 8h às 21h (São Paulo), antes da avaliação.</p>
+              <p className="text-xs leading-relaxed text-muted-foreground">De 1 a 24 horas após a solicitação de confirmação. O envio só acontece ao clicar em “Enviar lembrete sem resposta” no chat, sem restrição de horário, antes da avaliação.</p>
             </div>
             <div className="space-y-2">
               <label htmlFor="no-response-message" className="block font-medium">Mensagem</label>

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { phoneLookupKey } from "@/lib/phone";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
 import { ensureEvaluationNoResponseAutomation } from "@/lib/whatsapp/evaluation-no-response-automation";
-import { EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig, noResponseExecutionId, noResponseSendingHours } from "@/lib/whatsapp/evaluation-no-response-policy";
+import { EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig, noResponseExecutionId } from "@/lib/whatsapp/evaluation-no-response-policy";
 import { noResponseCandidatesQuery, type NoResponseCandidate, type NoResponseScope } from "@/lib/whatsapp/evaluation-no-response-query";
 import { buildEvaluationConfirmationRequestMessage, getEvaluationScheduleAutomationMessage, getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 
@@ -26,7 +26,6 @@ export async function sendEvaluationNoResponseReminder(context: {
   if (!context.conversationId || !context.actorId || !unit || unit.instanceId !== context.instanceId) {
     throw new Error("Contexto de envio inválido.");
   }
-  if (!noResponseSendingHours(now)) return { ...result, reason: "outside_hours" as const };
   if (!hasTime()) return { ...result, reason: "timeout" as const };
 
   const automation = await ensureEvaluationNoResponseAutomation(unit.unit, context.actorName, database);
@@ -75,7 +74,7 @@ export async function sendEvaluationNoResponseReminder(context: {
       }),
       beforeSend: async () => {
         const currentTime = new Date(clock());
-        if (!hasTime() || !noResponseSendingHours(currentTime)) throw new NoResponseCancelled("Fora da janela de envio.");
+        if (!hasTime()) throw new NoResponseCancelled("Tempo insuficiente para concluir o envio.");
         const [fresh] = await database.$queryRaw<NoResponseCandidate[]>(noResponseCandidatesQuery([scope], currentTime, context.conversationId, {
           sourceLogId: candidate.sourceLogId, claimId,
         }));

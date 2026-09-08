@@ -277,7 +277,7 @@ function AutomationCard({
             )}
             {automation.triggerType === EVALUATION_NO_RESPONSE_TRIGGER && (
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                Manual · {noResponseConfig(automation.triggerConfig).delayHours}h sem resposta · 8h–21h
+                Manual · {noResponseConfig(automation.triggerConfig).delayHours}h sem resposta · Sem restrição de horário
               </span>
             )}
           </div>

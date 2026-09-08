@@ -17,13 +17,6 @@ export function noResponseConfig(value: unknown) {
   };
 }
 
-export function noResponseSendingHours(now: Date) {
-  const hour = Number(new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Sao_Paulo", hour: "2-digit", hourCycle: "h23",
-  }).format(now));
-  return hour >= 8 && hour < 21;
-}
-
 // A ocorrência pertence ao agendamento, não à configuração editável da unidade.
 export function noResponseExecutionId(appointmentId: string, startTime: Date) {
   return `${EVALUATION_NO_RESPONSE_TRIGGER}:${appointmentId}:${startTime.toISOString()}`;
