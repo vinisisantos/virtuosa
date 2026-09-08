@@ -3,6 +3,7 @@ import { isFreshWelcomeEvent } from "@/lib/whatsapp/campaign-welcome-policy";
 import { enqueueWelcome, findWelcomeReception } from "@/lib/whatsapp/campaign-welcome";
 
 import { prisma } from "@/lib/db";
+import { pickLeadClientForUnit } from "@/lib/whatsapp/lead-client-selection";
 import { resolveDefaultPipelineForUnit } from "@/lib/pipeline/default-pipeline";
 import {
   extractLeadName,
@@ -226,35 +227,6 @@ function compactAdReply(adReply?: Record<string, unknown> | null) {
     sourceUrl: trim(adReply.sourceUrl || adReply.source_url),
     mediaType: adReply.mediaType || null,
   };
-}
-
-function pickBestClientCandidate<T extends {
-  phone: string | null;
-  unit: string;
-  source: string | null;
-  campaignName: string | null;
-  campaignId?: string | null;
-  fbclid?: string | null;
-  updatedAt: Date;
-}>(candidates: T[], params: { contactPhone: string; leadUnit: string; hasCampaignSignal: boolean }) {
-  const contactDigits = phoneDigits(params.contactPhone);
-  return candidates
-    .map((client, index) => {
-      const digits = phoneDigits(client.phone);
-      let score = 0;
-      if (digits && digits === contactDigits) score += 120;
-      else if (digits && contactDigits && digits.slice(-8) === contactDigits.slice(-8)) score += 40;
-      if (client.unit === params.leadUnit) score += 40;
-      if (params.hasCampaignSignal) {
-        if (client.campaignName && !isGenericCampaignName(client.campaignName)) score += 35;
-        else if (isGenericCampaignName(client.campaignName)) score += 5;
-        if (client.fbclid && /^https?:\/\//i.test(client.fbclid)) score += 20;
-        if ("campaignId" in client && client.campaignId) score += 15;
-        if (client.source === "facebook_ad") score += 10;
-      }
-      return { client, index, score };
-    })
-    .sort((a, b) => b.score - a.score || b.client.updatedAt.getTime() - a.client.updatedAt.getTime() || a.index - b.index)[0]?.client || null;
 }
 
 function ctwaUnresolvedReason(params: {
@@ -1660,13 +1632,11 @@ async function processMessage(
   }
 
   const adSignal = [
-    resolvedCampaignName,
     resolvedAdName,
     adTitle,
     adBody,
     adDescription,
     adSourceUrl,
-    textBody,
   ].filter(Boolean).join(" ");
   // O formulário direto da Meta pode chegar sem externalAdReply. Nome e
   // telefone estruturados, conferidos contra o remetente, ainda comprovam a
@@ -1682,7 +1652,6 @@ async function processMessage(
     || !!adReply
     || !!directFormLeadName
     || !!prefilledMetaCampaign;
-  const managedCampaignName = canCaptureLead && hasCampaignSignal ? await inferManagedCampaignName(adSignal, leadUnit) : null;
   const keywordCampaignName = canCaptureLead && hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
   const messageKeywordCampaignName = canCaptureLead
     ? inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "))
@@ -1705,17 +1674,20 @@ async function processMessage(
   // intencionalmente separada da origem da conta: SBC usa conta secundária para
   // mais de uma campanha e não pode herdar este nome.
   const accountCampaignName = campaignNameFromAccountTrackId(campaignTrackId, leadUnit);
+  // Texto explícito e criativo identificado dispensam a busca aproximada.
+  // O nome da campanha pai não deve contaminar a descrição do anúncio filho.
+  const explicitCampaignName = prefilledMetaCampaign?.campaignName
+    || exactSourceCampaignName || exactAdCampaignName || accountCampaignName
+    || trackedCampaignName || keywordCampaignName || messageKeywordCampaignName;
+  const managedCampaignName = canCaptureLead && hasCampaignSignal && !explicitCampaignName
+    ? await inferManagedCampaignName(adSignal, leadUnit) : null;
   // O marcador da conta secundária é uma regra operacional confirmada e deve
   // prevalecer sobre inferências textuais que podem classificar o anúncio errado.
   const fallbackCampaignName = normalizeCampaignNameForWrite(adTitle);
   const campaignName: string | null = canCaptureLead && hasCampaignSignal
-    ? prefilledMetaCampaign?.campaignName
-      || exactSourceCampaignName
-      || exactAdCampaignName
-      || accountCampaignName
-      || trackedCampaignName
-      || keywordCampaignName
+    ? explicitCampaignName
       || managedCampaignName
+      || inferCampaignByKeywords(resolvedCampaignName || "")
       || resolvedCampaignName
       || fallbackCampaignName
     : null;
@@ -1797,7 +1769,7 @@ async function processMessage(
         ...(suffix.length >= 8 ? [{ phone: { contains: suffix } }] : []),
       ];
       const clientCandidates = await prisma.client.findMany({
-        where: { isActive: true, OR: phoneConditions },
+        where: { isActive: true, unit: leadUnit, OR: phoneConditions },
         orderBy: { updatedAt: "desc" },
         take: 10,
         select: {
@@ -1815,7 +1787,8 @@ async function processMessage(
           updatedAt: true,
         },
       });
-      let client = pickBestClientCandidate(clientCandidates, { contactPhone, leadUnit, hasCampaignSignal });
+      let client = pickLeadClientForUnit(clientCandidates, { contactPhone, leadUnit, hasCampaignSignal });
+      let campaignWasUpdated = false;
 
       if (!client) {
         client = await prisma.client.create({
@@ -1864,6 +1837,7 @@ async function processMessage(
             shouldRepairHyperSlim ||
             shouldApplyCanonicalAdCampaign ||
             shouldApplyPrefilledMetaCampaign);
+        campaignWasUpdated = shouldSetCampaign;
         client = await prisma.client.update({
           where: { id: client.id },
           data: {
@@ -1898,12 +1872,13 @@ async function processMessage(
       const existingDeal = await prisma.salesPipeline.findFirst({
         where: {
           clientId: client.id,
+          unit: leadUnit,
           lostReason: null,
           closedAt: null,
         },
       });
 
-      if (existingDeal && (canonicalAdCampaignName || prefilledMetaCampaign) && (
+      if (existingDeal && (campaignWasUpdated || canonicalAdCampaignName || prefilledMetaCampaign) && (
         existingDeal.campaignIdSnapshot !== client.campaignId
         || existingDeal.campaignNameSnapshot !== client.campaignName
         || existingDeal.campaignAttributionSnapshot !== client.campaignAttribution

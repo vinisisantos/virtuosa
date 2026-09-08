@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
+import { pickCampaignClientForUnit } from "@/lib/whatsapp/lead-client-selection";
 import { prisma } from "@/lib/db";
 import { requireUnitGuard } from "@/lib/unit-guard";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
     const unit = guard.unitFilter || requestedUnit || undefined;
 
     const [clientCandidates, campaigns] = await Promise.all([
-      suffix.length >= 8
+      suffix.length >= 8 && unit && !["Todas", "all"].includes(unit)
         ? prisma.client.findMany({
             where: {
               ...(unit ? { unit } : {}),
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
         orderBy: [{ updatedAt: "desc" }],
       }),
     ]);
-    const client = pickBestCampaignClient(clientCandidates);
+    const client = pickCampaignClientForUnit(clientCandidates, phone, unit || "");
 
     return NextResponse.json({
       client,

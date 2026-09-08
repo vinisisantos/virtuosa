@@ -36,8 +36,8 @@ function normalizePrefilledMetaLeadMessage(value?: string | null) {
 }
 
 // Algumas mensagens CTWA chegam sem externalAdReply, mas preservam o texto
-// pré-preenchido configurado no anúncio. O padrão precisa ser estrito e só é
-// usado pelo webhook na primeira mensagem de uma conversa nova.
+// pré-preenchido configurado no anúncio. Uma abertura explícita também pode
+// representar um novo clique numa conversa existente, nunca uma menção casual.
 export function campaignFromPrefilledMetaLeadMessage(
   message?: string | null,
   unit?: string | null,
@@ -46,6 +46,7 @@ export function campaignFromPrefilledMetaLeadMessage(
   const normalizedMessage = normalizePrefilledMetaLeadMessage(message);
 
   if (!normalizedUnit || !ACTIVE_CAMPAIGN_UNITS.has(normalizedUnit)) return null;
+  if (!/^(?:(?:ola|oi) )?(?:eu )?vim pel[oa] /.test(normalizedMessage)) return null;
 
   if (/\bvim pelo combo harmonizacao\b/.test(normalizedMessage)) {
     return {
@@ -76,15 +77,30 @@ export function campaignFromPrefilledMetaLeadMessage(
     };
   }
 
-  if (!/\bvim pelo gluteos perfeitos 120 ?ml\b/.test(normalizedMessage)) return null;
+  if (/\bvim pelo gluteos? perfeitos? 120 ?ml\b/.test(normalizedMessage)) {
+    return {
+      campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+      campaignTrackId: campaignTrackIdForUnit(normalizedUnit, {
+        osasco: GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
+        sbc: GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
+      }),
+    };
+  }
 
-  return {
-    campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
-    campaignTrackId: campaignTrackIdForUnit(normalizedUnit, {
-      osasco: GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
-      sbc: GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
-    }),
-  };
+  // O texto identifica o procedimento, mas não comprova ID ou conta Meta.
+  const explicitCampaigns: Array<[RegExp, string]> = [
+    [/\bvim pelo gluteos? perfeitos?(?: 60 ?ml)?(?= (?:gostaria|posso|quero|tenho)|$)/, "Glúteo Perfeito"],
+    [/\bvim pela harmonizacao (?:de )?gluteos?\b/, "Harmonização de Glúteos"],
+    [/\bvim pel[oa] barriga trincada\b/, "Barriga Trincada"],
+    [/\bvim pelo preenchimento facial\b/, FACIAL_FILLER_CAMPAIGN_NAME],
+    [/\bvim pelo botox\b/, "Botox"],
+    [/\bvim pel[oa] gordura localizada\b/, "Gordura Localizada"],
+    [/\bvim pelo hyper ?slim\b/, "HyperSlim"],
+    [/\bvim pelo monji ?fast\b/, "MonjiFast"],
+    [/\bvim pelo emagrecimento e definicao\b/, "Emagrecimento e Definição"],
+  ];
+  const matches = explicitCampaigns.filter(([pattern]) => pattern.test(normalizedMessage));
+  return matches.length === 1 ? { campaignName: matches[0][1], campaignTrackId: null } : null;
 }
 
 type CampaignTrackRule = {

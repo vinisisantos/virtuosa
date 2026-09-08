@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { normalizeCampaignText } from "@/lib/campaign-labels";
-import { FACIAL_FILLER_CAMPAIGN_NAME } from "@/lib/campaign-track-mapping";
+import { FACIAL_FILLER_CAMPAIGN_NAME, GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME, HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME } from "@/lib/campaign-track-mapping";
 
 function wordsOf(value: string) {
   return normalizeCampaignText(value)
@@ -13,6 +13,13 @@ export function inferCampaignByKeywords(signal: string): string | null {
   if (!normalized) return null;
 
   const rules: Array<{ name: string; patterns: RegExp[] }> = [
+    { name: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME, patterns: [/\bgluteos? perfeitos? 120 ?ml\b/] },
+    { name: "Glúteo Perfeito", patterns: [/\bgluteos? perfeitos?\b(?!\s*\d)/, /\bgluteos? perfeitos? 60 ?ml\b/] },
+    { name: "Harmonização de Glúteos", patterns: [/\bharmonizacao (?:de )?gluteos?\b/] },
+    { name: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME, patterns: [/\bharmonizacao (?:de )?mamas?\b/] },
+    { name: "Combo Harmonização", patterns: [/\bcombo harmonizacao\b/] },
+    { name: "Adeus Rosto Cansado", patterns: [/\badeus rosto cansado\b/] },
+    { name: "Gordura Localizada", patterns: [/\bgordura localizada\b/] },
     {
       name: FACIAL_FILLER_CAMPAIGN_NAME,
       patterns: [
@@ -81,11 +88,19 @@ export function inferCampaignByKeywords(signal: string): string | null {
     },
   ];
 
-  for (const rule of rules) {
-    if (rule.patterns.some((pattern) => pattern.test(normalized))) return rule.name;
-  }
+  const matches = rules.filter(rule => rule.patterns.some(pattern => pattern.test(normalized)));
+  return matches.length === 1 ? matches[0].name : null;
+}
 
-  return null;
+export function matchManagedCampaignName(signal: string, campaigns: Array<{ name: string }>) {
+  const signalWords = new Set(normalizeCampaignText(signal).split(" "));
+  const matches = campaigns.filter(campaign => {
+    const terms = wordsOf(campaign.name);
+    return terms.length > 0 && terms.every(term => signalWords.has(term));
+  });
+  // "Harmonização" sozinha não diferencia mamas, glúteos ou combo.
+  const names = [...new Map(matches.map(c => [wordsOf(c.name).join(" "), c.name])).values()];
+  return names.length === 1 ? names[0] : null;
 }
 
 export async function inferManagedCampaignName(signal: string, unit?: string | null): Promise<string | null> {
@@ -100,19 +115,7 @@ export async function inferManagedCampaignName(signal: string, unit?: string | n
     select: { name: true },
   });
 
-  let best: { name: string; score: number } | null = null;
-  for (const campaign of campaigns) {
-    const terms = wordsOf(campaign.name);
-    if (terms.length === 0) continue;
-
-    const hits = terms.filter((term) => normalizedSignal.includes(term)).length;
-    const score = hits / terms.length;
-    if (hits > 0 && (!best || score > best.score)) {
-      best = { name: campaign.name, score };
-    }
-  }
-
-  return best && best.score >= 0.5 ? best.name : null;
+  return matchManagedCampaignName(normalizedSignal, campaigns);
 }
 
 export async function inferCampaignNameFromSignal(signal: string, unit?: string | null) {

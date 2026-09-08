@@ -1531,7 +1531,7 @@ function CampaignAttributeControl({ contactPhone, contactName, unit }: {
         // Sem Client ainda → cria o lead já com a campanha
         const createRes = await fetch("/api/clients", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: contactName || contactPhone, phone: contactPhone, campaignName: value, source: "facebook_ad", force: true }),
+          body: JSON.stringify({ name: contactName || contactPhone, phone: contactPhone, unit, campaignName: value, source: "facebook_ad", force: true }),
         });
         if (createRes.ok) {
           const j = await createRes.json();

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
 import { pickBestCampaignClient } from "@/lib/campaign-client-selection";
+import { campaignClientKey } from "@/lib/whatsapp/lead-client-selection";
 import { prisma } from "@/lib/db";
 import { permittedUnitsForAccess } from "@/lib/role-access";
 import {
@@ -277,6 +278,7 @@ export async function GET(req: Request) {
     const clients = phoneSuffixes.length > 0
       ? await prisma.client.findMany({
           where: {
+            unit: FOLLOW_UP_CENTER_PILOT_UNIT,
             OR: phoneSuffixes.map((suffix) => ({ phone: { contains: suffix } })),
           },
           select: {
@@ -293,8 +295,8 @@ export async function GET(req: Request) {
       : [];
     const campaignCandidatesByPhone = new Map<string, typeof clients>();
     for (const client of clients) {
-      const phoneKey = normalizePhoneSuffix(client.phone);
-      if (phoneKey.length < 8) continue;
+      const phoneKey = campaignClientKey(client.phone, FOLLOW_UP_CENTER_PILOT_UNIT);
+      if (!phoneKey) continue;
       const candidates = campaignCandidatesByPhone.get(phoneKey) || [];
       candidates.push(client);
       campaignCandidatesByPhone.set(phoneKey, candidates);
@@ -327,7 +329,7 @@ export async function GET(req: Request) {
       },
       conversations: pageRows.map((conversation) => ({
         ...conversation,
-        campaignName: campaignByPhone.get(normalizePhoneSuffix(conversation.contact.phone)) || null,
+        campaignName: campaignByPhone.get(campaignClientKey(conversation.contact.phone, FOLLOW_UP_CENTER_PILOT_UNIT)) || null,
         canReply: accessByInstanceId.get(conversation.instanceId)?.canReply !== false,
       })),
       hasMore,

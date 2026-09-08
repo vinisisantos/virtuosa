@@ -203,6 +203,7 @@ export async function processLead(data: LeadData): Promise<{
       const cleanPhone = phone.replace('+55', '').slice(-11);
       existingClient = await prisma.client.findFirst({
         where: {
+          unit,
           OR: [
             { phone: { contains: cleanPhone } },
             { phone: { contains: phone } },
@@ -214,7 +215,7 @@ export async function processLead(data: LeadData): Promise<{
 
     if (!existingClient && email) {
       existingClient = await prisma.client.findFirst({
-        where: { email, isActive: true },
+        where: { email, isActive: true, unit },
       });
     }
 

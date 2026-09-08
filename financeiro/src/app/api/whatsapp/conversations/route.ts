@@ -5,6 +5,8 @@ import { Prisma } from "@prisma/client";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { campaignUrlFromClient, pickBestCampaignClient } from "@/lib/campaign-client-selection";
+import { campaignClientKey } from "@/lib/whatsapp/lead-client-selection";
+import { resolveInboxConversationUnit } from "@/lib/whatsapp/conversation-unit";
 import {
   campaignAccountOriginFromInstance,
   campaignAccountOriginFromTrackId,
@@ -667,9 +669,13 @@ export async function GET(req: NextRequest) {
         )]
       : [];
 
-    const clients = phoneSuffixes.length
+    const campaignUnits = [...new Set(visibleConversations.map(c => resolveInboxConversationUnit(
+      instanceUnitById.get(c.instanceId), searchParams.get("unit"), c.contact?.unit,
+    )).filter(Boolean))];
+    const clients = phoneSuffixes.length && campaignUnits.length
       ? await prisma.client.findMany({
           where: {
+            unit: { in: campaignUnits },
             OR: phoneSuffixes.map((suffix) => ({ phone: { contains: suffix } })),
           },
           select: {
@@ -688,8 +694,8 @@ export async function GET(req: NextRequest) {
       : [];
     const campaignCandidatesByPhone = new Map<string, typeof clients>();
     for (const cl of clients) {
-      const k = normalizePhoneSuffix(cl.phone);
-      if (k.length < 8) continue;
+      const k = campaignClientKey(cl.phone, cl.unit);
+      if (!k) continue;
       const list = campaignCandidatesByPhone.get(k) || [];
       list.push(cl);
       campaignCandidatesByPhone.set(k, list);
@@ -732,7 +738,9 @@ export async function GET(req: NextRequest) {
     const appointmentSnapshot = inboxAppointmentSnapshot(appointmentRows);
     const conversationsWithTags = visibleConversations.map((c) => {
       const { followUps, ...conversation } = c;
-      const campaign = campaignByPhone.get(normalizePhoneSuffix(c.contact?.phone));
+      const campaign = campaignByPhone.get(campaignClientKey(c.contact?.phone, resolveInboxConversationUnit(
+        instanceUnitById.get(c.instanceId), searchParams.get("unit"), c.contact?.unit,
+      )));
       const instanceAccountOrigin = campaignAccountOriginFromInstance(
         c.instanceId,
         instanceUnitById.get(c.instanceId),
