@@ -281,7 +281,7 @@ export async function POST(
     }
     claimedLogId = claim.logId;
 
-    await sendAutomationText({
+    const sent = await sendAutomationText({
       dbInstance: context.instance,
       conversationId: context.conversation.id,
       contactPhone: context.conversation.contact.phone,
@@ -302,7 +302,7 @@ export async function POST(
         prisma.automationLog.update({
           where: { id: claim.logId },
           data: {
-            triggerData,
+            triggerData: { ...triggerData, confirmationMessageId: sent.messageId, confirmationSentAt: sent.sentAt.toISOString() },
             result: "success",
             error: null,
           },

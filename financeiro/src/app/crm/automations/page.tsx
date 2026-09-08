@@ -48,6 +48,8 @@ import {
   normalizeEvaluationConfirmationWindowHours,
 } from "@/lib/whatsapp/evaluation-confirmation-window";
 import { useGlobalUnit } from "@/contexts/UnitContext";
+import { EvaluationNoResponseDialog } from "@/components/whatsapp/evaluation-no-response-dialog";
+import { EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig } from "@/lib/whatsapp/evaluation-no-response-policy";
 
 // ─── Types ────────────────────────────────────────────────────
 interface AutomationStep {
@@ -80,6 +82,7 @@ interface CallBlockSettings {
 
 // ─── Constants ───────────────────────────────────────────────
 const TRIGGER_TYPES = [
+  { key: EVALUATION_NO_RESPONSE_TRIGGER, label: "AGENDA · Sem resposta", desc: "Lembra quem não respondeu à confirmação", icon: Clock },
   { key: "ctwa_welcome", label: "Boas-vindas CTWA", desc: "Somente novos leads de campanhas", icon: MessageSquare },
   { key: "evaluation_scheduled", label: "AGENDA · Agendamento", desc: "Confirmação após agendamento", icon: CalendarDays },
   { key: "evaluation_confirmation_request", label: "AGENDA · Confirmação", desc: "Janela configurável para confirmar presença", icon: CalendarDays },
@@ -93,6 +96,7 @@ const TRIGGER_TYPES = [
 ];
 
 const NATIVE_TRIGGER_TYPES = new Set([
+  EVALUATION_NO_RESPONSE_TRIGGER,
   "ctwa_welcome",
   "evaluation_scheduled",
   "evaluation_confirmation_request",
@@ -220,6 +224,7 @@ function AutomationCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const isNativeAutomation = NATIVE_TRIGGER_TYPES.has(automation.triggerType);
   const isEvaluationAgendaAutomation = [
+    EVALUATION_NO_RESPONSE_TRIGGER,
     "evaluation_scheduled",
     "evaluation_confirmation_request",
     "evaluation_day_reminder",
@@ -270,6 +275,11 @@ function AutomationCard({
                 Automático 2h · manual 10h
               </span>
             )}
+            {automation.triggerType === EVALUATION_NO_RESPONSE_TRIGGER && (
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                {noResponseConfig(automation.triggerConfig).delayHours}h sem resposta · 8h–21h
+              </span>
+            )}
           </div>
         </button>
 
@@ -278,12 +288,12 @@ function AutomationCard({
           {/* Toggle */}
           <button
             onClick={onToggle}
-            className={`flex h-8 w-8 items-center justify-center rounded-md transition-colors ${
+            className={`flex h-11 w-11 items-center justify-center rounded-md transition-colors ${
               automation.isActive
                 ? "bg-primary/10 text-primary hover:bg-primary/20"
                 : "text-muted-foreground hover:bg-muted"
             }`}
-            title={automation.isActive ? "Desativar" : "Ativar"}
+            title={automation.triggerType === EVALUATION_NO_RESPONSE_TRIGGER ? "Configurar lembrete" : automation.isActive ? "Desativar" : "Ativar"}
           >
             {automation.isActive ? <Power className="h-4 w-4" /> : <PowerOff className="h-4 w-4" />}
           </button>
@@ -292,7 +302,7 @@ function AutomationCard({
           <div className="relative">
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted transition-colors"
+              className="flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground hover:bg-muted transition-colors"
             >
               <MoreVertical className="h-4 w-4" />
             </button>
@@ -598,7 +608,7 @@ function AutomationBuilder({
           <div className="space-y-3">
             <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Gatilho</label>
             <div className="grid grid-cols-2 gap-2">
-              {TRIGGER_TYPES.map((t) => {
+              {TRIGGER_TYPES.filter((t) => t.key !== EVALUATION_NO_RESPONSE_TRIGGER).map((t) => {
                 const Icon = t.icon;
                 const active = triggerType === t.key;
                 return (
@@ -968,6 +978,7 @@ export default function AutomationsPage() {
   const [loading, setLoading] = useState(true);
   const [builderOpen, setBuilderOpen] = useState(false);
   const [editing, setEditing] = useState<Partial<Automation> | null>(null);
+  const [noResponseEditing, setNoResponseEditing] = useState<Automation | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Automation | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -1034,6 +1045,10 @@ export default function AutomationsPage() {
   }
 
   async function handleToggle(automation: Automation) {
+    if (automation.triggerType === EVALUATION_NO_RESPONSE_TRIGGER) {
+      setNoResponseEditing(automation);
+      return;
+    }
     // Optimistic update
     setAutomations((prev) => prev.map((a) => a.id === automation.id ? { ...a, isActive: !a.isActive } : a));
     try {
@@ -1231,7 +1246,10 @@ export default function AutomationsPage() {
               key={a.id}
               automation={a}
               onToggle={() => handleToggle(a)}
-              onEdit={() => { setEditing(a); setBuilderOpen(true); }}
+              onEdit={() => {
+                if (a.triggerType === EVALUATION_NO_RESPONSE_TRIGGER) setNoResponseEditing(a);
+                else { setEditing(a); setBuilderOpen(true); }
+              }}
               onDuplicate={() => handleDuplicate(a)}
               onDelete={() => setDeleteTarget(a)}
             />
@@ -1240,6 +1258,13 @@ export default function AutomationsPage() {
       )}
 
       {/* Builder Dialog */}
+      <EvaluationNoResponseDialog
+        open={!!noResponseEditing}
+        unit={noResponseEditing?.unit || ""}
+        initial={noResponseEditing}
+        onOpenChange={(open) => { if (!open) setNoResponseEditing(null); }}
+        onSaved={() => { void fetchAutomations(); toast("Lembrete da unidade atualizado.", "success"); }}
+      />
       <AutomationBuilder
         open={builderOpen}
         initial={editing}

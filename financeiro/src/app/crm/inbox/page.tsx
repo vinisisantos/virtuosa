@@ -10,6 +10,7 @@ import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import { EvaluationAvailabilityDialog } from "@/components/whatsapp/evaluation-availability-dialog";
+import { EvaluationNoResponseDialog } from "@/components/whatsapp/evaluation-no-response-dialog";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
@@ -135,6 +136,7 @@ import {
   Volume2,
   VolumeX,
   Clock3,
+  BellRing,
   Video,
 } from "lucide-react";
 import {
@@ -3139,6 +3141,7 @@ export default function InboxPage() {
   const [showNewConversationDialog, setShowNewConversationDialog] = useState(false);
   const [showSavedRepliesDialog, setShowSavedRepliesDialog] = useState(false);
   const [showEvaluationAvailabilityDialog, setShowEvaluationAvailabilityDialog] = useState(false);
+  const [noResponseUnit, setNoResponseUnit] = useState<string | null>(null);
   const savedRepliesLibrary = useWhatsAppSavedReplies();
   const {
     replies: savedReplies,
@@ -4675,7 +4678,7 @@ export default function InboxPage() {
       if (event.key !== "Escape" || event.defaultPrevented) return;
 
       // Overlays consume Escape first; a second press then leaves the chat.
-      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog || showQuickSchedule || internalNotesOpen) {
+      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog || noResponseUnit || showQuickSchedule || internalNotesOpen) {
         return;
       }
       if (bulkFollowUpConfirmOpen) {
@@ -4712,6 +4715,7 @@ export default function InboxPage() {
     showNewConversationDialog,
     showSavedRepliesDialog,
     showEvaluationAvailabilityDialog,
+    noResponseUnit,
     showQuickSchedule,
     internalNotesOpen,
   ]);
@@ -7272,6 +7276,10 @@ export default function InboxPage() {
                   id: "call", label: "Ligar para contato", icon: Phone,
                   href: "tel:" + selectedConv.contact.phone.replace(/\D/g, ""),
                 }] : []),
+                ...(isAdmin && getEvaluationScheduleUnitConfigByUnit(selectedConversationUnit)?.instanceId === selectedConv.instanceId ? [{
+                  id: "confirmation-reminder", label: "Lembrete sem resposta", icon: BellRing,
+                  onClick: () => setNoResponseUnit(selectedConversationUnit),
+                }] : []),
               ]}
               moreActions={[
                 ...(canReplyToSelectedConversation ? [
@@ -8798,6 +8806,13 @@ export default function InboxPage() {
         unit={selectedConversationUnit}
         onOpenChange={setShowEvaluationAvailabilityDialog}
         onInsertMessage={handleEvaluationAvailabilityInsert}
+      />
+      <EvaluationNoResponseDialog
+        open={noResponseUnit !== null}
+        unit={noResponseUnit || ""}
+        returnFocusRef={internalNotesTriggerRef}
+        onOpenChange={(open) => { if (!open) setNoResponseUnit(null); }}
+        onSaved={() => toast("Lembrete da unidade atualizado.", "success")}
       />
       <SavedRepliesDialog
         open={showSavedRepliesDialog}

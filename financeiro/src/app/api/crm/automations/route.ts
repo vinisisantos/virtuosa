@@ -15,6 +15,8 @@ import { ensureEvaluationConfirmationRequestAutomations } from "@/lib/whatsapp/e
 import { ensureEvaluationNoShowAutomations } from "@/lib/whatsapp/evaluation-no-show-automation";
 import { ensureEvaluationDayReminderAutomations } from "@/lib/whatsapp/evaluation-day-reminder-automation";
 import { ensureEvaluationRescheduleAutomations } from "@/lib/whatsapp/evaluation-reschedule-automation";
+import { ensureEvaluationNoResponseAutomations, updatedNoResponseConfig } from "@/lib/whatsapp/evaluation-no-response-automation";
+import { EVALUATION_NO_RESPONSE_TRIGGER } from "@/lib/whatsapp/evaluation-no-response-policy";
 import {
   DEFAULT_EVALUATION_CONFIRMATION_WINDOW_HOURS,
   EVALUATION_CONFIRMATION_WINDOW_CONFIG_VERSION,
@@ -26,6 +28,7 @@ import {
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
 const NATIVE_AUTOMATION_TRIGGERS = new Set([
   CTWA_WELCOME_TRIGGER,
+  EVALUATION_NO_RESPONSE_TRIGGER,
   EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
   EVALUATION_DAY_REMINDER_AUTOMATION_TRIGGER,
   EVALUATION_NO_SHOW_AUTOMATION_TRIGGER,
@@ -129,6 +132,7 @@ export async function GET(req: NextRequest) {
       ensureEvaluationDayReminderAutomations(auth.user.name || auth.user.email),
       ensureEvaluationNoShowAutomations(auth.user.name || auth.user.email),
       ensureEvaluationRescheduleAutomations(auth.user.name || auth.user.email),
+      ensureEvaluationNoResponseAutomations(auth.user.name || auth.user.email),
     ]);
 
     const where: Record<string, unknown> = {};
@@ -204,6 +208,21 @@ export async function PUT(req: NextRequest) {
 
     const existing = await prisma.automation.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ error: "Automação não encontrada" }, { status: 404 });
+    if (existing.triggerType === EVALUATION_NO_RESPONSE_TRIGGER) {
+      let triggerConfig;
+      try {
+        triggerConfig = updatedNoResponseConfig(existing, data);
+      } catch (error) {
+        return NextResponse.json({ error: error instanceof Error ? error.message : "Configuração inválida." }, { status: 400 });
+      }
+      const message = getEvaluationScheduleAutomationMessage(data.steps ?? existing.steps);
+      if (!message || message.length > 4000) return NextResponse.json({ error: "Informe uma mensagem de até 4.000 caracteres." }, { status: 400 });
+      const automation = await prisma.automation.update({ where: { id }, data: {
+        triggerConfig, steps: [{ type: "send_message", config: { message } }],
+        ...(typeof data.isActive === "boolean" ? { isActive: data.isActive } : {}),
+      } });
+      return NextResponse.json({ automation });
+    }
     if (NATIVE_AUTOMATION_TRIGGERS.has(existing.triggerType)) {
       const requestedTriggerConfig = jsonObject(data.triggerConfig);
       delete data.triggerType;
