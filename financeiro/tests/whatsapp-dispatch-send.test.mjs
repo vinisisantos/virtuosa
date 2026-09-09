@@ -47,17 +47,17 @@ test('novo lote grava origem/autoria na mensagem após envio e retorna selo',asy
   assert.equal(result.lastDispatch.sentByName,'Operadora real');assert.equal(result.lastDispatch.status,'sent');
   assert.equal(sent[0].dispatch,undefined,'metadados internos não são enviados ao WhatsApp');
 });
-test('individual e lotes de SBC/SCS mantêm envio sem marcação, mesmo com unit Osasco forjada',async()=>{
+test('individual não recebe marcação e lote usa a unidade real da caixa, nunca a forjada',async()=>{
   assert.equal((await send({dispatch:undefined})).status,200);assert.equal(saved.dispatchMetadata,undefined);
   for(const unit of ['SBC','SCS']){
     globalThis.dispatchInstances[0].unit=unit;
     const res=await send({},'?unit=Osasco');assert.equal(res.status,200);
-    assert.equal((await res.json()).lastDispatch,null);assert.equal(saved.dispatchMetadata,undefined);
+    assert.equal((await res.json()).lastDispatch.metadata.unit,unit);assert.equal(saved.dispatchMetadata.unit,unit);
   }
 });
 test('Todas depende da unidade real do contato e mídia também recebe identificação',async()=>{
   globalThis.dispatchInstances[0].unit='Todas';conv.contact.unit='SCS';
-  assert.equal((await send()).status,200);assert.equal(saved.dispatchMetadata,undefined);
+  assert.equal((await send()).status,200);assert.equal(saved.dispatchMetadata.unit,'SCS');
   conv.contact.unit='Osasco';assert.equal((await send({type:'image',file:'data:image/png;base64,dGVzdA=='})).status,200);
   assert.equal(saved.dispatchMetadata.unit,'Osasco');assert.equal(saved.type,'image');
 });

@@ -1,7 +1,8 @@
 export type DispatchSource = "inbox_bulk" | "follow_up_bulk";
+export type DispatchUnit = "Osasco" | "SBC" | "SCS";
 export type DispatchMetadata = {
   version: 1;
-  unit: "Osasco";
+  unit: DispatchUnit;
   batchId: string;
   source: DispatchSource;
   campaignName: string | null;
@@ -20,9 +21,14 @@ function object(value: unknown): Record<string, unknown> | null {
     ? value as Record<string, unknown> : null;
 }
 
+function resolveDispatchUnit(instanceUnit?: string | null, contactUnit?: string | null): DispatchUnit | null {
+  // A unidade escolhida na interface não pode substituir a unidade real da caixa/contato.
+  const unit = instanceUnit === "Todas" ? contactUnit : instanceUnit;
+  return unit === "Osasco" || unit === "SBC" || unit === "SCS" ? unit : null;
+}
+
 export function dispatchUnitEnabled(instanceUnit?: string | null, contactUnit?: string | null) {
-  // A unidade escolhida na interface não pode converter uma caixa SBC/SCS em Osasco.
-  return (instanceUnit === "Todas" ? contactUnit : instanceUnit) === "Osasco";
+  return resolveDispatchUnit(instanceUnit, contactUnit) !== null;
 }
 
 export function parseDispatchRequest(value: unknown) {
@@ -39,15 +45,15 @@ export function parseDispatchRequest(value: unknown) {
 
 export function dispatchMetadataForSend(value: unknown, instanceUnit?: string | null, contactUnit?: string | null): DispatchMetadata | null {
   const request = parseDispatchRequest(value);
-  return request && dispatchUnitEnabled(instanceUnit, contactUnit)
-    ? { version: 1, unit: "Osasco", ...request } : null;
+  const unit = resolveDispatchUnit(instanceUnit, contactUnit);
+  return request && unit ? { version: 1, unit, ...request } : null;
 }
 
 export function readDispatchMetadata(value: unknown): DispatchMetadata | null {
   const data = object(value);
-  if (!data || data.version !== 1 || data.unit !== "Osasco") return null;
+  if (!data || data.version !== 1 || !["Osasco", "SBC", "SCS"].includes(String(data.unit))) return null;
   const parsed = parseDispatchRequest({ ...data, size: 1 });
-  return parsed ? { version: 1, unit: "Osasco", ...parsed } : null;
+  return parsed ? { version: 1, unit: data.unit as DispatchUnit, ...parsed } : null;
 }
 
 export function dispatchSnapshot(message: {

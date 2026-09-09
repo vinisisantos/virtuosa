@@ -25,14 +25,14 @@ const fit=async page=>{
 };
 try{
   for(const config of configs){
-    if(process.env.BULK_ONLY==='1'&&!(config.unit==='Osasco'&&config.width===1440&&config.status==='delivered'))continue;
+    if(process.env.BULK_ONLY==='1'&&!(config.width===1440&&config.status==='delivered'))continue;
     const {unit,width,status,light=false,viewer=false}=config;
     const page=await browser.newPage(),errors=[],calls=[],sendPayloads=[];
     const user={id:'operator',name:'Operadora Teste',role:viewer?'VENDEDOR':'ADMINISTRADOR',unit,permissions:{crm:true}};
     const instance={id:'instance',unit,name:'Comercial',instanceName:'Comercial',userId:user.id,ownerId:user.id,canReply:!viewer,status:'connected'};
     const now=new Date().toISOString();
-    const dispatch={id:'outbound',conversationId:'chat',metadata:{version:1,unit:'Osasco',batchId:'12345678-1234-1234-1234-123456789abc',source:'inbox_bulk',campaignName:'Campanha com nome bastante longo para conferir a organização e a quebra de linhas no celular'},sentAt:now,sentByName:'Operadora com nome longo para validar os detalhes',status:'sent'};
-    const conv={id:'chat',instanceId:'instance',instance,status:'open',assignedTo:user.id,unreadCount:1,contact:{id:'contact',name:'Mariana com nome muito longo para testar o cabeçalho',phone:'5511900000000',unit},campaignName:'Glúteo Perfeito',campaignAccountOrigin:'secondary',lastMessage:'Olá! Temos horários disponíveis.',lastMessageAt:now,...(unit==='Osasco'?{lastDispatch:dispatch}:{})};
+    const dispatch={id:'outbound',conversationId:'chat',metadata:{version:1,unit,batchId:'12345678-1234-1234-1234-123456789abc',source:'inbox_bulk',campaignName:'Campanha com nome bastante longo para conferir a organização e a quebra de linhas no celular'},sentAt:now,sentByName:'Operadora com nome longo para validar os detalhes',status:'sent'};
+    const conv={id:'chat',instanceId:'instance',instance,status:'open',assignedTo:user.id,unreadCount:1,contact:{id:'contact',name:'Mariana com nome muito longo para testar o cabeçalho',phone:'5511900000000',unit},campaignName:'Glúteo Perfeito',campaignAccountOrigin:'secondary',lastMessage:'Olá! Temos horários disponíveis.',lastMessageAt:now,lastDispatch:dispatch};
     const conversations=[conv,{...conv,id:'manual',contact:{...conv.contact,id:'individual',name:'Contato sem disparo'},lastDispatch:null}];
     await page.setViewport({width,height:850});
     await page.evaluateOnNewDocument(u=>localStorage.setItem('virtuosa_user',JSON.stringify(u)),user);
@@ -53,7 +53,7 @@ try{
       }
       else if(url.pathname==='/api/whatsapp/messages'){
         await new Promise(resolve=>setTimeout(resolve,180));
-        data={messages:[{id:'inbound',conversationId:'chat',messageId:'inbound-wa',body:'Bom dia!',type:'text',fromMe:false,status:'received',timestamp:now},{id:'outbound',conversationId:'chat',messageId:'outbound-wa',body:'Olá! Temos horários disponíveis.',type:'text',fromMe:true,status,timestamp:now,respondedBy:'operator',respondedByName:dispatch.sentByName,...(unit==='Osasco'?{dispatchMetadata:dispatch.metadata}:{})}],hasMore:false};
+        data={messages:[{id:'inbound',conversationId:'chat',messageId:'inbound-wa',body:'Bom dia!',type:'text',fromMe:false,status:'received',timestamp:now},{id:'outbound',conversationId:'chat',messageId:'outbound-wa',body:'Olá! Temos horários disponíveis.',type:'text',fromMe:true,status,timestamp:now,respondedBy:'operator',respondedByName:dispatch.sentByName,dispatchMetadata:dispatch.metadata}],hasMore:false};
       }
       else if(url.pathname.endsWith('/internal-notes'))data={notes:[],mentionableUsers:[]};
       else if(url.pathname.endsWith('/evaluation-confirmation'))data={visible:false};
@@ -73,13 +73,15 @@ try{
     if(light)await page.evaluate(()=>{document.documentElement.classList.remove('dark');document.documentElement.dataset.theme='light';document.documentElement.dataset.mode='light';});
     const label=`${unit}-${width}-${status}-${viewer?'viewer':light?'light':'default'}`;
     await fit(page);
-    assert.equal((await page.$$(badge)).length,unit==='Osasco'?1:0,'apenas Osasco e contato com disparo');
-    if(unit==='Osasco'){
+    assert.equal((await page.$$(badge)).length,1,'contato com disparo nas três unidades');
+    {
       const before=calls.length;
       assert.ok(await page.$eval(badge,el=>el.getBoundingClientRect().height>=44));
       await page.click(badge);await page.waitForSelector('[role="dialog"]',{visible:true});
       await fit(page);
-      assert.ok((await page.$eval('[role="dialog"]',el=>el.innerText)).includes('Enviada'),'lista não presume entrega');
+      const detailText=await page.$eval('[role="dialog"]',el=>el.innerText);
+      assert.ok(detailText.includes('Enviada'),'lista não presume entrega');
+      assert.ok(detailText.includes(unit),'detalhes identificam a unidade real');
       assert.equal(calls.length,before,'abrir detalhes não faz chamada HTTP');
       assert.equal(await page.$('.inbox-thread-header'),null,'detalhes não abrem nem assumem conversa');
       await page.screenshot({path:join(output,label+'-lista.png')});
@@ -89,8 +91,8 @@ try{
     await page.waitForSelector('.inbox-thread-header');
     await fit(page);
     await page.screenshot({path:join(output,label+'-header.png')});
-    assert.equal(!!(await page.$('.inbox-thread-header '+badge)),unit==='Osasco');
-    if(unit==='Osasco'){
+    assert.equal(!!(await page.$('.inbox-thread-header '+badge)),true);
+    {
       await page.waitForSelector('[aria-label="Ver detalhes desta mensagem de disparo"]');
       await page.click('.inbox-thread-header '+badge);
       await page.waitForSelector('[role="dialog"]',{visible:true});
@@ -107,7 +109,7 @@ try{
       await page.waitForSelector(badge);
     }
     assert.equal(calls.some(c=>c.path==='/api/whatsapp/send'),false,'nenhum WhatsApp enviado ao ver detalhes');
-    if(unit==='Osasco'&&width===1440&&status==='delivered'){
+    if(width===1440&&status==='delivered'){
       await clickText(page,'Selecionar');
       await page.click('[data-conversation-id="manual"]');await page.click('[data-conversation-id="chat"]');
       await page.type('[placeholder="Digite a mensagem que será enviada para os chats selecionados..."]','Mensagem de teste do disparo');

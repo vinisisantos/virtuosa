@@ -12,7 +12,7 @@ globalThis.prisma={
   $queryRaw:async query=>{
     if(query.text.includes('dispatchMetadata')){
       dispatchQueries.push(query);
-      return query.values.filter(value=>value==='chat-Osasco').map(conversationId=>({id:'dispatch-msg',conversationId,fromMe:true,timestamp:new Date(),status:'delivered',respondedByName:'Teste',dispatchMetadata:{version:1,unit:'Osasco',batchId:'12345678-1234-1234-1234-123456789abc',source:'inbox_bulk',campaignName:'Botox'}}));
+      return query.values.map(conversationId=>({id:'dispatch-msg',conversationId,fromMe:true,timestamp:new Date(),status:'delivered',respondedByName:'Teste',dispatchMetadata:{version:1,unit:conversationId.slice(5),batchId:'12345678-1234-1234-1234-123456789abc',source:'inbox_bulk',campaignName:'Botox'}}));
     }
     return [];
   },
@@ -52,16 +52,17 @@ test('caixa compartilhada usa unidade selecionada, sem seleção arbitrária glo
   conversations[0].contact.unit=null;
   queries=0;assert.equal((await load()).conversations[0].campaignName,null);assert.equal(queries,0);
 });
-test('selo tem uma leitura agrupada exclusivamente para as conversas reais de Osasco',async()=>{
+test('selo tem uma única leitura agrupada para as conversas reais das três unidades',async()=>{
   const data=await load('?unit=SCS');
   assert.equal(dispatchQueries.length,1);
-  assert.deepEqual(dispatchQueries[0].values,['chat-Osasco']);
-  assert.equal(data.conversations.find(c=>c.instanceId==='Osasco').lastDispatch.status,'delivered');
-  assert.equal(data.conversations.find(c=>c.instanceId==='SCS').lastDispatch,null);
-  assert.equal(data.conversations.find(c=>c.instanceId==='SBC').lastDispatch,null);
+  assert.deepEqual(dispatchQueries[0].values,['chat-SBC','chat-SCS','chat-Osasco']);
+  for(const unit of ['Osasco','SCS','SBC']) {
+    assert.equal(data.conversations.find(c=>c.instanceId===unit).lastDispatch.metadata.unit,unit);
+  }
 });
-test('sem conversas de Osasco não acrescenta consulta nem confia no filtro para criar selo',async()=>{
-  conversations=conversations.filter(c=>c.instanceId==='SCS');
+test('caixa compartilhada sem unidade real não acrescenta consulta nem confia no filtro',async()=>{
+  globalThis.campaignInstances=[{id:'shared',unit:'Todas',canReply:true}];
+  conversations=[{...conversations[0],id:'chat-shared',instanceId:'shared',contact:{...conversations[0].contact,unit:null}}];
   assert.equal((await load('?unit=Osasco')).conversations[0].lastDispatch,null);
   assert.equal(dispatchQueries.length,0);
 });

@@ -8,11 +8,13 @@ import {latestDispatchesQuery} from '../src/lib/whatsapp/dispatch-query.ts';
 const batch={batchId:'12345678-1234-1234-1234-123456789abc',source:'inbox_bulk',size:10,campaignName:' Botox '};
 test('escopo é a caixa real ou contato de Todas, nunca unidade fornecida no lote',()=>{
   assert.equal(dispatchUnitEnabled('Osasco','SCS'),true);
-  for(const unit of ['SCS','SBC',null,'']) assert.equal(dispatchUnitEnabled(unit,'Osasco'),false);
-  assert.equal(dispatchUnitEnabled('Todas','Osasco'),true);
-  assert.equal(dispatchUnitEnabled('Todas','SCS'),false);
-  assert.equal(dispatchMetadataForSend({...batch,unit:'Osasco'},'SCS','Osasco'),null);
-  assert.deepEqual(dispatchMetadataForSend(batch,'Osasco'),{version:1,unit:'Osasco',batchId:batch.batchId,source:'inbox_bulk',campaignName:'Botox'});
+  for(const unit of ['Osasco','SBC','SCS']) {
+    assert.equal(dispatchUnitEnabled(unit,'Osasco'),true);
+    assert.deepEqual(dispatchMetadataForSend({...batch,unit:'Osasco'},unit,'Osasco'),{version:1,unit,batchId:batch.batchId,source:'inbox_bulk',campaignName:'Botox'});
+    assert.deepEqual(dispatchMetadataForSend(batch,'Todas',unit),{version:1,unit,batchId:batch.batchId,source:'inbox_bulk',campaignName:'Botox'});
+  }
+  for(const unit of [null,'','Outra']) assert.equal(dispatchUnitEnabled(unit,'Osasco'),false);
+  assert.equal(dispatchUnitEnabled('Todas',null),false);
 });
 test('somente lote explícito válido de até dez, sem herdar autoria/data/status do navegador',()=>{
   for(const value of [null,{},'lote',{...batch,size:11},{...batch,size:0},{...batch,size:1.5},{...batch,batchId:'x'},{...batch,source:'automatic'}]) assert.equal(parseDispatchRequest(value),null);

@@ -25,7 +25,7 @@ export function DispatchDetails({ dispatch, onClose }: { dispatch: DispatchSnaps
       <DialogContent showCloseButton={false} className="top-auto bottom-0 left-0 max-h-[85dvh] w-full max-w-full translate-x-0 translate-y-0 overflow-y-auto rounded-b-none rounded-t-2xl p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:top-1/2 sm:bottom-auto sm:left-1/2 sm:max-w-md sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:p-6">
         <div aria-hidden="true" className="mx-auto mb-1 h-1 w-10 rounded-full bg-muted-foreground/40 sm:hidden" />
         <DialogTitle className="pr-10 text-lg font-semibold">Detalhes do disparo</DialogTitle>
-        <DialogDescription>Identificação do envio em lote nesta conversa de Osasco.</DialogDescription>
+        <DialogDescription>Identificação do envio em lote nesta conversa{dispatch ? ` de ${dispatch.metadata.unit}` : ""}.</DialogDescription>
         <DialogClose aria-label="Fechar detalhes do disparo" className="absolute right-2 top-2 flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"><X className="h-5 w-5" /></DialogClose>
         {dispatch && status && <>
           <dl className="space-y-4 py-2 text-sm">

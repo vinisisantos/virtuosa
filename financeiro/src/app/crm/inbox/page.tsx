@@ -15,7 +15,7 @@ import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
 import { InboxChatHeader } from "@/components/whatsapp/inbox-chat-header";
 import { DispatchBadge, DispatchDetails } from "@/components/whatsapp/dispatch-details";
-import { dispatchLabel, dispatchSnapshot, type DispatchSnapshot } from "@/lib/whatsapp/dispatch";
+import { dispatchLabel, dispatchSnapshot, dispatchUnitEnabled, type DispatchSnapshot } from "@/lib/whatsapp/dispatch";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
@@ -7407,7 +7407,7 @@ export default function InboxPage() {
               ) : (
                 visibleMessageItems.map((item, idx) => {
                   const msg = item.message;
-                  const messageDispatch = selectedConversationUnit === "Osasco" && !msg.readOnly
+                  const messageDispatch = dispatchUnitEnabled(selectedConversationUnit) && !msg.readOnly
                     ? dispatchSnapshot({ ...msg, conversationId: selectedConv.id }) : null;
                   const prevMsg = idx > 0 ? visibleMessageItems[idx - 1].message : undefined;
                   const showDateDivider = !prevMsg || messageDateKey(prevMsg.timestamp) !== messageDateKey(msg.timestamp);
