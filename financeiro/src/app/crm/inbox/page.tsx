@@ -14,6 +14,8 @@ import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
 import { InboxChatHeader } from "@/components/whatsapp/inbox-chat-header";
+import { DispatchBadge, DispatchDetails } from "@/components/whatsapp/dispatch-details";
+import { dispatchLabel, dispatchSnapshot, type DispatchSnapshot } from "@/lib/whatsapp/dispatch";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
@@ -2830,6 +2832,7 @@ function ConversationItem({
   slaClockNow,
   onClick,
   onToggleSelection,
+  onDispatch,
 }: {
   conv: Conversation;
   isActive: boolean;
@@ -2839,6 +2842,7 @@ function ConversationItem({
   slaClockNow: number;
   onClick: () => void;
   onToggleSelection: () => void;
+  onDispatch: (dispatch: DispatchSnapshot) => void;
 }) {
   const isSecondaryMetaAccount = conv.campaignAccountOrigin === "secondary";
   const callbackDue = isConversationCallbackDue(conv);
@@ -2859,11 +2863,8 @@ function ConversationItem({
         : `${Math.floor(sla.minutes / 60)}h${sla.minutes % 60 ? ` ${sla.minutes % 60}m` : ""}`;
 
   return (
-    <button
-      data-conversation-id={conv.id}
-      onClick={selectionMode ? onToggleSelection : onClick}
-      aria-pressed={selectionMode ? isSelected : undefined}
-      className={`group relative flex w-full items-start gap-3 rounded-xl px-3 py-3.5 text-left transition-all ${
+    <div
+      className={`group relative w-full rounded-xl px-3 py-3.5 text-left transition-all ${
         isSelected
           ? "bg-primary/15 ring-1 ring-inset ring-primary/35"
           : isActive
@@ -2873,6 +2874,13 @@ function ConversationItem({
             : "hover:bg-muted/65"
       }`}
     >
+      <button
+        type="button"
+        data-conversation-id={conv.id}
+        onClick={selectionMode ? onToggleSelection : onClick}
+        aria-pressed={selectionMode ? isSelected : undefined}
+        className="flex w-full items-start gap-3 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
       {isSecondaryMetaAccount && (
         <span
           aria-hidden="true"
@@ -3006,16 +3014,19 @@ function ConversationItem({
           </div>
         </div>
 
-        {/* Etiqueta da campanha (tag estilo WhatsApp) */}
-        {conv.campaignName && (
-          <div className="mt-1 flex min-w-0 items-center gap-1">
-            <span
+      </div>
+      </button>
+        {/* Ações irmãs do botão da conversa, sem botões aninhados. */}
+        {(conv.campaignName || conv.lastDispatch) && (
+          <div className="ml-14 mt-1 flex min-w-0 flex-wrap items-center gap-1">
+            {conv.lastDispatch && !selectionMode && <DispatchBadge onClick={() => onDispatch(conv.lastDispatch!)} />}
+            {conv.campaignName && <span
               className={`inline-flex max-w-full items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold ring-1 ring-inset ${campaignTagStyle(conv.campaignName)}`}
               title={`Campanha: ${conv.campaignName}`}
             >
               <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current opacity-80" />
               <span className="truncate">{conv.campaignName}</span>
-            </span>
+            </span>}
             {conv.campaignUrl && (
               <span
                 role="link"
@@ -3040,8 +3051,7 @@ function ConversationItem({
             )}
           </div>
         )}
-      </div>
-    </button>
+    </div>
   );
 }
 
@@ -3061,6 +3071,7 @@ export default function InboxPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [dispatchTarget, setDispatchTarget] = useState<DispatchSnapshot | null>(null);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const selectedConversationId = selectedConv?.id || null;
@@ -3609,6 +3620,14 @@ export default function InboxPage() {
     effectiveUnit,
     selectedConv?.contact.unit,
   );
+  const currentDispatchDetails = useMemo(() => {
+    if (!dispatchTarget) return null;
+    const message = messages.find(item => item.id === dispatchTarget.id && item.conversationId === dispatchTarget.conversationId);
+    if (message) return { ...dispatchTarget, status: message.status };
+    const latest = conversations.find(item => item.id === dispatchTarget.conversationId)?.lastDispatch;
+    return latest?.id === dispatchTarget.id ? latest : dispatchTarget;
+  }, [dispatchTarget, messages, conversations]);
+  useEffect(() => { setDispatchTarget(null); }, [effectiveUnit, targetInstanceId, selectedConversationId]);
   const canSwitchInboxInstance = canViewCollaborators || ownInstances.length > 1;
   const canReplyToConversation = useCallback((conversation: Pick<Conversation, "instanceId"> | null | undefined) => {
     if (isAdmin) return true;
@@ -4703,7 +4722,7 @@ export default function InboxPage() {
       if (event.key !== "Escape" || event.defaultPrevented) return;
 
       // Overlays consume Escape first; a second press then leaves the chat.
-      if (imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog || showQuickSchedule || internalNotesOpen) {
+      if (dispatchTarget || imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog || showQuickSchedule || internalNotesOpen) {
         return;
       }
       if (bulkFollowUpConfirmOpen) {
@@ -4742,6 +4761,7 @@ export default function InboxPage() {
     showEvaluationAvailabilityDialog,
     showQuickSchedule,
     internalNotesOpen,
+    dispatchTarget,
   ]);
 
   // ─── File attachment ──────────────────────────────────────
@@ -6007,6 +6027,7 @@ export default function InboxPage() {
     const failedIds: string[] = [];
     let sent = 0;
     let failed = 0;
+    const dispatchBatchId = crypto.randomUUID();
     const query = waParams();
     const sendUrl = `/api/whatsapp/send${query ? `?${query}` : ""}`;
 
@@ -6049,6 +6070,7 @@ export default function InboxPage() {
             body: messageBody,
             type: selectedImage ? "image" : "text",
             claimConversation: true,
+            dispatch: { batchId: dispatchBatchId, size: selectedConversations.length, source: "inbox_bulk", campaignName: conversation.campaignName },
           };
           if (selectedImage && imageBlobUrl) {
             payload.file = imageBlobUrl;
@@ -6085,6 +6107,7 @@ export default function InboxPage() {
             item.id === conversation.id
               ? {
                   ...item,
+                  lastDispatch: data.lastDispatch || item.lastDispatch || null,
                   status: "open",
                   assignedTo: currentUser.id,
                   assignedToName: currentUser.name || "Operador",
@@ -6956,6 +6979,7 @@ export default function InboxPage() {
                     selectConversation(conv);
                   }}
                   onToggleSelection={() => toggleBulkConversation(conv.id)}
+                  onDispatch={setDispatchTarget}
                 />
               ))}
             </div>
@@ -7260,6 +7284,7 @@ export default function InboxPage() {
                 onResolved={(url) => updateContactProfilePic(selectedConv.contact.phone, url)}
               />}
               secondary={selectedConv.campaignAccountOrigin === "secondary"}
+              dispatchBadge={selectedConv.lastDispatch ? <DispatchBadge compact onClick={() => setDispatchTarget(selectedConv.lastDispatch!)} /> : undefined}
               blocked={!!selectedConv.blockedAt}
               readOnly={!canReplyToSelectedConversation}
               closed={["resolved", "closed"].includes(selectedConv.status)}
@@ -7382,6 +7407,8 @@ export default function InboxPage() {
               ) : (
                 visibleMessageItems.map((item, idx) => {
                   const msg = item.message;
+                  const messageDispatch = selectedConversationUnit === "Osasco" && !msg.readOnly
+                    ? dispatchSnapshot({ ...msg, conversationId: selectedConv.id }) : null;
                   const prevMsg = idx > 0 ? visibleMessageItems[idx - 1].message : undefined;
                   const showDateDivider = !prevMsg || messageDateKey(prevMsg.timestamp) !== messageDateKey(msg.timestamp);
                   const dateDivider = showDateDivider ? (
@@ -7444,6 +7471,16 @@ export default function InboxPage() {
                               {msg.respondedByName}
                             </span>
                           </div>
+                        </div>
+                      )}
+                      {messageDispatch && (
+                        <div className="flex justify-end px-4">
+                          <button type="button" onClick={() => setDispatchTarget(messageDispatch)}
+                            className="inline-flex min-h-11 max-w-full items-center gap-1.5 rounded-lg px-2 text-[11px] text-primary hover:bg-primary/10 focus-visible:ring-2 focus-visible:ring-primary"
+                            aria-label="Ver detalhes desta mensagem de disparo">
+                            <Megaphone className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            <span className="truncate">Disparo · {messageDispatch.metadata.campaignName || dispatchLabel(messageDispatch.metadata)}</span>
+                          </button>
                         </div>
                       )}
                       <MessageBubble
@@ -8811,6 +8848,7 @@ export default function InboxPage() {
         onOpenChange={setShowNewConversationDialog}
         onConversationReady={handleNewConversationReady}
       />
+      <DispatchDetails dispatch={currentDispatchDetails} onClose={() => setDispatchTarget(null)} />
       {showQuickSchedule && selectedConv && canReplyToSelectedConversation && !selectedConv.blockedAt && (
         <PipelineStageSelector
           key={`schedule:${selectedConv.id}:${selectedConversationUnit}`}

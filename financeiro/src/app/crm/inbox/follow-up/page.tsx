@@ -465,6 +465,7 @@ export default function FollowUpCenterPage() {
     const query = new URLSearchParams(scopedSearchParams);
     query.set("unit", FOLLOW_UP_CENTER_PILOT_UNIT);
     const sendUrl = `/api/whatsapp/send?${query.toString()}`;
+    const dispatchBatchId = crypto.randomUUID();
     const failedIds: string[] = [];
     let sent = 0;
     let failed = 0;
@@ -487,6 +488,7 @@ export default function FollowUpCenterPage() {
               type: "text",
               claimConversation: true,
               requireCallbackDue: true,
+              dispatch: { batchId: dispatchBatchId, size: recipients.length, source: "follow_up_bulk", campaignName: conversation.campaignName },
             }),
           });
           const payload = await response.json().catch(() => ({}));

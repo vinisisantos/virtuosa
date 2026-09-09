@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
+import { dispatchUnitEnabled } from "@/lib/whatsapp/dispatch";
 import { phoneLookupKey } from "@/lib/phone";
 import { whatsappConversationJid } from "@/lib/whatsapp/chat-action-identifiers";
 import { editEvolutionChatMessage } from "@/lib/whatsapp/evolution-chat-actions";
@@ -496,7 +497,7 @@ export async function GET(req: Request) {
     const conversation = await prisma.whatsAppConversation.findFirst({
       where: { id: conversationId, instanceId: { in: instanceIds } },
       include: {
-        contact: { select: { phone: true } },
+        contact: { select: { phone: true, unit: true } },
         instance: { select: { userId: true, unit: true } },
       },
     });
@@ -536,6 +537,7 @@ export async function GET(req: Request) {
         timestamp: true,
         respondedBy: true,
         respondedByName: true,
+        dispatchMetadata: dispatchUnitEnabled(conversation.instance.unit, conversation.contact.unit),
         createdAt: true,
       },
     });

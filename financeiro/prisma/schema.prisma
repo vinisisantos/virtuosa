@@ -1517,6 +1517,7 @@ model WhatsAppMessage {
   createdAt           DateTime                    @default(now())
   respondedBy         String?
   respondedByName     String?
+  dispatchMetadata    Json?
   conversation        WhatsAppConversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, messageId])

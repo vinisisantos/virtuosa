@@ -7,6 +7,8 @@ import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 import { campaignUrlFromClient, pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { campaignClientKey } from "@/lib/whatsapp/lead-client-selection";
 import { resolveInboxConversationUnit } from "@/lib/whatsapp/conversation-unit";
+import { dispatchSnapshot, dispatchUnitEnabled } from "@/lib/whatsapp/dispatch";
+import { latestDispatchesQuery } from "@/lib/whatsapp/dispatch-query";
 import {
   campaignAccountOriginFromInstance,
   campaignAccountOriginFromTrackId,
@@ -736,6 +738,13 @@ export async function GET(req: NextRequest) {
       appointmentUnits,
     ));
     const appointmentSnapshot = inboxAppointmentSnapshot(appointmentRows);
+    const dispatchConversationIds = visibleConversations
+      .filter(c => dispatchUnitEnabled(instanceUnitById.get(c.instanceId), c.contact?.unit))
+      .map(c => c.id);
+    const dispatchRows = dispatchConversationIds.length
+      ? await prisma.$queryRaw<Array<Parameters<typeof dispatchSnapshot>[0]>>(latestDispatchesQuery(dispatchConversationIds))
+      : [];
+    const dispatchByConversation = new Map(dispatchRows.map(row => [row.conversationId, dispatchSnapshot(row)]));
     const conversationsWithTags = visibleConversations.map((c) => {
       const { followUps, ...conversation } = c;
       const campaign = campaignByPhone.get(campaignClientKey(c.contact?.phone, resolveInboxConversationUnit(
@@ -747,6 +756,7 @@ export async function GET(req: NextRequest) {
       );
       return {
         ...conversation,
+        lastDispatch: dispatchByConversation.get(c.id) || null,
         scheduledEvaluation: appointmentSnapshot[c.id] || null,
         activeFollowUp: followUps[0] || null,
         ...(includeCampaigns ? {

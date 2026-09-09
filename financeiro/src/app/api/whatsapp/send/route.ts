@@ -28,6 +28,7 @@ import { whatsAppConversationPreview } from "@/lib/whatsapp/message-content";
 import { firstWhatsAppLink, loadWhatsAppLinkPreview } from "@/lib/whatsapp/link-preview";
 import { evolutionMessageLidCandidates } from "@/lib/whatsapp/chat-action-identifiers";
 import { getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
+import { dispatchMetadataForSend, dispatchSnapshot, parseDispatchRequest } from "@/lib/whatsapp/dispatch";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -200,6 +201,10 @@ export async function POST(req: Request) {
     const rawMessageBody = typeof body.body === "string" ? body.body : "";
     const claimConversation = body.claimConversation === true;
     const requireCallbackDue = body.requireCallbackDue === true;
+    if (body.dispatch !== undefined && (!parseDispatchRequest(body.dispatch) || !conversationId || !claimConversation
+      || !["text", "image"].includes(type))) {
+      return NextResponse.json({ error: "Identificação do disparo inválida. Revise o lote antes de enviar." }, { status: 400 });
+    }
     const replyid = typeof body.replyid === "string"
       ? body.replyid
       : typeof body.replyId === "string"
@@ -709,6 +714,7 @@ export async function POST(req: Request) {
     const messageId = provider === "waha"
       ? (extractWahaMessageId(sendData) || `waha_${Date.now()}`)
       : (sendDataObject.key?.id || sendDataObject.id || `temp_${Date.now()}`);
+    const providerMessageId = provider === "waha" ? extractWahaMessageId(sendData) : sendDataObject.key?.id || sendDataObject.id;
     if (sendDiagnostic) {
       await logSendDiagnostic({
         instanceId: dbInstance.id,
@@ -775,6 +781,10 @@ export async function POST(req: Request) {
     // Sempre registrar quem enviou a mensagem
     messageData.respondedBy = userId || dbInstance.userId || null;
     messageData.respondedByName = userName || 'Operador';
+    // Sem ID real do provedor não há como vincular entrega; não inventar um selo.
+    const dispatchMetadata = typeof providerMessageId === "string" && providerMessageId.trim()
+      ? dispatchMetadataForSend(body.dispatch, dbInstance.unit, contact?.unit) : null;
+    if (dispatchMetadata) messageData.dispatchMetadata = dispatchMetadata;
 
     const convUpdateData: any = { 
       lastMessage: displayBody, 
@@ -793,7 +803,15 @@ export async function POST(req: Request) {
     }
 
     const { message, callbackTracking } = await prisma.$transaction(async (tx) => {
-      const savedMessage = await tx.whatsAppMessage.create({ data: messageData });
+      // O eco do webhook pode chegar antes da resposta de envio: preservar o ACK e
+      // anexar a origem ao mesmo registro, nunca duplicar ou regredir a entrega.
+      const savedMessage = dispatchMetadata
+        ? await tx.whatsAppMessage.upsert({
+          where: { conversationId_messageId: { conversationId: conversation.id, messageId: messageData.messageId } },
+          create: messageData,
+          update: { dispatchMetadata, respondedBy: messageData.respondedBy, respondedByName: messageData.respondedByName },
+        })
+        : await tx.whatsAppMessage.create({ data: messageData });
       const attemptCounted = await recordOutboundForCallbackTracking(tx, conversation.id, sentAt, {
         messageId: savedMessage.id,
         userId: messageData.respondedBy,
@@ -839,7 +857,7 @@ export async function POST(req: Request) {
     });
 
     const [responseMessage] = await signPrivateMediaUrls([message]);
-    return NextResponse.json({ success: true, message: responseMessage, callbackTracking });
+    return NextResponse.json({ success: true, message: responseMessage, callbackTracking, lastDispatch: dispatchSnapshot(message) });
 
   } catch (error: any) {
     console.error("[WhatsApp Send API Error]:", error);

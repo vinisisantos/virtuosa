@@ -44,6 +44,7 @@ export function InboxChatHeader({
   name, phone, avatar, secondary, blocked, readOnly, closed, scheduled,
   canSchedule, scheduleDisabled, onSchedule, onBack, onProfile,
   menuOpen, onMenuOpenChange, menuTriggerRef, actions, moreActions,
+  dispatchBadge,
 }: {
   name: string;
   phone: string;
@@ -63,6 +64,7 @@ export function InboxChatHeader({
   menuTriggerRef: RefObject<HTMLButtonElement | null>;
   actions: InboxChatAction[];
   moreActions: InboxChatAction[];
+  dispatchBadge?: ReactNode;
 }) {
   const [showMore, setShowMore] = useState(false);
   const backItemRef = useRef<HTMLDivElement>(null);
@@ -130,6 +132,7 @@ export function InboxChatHeader({
         </span>
       </button>
       <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+        {dispatchBadge}
         {canSchedule && (
           <button type="button" onClick={onSchedule} disabled={scheduleDisabled} title="Agendar avaliação deste contato" className="inline-flex h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-primary px-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 sm:gap-2 sm:px-4 sm:text-sm">
             <CalendarDays className="h-4 w-4" aria-hidden="true" /> Agendar

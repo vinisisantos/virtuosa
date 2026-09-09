@@ -39,6 +39,8 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260903143000_payment_method_fee_configs/migration.sql",
     "prisma/migrations/20260904010000_saved_reply_category_campaign_binding/migration.sql",
     "prisma/migrations/20260908020000_campaign_welcome_queue/migration.sql",
+    "prisma/migrations/20260909120000_whatsapp_dispatch_metadata/migration.sql",
+    "prisma/migrations/20260909120100_whatsapp_dispatch_index/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {

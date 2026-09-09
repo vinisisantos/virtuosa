@@ -1,5 +1,6 @@
 import { parseCrmMediaBatchMarkerBody } from "@/lib/whatsapp/media-batch";
 import type { InboxAppointment } from "@/lib/whatsapp/inbox-appointments";
+import type { DispatchMetadata, DispatchSnapshot } from "@/lib/whatsapp/dispatch";
 
 export interface Contact {
   id: string;
@@ -31,6 +32,7 @@ export interface Conversation {
   closedByName?: string | null;
   satisfactionScore?: number | null;
   campaignName?: string | null;
+  lastDispatch?: DispatchSnapshot | null;
   campaignUrl?: string | null;
   campaignAccountOrigin?: "secondary" | null;
   lastInboundAt?: string | null;
@@ -109,6 +111,7 @@ export interface Message {
   createdAt?: string;
   respondedBy?: string | null;
   respondedByName?: string | null;
+  dispatchMetadata?: DispatchMetadata | null;
   readOnly?: boolean;
   historySource?: string;
 }
