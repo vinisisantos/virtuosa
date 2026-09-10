@@ -478,7 +478,8 @@ export default function WhatsAppSettingsPage() {
   const hasActiveInstanceForConnection = userInstances.some((inst) => {
     const instanceUnit = inst.unit || "";
     const sameUnit = !connectUnit || instanceUnit === connectUnit || instanceUnit === "Todas";
-    return sameUnit && ["connected", "connecting"].includes(inst.status);
+    const belongsToSelectedOwner = inst.userId === (connectUserId || currentUserId);
+    return belongsToSelectedOwner && sameUnit && ["connected", "connecting"].includes(inst.status);
   });
 
   // Filtrar instâncias por unidade
