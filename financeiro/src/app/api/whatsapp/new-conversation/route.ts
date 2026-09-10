@@ -11,6 +11,8 @@ import {
   normalizeWhatsAppNumber,
   WhatsAppNumberCheckError,
 } from "@/lib/whatsapp/number-check";
+import { getInstanceProvider } from "@/lib/whatsapp/provider";
+import { prepareEvolutionRecipientJid } from "@/lib/whatsapp/evolution-recipient";
 
 type NewConversationAction = "check" | "create";
 
@@ -77,12 +79,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const preparedJid = getInstanceProvider(instance) === "evolution"
+      ? await prepareEvolutionRecipientJid({
+          instanceName: instance.name,
+          phone: checked.number || number,
+          fallbackJid: checked.jid,
+        }).catch(() => checked.jid)
+      : checked.jid;
+
     const conversation = await createConversationForInstance({
       instanceId: instance.id,
       phone: checked.number || number,
       contactName,
       unit: instance.unit,
-      lastKnownJid: checked.jid,
+      lastKnownJid: preparedJid,
     });
 
     return NextResponse.json({
