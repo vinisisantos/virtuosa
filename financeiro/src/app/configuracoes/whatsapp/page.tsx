@@ -17,6 +17,10 @@ import {
   WifiOff,
 } from "lucide-react";
 import Link from "next/link";
+import {
+  countActiveWhatsAppInstancesForConnection,
+  MAX_ACTIVE_WHATSAPP_INSTANCES_PER_OWNER_UNIT,
+} from "@/lib/whatsapp/instance-limits";
 
 // ─── Tipos para instâncias de colaboradores ─────────────────
 interface CollaboratorInstance {
@@ -222,8 +226,8 @@ export default function WhatsAppSettingsPage() {
       toast("Selecione a unidade deste WhatsApp antes de conectar.", "error");
       return;
     }
-    if (hasActiveInstanceForConnection) {
-      toast("Já existe um WhatsApp conectado para esta unidade.", "error");
+    if (hasReachedInstanceLimitForConnection) {
+      toast(`Limite de ${MAX_ACTIVE_WHATSAPP_INSTANCES_PER_OWNER_UNIT} WhatsApps ativos para este responsável/unidade.`, "error");
       return;
     }
     setIsLoading(true);
@@ -475,12 +479,13 @@ export default function WhatsAppSettingsPage() {
     }
   };
 
-  const hasActiveInstanceForConnection = userInstances.some((inst) => {
-    const instanceUnit = inst.unit || "";
-    const sameUnit = !connectUnit || instanceUnit === connectUnit || instanceUnit === "Todas";
-    const belongsToSelectedOwner = inst.userId === (connectUserId || currentUserId);
-    return belongsToSelectedOwner && sameUnit && ["connected", "connecting"].includes(inst.status);
-  });
+  const activeInstanceCountForConnection = countActiveWhatsAppInstancesForConnection(
+    userInstances,
+    connectUserId || currentUserId,
+    connectUnit,
+  );
+  const hasReachedInstanceLimitForConnection =
+    activeInstanceCountForConnection >= MAX_ACTIVE_WHATSAPP_INSTANCES_PER_OWNER_UNIT;
 
   // Filtrar instâncias por unidade
   const filteredInstances =
@@ -588,13 +593,18 @@ export default function WhatsAppSettingsPage() {
                 </div>
                 <button
                   onClick={handleConnect}
-                  disabled={isLoading || !connectUnit || (isAdmin && !connectUserId) || hasActiveInstanceForConnection}
+                  disabled={isLoading || !connectUnit || (isAdmin && !connectUserId) || hasReachedInstanceLimitForConnection}
                   className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold bg-[#25D366] hover:bg-[#1DA851] text-white transition-colors disabled:opacity-50"
                 >
                   {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Smartphone className="w-4 h-4" />}
-                  {hasActiveInstanceForConnection ? "WhatsApp já conectado" : "Adicionar Novo WhatsApp"}
+                  {hasReachedInstanceLimitForConnection
+                    ? `Limite de ${MAX_ACTIVE_WHATSAPP_INSTANCES_PER_OWNER_UNIT} atingido`
+                    : "Adicionar Novo WhatsApp"}
                 </button>
               </div>
+              <p className="text-[11px] text-muted-foreground sm:text-right">
+                {activeInstanceCountForConnection} de {MAX_ACTIVE_WHATSAPP_INSTANCES_PER_OWNER_UNIT} instâncias ativas para este responsável e unidade.
+              </p>
             </div>
 
             {status === "loading" && (

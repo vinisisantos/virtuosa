@@ -20,6 +20,7 @@ import {
 } from "@/lib/whatsapp/provider";
 
 import { prisma } from "@/lib/db";
+import { MAX_ACTIVE_WHATSAPP_INSTANCES_PER_OWNER_UNIT } from "@/lib/whatsapp/instance-limits";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -319,11 +320,11 @@ async function cleanupArchivedEvolutionInstancesForConnection(params: {
   return failures;
 }
 
-async function findActiveInstanceForConnection(params: {
+async function countActiveInstancesForConnection(params: {
   userId: string;
   unit?: string | null;
 }) {
-  return prisma.whatsAppInstance.findFirst({
+  return prisma.whatsAppInstance.count({
     where: {
       userId: params.userId,
       status: { in: ["connected", "connecting"] },
@@ -332,8 +333,6 @@ async function findActiveInstanceForConnection(params: {
         ? { OR: [{ unit: params.unit }, { unit: "Todas" }, { unit: null }] }
         : {}),
     },
-    orderBy: { updatedAt: "desc" },
-    select: { id: true, instanceId: true, name: true, status: true, unit: true },
   });
 }
 
@@ -518,16 +517,16 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Usuário responsável não confere com a instância" }, { status: 400 });
       }
     } else if (createNew) {
-      const activeInstance = await findActiveInstanceForConnection({
+      const activeInstanceCount = await countActiveInstancesForConnection({
         userId: targetUser.id,
         unit: instanceUnit,
       });
 
-      if (activeInstance) {
+      if (activeInstanceCount >= MAX_ACTIVE_WHATSAPP_INSTANCES_PER_OWNER_UNIT) {
         return NextResponse.json({
-          error: "Já existe um WhatsApp conectado para este responsável/unidade.",
-          instanceId: activeInstance.instanceId,
-          status: activeInstance.status,
+          error: `Limite de ${MAX_ACTIVE_WHATSAPP_INSTANCES_PER_OWNER_UNIT} WhatsApps ativos para este responsável/unidade.`,
+          activeInstanceCount,
+          maxActiveInstances: MAX_ACTIVE_WHATSAPP_INSTANCES_PER_OWNER_UNIT,
         }, { status: 409 });
       }
 
