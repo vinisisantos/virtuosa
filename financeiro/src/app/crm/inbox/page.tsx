@@ -14,6 +14,7 @@ import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
 import { InboxChatHeader } from "@/components/whatsapp/inbox-chat-header";
+import { MessageStatusIcon } from "@/components/whatsapp/message-status-icon";
 import { DispatchBadge, DispatchDetails } from "@/components/whatsapp/dispatch-details";
 import { dispatchLabel, dispatchSnapshot, dispatchUnitEnabled, type DispatchSnapshot } from "@/lib/whatsapp/dispatch";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -1957,15 +1958,7 @@ function MessageTimestamp({
   return (
     <div className={`flex shrink-0 items-center justify-end gap-0.5 ${isMe ? "inbox-message-timestamp-outgoing" : "inbox-message-timestamp-incoming"} ${className}`}>
       <span className="text-[10px] font-normal leading-none">{formatMessageTime(msg.timestamp)}</span>
-      {isMe && (
-        msg.status === "read" ? (
-          <CheckCheck className="h-3.5 w-3.5 text-[#53bdeb]" />
-        ) : msg.status === "delivered" ? (
-          <CheckCheck className="h-3.5 w-3.5 opacity-90" />
-        ) : (
-          <Check className="h-3.5 w-3.5 opacity-90" />
-        )
-      )}
+      {isMe && <MessageStatusIcon status={msg.status} />}
     </div>
   );
 }
@@ -4940,7 +4933,7 @@ export default function InboxPage() {
           quotedMessageType: replyTarget?.type || null,
           quotedMessageFromMe: replyTarget?.fromMe ?? null,
           fromMe: true,
-          status: "sent",
+          status: "pending",
           timestamp: new Date().toISOString(),
         }]);
 
@@ -4999,7 +4992,7 @@ export default function InboxPage() {
               quotedMessageType: currentReply?.type || null,
               quotedMessageFromMe: currentReply?.fromMe ?? null,
               fromMe: true,
-              status: "sent",
+              status: "pending",
               timestamp: new Date().toISOString(),
             }]);
           }

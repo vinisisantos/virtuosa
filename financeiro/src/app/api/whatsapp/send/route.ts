@@ -1,4 +1,10 @@
 import { NextResponse } from "next/server";
+import {
+  mergeWhatsAppMessageStatus,
+  normalizeWhatsAppMessageStatus,
+  normalizeWahaMessageAck,
+  whatsAppStatusUpdateFilter,
+} from "@/lib/whatsapp/message-status";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 import {
   extractWahaMessageId,
@@ -768,7 +774,9 @@ export async function POST(req: Request) {
         linkPreviewThumbnailUrl: linkPreview.thumbnailUrl,
       } : {}),
       fromMe: true,
-      status: "sent",
+      status: (provider === "waha"
+        ? normalizeWahaMessageAck(sendDataObject.ackName, sendDataObject.ack)
+        : normalizeWhatsAppMessageStatus(sendDataObject.status)) || "sent",
       timestamp: sentAt,
     };
     if (quotedMessage) {
@@ -785,6 +793,14 @@ export async function POST(req: Request) {
     const dispatchMetadata = typeof providerMessageId === "string" && providerMessageId.trim()
       ? dispatchMetadataForSend(body.dispatch, dbInstance.unit, contact?.unit) : null;
     if (dispatchMetadata) messageData.dispatchMetadata = dispatchMetadata;
+    // O eco pode não ter o preview, a referência privada ou a mensagem citada.
+    // Só preenchemos metadados confirmados pelo envio, sem apagar dados omitidos.
+    const confirmedSendMetadata = Object.fromEntries([
+      "mediaUrl", "mediaFileName", "mediaMimeType", "mediaSizeBytes",
+      "linkPreviewUrl", "linkPreviewTitle", "linkPreviewDescription", "linkPreviewThumbnailUrl",
+      "quotedMessageId", "quotedMessageBody", "quotedMessageType", "quotedMessageFromMe",
+    ].filter((key) => messageData[key] !== undefined && messageData[key] !== null)
+      .map((key) => [key, messageData[key]]));
 
     const convUpdateData: any = { 
       lastMessage: displayBody, 
@@ -805,13 +821,26 @@ export async function POST(req: Request) {
     const { message, callbackTracking } = await prisma.$transaction(async (tx) => {
       // O eco do webhook pode chegar antes da resposta de envio: preservar o ACK e
       // anexar a origem ao mesmo registro, nunca duplicar ou regredir a entrega.
-      const savedMessage = dispatchMetadata
+      let savedMessage = providerMessageId
         ? await tx.whatsAppMessage.upsert({
           where: { conversationId_messageId: { conversationId: conversation.id, messageId: messageData.messageId } },
           create: messageData,
-          update: { dispatchMetadata, respondedBy: messageData.respondedBy, respondedByName: messageData.respondedByName },
+          update: {
+            ...confirmedSendMetadata,
+            ...(dispatchMetadata ? { dispatchMetadata } : {}),
+            respondedBy: messageData.respondedBy,
+            respondedByName: messageData.respondedByName,
+          },
         })
         : await tx.whatsAppMessage.create({ data: messageData });
+      const reportedStatus = normalizeWhatsAppMessageStatus(messageData.status);
+      if (reportedStatus && mergeWhatsAppMessageStatus(savedMessage.status, reportedStatus) !== savedMessage.status) {
+        const receipt = await tx.whatsAppMessage.updateMany({
+          where: { id: savedMessage.id, fromMe: true, status: whatsAppStatusUpdateFilter(reportedStatus) },
+          data: { status: reportedStatus },
+        });
+        if (receipt.count) savedMessage = { ...savedMessage, status: reportedStatus };
+      }
       const attemptCounted = await recordOutboundForCallbackTracking(tx, conversation.id, sentAt, {
         messageId: savedMessage.id,
         userId: messageData.respondedBy,

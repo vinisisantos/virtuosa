@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { normalizeWahaMessageAck } from "@/lib/whatsapp/message-status";
 
 export type WhatsAppProvider = "evolution" | "waha";
 
@@ -121,14 +122,7 @@ export function normalizeWahaStatus(status?: string | null) {
 }
 
 export function normalizeWahaAckStatus(ackName?: string | null, ack?: number | null) {
-  const normalized = (ackName || "").toUpperCase();
-  if (normalized === "ERROR" || ack === -1) return "error";
-  if (normalized === "PENDING" || ack === 0) return "pending";
-  if (normalized === "SERVER" || ack === 1) return "sent";
-  if (normalized === "DEVICE" || ack === 2) return "delivered";
-  if (normalized === "READ" || ack === 3) return "read";
-  if (normalized === "PLAYED" || ack === 4) return "played";
-  return "sent";
+  return normalizeWahaMessageAck(ackName, ack);
 }
 
 export function toWahaChatId(value: string) {

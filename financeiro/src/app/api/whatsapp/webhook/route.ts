@@ -43,6 +43,13 @@ import {
   whatsAppConversationPreview,
 } from "@/lib/whatsapp/message-content";
 import { setStoredMessageReaction } from "@/lib/whatsapp/message-reactions";
+import {
+  extractEvolutionStatusUpdate,
+  mergeWhatsAppMessageStatus,
+  normalizeWhatsAppMessageStatus,
+  normalizeWahaMessageAck,
+  whatsAppStatusUpdateFilter,
+} from "@/lib/whatsapp/message-status";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
 import {
   extractDirectFormLeadName,
@@ -122,21 +129,14 @@ function isPrismaUniqueConstraintError(error: unknown) {
   return !!error && typeof error === "object" && (error as any).code === "P2002";
 }
 
-function mapEvolutionMessageStatus(status: unknown, fallback: string) {
-  if (status === undefined || status === null) return fallback;
-
-  const statusMap: Record<number, string> = {
-    0: "error",
-    1: "pending",
-    2: "sent",
-    3: "delivered",
-    4: "read",
-    5: "played",
-  };
-
-  return typeof status === "number"
-    ? (statusMap[status] || fallback)
-    : (String(status) || fallback);
+async function updateOutgoingMessageStatus(id: string, value: unknown) {
+  const status = normalizeWhatsAppMessageStatus(value);
+  if (!status) return 0;
+  const result = await prisma.whatsAppMessage.updateMany({
+    where: { id, fromMe: true, status: whatsAppStatusUpdateFilter(status) },
+    data: { status },
+  });
+  return result.count;
 }
 
 function cleanMediaFileName(value: unknown) {
@@ -953,20 +953,21 @@ async function handleWahaAck(payload: any, dbInstance: WebhookInstance) {
   const messageId = ack?.id || ack?._data?.id?._serialized || ack?.messageId;
   if (!messageId) return true;
 
-  const nextStatus = normalizeWahaAckStatus(ack?.ackName, typeof ack?.ack === "number" ? ack.ack : null);
+  if (ack?.fromMe === false) return true;
+  const reportedStatus = normalizeWahaMessageAck(ack?.ackName, ack?.ack);
+  if (!reportedStatus) return true;
   const existing = await prisma.whatsAppMessage.findFirst({
     where: {
       messageId,
+      fromMe: true,
       conversation: { instanceId: dbInstance.id },
     },
     select: { id: true, status: true, conversationId: true },
   });
   if (!existing || existing.status === "deleted") return true;
-
-  await prisma.whatsAppMessage.update({
-    where: { id: existing.id },
-    data: { status: nextStatus },
-  });
+  const nextStatus = mergeWhatsAppMessageStatus(existing.status, reportedStatus);
+  if (nextStatus === existing.status) return true;
+  if (!await updateOutgoingMessageStatus(existing.id, reportedStatus)) return true;
 
   await prisma.webhookLog.create({
     data: {
@@ -1139,8 +1140,8 @@ export async function POST(req: Request) {
                 instance: dbInstance.name,
                 event,
                 rawEvent,
-                messageId: msg?.key?.id || msg?.messageid || msg?.id || null,
-                remoteJid: msg?.key?.remoteJid || msg?.chatid || msg?.sender || null,
+                messageId: msg?.keyId || msg?.key?.id || msg?.messageid || msg?.id || null,
+                remoteJid: msg?.remoteJid || msg?.key?.remoteJid || msg?.chatid || msg?.sender || null,
                 fromMe: msg?.key?.fromMe ?? msg?.fromMe ?? null,
                 status: msg?.status ?? null,
               }).slice(0, 2000),
@@ -1211,6 +1212,19 @@ async function processMessage(
   dbInstance: WebhookInstance,
   payload: any
 ) {
+  // Evolution emits flat keyId/remoteJid ACKs; they are not message upserts.
+  if (isMessageStatusUpdateEvent(payload)) {
+    const update = extractEvolutionStatusUpdate(msg);
+    if (update) {
+      await processMessageStatusUpdate({
+        msg: { ...msg, status: update.status },
+        dbInstance,
+        remoteJid: update.remoteJid,
+        messageId: update.messageId,
+      });
+    }
+    return;
+  }
   // ─── Extrair dados da mensagem ────────────────────────────
   // Evolution API v2 format:
   //   msg.key.remoteJid, msg.key.fromMe, msg.key.id
@@ -1254,12 +1268,13 @@ async function processMessage(
     // Contatos LID (@lid) sem telefone real preservam o histórico técnico,
     // mas nunca podem aparecer como uma conversa comercial no Inbox.
     const lidMessageId = msg.key?.id || msg.messageid || msg.id;
-    if (lidMessageId && msg.status !== undefined) {
-      const newStatus = mapEvolutionMessageStatus(msg.status, "sent");
+    const newStatus = normalizeWhatsAppMessageStatus(msg.status);
+    if (lidMessageId && newStatus && (msg.key?.fromMe ?? msg.fromMe) !== false) {
       await prisma.whatsAppMessage.updateMany({
         where: {
           messageId: lidMessageId,
-          status: { notIn: ["deleted", "read", "played"] },
+          fromMe: true,
+          status: whatsAppStatusUpdateFilter(newStatus),
           conversation: { instanceId: dbInstance.id },
         },
         data: { status: newStatus },
@@ -1287,14 +1302,6 @@ async function processMessage(
         reaction: reactionMessage.text,
       });
     }
-    return;
-  }
-
-  // Atualizações de status chegam em grande volume e não carregam uma nova
-  // conversa comercial. Processá-las pelo fluxo completo recriava toda a
-  // captura de lead, automações e análises para uma mensagem já persistida.
-  if (isMessageStatusUpdateEvent(payload)) {
-    await processMessageStatusUpdate({ msg, dbInstance, remoteJid, messageId });
     return;
   }
 
@@ -2269,7 +2276,7 @@ async function processMessage(
           mediaSizeBytes,
           ...(quotedMessageData || {}),
           fromMe: isFromMe,
-          status: isFromMe ? mapEvolutionMessageStatus(msg.status, "sent") : "delivered",
+          status: isFromMe ? normalizeWhatsAppMessageStatus(msg.status) || "sent" : "delivered",
           timestamp,
         },
       });
@@ -2291,8 +2298,8 @@ async function processMessage(
 
       let currentMessage = duplicatedMessage;
       const duplicateUpdate: Record<string, unknown> = {};
-      if (msg.status !== undefined && duplicatedMessage.status !== "deleted") {
-        duplicateUpdate.status = mapEvolutionMessageStatus(msg.status, duplicatedMessage.status);
+      if (duplicatedMessage.fromMe && mergeWhatsAppMessageStatus(duplicatedMessage.status, msg.status) !== duplicatedMessage.status) {
+        await updateOutgoingMessageStatus(duplicatedMessage.id, msg.status);
       }
       if (messageBody && !duplicatedMessage.body.trim()) {
         duplicateUpdate.body = messageBody;
@@ -2312,11 +2319,10 @@ async function processMessage(
     // Atualiza status de mensagem existente
     const dataToUpdate: any = {};
     const previousStatus = existingMsg.status;
-
-    // Evolution: status vem em messages.update
-    if (msg.status !== undefined && existingMsg.status !== "deleted") {
-      dataToUpdate.status = mapEvolutionMessageStatus(msg.status, existingMsg.status);
-    }
+    const nextStatus = mergeWhatsAppMessageStatus(existingMsg.status, msg.status);
+    const statusUpdated = existingMsg.fromMe && nextStatus !== existingMsg.status
+      ? await updateOutgoingMessageStatus(existingMsg.id, msg.status)
+      : 0;
     if (quotedMessageData && !existingMsg.quotedMessageId) {
       dataToUpdate.quotedMessageId = quotedMessageData.quotedMessageId;
       dataToUpdate.quotedMessageBody = quotedMessageData.quotedMessageBody;
@@ -2334,28 +2340,28 @@ async function processMessage(
         data: dataToUpdate,
       });
       persistedMessageType = updatedMessage.type;
+    }
 
-      if (existingMsg.fromMe && dataToUpdate.status) {
-        await prisma.webhookLog.create({
-          data: {
-            source: "whatsapp_evolution",
-            eventType: "message_status_update",
-            status: "received",
-            payload: JSON.stringify({
-              instanceId: dbInstance.id,
-              instanceName: dbInstance.name,
-              conversationId: conversation.id,
-              messageDbId: existingMsg.id,
-              messageId,
-              remoteJid,
-              webhookStatus: msg.status,
-              previousStatus,
-              nextStatus: dataToUpdate.status,
-              event: payload?.event || payload?.EventType || payload?.action || null,
-            }).slice(0, 3000),
-          },
-        }).catch(() => {});
-      }
+    if (statusUpdated) {
+      await prisma.webhookLog.create({
+        data: {
+          source: "whatsapp_evolution",
+          eventType: "message_status_update",
+          status: "received",
+          payload: JSON.stringify({
+            instanceId: dbInstance.id,
+            instanceName: dbInstance.name,
+            conversationId: conversation.id,
+            messageDbId: existingMsg.id,
+            messageId,
+            remoteJid,
+            webhookStatus: msg.status,
+            previousStatus,
+            nextStatus,
+            event: payload?.event || payload?.EventType || payload?.action || null,
+          }).slice(0, 3000),
+        },
+      }).catch(() => {});
     }
   }
 
@@ -2405,7 +2411,7 @@ async function processMessage(
 }
 
 function isMessageStatusUpdateEvent(payload: any) {
-  const event = String(payload?.event || payload?.EventType || payload?.action || "").toLowerCase();
+  const event = normalizeEvolutionWebhookEvent(payload?.event || payload?.EventType || payload?.action);
   return event === "messages.update" || event === "messages_update";
 }
 
@@ -2422,14 +2428,16 @@ async function processMessageStatusUpdate(params: {
   // LIDs não têm telefone estável para localizar a conversa. Mantemos o
   // escopo por instância já usado no fluxo anterior para não perder status.
   if (!resolvedContact.isSendablePhone) {
-    if (msg.status === undefined) return;
+    const status = normalizeWhatsAppMessageStatus(msg.status);
+    if (!status) return;
     await prisma.whatsAppMessage.updateMany({
       where: {
         messageId,
-        status: { notIn: ["deleted", "read", "played"] },
+        fromMe: true,
+        status: whatsAppStatusUpdateFilter(status),
         conversation: { instanceId: dbInstance.id },
       },
-      data: { status: mapEvolutionMessageStatus(msg.status, "sent") },
+      data: { status },
     });
     return;
   }
@@ -2461,15 +2469,11 @@ async function processMessageStatusUpdate(params: {
     },
     select: { id: true, fromMe: true, status: true },
   });
-  if (!existingMessage || existingMessage.status === "deleted" || msg.status === undefined) return;
+  if (!existingMessage?.fromMe || existingMessage.status === "deleted" || msg.status === undefined) return;
 
-  const nextStatus = mapEvolutionMessageStatus(msg.status, existingMessage.status);
+  const nextStatus = mergeWhatsAppMessageStatus(existingMessage.status, msg.status);
   if (nextStatus === existingMessage.status) return;
-
-  await prisma.whatsAppMessage.update({
-    where: { id: existingMessage.id },
-    data: { status: nextStatus },
-  });
+  if (!await updateOutgoingMessageStatus(existingMessage.id, msg.status)) return;
 
   if (existingMessage.fromMe) {
     await prisma.webhookLog.create({
