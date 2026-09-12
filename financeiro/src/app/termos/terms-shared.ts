@@ -112,7 +112,7 @@ export const UNIT_PROFILES: Record<string, { nome_clinica: string; endereco_clin
     nome_clinica: 'Virtuosa São Caetano do Sul',
     endereco_clinica: 'Av. Vital Brasil Filho, 143 - Osvaldo Cruz, São Caetano do Sul - SP, 09541-130',
     cidade_clinica: 'São Caetano do Sul - SP',
-    cnpj_clinica: '54.516.326/0001-52', // Using generic for template until real is provided
+    cnpj_clinica: '63.246.385/0001-91',
   },
 };
 
