@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { canAccessAutomaticCosts, canManageAutomaticCosts } from '@/lib/automatic-costs';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
 /* GET — Retrieve the latest backup for user's unit */
 export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req);
   if (guard instanceof NextResponse) return guard;
+  if (!canAccessAutomaticCosts(guard)) {
+    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+  }
 
   try {
     // UNIT GUARD: Filter backup by unit
@@ -13,14 +17,19 @@ export async function GET(req: NextRequest) {
       where: guard.unitFilter ? { unit: guard.unitFilter } : undefined,
       orderBy: { updatedAt: 'desc' },
     });
-    if (!backup) return NextResponse.json({ exists: false });
+    if (!backup) {
+      return NextResponse.json(
+        { exists: false },
+        { headers: { 'Cache-Control': 'private, no-store, max-age=0' } },
+      );
+    }
 
     return NextResponse.json({
       exists: true, id: backup.id,
       logs: JSON.parse(backup.logs), goals: JSON.parse(backup.goals),
       fixed: JSON.parse(backup.fixed), bills: JSON.parse(backup.bills),
       isAuto: backup.isAuto, updatedAt: backup.updatedAt.toISOString(),
-    });
+    }, { headers: { 'Cache-Control': 'private, no-store, max-age=0' } });
   } catch (err) {
     console.error('Backup GET error:', err);
     return NextResponse.json({ error: 'Falha ao carregar backup' }, { status: 500 });
@@ -31,6 +40,9 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const guard = requireUnitGuard(req);
   if (guard instanceof NextResponse) return guard;
+  if (!canManageAutomaticCosts(guard)) {
+    return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+  }
 
   try {
     const body = await req.json();

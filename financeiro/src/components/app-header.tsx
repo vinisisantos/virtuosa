@@ -37,7 +37,7 @@ const DASHBOARD_SUB_LINKS: { key: string; label: string; href: string; icon: str
     { key: 'dash-heatmap', label: 'Mapa de Calor', href: '/dashboard?tab=heatmap', icon: 'local_fire_department', permission: 'dashboard' },
 ];
 
-const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string; divider?: boolean }[] = [
+const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: string; permission: string | string[]; divider?: boolean }[] = [
     { key: 'pagamentos', label: 'Pagamentos', href: '/pagamentos', icon: 'credit_card', permission: 'financeiro' },
     // { key: 'estoque', label: 'Estoque', href: '/estoque', icon: 'inventory_2', permission: 'financeiro' },
     { key: 'pedidos', label: 'Pedidos', href: '/pedidos', icon: 'shopping_bag', permission: 'pedidos', divider: true },
@@ -46,6 +46,7 @@ const FINANCEIRO_SUB_LINKS: { key: string; label: string; href: string; icon: st
     // { key: 'fin-premiacao', label: 'Premiação', href: '/?tab=premiacao', icon: 'emoji_events', permission: 'finPremiacao' },
     { key: 'fin-reembolso', label: 'Reembolso', href: '/?tab=reembolso', icon: 'receipt_long', permission: 'finReembolso' },
     { key: 'fin-custos', label: 'Custos', href: '/?tab=custos', icon: 'account_balance', permission: 'finCustos' },
+    { key: 'fin-dre', label: 'DRE gerencial', href: '/dre', icon: 'query_stats', permission: ['financeiro', 'finCustos', 'finAnalise'] },
     // { key: 'fin-analise', label: 'Análise', href: '/?tab=analise', icon: 'analytics', permission: 'finAnalise' },
     // { key: 'fin-lancamento', label: 'Lançamento', href: '/dashboard?tab=sales', icon: 'edit_note', permission: 'financeiro' },
 ];
@@ -244,7 +245,10 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
     // Filter financeiro sub-links
     const visibleFinSubLinks = isAdmin
         ? FINANCEIRO_SUB_LINKS
-        : FINANCEIRO_SUB_LINKS.filter(link => userPermissions[link.permission] === true);
+        : FINANCEIRO_SUB_LINKS.filter(link => {
+            const requiredPermissions = Array.isArray(link.permission) ? link.permission : [link.permission];
+            return requiredPermissions.some(permission => userPermissions[permission] === true);
+        });
 
     const showFinanceiro = visibleFinSubLinks.length > 0;
     const isFinanceiroActive = FINANCEIRO_ACTIVE_KEYS.includes(activePage);

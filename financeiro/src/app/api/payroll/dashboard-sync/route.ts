@@ -1,16 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { calculatePayrollTotal } from '@/lib/payroll-adjustments';
+import { ACTIVE_UNITS } from '@/lib/role-access';
+import {
+    requireUnitGuard,
+    UnitAccessDeniedError,
+    unitAccessDeniedResponse,
+} from '@/lib/unit-guard';
 
 export async function GET(request: NextRequest) {
-    const user = getUserFromHeaders(request);
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    if (!user.isAdmin && !user.permissions?.financeiro)
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    const { searchParams } = new URL(request.url);
+    const requestedUnit = searchParams.get('unit');
+    if (
+        requestedUnit
+        && requestedUnit !== 'all'
+        && requestedUnit !== 'Todas'
+        && !ACTIVE_UNITS.includes(requestedUnit as (typeof ACTIVE_UNITS)[number])
+    ) {
+        return NextResponse.json({ error: 'Unidade inválida' }, { status: 400 });
+    }
+
+    const guard = requireUnitGuard(request, { requestedUnit });
+    if (guard instanceof NextResponse) return guard;
+    if (!guard.isAdmin && !guard.permissions?.financeiro) {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    }
+    if (
+        !guard.isAdmin
+        && !ACTIVE_UNITS.includes(guard.unitFilter as (typeof ACTIVE_UNITS)[number])
+    ) {
+        return NextResponse.json({ error: 'Unidade do usuário não configurada' }, { status: 403 });
+    }
+
     try {
-        // Fetch all payroll imports and their entries
+        if (requestedUnit && requestedUnit !== 'all' && requestedUnit !== 'Todas') {
+            guard.enforceUnit(requestedUnit);
+        }
+
         const imports = await prisma.payrollImport.findMany({
+            where: guard.unitFilter ? { unit: guard.unitFilter } : undefined,
             include: {
                 entries: { include: { adjustments: true } },
             },
@@ -55,6 +83,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({ success: true, data: syncData });
     } catch (err) {
+        if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse(err);
         console.error('Dashboard sync error:', err);
         return NextResponse.json({ error: 'Erro ao sincronizar dados com o dashboard' }, { status: 500 });
     }

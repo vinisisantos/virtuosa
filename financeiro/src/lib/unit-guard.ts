@@ -90,6 +90,7 @@ export function getUnitGuard(
   if (!user) return null;
 
   const { userId, name: userName, role: userRole, unit: userUnit, isAdmin, permissions } = user;
+  const hasGlobalAdminAccess = isAdmin || permissions?.admin === true;
 
   // Determine effective unit filter
   const allowOverride = opts?.allowAdminOverride !== false;
@@ -97,7 +98,7 @@ export function getUnitGuard(
   const permitted = permittedUnitsFor(userUnit || '', permissions);
 
   let unitFilter: string | undefined;
-  if (isAdmin && allowOverride) {
+  if (hasGlobalAdminAccess && allowOverride) {
     // Admin: respect requested unit from frontend (UI header selector)
     if (requestedUnit === 'all' || requestedUnit === 'Todas') {
       unitFilter = undefined; // explicitly requested all
@@ -124,7 +125,7 @@ export function getUnitGuard(
   }
 
   const enforceUnit = (recordUnit: string | null | undefined) => {
-    if (isAdmin) return; // Admin can access any unit
+    if (hasGlobalAdminAccess) return; // Admin global pode acessar qualquer unidade
     if (!recordUnit) return; // Record has no unit (legacy/global)
     if (permitted.includes(recordUnit)) return; // one of the user's permitted units
     if (recordUnit !== userUnit) {
@@ -134,7 +135,7 @@ export function getUnitGuard(
 
   const createUnit = (requestedUnit?: string | null): string => {
     if (
-      isAdmin &&
+      hasGlobalAdminAccess &&
       requestedUnit &&
       ACTIVE_UNITS.includes(requestedUnit as (typeof ACTIVE_UNITS)[number])
     ) return requestedUnit;
@@ -148,7 +149,7 @@ export function getUnitGuard(
     userId,
     userName,
     userRole,
-    isAdmin,
+    isAdmin: hasGlobalAdminAccess,
     permissions,
     unitFilter,
     enforceUnit,

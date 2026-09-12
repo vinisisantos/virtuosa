@@ -16,6 +16,7 @@ export interface PayrollImportData {
     competenceYear: number;
     unit?: string;
     uploadDate: string;
+    updatedAt: string;
     processingStatus: string;
     entries: PayrollEntryData[];
 }
@@ -41,6 +42,7 @@ export interface PayrollEntryData {
     hazardPayBase: number | null;
     adjustments: PayrollAdjustmentData[];
     notes: string | null;
+    updatedAt: string;
 }
 
 export type EmploymentType = 'CLT' | 'PJ' | null;

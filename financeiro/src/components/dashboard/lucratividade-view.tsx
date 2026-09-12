@@ -1,7 +1,9 @@
 import { useMemo } from 'react';
 import { fmt, FixedExpense, Bill, LogEntry } from '@/hooks/useDashboard';
 import { recurringCostsTotalInMonth } from '@/lib/cost-recurrence';
+import { costEntryMatchesMonth } from '@/lib/cost-reference-month';
 import { isRevenuePending } from '@/lib/revenue';
+import styles from './lucratividade-view.module.css';
 
 export function LucratividadeView({
   d,
@@ -27,26 +29,17 @@ export function LucratividadeView({
     
     // Custos Fixos (competência do mês selecionado por padrão)
     const fixed = fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (selectedUnit === 'all' || !e.unit || e.unit === selectedUnit));
-    const totalFixed = recurringCostsTotalInMonth(fixed, selectedYear, selectedMonth) + automaticFixedCosts;
-
-    // Custos Variáveis do Mês de Competência
-    const refKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
-    
-    const variaveis = bills.filter((b: Bill) => {
+    const monthlyBills = bills.filter((b: Bill) => {
       if (selectedUnit !== 'all' && b.unit && b.unit !== selectedUnit) return false;
-      if (b.refMonth) {
-        return b.refMonth === refKey;
-      } else {
-        // Fallback para data de vencimento
-        const dateStr = b.type === 'fixo' ? null : b.dueDateManual;
-        if (!dateStr) return false;
-        if (b.type === 'fixo') return true; // Parcela
-        const dt = new Date(dateStr + 'T12:00:00');
-        return dt.getUTCFullYear() === selectedYear && dt.getUTCMonth() === selectedMonth;
-      }
+      if (b.type === 'fixo') return true;
+      return costEntryMatchesMonth(b.refMonth, b.dueDateManual, selectedYear, selectedMonth);
     });
 
-    const totalVariaveis = variaveis.reduce((sum: number, b: Bill) => sum + b.value, 0) + automaticVariableCosts;
+    const totalFixed = recurringCostsTotalInMonth(fixed, selectedYear, selectedMonth)
+      + monthlyBills.filter((bill: Bill) => bill.type === 'fixo').reduce((sum: number, bill: Bill) => sum + bill.value, 0)
+      + automaticFixedCosts;
+    const totalVariaveis = monthlyBills.filter((bill: Bill) => bill.type === 'variavel').reduce((sum: number, bill: Bill) => sum + bill.value, 0)
+      + automaticVariableCosts;
     const totalCustos = totalFixed + totalVariaveis;
     const lucro = receita - totalCustos;
     const margem = receita > 0 ? (lucro / receita) * 100 : 0;
@@ -54,76 +47,79 @@ export function LucratividadeView({
     return { receita, aReceber, totalFixed, totalVariaveis, totalCustos, lucro, margem };
   }, [automaticFixedCosts, automaticVariableCosts, totalRev, fixedExpenses, bills, logs, selectedUnit, selectedYear, selectedMonth]);
 
+  const resultColor = data.lucro >= 0 ? '#22c55e' : '#ef4444';
+  const marginColor = data.margem >= 15 ? '#22c55e' : data.margem > 0 ? '#f59e0b' : '#ef4444';
+
   return (
-    <div style={{ animation: 'fadeSlide 0.3s ease-out' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 16, padding: '11px 13px', borderRadius: 11, border: '1px solid rgba(59,130,246,0.22)', background: 'rgba(59,130,246,0.07)', color: 'var(--text-muted)', fontSize: '0.76rem', lineHeight: 1.45 }}>
-        <span className="material-symbols-outlined" style={{ color: '#3b82f6', fontSize: 18, flexShrink: 0 }}>info</span>
-        Visão gerencial mensal: a folha entra no mês seguinte à competência e os pedidos entram na data lançada em Custos, sem presumir que já foram pagos.
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: '#3b82f6' }}>trending_up</span> RECEITA REALIZADA</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(data.receita)}</div>
-        </div>
-
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: '#f59e0b' }}>schedule</span> A RECEBER</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(data.aReceber)}</div>
-        </div>
-
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: '#ef4444' }}>trending_down</span> CUSTOS OPERACIONAIS</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(data.totalCustos)}</div>
-        </div>
-
-        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
-          <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span className="material-symbols-outlined" style={{ fontSize: 18, color: data.lucro >= 0 ? '#22c55e' : '#ef4444' }}>account_balance</span> RESULTADO GERENCIAL</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 900, color: data.lucro >= 0 ? '#22c55e' : '#ef4444', letterSpacing: '-0.5px' }}>{fmt(data.lucro)}</div>
-        </div>
+    <section className={styles.root} aria-labelledby="dre-summary-title">
+      <div className={styles.notice}>
+        <span className="material-symbols-outlined" aria-hidden="true">info</span>
+        <span>
+          DRE gerencial mensal: a folha entra no mês seguinte à competência e os pedidos entram na data lançada em Custos, sem presumir que já foram pagos.
+        </span>
       </div>
 
-      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 32, boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
-        <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)', margin: '0 0 24px' }}>Resumo Gerencial do Mês</h3>
-        
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px dashed var(--border)' }}>
-            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>(+) Receitas realizadas</span>
-            <span style={{ fontWeight: 800, color: '#3b82f6' }}>{fmt(data.receita)}</span>
+      <div className={styles.kpis} aria-live="polite">
+        <article className={styles.kpiCard}>
+          <div className={styles.kpiLabel}><span className="material-symbols-outlined" style={{ color: '#3b82f6' }} aria-hidden="true">trending_up</span>Receita realizada</div>
+          <div className={styles.kpiValue}>{fmt(data.receita)}</div>
+        </article>
+
+        <article className={styles.kpiCard}>
+          <div className={styles.kpiLabel}><span className="material-symbols-outlined" style={{ color: '#f59e0b' }} aria-hidden="true">schedule</span>A receber</div>
+          <div className={styles.kpiValue}>{fmt(data.aReceber)}</div>
+        </article>
+
+        <article className={styles.kpiCard}>
+          <div className={styles.kpiLabel}><span className="material-symbols-outlined" style={{ color: '#ef4444' }} aria-hidden="true">trending_down</span>Custos operacionais</div>
+          <div className={styles.kpiValue}>{fmt(data.totalCustos)}</div>
+        </article>
+
+        <article className={styles.kpiCard}>
+          <div className={styles.kpiLabel}><span className="material-symbols-outlined" style={{ color: resultColor }} aria-hidden="true">account_balance</span>Resultado gerencial</div>
+          <div className={styles.kpiValue} style={{ color: resultColor }}>{fmt(data.lucro)}</div>
+        </article>
+      </div>
+
+      <article className={styles.statement} aria-live="polite">
+        <h2 id="dre-summary-title">DRE gerencial do mês</h2>
+
+        <div className={styles.statementRows}>
+          <div className={styles.statementRow}>
+            <span className={styles.revenueLabel}>(+) Receitas realizadas</span>
+            <strong className={styles.revenueValue}>{fmt(data.receita)}</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px dashed var(--border)' }}>
-            <span style={{ fontWeight: 500, color: '#f59e0b' }}>(i) Receitas a receber (fora do resultado)</span>
-            <span style={{ fontWeight: 700, color: '#f59e0b' }}>{fmt(data.aReceber)}</span>
+          <div className={styles.statementRow}>
+            <span className={styles.pendingLabel}>(i) Receitas a receber (fora do resultado)</span>
+            <strong className={styles.pendingValue}>{fmt(data.aReceber)}</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px dashed var(--border)' }}>
-            <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}>(-) Custos Fixos</span>
-            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{fmt(data.totalFixed)}</span>
+          <div className={styles.statementRow}>
+            <span>(-) Custos fixos</span>
+            <strong>{fmt(data.totalFixed)}</strong>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: 16, borderBottom: '1px solid var(--border)' }}>
-            <span style={{ fontWeight: 500, color: 'var(--text-muted)' }}>(-) Custos Variáveis</span>
-            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>{fmt(data.totalVariaveis)}</span>
+          <div className={`${styles.statementRow} ${styles.lastCostRow}`}>
+            <span>(-) Custos variáveis</span>
+            <strong>{fmt(data.totalVariaveis)}</strong>
           </div>
-          
-          <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 8, alignItems: 'center' }}>
-            <span style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: '1.1rem' }}>(=) Resultado Gerencial</span>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontWeight: 900, color: data.lucro >= 0 ? '#22c55e' : '#ef4444', fontSize: '1.4rem' }}>{fmt(data.lucro)}</div>
-              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)', marginTop: 4 }}>
-                Margem: <span style={{ color: data.margem >= 15 ? '#22c55e' : data.margem > 0 ? '#f59e0b' : '#ef4444' }}>{data.margem.toFixed(1)}%</span>
-              </div>
+
+          <div className={styles.resultRow}>
+            <strong>(=) Resultado gerencial</strong>
+            <div className={styles.resultValue}>
+              <strong style={{ color: resultColor }}>{fmt(data.lucro)}</strong>
+              <span>Margem: <b style={{ color: marginColor }}>{data.margem.toFixed(1)}%</b></span>
             </div>
           </div>
         </div>
 
-        {/* Progress Bar Visual */}
-        <div style={{ marginTop: 32, width: '100%', height: 12, borderRadius: 6, background: '#ef4444', display: 'flex', overflow: 'hidden' }}>
-          <div style={{ width: `${Math.max(0, Math.min(100, 100 - data.margem))}%`, background: 'var(--border)', opacity: 0.5 }}></div>
-          <div style={{ width: `${Math.max(0, Math.min(100, data.margem))}%`, background: '#22c55e' }}></div>
+        <div className={styles.progress} aria-hidden="true">
+          <span style={{ width: `${Math.max(0, Math.min(100, 100 - data.margem))}%` }} />
+          <span style={{ width: `${Math.max(0, Math.min(100, data.margem))}%` }} />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-          <span>CUSTOS CONSUMIDOS</span>
-          <span>LUCRO GERADO</span>
+        <div className={styles.progressLegend}>
+          <span>Custos consumidos</span>
+          <span>Lucro gerado</span>
         </div>
-      </div>
-    </div>
+      </article>
+    </section>
   );
 }

@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromHeaders } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { materializeRecurringPayrollEntries } from '@/lib/payroll-recurrence-materialization';
+import { normalizePayrollEmployeeKey } from '@/lib/payroll-recurrence';
 import {
-    normalizePayrollEmployeeKey,
-    selectRecurringPayrollEntries,
-} from '@/lib/payroll-recurrence';
+    PayrollWriteConflictError,
+    buildPayrollRevision,
+    matchesExpectedUpdatedAt,
+    nextPayrollUpdatedAt,
+    parseOptionalExpectedUpdatedAt,
+    payrollWriteConflictPayload,
+    touchPayrollImportRevisions,
+} from '@/lib/payroll-sync';
 import {
     requireUnitGuard,
     UnitAccessDeniedError,
     unitAccessDeniedResponse,
 } from '@/lib/unit-guard';
+import { ACTIVE_UNITS } from '@/lib/role-access';
 import {
     AUTOMATIC_TRANSPORT_LABEL,
     CURRENT_MINIMUM_WAGE,
@@ -21,150 +28,69 @@ import {
     summarizePayrollAdjustments,
 } from '@/lib/payroll-adjustments';
 
-// GET — list entries by competence (with auto-creation of recurring entries)
+function writeConflictResponse() {
+    return NextResponse.json(payrollWriteConflictPayload(), { status: 409 });
+}
+
+class PayrollVersionRequiredError extends Error {}
+class PayrollVersionInvalidError extends Error {}
+
+function versionRequiredResponse() {
+    return NextResponse.json({
+        error: 'A versão atual da folha é obrigatória. Recarregue os dados antes de salvar.',
+        code: 'PAYROLL_VERSION_REQUIRED',
+        reloadRequired: true,
+    }, { status: 428 });
+}
+
+function requireExpectedUpdatedAt(value: Date | undefined | null) {
+    if (value === undefined) throw new PayrollVersionRequiredError();
+    if (value === null) throw new PayrollVersionInvalidError();
+    return value;
+}
+
+// GET — materialize recurring entries, then read the competence snapshot
 export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const requestedUnit = searchParams.get('unit');
+    if (
+        requestedUnit
+        && requestedUnit !== 'all'
+        && requestedUnit !== 'Todas'
+        && !ACTIVE_UNITS.includes(requestedUnit as (typeof ACTIVE_UNITS)[number])
+    ) {
+        return NextResponse.json({ error: 'Unidade inválida' }, { status: 400 });
+    }
     const guard = requireUnitGuard(request, { requestedUnit });
     if (guard instanceof NextResponse) return guard;
     if (!guard.isAdmin && !guard.permissions?.financeiro)
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
-        const month = parseInt(searchParams.get('month') || '');
-        const year = parseInt(searchParams.get('year') || '');
+        const month = Number(searchParams.get('month'));
+        const year = Number(searchParams.get('year'));
         const unit = guard.unitFilter || '';
 
-        if (!month || !year) {
-            return NextResponse.json({ error: 'Mês e ano são obrigatórios' }, { status: 400 });
+        if (
+            !Number.isInteger(month)
+            || month < 1
+            || month > 12
+            || !Number.isInteger(year)
+            || year < 2000
+            || year > 9999
+        ) {
+            return NextResponse.json({ error: 'Mês e ano válidos são obrigatórios' }, { status: 400 });
         }
 
-        const whereClause: any = {
+        const whereClause = {
             competenceMonth: month,
             competenceYear: year,
+            ...(unit ? { unit } : {}),
         };
-        if (unit) {
-            whereClause.unit = unit;
-        }
 
-        // --- Auto-create recurring entries from previous month ---
+        // A escrita recorrente fica isolada da leitura abaixo. Assim, o endpoint
+        // leve de revisão nunca precisa chamar este GET mutante.
         try {
-            const prevMonth = month === 1 ? 12 : month - 1;
-            const prevYear = month === 1 ? year - 1 : year;
-
-            const prevWhereClause: any = {
-                competenceMonth: prevMonth,
-                competenceYear: prevYear,
-            };
-            if (unit) prevWhereClause.unit = unit;
-
-            const exclusionWhere: any = {
-                competenceMonth: month,
-                competenceYear: year,
-            };
-            if (unit) exclusionWhere.unit = unit;
-
-            const [prevImports, existingImports, exclusions] = await Promise.all([
-                prisma.payrollImport.findMany({
-                    where: prevWhereClause,
-                    select: {
-                        unit: true,
-                        entries: {
-                            where: { isRecurring: true },
-                            select: {
-                                employeeName: true,
-                                netSalary: true,
-                                baseSalary: true,
-                                cargo: true,
-                                hasAdiantamento: true,
-                                hasFgts: true,
-                                employmentType: true,
-                                hazardPayRate: true,
-                                hazardPayBase: true,
-                            },
-                        },
-                    },
-                }),
-                prisma.payrollImport.findMany({
-                    where: whereClause,
-                    select: {
-                        id: true,
-                        unit: true,
-                        entries: { select: { employeeName: true } },
-                    },
-                }),
-                prisma.payrollEntryExclusion.findMany({
-                    where: exclusionWhere,
-                    select: { unit: true, employeeKey: true },
-                }),
-            ]);
-
-            const recurringCandidates = prevImports.flatMap(payrollImport =>
-                payrollImport.entries.map(entry => ({ ...entry, unit: payrollImport.unit })),
-            );
-            const existingEmployees = existingImports.flatMap(payrollImport =>
-                payrollImport.entries.map(entry => ({
-                    unit: payrollImport.unit,
-                    employeeName: entry.employeeName,
-                })),
-            );
-            const toCreate = selectRecurringPayrollEntries(
-                recurringCandidates,
-                existingEmployees,
-                exclusions,
-            );
-
-            const entriesByUnit = new Map<string, typeof toCreate>();
-            for (const entry of toCreate) {
-                const groupedEntries = entriesByUnit.get(entry.unit) || [];
-                groupedEntries.push(entry);
-                entriesByUnit.set(entry.unit, groupedEntries);
-            }
-
-            // No modo global, cada unidade mantém sua própria importação. O limite é
-            // o conjunto fixo de unidades ativas, sem fan-out por colaborador.
-            for (const [entryUnit, entries] of entriesByUnit) {
-                const currentImport = existingImports.find(payrollImport => payrollImport.unit === entryUnit);
-                const importRecord = currentImport || await prisma.payrollImport.upsert({
-                    where: {
-                        competenceMonth_competenceYear_unit: {
-                            competenceMonth: month,
-                            competenceYear: year,
-                            unit: entryUnit,
-                        },
-                    },
-                    update: {},
-                    create: {
-                        fileName: `Recorrente - ${entryUnit} - ${month}/${year}`,
-                        competenceMonth: month,
-                        competenceYear: year,
-                        unit: entryUnit,
-                        processingStatus: 'completed',
-                    },
-                    select: { id: true, unit: true },
-                });
-
-                await prisma.payrollEntry.createMany({
-                    data: entries.map(entry => ({
-                        payrollImportId: importRecord.id,
-                        employeeName: entry.employeeName,
-                        netSalary: entry.netSalary,
-                        baseSalary: entry.baseSalary,
-                        cargo: entry.cargo,
-                        bonus: 0,
-                        paymentStatus: 'unpaid',
-                        confidenceScore: 1.0,
-                        extractionSource: 'recurring',
-                        hasPenalty: false,
-                        hasAdiantamento: entry.hasAdiantamento,
-                        hasFgts: entry.hasFgts,
-                        employmentType: entry.employmentType,
-                        hazardPayRate: entry.hazardPayRate,
-                        hazardPayBase: entry.hazardPayBase,
-                        isRecurring: true,
-                        notes: null,
-                    })),
-                });
-            }
+            await materializeRecurringPayrollEntries({ month, year, ...(unit ? { unit } : {}) });
         } catch (recurErr) {
             console.error('Recurring auto-create warning:', recurErr);
             // Non-fatal — continue with normal fetch
@@ -180,6 +106,7 @@ export async function GET(request: NextRequest) {
                 competenceYear: true,
                 unit: true,
                 uploadDate: true,
+                updatedAt: true,
                 processingStatus: true,
                 entries: {
                     orderBy: { employeeName: 'asc' },
@@ -231,6 +158,9 @@ export async function GET(request: NextRequest) {
             imports,
             entries: allEntries,
             summary,
+            ...buildPayrollRevision(imports),
+        }, {
+            headers: { 'Cache-Control': 'private, no-store, max-age=0' },
         });
     } catch (err) {
         console.error('GET entries error:', err);
@@ -240,36 +170,41 @@ export async function GET(request: NextRequest) {
 
 // POST — add manual entry
 export async function POST(request: NextRequest) {
-    const user = getUserFromHeaders(request);
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    if (!user.isAdmin && !user.permissions?.financeiro)
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
     try {
         const body = await request.json();
-        const { employeeName, netSalary, baseSalary, cargo, bonus, unit, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts, employmentType, hazardPayRate, hazardPayBase, transportDiscountEnabled } = body;
+        const { employeeName, netSalary, baseSalary, cargo, bonus, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts, employmentType, hazardPayRate, hazardPayBase, transportDiscountEnabled } = body;
+        const requestedUnit = typeof body.unit === 'string' ? body.unit.trim() : '';
 
-        if (!employeeName || netSalary == null || !unit || !competenceMonth || !competenceYear) {
-            return NextResponse.json({ error: `Campos obrigatórios ausentes. name:${employeeName}, salary:${netSalary}, unit:${unit}, month:${competenceMonth}, year:${competenceYear}` }, { status: 400 });
+        if (!ACTIVE_UNITS.includes(requestedUnit as (typeof ACTIVE_UNITS)[number])) {
+            return NextResponse.json({ error: 'Unidade inválida' }, { status: 400 });
         }
+        const guard = requireUnitGuard(request, { requestedUnit });
+        if (guard instanceof NextResponse) return guard;
+        if (!guard.isAdmin && !guard.permissions?.financeiro) {
+            return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+        }
+        guard.enforceUnit(requestedUnit);
+        const unit = guard.createUnit(requestedUnit);
+        const normalizedCompetenceMonth = Number(competenceMonth);
+        const normalizedCompetenceYear = Number(competenceYear);
+        const normalizedNetSalary = Number(netSalary);
 
-        // Find or create the import record for this specific unit and month
-        const importRecord = await prisma.payrollImport.upsert({
-            where: {
-                competenceMonth_competenceYear_unit: {
-                    competenceMonth: Number(competenceMonth),
-                    competenceYear: Number(competenceYear),
-                    unit: String(unit)
-                }
-            },
-            update: {},
-            create: {
-                fileName: `Manual - ${unit} - ${competenceMonth}/${competenceYear}`,
-                competenceMonth: Number(competenceMonth),
-                competenceYear: Number(competenceYear),
-                unit: String(unit),
-                processingStatus: 'completed'
-            }
-        });
+        if (!employeeName || netSalary == null || !unit) {
+            return NextResponse.json({ error: 'Nome, salário e unidade são obrigatórios' }, { status: 400 });
+        }
+        if (
+            !Number.isInteger(normalizedCompetenceMonth)
+            || normalizedCompetenceMonth < 1
+            || normalizedCompetenceMonth > 12
+            || !Number.isInteger(normalizedCompetenceYear)
+            || normalizedCompetenceYear < 2000
+            || normalizedCompetenceYear > 9999
+        ) {
+            return NextResponse.json({ error: 'Competência inválida' }, { status: 400 });
+        }
+        if (!Number.isFinite(normalizedNetSalary) || normalizedNetSalary < 0) {
+            return NextResponse.json({ error: 'Salário inválido' }, { status: 400 });
+        }
 
         const normalizedEmploymentType = normalizeEmploymentType(employmentType);
         const normalizedHazardPayRate = normalizedEmploymentType === 'CLT'
@@ -278,40 +213,62 @@ export async function POST(request: NextRequest) {
         const normalizedHazardPayBase = normalizedHazardPayRate > 0
             ? Math.max(0, Number(hazardPayBase) || CURRENT_MINIMUM_WAGE)
             : null;
-        const normalizedBaseSalary = Math.max(0, baseSalary != null ? Number(baseSalary) : Number(netSalary));
+        const normalizedBaseSalary = Math.max(0, baseSalary != null ? Number(baseSalary) : normalizedNetSalary);
         const shouldApplyTransportDiscount = normalizedEmploymentType === 'CLT' && Boolean(transportDiscountEnabled);
 
-        const entry = await prisma.payrollEntry.create({
-            data: {
-                payrollImportId: importRecord.id,
-                employeeName,
-                netSalary: parseFloat(netSalary),
-                baseSalary: normalizedBaseSalary,
-                cargo: cargo || null,
-                bonus: bonus != null ? Math.max(0, Number(bonus) || 0) : 0,
-                paymentStatus: 'unpaid',
-                confidenceScore: 1.0,
-                extractionSource: 'manual',
-                hasAdiantamento: hasAdiantamento || false,
-                isRecurring: isRecurring || false,
-                hasFgts: hasFgts !== undefined ? Boolean(hasFgts) : true,
-                employmentType: normalizedEmploymentType,
-                hazardPayRate: normalizedHazardPayRate,
-                hazardPayBase: normalizedHazardPayBase,
-                notes: notes || null,
-                adjustments: shouldApplyTransportDiscount ? {
-                    create: {
-                        kind: 'transport',
-                        direction: 'debit',
-                        label: AUTOMATIC_TRANSPORT_LABEL,
-                        amount: calculateAutomaticTransportDiscount(normalizedBaseSalary),
+        const entry = await prisma.$transaction(async transaction => {
+            const importRecord = await transaction.payrollImport.upsert({
+                where: {
+                    competenceMonth_competenceYear_unit: {
+                        competenceMonth: normalizedCompetenceMonth,
+                        competenceYear: normalizedCompetenceYear,
+                        unit,
                     },
-                } : undefined,
-            },
+                },
+                update: {},
+                create: {
+                    fileName: `Manual - ${unit} - ${normalizedCompetenceMonth}/${normalizedCompetenceYear}`,
+                    competenceMonth: normalizedCompetenceMonth,
+                    competenceYear: normalizedCompetenceYear,
+                    unit,
+                    processingStatus: 'completed',
+                },
+            });
+            const createdEntry = await transaction.payrollEntry.create({
+                data: {
+                    payrollImportId: importRecord.id,
+                    employeeName,
+                    netSalary: normalizedNetSalary,
+                    baseSalary: normalizedBaseSalary,
+                    cargo: cargo || null,
+                    bonus: bonus != null ? Math.max(0, Number(bonus) || 0) : 0,
+                    paymentStatus: 'unpaid',
+                    confidenceScore: 1,
+                    extractionSource: 'manual',
+                    hasAdiantamento: hasAdiantamento || false,
+                    isRecurring: isRecurring || false,
+                    hasFgts: hasFgts !== undefined ? Boolean(hasFgts) : true,
+                    employmentType: normalizedEmploymentType,
+                    hazardPayRate: normalizedHazardPayRate,
+                    hazardPayBase: normalizedHazardPayBase,
+                    notes: notes || null,
+                    adjustments: shouldApplyTransportDiscount ? {
+                        create: {
+                            kind: 'transport',
+                            direction: 'debit',
+                            label: AUTOMATIC_TRANSPORT_LABEL,
+                            amount: calculateAutomaticTransportDiscount(normalizedBaseSalary),
+                        },
+                    } : undefined,
+                },
+            });
+            await touchPayrollImportRevisions(transaction, [importRecord.id]);
+            return createdEntry;
         });
 
         return NextResponse.json(entry);
     } catch (err) {
+        if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse(err);
         console.error('POST entry error:', err);
         return NextResponse.json({ error: 'Erro ao criar entrada' }, { status: 500 });
     }
@@ -319,99 +276,142 @@ export async function POST(request: NextRequest) {
 
 // PUT — update entry
 export async function PUT(request: NextRequest) {
-    const user = getUserFromHeaders(request);
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    if (!user.isAdmin && !user.permissions?.financeiro)
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    const guard = requireUnitGuard(request);
+    if (guard instanceof NextResponse) return guard;
+    if (!guard.isAdmin && !guard.permissions?.financeiro) {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
+    }
+
     try {
         const body = await request.json();
         const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring, employmentType, hazardPayRate, hazardPayBase, transportDiscountEnabled } = body;
+        const expectedUpdatedAt = parseOptionalExpectedUpdatedAt(body.expectedUpdatedAt);
 
         if (!id) {
             return NextResponse.json({ error: 'ID é obrigatório' }, { status: 400 });
         }
 
-        const currentEntry = await prisma.payrollEntry.findUnique({
-            where: { id },
-            select: {
-                baseSalary: true,
-                netSalary: true,
-                employmentType: true,
-                adjustments: {
-                    where: { kind: 'transport', label: AUTOMATIC_TRANSPORT_LABEL },
-                    select: { id: true },
-                    take: 1,
-                },
-            },
-        });
-        if (!currentEntry) return NextResponse.json({ error: 'Colaborador não encontrado' }, { status: 404 });
-
-        const normalizedEmploymentType = employmentType !== undefined
-            ? normalizeEmploymentType(employmentType)
-            : undefined;
-        const normalizedHazardPayRate = normalizedEmploymentType === 'PJ'
-            ? 0
-            : hazardPayRate !== undefined
-                ? normalizeHazardPayRate(hazardPayRate)
-                : undefined;
-        const normalizedHazardPayBase = normalizedHazardPayRate === 0
-            ? null
-            : hazardPayBase !== undefined
-                ? Math.max(0, Number(hazardPayBase) || CURRENT_MINIMUM_WAGE)
-                : undefined;
-
-        const nextBaseSalary = Math.max(0, baseSalary !== undefined
-            ? Number(baseSalary ?? netSalary ?? 0)
-            : currentEntry.baseSalary ?? currentEntry.netSalary);
-        const nextEmploymentType = normalizedEmploymentType !== undefined
-            ? normalizedEmploymentType
-            : normalizeEmploymentType(currentEntry.employmentType);
-        const automaticTransport = currentEntry.adjustments[0];
-        const transportEnabled = transportDiscountEnabled !== undefined
-            ? Boolean(transportDiscountEnabled)
-            : Boolean(automaticTransport);
-        const shouldApplyTransportDiscount = nextEmploymentType === 'CLT' && transportEnabled;
-
-        const updateEntry = prisma.payrollEntry.update({
-            where: { id },
-            data: {
-                ...(employeeName && { employeeName }),
-                ...(netSalary != null && { netSalary: parseFloat(netSalary) }),
-                ...(baseSalary !== undefined && { baseSalary: baseSalary != null ? parseFloat(baseSalary) : null }),
-                ...(cargo !== undefined && { cargo: cargo || null }),
-                ...(bonus !== undefined && { bonus: bonus != null ? Math.max(0, Number(bonus) || 0) : 0 }),
-                ...(notes !== undefined && { notes }),
-                ...(hasAdiantamento !== undefined && { hasAdiantamento: Boolean(hasAdiantamento) }),
-                ...(isRecurring !== undefined && { isRecurring: Boolean(isRecurring) }),
-                ...(normalizedEmploymentType !== undefined && { employmentType: normalizedEmploymentType }),
-                ...(normalizedHazardPayRate !== undefined && { hazardPayRate: normalizedHazardPayRate }),
-                ...(normalizedHazardPayBase !== undefined && { hazardPayBase: normalizedHazardPayBase }),
-            },
-        });
-
-        const syncTransport = shouldApplyTransportDiscount
-            ? automaticTransport
-                ? prisma.payrollAdjustment.update({
-                    where: { id: automaticTransport.id },
-                    data: { amount: calculateAutomaticTransportDiscount(nextBaseSalary) },
-                })
-                : prisma.payrollAdjustment.create({
-                    data: {
-                        payrollEntryId: id,
-                        kind: 'transport',
-                        direction: 'debit',
-                        label: AUTOMATIC_TRANSPORT_LABEL,
-                        amount: calculateAutomaticTransportDiscount(nextBaseSalary),
+        const entry = await prisma.$transaction(async transaction => {
+            const currentEntry = await transaction.payrollEntry.findUnique({
+                where: { id: String(id) },
+                select: {
+                    id: true,
+                    payrollImportId: true,
+                    updatedAt: true,
+                    baseSalary: true,
+                    netSalary: true,
+                    employmentType: true,
+                    payrollImport: { select: { unit: true } },
+                    adjustments: {
+                        where: { kind: 'transport', label: AUTOMATIC_TRANSPORT_LABEL },
+                        select: { id: true },
+                        take: 1,
                     },
-                })
-            : prisma.payrollAdjustment.deleteMany({
-                where: { payrollEntryId: id, kind: 'transport', label: AUTOMATIC_TRANSPORT_LABEL },
+                },
             });
+            if (!currentEntry) return null;
 
-        const [entry] = await prisma.$transaction([updateEntry, syncTransport]);
+            guard.enforceUnit(currentEntry.payrollImport.unit);
+            const requiredExpectedUpdatedAt = requireExpectedUpdatedAt(expectedUpdatedAt);
+            if (!matchesExpectedUpdatedAt(currentEntry.updatedAt, requiredExpectedUpdatedAt)) {
+                throw new PayrollWriteConflictError();
+            }
+
+            const normalizedEmploymentType = employmentType !== undefined
+                ? normalizeEmploymentType(employmentType)
+                : undefined;
+            const normalizedHazardPayRate = normalizedEmploymentType === 'PJ'
+                ? 0
+                : hazardPayRate !== undefined
+                    ? normalizeHazardPayRate(hazardPayRate)
+                    : undefined;
+            const normalizedHazardPayBase = normalizedHazardPayRate === 0
+                ? null
+                : hazardPayBase !== undefined
+                    ? Math.max(0, Number(hazardPayBase) || CURRENT_MINIMUM_WAGE)
+                    : undefined;
+
+            const nextBaseSalary = Math.max(0, baseSalary !== undefined
+                ? Number(baseSalary ?? netSalary ?? 0)
+                : currentEntry.baseSalary ?? currentEntry.netSalary);
+            const nextEmploymentType = normalizedEmploymentType !== undefined
+                ? normalizedEmploymentType
+                : normalizeEmploymentType(currentEntry.employmentType);
+            const automaticTransport = currentEntry.adjustments[0];
+            const transportEnabled = transportDiscountEnabled !== undefined
+                ? Boolean(transportDiscountEnabled)
+                : Boolean(automaticTransport);
+            const shouldApplyTransportDiscount = nextEmploymentType === 'CLT' && transportEnabled;
+            const mutationTime = nextPayrollUpdatedAt(currentEntry.updatedAt);
+
+            const updated = await transaction.payrollEntry.updateMany({
+                where: {
+                    id: currentEntry.id,
+                    payrollImport: { unit: currentEntry.payrollImport.unit },
+                    updatedAt: requiredExpectedUpdatedAt,
+                },
+                data: {
+                    ...(employeeName && { employeeName }),
+                    ...(netSalary != null && { netSalary: parseFloat(netSalary) }),
+                    ...(baseSalary !== undefined && { baseSalary: baseSalary != null ? parseFloat(baseSalary) : null }),
+                    ...(cargo !== undefined && { cargo: cargo || null }),
+                    ...(bonus !== undefined && { bonus: bonus != null ? Math.max(0, Number(bonus) || 0) : 0 }),
+                    ...(notes !== undefined && { notes }),
+                    ...(hasAdiantamento !== undefined && { hasAdiantamento: Boolean(hasAdiantamento) }),
+                    ...(isRecurring !== undefined && { isRecurring: Boolean(isRecurring) }),
+                    ...(normalizedEmploymentType !== undefined && { employmentType: normalizedEmploymentType }),
+                    ...(normalizedHazardPayRate !== undefined && { hazardPayRate: normalizedHazardPayRate }),
+                    ...(normalizedHazardPayBase !== undefined && { hazardPayBase: normalizedHazardPayBase }),
+                    updatedAt: mutationTime,
+                },
+            });
+            if (updated.count !== 1) throw new PayrollWriteConflictError();
+
+            if (shouldApplyTransportDiscount) {
+                if (automaticTransport) {
+                    const transportUpdated = await transaction.payrollAdjustment.updateMany({
+                        where: {
+                            id: automaticTransport.id,
+                            payrollEntryId: currentEntry.id,
+                        },
+                        data: { amount: calculateAutomaticTransportDiscount(nextBaseSalary) },
+                    });
+                    if (transportUpdated.count !== 1) throw new PayrollWriteConflictError();
+                } else {
+                    await transaction.payrollAdjustment.create({
+                        data: {
+                            payrollEntryId: currentEntry.id,
+                            kind: 'transport',
+                            direction: 'debit',
+                            label: AUTOMATIC_TRANSPORT_LABEL,
+                            amount: calculateAutomaticTransportDiscount(nextBaseSalary),
+                        },
+                    });
+                }
+            } else {
+                await transaction.payrollAdjustment.deleteMany({
+                    where: {
+                        payrollEntryId: currentEntry.id,
+                        kind: 'transport',
+                        label: AUTOMATIC_TRANSPORT_LABEL,
+                    },
+                });
+            }
+
+            await touchPayrollImportRevisions(transaction, [currentEntry.payrollImportId]);
+            return transaction.payrollEntry.findUnique({ where: { id: currentEntry.id } });
+        });
+
+        if (!entry) return NextResponse.json({ error: 'Colaborador não encontrado' }, { status: 404 });
 
         return NextResponse.json(entry);
     } catch (err) {
+        if (err instanceof PayrollVersionRequiredError) return versionRequiredResponse();
+        if (err instanceof PayrollVersionInvalidError) {
+            return NextResponse.json({ error: 'Versão da folha inválida' }, { status: 400 });
+        }
+        if (err instanceof PayrollWriteConflictError) return writeConflictResponse();
+        if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse(err);
         console.error('PUT entry error:', err);
         return NextResponse.json({ error: 'Erro ao atualizar entrada' }, { status: 500 });
     }
@@ -427,7 +427,10 @@ export async function DELETE(request: NextRequest) {
         const { searchParams } = new URL(request.url);
         const id = searchParams.get('id');
         const importId = searchParams.get('importId');
-
+        const rawExpectedUpdatedAt = searchParams.get('expectedUpdatedAt');
+        const expectedUpdatedAt = parseOptionalExpectedUpdatedAt(
+            rawExpectedUpdatedAt === null ? undefined : rawExpectedUpdatedAt,
+        );
         if (importId) {
             const payrollImport = await prisma.payrollImport.findUnique({
                 where: { id: importId },
@@ -436,6 +439,7 @@ export async function DELETE(request: NextRequest) {
                     unit: true,
                     competenceMonth: true,
                     competenceYear: true,
+                    updatedAt: true,
                     entries: { select: { employeeName: true } },
                 },
             });
@@ -443,6 +447,13 @@ export async function DELETE(request: NextRequest) {
                 return NextResponse.json({ error: 'Competência não encontrada' }, { status: 404 });
             }
             guard.enforceUnit(payrollImport.unit);
+            if (expectedUpdatedAt === undefined) return versionRequiredResponse();
+            if (expectedUpdatedAt === null) {
+                return NextResponse.json({ error: 'Versão da folha inválida' }, { status: 400 });
+            }
+            if (!matchesExpectedUpdatedAt(payrollImport.updatedAt, expectedUpdatedAt)) {
+                return writeConflictResponse();
+            }
 
             const exclusions = payrollImport.entries.map(entry => ({
                 competenceMonth: payrollImport.competenceMonth,
@@ -460,7 +471,13 @@ export async function DELETE(request: NextRequest) {
                     });
                 }
                 // Entries e ajustes são removidos em cascata após registrar o bloqueio.
-                await transaction.payrollImport.delete({ where: { id: payrollImport.id } });
+                const deleted = await transaction.payrollImport.deleteMany({
+                    where: {
+                        id: payrollImport.id,
+                        updatedAt: expectedUpdatedAt,
+                    },
+                });
+                if (deleted.count !== 1) throw new PayrollWriteConflictError();
             });
             return NextResponse.json({ success: true });
         }
@@ -474,6 +491,8 @@ export async function DELETE(request: NextRequest) {
             select: {
                 id: true,
                 employeeName: true,
+                updatedAt: true,
+                payrollImportId: true,
                 payrollImport: {
                     select: {
                         unit: true,
@@ -487,6 +506,13 @@ export async function DELETE(request: NextRequest) {
             return NextResponse.json({ error: 'Colaborador não encontrado' }, { status: 404 });
         }
         guard.enforceUnit(entry.payrollImport.unit);
+        if (expectedUpdatedAt === undefined) return versionRequiredResponse();
+        if (expectedUpdatedAt === null) {
+            return NextResponse.json({ error: 'Versão da folha inválida' }, { status: 400 });
+        }
+        if (!matchesExpectedUpdatedAt(entry.updatedAt, expectedUpdatedAt)) {
+            return writeConflictResponse();
+        }
 
         const exclusionIdentity = {
             competenceMonth: entry.payrollImport.competenceMonth,
@@ -495,19 +521,28 @@ export async function DELETE(request: NextRequest) {
             employeeKey: normalizePayrollEmployeeKey(entry.employeeName),
         };
 
-        await prisma.$transaction([
-            prisma.payrollEntryExclusion.upsert({
+        await prisma.$transaction(async transaction => {
+            await transaction.payrollEntryExclusion.upsert({
                 where: {
                     competenceMonth_competenceYear_unit_employeeKey: exclusionIdentity,
                 },
                 update: { employeeName: entry.employeeName },
                 create: { ...exclusionIdentity, employeeName: entry.employeeName },
-            }),
-            prisma.payrollEntry.delete({ where: { id: entry.id } }),
-        ]);
+            });
+            const deleted = await transaction.payrollEntry.deleteMany({
+                where: {
+                    id: entry.id,
+                    payrollImport: { unit: entry.payrollImport.unit },
+                    updatedAt: expectedUpdatedAt,
+                },
+            });
+            if (deleted.count !== 1) throw new PayrollWriteConflictError();
+            await touchPayrollImportRevisions(transaction, [entry.payrollImportId]);
+        });
 
         return NextResponse.json({ success: true });
     } catch (err) {
+        if (err instanceof PayrollWriteConflictError) return writeConflictResponse();
         if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse(err);
         console.error('DELETE entry error:', err);
         return NextResponse.json({ error: 'Erro ao remover entrada' }, { status: 500 });

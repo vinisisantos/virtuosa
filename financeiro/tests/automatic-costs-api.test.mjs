@@ -42,6 +42,7 @@ function payrollEntry(overrides = {}) {
     bonus: 0,
     paymentStatus: 'unpaid',
     paymentDate: null,
+    updatedAt: new Date('2026-09-12T12:00:00.000Z'),
     employmentType: 'PJ',
     hasFgts: false,
     hazardPayRate: 0,
@@ -66,7 +67,12 @@ function request(unit, permissions, role = 'GERENTE') {
 
 beforeEach(() => {
   calls = [];
-  payrollImports = [{ unit: 'Osasco', entries: [payrollEntry()] }];
+  payrollImports = [{
+    id: 'import-osasco',
+    unit: 'Osasco',
+    updatedAt: new Date('2026-09-12T12:05:00.000Z'),
+    entries: [payrollEntry()],
+  }];
 });
 
 test('custos de setembro consulta e identifica a folha de agosto', async () => {
@@ -78,7 +84,12 @@ test('custos de setembro consulta e identifica a folha de agosto', async () => {
   assert.deepEqual(body.missingPayrollUnits, []);
   assert.equal(body.payroll.total, 1000);
   assert.equal(body.payroll.entries[0].employeeName, 'Colaborador teste');
+  assert.equal(body.payroll.entries[0].updatedAt, '2026-09-12T12:00:00.000Z');
   assert.equal(body.canManagePayrollPayments, true);
+  assert.equal(body.payrollRevision.lastModifiedAt, '2026-09-12T12:05:00.000Z');
+  assert.match(body.payrollRevision.revision, /import-osasco/);
+  assert.equal(body.automaticCostsRevision.lastModifiedAt, '2026-09-12T12:05:00.000Z');
+  assert.match(body.automaticCostsRevision.revision, /payroll:import-osasco/);
 
   const payrollCall = calls.find(([operation]) => operation === 'payrollImport.findMany')[1];
   assert.equal(payrollCall.where.competenceMonth, 8);
@@ -108,7 +119,12 @@ test('informa a competência e a unidade quando não há folha para refletir', a
 });
 
 test('visão global aponta somente as unidades sem folha na competência anterior', async () => {
-  payrollImports = [{ unit: 'SBC', entries: [payrollEntry({ id: 'sbc-entry' })] }];
+  payrollImports = [{
+    id: 'import-sbc',
+    unit: 'SBC',
+    updatedAt: new Date('2026-09-12T13:00:00.000Z'),
+    entries: [payrollEntry({ id: 'sbc-entry' })],
+  }];
   const response = await GET(request('all', { admin: true }, 'ADMINISTRADOR'));
   const body = await response.json();
 

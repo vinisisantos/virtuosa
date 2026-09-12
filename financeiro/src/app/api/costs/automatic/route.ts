@@ -9,6 +9,7 @@ import {
   utcMonthRange,
 } from '@/lib/automatic-costs';
 import { calculatePayrollLegalFigures, calculatePayrollTotal } from '@/lib/payroll-adjustments';
+import { buildPayrollRevision } from '@/lib/payroll-sync';
 import { ACTIVE_UNITS } from '@/lib/role-access';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
@@ -29,6 +30,7 @@ type PayrollEntrySummary = {
   total: number;
   paymentStatus: string;
   paymentDate: Date | null;
+  updatedAt: Date;
 };
 
 export async function GET(request: NextRequest) {
@@ -76,7 +78,9 @@ export async function GET(request: NextRequest) {
           ...unitWhere,
         },
         select: {
+          id: true,
           unit: true,
+          updatedAt: true,
           entries: {
             select: {
               id: true,
@@ -86,6 +90,7 @@ export async function GET(request: NextRequest) {
               bonus: true,
               paymentStatus: true,
               paymentDate: true,
+              updatedAt: true,
               employmentType: true,
               hasFgts: true,
               hazardPayRate: true,
@@ -120,6 +125,7 @@ export async function GET(request: NextRequest) {
           costRecognizedAt: true,
           status: true,
           unit: true,
+          updatedAt: true,
         },
         orderBy: [
           { costRecognizedAt: 'asc' },
@@ -178,6 +184,7 @@ export async function GET(request: NextRequest) {
             total: salary + fgts,
             paymentStatus: entry.paymentStatus,
             paymentDate: entry.paymentDate,
+            updatedAt: entry.updatedAt,
           });
         }
 
@@ -216,6 +223,19 @@ export async function GET(request: NextRequest) {
     const expectedPayrollUnits = effectiveUnitFilter ? [effectiveUnitFilter] : [...ACTIVE_UNITS];
 
     return NextResponse.json({
+      payrollRevision: buildPayrollRevision(payrollImports),
+      automaticCostsRevision: buildPayrollRevision([
+        ...payrollImports.map(payrollImport => ({
+          id: `payroll:${payrollImport.id}`,
+          unit: payrollImport.unit,
+          updatedAt: payrollImport.updatedAt,
+        })),
+        ...productOrders.map(order => ({
+          id: `order:${order.id}`,
+          unit: order.unit || '(sem unidade)',
+          updatedAt: order.updatedAt,
+        })),
+      ]),
       payroll,
       payrollCompetence,
       missingPayrollUnits: expectedPayrollUnits.filter(unit => !availablePayrollUnits.has(unit)),

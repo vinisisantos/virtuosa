@@ -1,30 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getUserFromHeaders } from '@/lib/auth';
-import { prisma } from '@/lib/db';
+import { NextRequest } from 'next/server';
+import { mutatePayrollEntryBooleanFlag } from '@/lib/payroll-entry-flag-mutation';
 
 export async function PATCH(request: NextRequest) {
-    const user = getUserFromHeaders(request);
-    if (!user) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 });
-    if (!user.isAdmin && !user.permissions?.financeiro)
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
-    try {
-        const body = await request.json();
-        const { id, hasPenalty } = body;
-
-        if (!id || typeof hasPenalty !== 'boolean') {
-            return NextResponse.json({ error: 'ID e status de multa obrigatórios' }, { status: 400 });
-        }
-
-        const entry = await prisma.payrollEntry.update({
-            where: { id },
-            data: {
-                hasPenalty,
-            },
-        });
-
-        return NextResponse.json(entry);
-    } catch (err) {
-        console.error('Penalty toggle error:', err);
-        return NextResponse.json({ error: 'Erro ao atualizar multa' }, { status: 500 });
-    }
+    return mutatePayrollEntryBooleanFlag(request, {
+        field: 'hasPenalty',
+        missingFieldsMessage: 'ID e status de multa obrigatórios',
+        failureMessage: 'Erro ao atualizar multa',
+    });
 }

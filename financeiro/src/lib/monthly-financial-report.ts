@@ -1,5 +1,6 @@
 import type { Bill, FixedExpense, LogEntry } from '@/hooks/useDashboard';
 import { recurringCostOccurrencesInMonth, resolveRecurringCostsInMonth } from '@/lib/cost-recurrence';
+import { costEntryMatchesMonth } from '@/lib/cost-reference-month';
 import { isManualRevenue, isOperationalSale, isRevenuePending, isRevenueReceived } from '@/lib/revenue';
 
 const MONTHS = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
@@ -95,7 +96,6 @@ function consolidateSalaryExpenses(expenses: ReportExpense[]) {
 
 function collectReportData(input: MonthlyFinancialReportInput) {
   const { selectedMonth, selectedYear, selectedUnit } = input;
-  const monthKey = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}`;
   const periodLogs = input.logs.filter(log =>
     matchesUnit(log.unit, selectedUnit) && isInMonth(log.date, selectedYear, selectedMonth)
   );
@@ -134,10 +134,7 @@ function collectReportData(input: MonthlyFinancialReportInput) {
     .filter(bill => matchesUnit(bill.unit, selectedUnit))
     .forEach(bill => {
       if (bill.type === 'variavel') {
-        const belongsToMonth = bill.refMonth
-          ? bill.refMonth === monthKey
-          : isInMonth(bill.dueDateManual || undefined, selectedYear, selectedMonth);
-        if (!belongsToMonth) return;
+        if (!costEntryMatchesMonth(bill.refMonth, bill.dueDateManual, selectedYear, selectedMonth)) return;
       }
       const day = Math.min(bill.dueDay || 1, new Date(selectedYear, selectedMonth + 1, 0).getDate());
       const dueDate = bill.type === 'fixo'

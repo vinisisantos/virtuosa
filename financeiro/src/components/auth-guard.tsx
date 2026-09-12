@@ -40,7 +40,7 @@ export default function AuthGuard({ children, allowedRoles, requiredPermission, 
                 const user = data.user;
                 const role = user.role || 'VENDEDOR';
                 const permissions = user.permissions || {};
-                const isAdmin = role === 'ADMINISTRADOR';
+                const isAdmin = role === 'ADMINISTRADOR' || permissions.admin === true;
 
                 // Keep localStorage in sync with server-verified data
                 localStorage.setItem('virtuosa_user', JSON.stringify(user));

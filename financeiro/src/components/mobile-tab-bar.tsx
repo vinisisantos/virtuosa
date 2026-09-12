@@ -18,7 +18,7 @@ const TABS: TabItem[] = [
     { key: 'agenda', label: 'Agenda', icon: 'calendar_month', href: '/agenda', matchPaths: ['/agenda'] },
     { key: 'vendas', label: 'Vendas', icon: 'point_of_sale', href: '/pacotes', matchPaths: ['/pacotes'] },
     { key: 'dashboard', label: 'Dashboard', icon: 'dashboard', href: '/dashboard?tab=dashboard', matchPaths: ['/dashboard'] },
-    { key: 'financeiro', label: 'Financeiro', icon: 'account_balance', href: '/pagamentos', matchPaths: ['/pagamentos', '/estoque', '/pedidos'] },
+    { key: 'financeiro', label: 'Financeiro', icon: 'account_balance', href: '/pagamentos', matchPaths: ['/pagamentos', '/estoque', '/pedidos', '/dre'] },
     { key: 'more', label: 'Mais', icon: 'menu', href: '#more', matchPaths: [] },
 ];
 
@@ -84,6 +84,7 @@ const MORE_SECTIONS: MoreSection[] = [
             { label: 'Adiantamento', icon: 'account_balance_wallet', href: '/?tab=adiantamento' },
             { label: 'Reembolso', icon: 'receipt_long', href: '/?tab=reembolso' },
             { label: 'Custos', icon: 'account_balance', href: '/?tab=custos' },
+            { label: 'DRE gerencial', icon: 'query_stats', href: '/dre' },
         ],
     },
     {
@@ -130,7 +131,7 @@ export function MobileTabBar() {
             if (userStr) {
                 const user = JSON.parse(userStr);
                 setPermissions(user.permissions || {});
-                setIsAdmin(user.role === 'ADMINISTRADOR');
+                setIsAdmin(user.role === 'ADMINISTRADOR' || user.permissions?.admin === true);
             }
         } catch (e) {}
 
@@ -183,6 +184,7 @@ export function MobileTabBar() {
                                 if (item.href.startsWith('/agenda') || item.href.startsWith('/atendimentos')) return permissions.agenda === true;
                                 if (item.href.startsWith('/pacotes') || item.href.startsWith('/calculadora')) return permissions.pedidos === true;
                                 if (item.href.startsWith('/clientes') || item.href.startsWith('/crm') || item.href.startsWith('/ouvidoria')) return permissions.crm === true;
+                                if (item.href.startsWith('/dre')) return permissions.financeiro === true || permissions.finCustos === true || permissions.finAnalise === true;
                                 if (item.href.startsWith('/pagamentos') || item.href.startsWith('/estoque') || item.href.startsWith('/pedidos') || item.href.startsWith('/?tab')) return permissions.financeiro === true || permissions.pedidos === true;
                                 if (item.href.startsWith('/relatorios')) return permissions.dashboardRelatorios === true;
                                 if (item.href.startsWith('/termos') || item.href.startsWith('/contratos') || item.href.startsWith('/docs/')) return permissions.termos === true;

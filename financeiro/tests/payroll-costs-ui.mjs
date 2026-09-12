@@ -45,6 +45,7 @@ function automaticCosts(paymentStatus, paymentDate) {
         total: 2700,
         paymentStatus,
         paymentDate,
+        updatedAt: '2026-09-12T14:00:00.000Z',
       }],
     },
     productOrders: [],
@@ -138,7 +139,12 @@ try {
     await page.waitForFunction(() => [...document.querySelectorAll('h3')].some(element => element.textContent === 'Confirmar pagamento'));
     await clickLastExactText(page, 'button', 'Confirmar');
     await page.waitForFunction(() => document.body.textContent?.includes('Desfazer pagamento'));
-    assert.deepEqual(mutations.at(-1), { id: 'entry-1', unit: 'Osasco', paymentStatus: 'paid' });
+    assert.deepEqual(mutations.at(-1), {
+      id: 'entry-1',
+      unit: 'Osasco',
+      paymentStatus: 'paid',
+      expectedUpdatedAt: '2026-09-12T14:00:00.000Z',
+    });
 
     await pause(100);
     await page.screenshot({ path: join(output, `costs-${width}.png`), fullPage: true });

@@ -29,6 +29,14 @@ function scalarEntry(entry) {
 
 globalThis.prisma = {
   $transaction: async callback => callback(globalThis.prisma),
+  $queryRaw: async (...args) => {
+    calls.push(['queryRaw', args]);
+    return [];
+  },
+  $executeRaw: async (...args) => {
+    calls.push(['executeRaw', args]);
+    return 1;
+  },
   payrollEntry: {
     findFirst: async args => {
       calls.push(['findFirst', args]);
@@ -92,6 +100,7 @@ beforeEach(() => {
     netSalary: 1000,
     paymentStatus: 'unpaid',
     paymentDate: null,
+    updatedAt: new Date('2026-09-12T11:00:00.000Z'),
     payrollImport: {
       id: 'import-1',
       unit: 'Osasco',
@@ -172,6 +181,7 @@ test('corrige status pago sem data sem trocar uma data já válida', () => {
 test('confirmação individual aceita Financeiro e Custos, mas não Análise', async () => {
   const financeResponse = await PATCH(request('PATCH', {
     id: 'entry-1', paymentStatus: 'paid', unit: 'Osasco',
+    expectedUpdatedAt: '2026-09-12T11:00:00.000Z',
   }));
   assert.equal(financeResponse.status, 200);
   assert.equal(calls.filter(([operation]) => operation === 'updateMany').length, 1);
@@ -180,8 +190,10 @@ test('confirmação individual aceita Financeiro e Custos, mas não Análise', a
   calls = [];
   currentEntry.paymentStatus = 'unpaid';
   currentEntry.paymentDate = null;
+  currentEntry.updatedAt = new Date('2026-09-12T11:00:00.000Z');
   const costsResponse = await PATCH(request('PATCH', {
     id: 'entry-1', paymentStatus: 'paid', unit: 'Osasco',
+    expectedUpdatedAt: '2026-09-12T11:00:00.000Z',
   }, { permissions: { finCustos: true } }));
   assert.equal(costsResponse.status, 200);
 
@@ -196,6 +208,7 @@ test('confirmação individual aceita Financeiro e Custos, mas não Análise', a
 test('confirmação individual filtra e grava pela unidade da relação', async () => {
   const response = await PATCH(request('PATCH', {
     id: 'entry-1', paymentStatus: 'paid', unit: 'Osasco',
+    expectedUpdatedAt: '2026-09-12T11:00:00.000Z',
   }));
 
   assert.equal(response.status, 200);
@@ -203,6 +216,47 @@ test('confirmação individual filtra e grava pela unidade da relação', async 
   const write = calls.find(([operation]) => operation === 'updateMany')[1];
   assert.equal(read.where.payrollImport.unit, 'Osasco');
   assert.equal(write.where.payrollImport.unit, 'Osasco');
+  assert.equal(write.where.updatedAt.toISOString(), '2026-09-12T11:00:00.000Z');
+  assert.equal(calls.filter(([operation]) => operation === 'executeRaw').length, 1);
+});
+
+test('confirmação individual exige a versão sem sobrescrever a fotografia atual', async () => {
+  const response = await PATCH(request('PATCH', {
+    id: 'entry-1', paymentStatus: 'paid', unit: 'Osasco',
+  }));
+  const body = await response.json();
+
+  assert.equal(response.status, 428);
+  assert.equal(body.code, 'PAYROLL_VERSION_REQUIRED');
+  assert.equal(body.reloadRequired, true);
+  assert.equal(calls.filter(([operation]) => operation === 'updateMany').length, 0);
+  assert.equal(calls.filter(([operation]) => operation === 'activityLog').length, 0);
+});
+
+test('retorna 409 e não sobrescreve pagamento baseado em versão antiga', async () => {
+  const response = await PATCH(request('PATCH', {
+    id: 'entry-1',
+    paymentStatus: 'paid',
+    unit: 'Osasco',
+    expectedUpdatedAt: '2026-09-12T10:59:59.000Z',
+  }));
+  const body = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(body.code, 'PAYROLL_VERSION_CONFLICT');
+  assert.equal(body.reloadRequired, true);
+  assert.equal(calls.filter(([operation]) => operation === 'updateMany').length, 0);
+  assert.equal(calls.filter(([operation]) => operation === 'activityLog').length, 0);
+  assert.equal(calls.filter(([operation]) => operation === 'executeRaw').length, 0);
+});
+
+test('rejeita unidade fora do conjunto ativo antes de consultar a folha', async () => {
+  const response = await PATCH(request('PATCH', {
+    id: 'entry-1', paymentStatus: 'paid', unit: 'Barueri',
+  }));
+
+  assert.equal(response.status, 400);
+  assert.equal(calls.length, 0);
 });
 
 test('bloqueia ID de folha pertencente a outra unidade antes de escrever', async () => {
@@ -223,6 +277,7 @@ test('repetir o mesmo estado não redata nem duplica auditoria', async () => {
 
   const response = await PATCH(request('PATCH', {
     id: 'entry-1', paymentStatus: 'paid', unit: 'Osasco',
+    expectedUpdatedAt: '2026-09-12T11:00:00.000Z',
   }));
   const body = await response.json();
 
@@ -237,10 +292,12 @@ test('lote misto é abortado se contiver folha de unidade não permitida', async
   batchEntries = [
     {
       id: 'osasco-entry', paymentStatus: 'unpaid', paymentDate: null,
+      updatedAt: new Date('2026-09-12T11:00:00.000Z'),
       payrollImport: { id: 'osasco-import', unit: 'Osasco', competenceMonth: 8, competenceYear: 2026 },
     },
     {
       id: 'sbc-entry', paymentStatus: 'unpaid', paymentDate: null,
+      updatedAt: new Date('2026-09-12T11:00:00.000Z'),
       payrollImport: { id: 'sbc-import', unit: 'SBC', competenceMonth: 8, competenceYear: 2026 },
     },
   ];
@@ -250,4 +307,96 @@ test('lote misto é abortado se contiver folha de unidade não permitida', async
   assert.equal(response.status, 403);
   assert.equal(calls.filter(([operation]) => operation === 'updateMany').length, 0);
   assert.equal(calls.filter(([operation]) => operation === 'activityLog').length, 0);
+});
+
+test('lote confirmado toca a revisão de cada competência alterada', async () => {
+  batchEntries = [
+    {
+      id: 'entry-1', paymentStatus: 'unpaid', paymentDate: null,
+      updatedAt: new Date('2026-09-12T11:00:00.000Z'),
+      payrollImport: { id: 'import-1', unit: 'Osasco', competenceMonth: 8, competenceYear: 2026 },
+    },
+    {
+      id: 'entry-2', paymentStatus: 'review', paymentDate: null,
+      updatedAt: new Date('2026-09-12T11:05:00.000Z'),
+      payrollImport: { id: 'import-1', unit: 'Osasco', competenceMonth: 8, competenceYear: 2026 },
+    },
+  ];
+
+  const response = await POST(request('POST', {
+    ids: ['entry-1', 'entry-2'], unit: 'Osasco',
+    expectedUpdatedAtById: {
+      'entry-1': '2026-09-12T11:00:00.000Z',
+      'entry-2': '2026-09-12T11:05:00.000Z',
+    },
+  }));
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.updatedCount, 2);
+  assert.equal(calls.filter(([operation]) => operation === 'queryRaw').length, 1);
+  assert.equal(calls.filter(([operation]) => operation === 'activityLog').length, 1);
+  assert.equal(calls.filter(([operation]) => operation === 'executeRaw').length, 1);
+});
+
+test('lote exige a versão de cada lançamento que será alterado', async () => {
+  batchEntries = [{
+    id: 'entry-1', paymentStatus: 'unpaid', paymentDate: null,
+    updatedAt: new Date('2026-09-12T11:00:00.000Z'),
+    payrollImport: { id: 'import-1', unit: 'Osasco', competenceMonth: 8, competenceYear: 2026 },
+  }];
+
+  const response = await POST(request('POST', { ids: ['entry-1'], unit: 'Osasco' }));
+  const body = await response.json();
+
+  assert.equal(response.status, 428);
+  assert.equal(body.code, 'PAYROLL_VERSION_REQUIRED');
+  assert.equal(calls.filter(([operation]) => operation === 'updateMany').length, 0);
+  assert.equal(calls.filter(([operation]) => operation === 'executeRaw').length, 0);
+});
+
+test('lote retorna conflito sem sobrescrever se alguma versão ficou antiga', async () => {
+  batchEntries = [{
+    id: 'entry-1', paymentStatus: 'unpaid', paymentDate: null,
+    updatedAt: new Date('2026-09-12T11:00:00.000Z'),
+    payrollImport: { id: 'import-1', unit: 'Osasco', competenceMonth: 8, competenceYear: 2026 },
+  }];
+
+  const response = await POST(request('POST', {
+    ids: ['entry-1'],
+    unit: 'Osasco',
+    expectedUpdatedAtById: { 'entry-1': '2026-09-12T10:59:00.000Z' },
+  }));
+  const body = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(body.code, 'PAYROLL_VERSION_CONFLICT');
+  assert.equal(calls.filter(([operation]) => operation === 'updateMany').length, 0);
+  assert.equal(calls.filter(([operation]) => operation === 'executeRaw').length, 0);
+});
+
+test('lote aceita Financeiro e rejeita permissões inexistentes ou somente Custos', async () => {
+  batchEntries = [{
+    id: 'entry-1', paymentStatus: 'unpaid', paymentDate: null,
+    updatedAt: new Date('2026-09-12T11:00:00.000Z'),
+    payrollImport: { id: 'import-1', unit: 'Osasco', competenceMonth: 8, competenceYear: 2026 },
+  }];
+  const body = {
+    ids: ['entry-1'],
+    unit: 'Osasco',
+    expectedUpdatedAtById: { 'entry-1': '2026-09-12T11:00:00.000Z' },
+  };
+
+  const financeResponse = await POST(request('POST', body, { permissions: { financeiro: true } }));
+  assert.equal(financeResponse.status, 200);
+
+  calls = [];
+  const legacyResponse = await POST(request('POST', body, { permissions: { finFolha: true } }));
+  assert.equal(legacyResponse.status, 403);
+  assert.equal(calls.length, 0);
+
+  calls = [];
+  const costsResponse = await POST(request('POST', body, { permissions: { finCustos: true } }));
+  assert.equal(costsResponse.status, 403);
+  assert.equal(calls.length, 0);
 });

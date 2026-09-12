@@ -36,11 +36,11 @@
   .monthButton, .activeMonth { min-width: 45px; padding: 0 9px; }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
   .wrapper { min-height: 58px; margin-bottom: 14px; border-radius: 15px; justify-content: space-between; padding: 7px 10px; }
   .desktopMonths, .year { display: none; }
   .mobileCompetence { display: flex; align-items: center; justify-content: center; gap: 7px; }
-  .mobileCompetence select { appearance: none; border: 0; background: transparent; color: var(--text-main); font-family: inherit; font-size: .86rem; font-weight: 800; padding: 8px 2px; text-align: right; outline: 0; }
+  .mobileCompetence select { min-height: 44px; appearance: none; border: 0; background: transparent; color: var(--text-main); font-family: inherit; font-size: .86rem; font-weight: 800; padding: 8px 2px; text-align: right; outline: 0; }
   .mobileCompetence strong { color: var(--text-muted); font-size: .82rem; }
   .navButton { width: 44px; height: 44px; }
 }

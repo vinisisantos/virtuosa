@@ -23,6 +23,13 @@ import {
 } from '@/lib/product-expense-items';
 import { costEntryMatchesMonth, normalizeCostReferenceMonth, resolveCostReferenceMonth } from '@/lib/cost-reference-month';
 import { resolveCostEntryUnit } from '@/lib/cost-entry-unit';
+import { previousCompetence } from '@/lib/automatic-costs';
+import {
+  normalizePayrollSyncUnit,
+  payrollSyncSignalAffectsScope,
+  publishPayrollSync,
+  subscribePayrollSync,
+} from '@/lib/payroll-client-sync';
 
 /* ─── Types ─── */
 interface CostRow {
@@ -61,6 +68,7 @@ interface AutomaticPayrollEntry {
   total: number;
   paymentStatus: string;
   paymentDate: string | null;
+  updatedAt: string;
 }
 
 interface AutomaticPayrollCost {
@@ -90,6 +98,8 @@ interface AutomaticProductOrder {
 }
 
 interface AutomaticCostsResponse {
+  payrollRevision?: { revision: string; lastModifiedAt: string | null };
+  automaticCostsRevision?: { revision: string; lastModifiedAt: string | null };
   payroll: AutomaticPayrollCost | null;
   payrollCompetence: { month: number; year: number };
   missingPayrollUnits: string[];
@@ -462,9 +472,19 @@ function ProductCostsView({
 /* ═══════════════════════════════════════════ */
 /* ─── MAIN COMPONENT ─── */
 /* ═══════════════════════════════════════════ */
-export function CustosUnificado({ d }: { d: any }) {
+type CostsViewMode = 'pagamentos' | 'produtos' | 'receitas' | 'calendario' | 'lucratividade';
+
+export function CustosUnificado({
+  d,
+  initialView = 'pagamentos',
+  dreOnly = false,
+}: {
+  d: any;
+  initialView?: CostsViewMode;
+  dreOnly?: boolean;
+}) {
   /* ─── UI state ─── */
-  const [viewMode, setViewMode] = useState<'pagamentos' | 'produtos' | 'receitas' | 'calendario' | 'lucratividade'>('pagamentos');
+  const [viewMode, setViewMode] = useState<CostsViewMode>(initialView);
   const [filterStatus, setFilterStatus] = useState<'all' | 'pago' | 'pendente'>('all');
   const [filterType, setFilterType] = useState<'all' | 'fixo' | 'variavel'>('all');
   const [showAddForm, setShowAddForm] = useState(false);
@@ -480,14 +500,29 @@ export function CustosUnificado({ d }: { d: any }) {
   const [productFreight, setProductFreight] = useState('');
   const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [generatingReport, setGeneratingReport] = useState(false);
-  const [automaticCosts, setAutomaticCosts] = useState<AutomaticCostsResponse | null>(null);
+  const [automaticCostsSnapshot, setAutomaticCosts] = useState<AutomaticCostsResponse | null>(null);
   const [loadingAutomaticCosts, setLoadingAutomaticCosts] = useState(true);
-  const [automaticCostsError, setAutomaticCostsError] = useState<string | null>(null);
+  const [automaticCostsErrorSnapshot, setAutomaticCostsError] = useState<string | null>(null);
   const [expandedAutomaticRows, setExpandedAutomaticRows] = useState<Set<string>>(new Set());
   const [automaticCostsRefreshVersion, setAutomaticCostsRefreshVersion] = useState(0);
   const [payrollPaymentBusyId, setPayrollPaymentBusyId] = useState('');
   const [canOpenOrders] = useState(storedUserCanAccessOrders);
   const automaticCostsScopeRef = useRef('');
+  const automaticCostsRef = useRef<AutomaticCostsResponse | null>(null);
+  const payrollRevisionRef = useRef<{ scope: string; revision: string | null }>({
+    scope: '',
+    revision: null,
+  });
+  const pendingPayrollRevisionRef = useRef<{ scope: string; revision: string } | null>(null);
+  const requestedAutomaticCostsScope = `${normalizePayrollSyncUnit(d.selectedUnit)}:${d.selectedYear}-${d.selectedMonth + 1}`;
+  const visibleAutomaticCostsScopeRef = useRef(requestedAutomaticCostsScope);
+  visibleAutomaticCostsScopeRef.current = requestedAutomaticCostsScope;
+  const automaticCosts = automaticCostsScopeRef.current === requestedAutomaticCostsScope
+    ? automaticCostsSnapshot
+    : null;
+  const automaticCostsError = automaticCostsScopeRef.current === requestedAutomaticCostsScope
+    ? automaticCostsErrorSnapshot
+    : null;
 
   const isProductExpense = isProductExpenseCategory(addCategory);
   const calculatedProductItems = useMemo(() => productItems.map(item => ({
@@ -501,18 +536,26 @@ export function CustosUnificado({ d }: { d: any }) {
   useEffect(() => {
     const controller = new AbortController();
     const loadAutomaticCosts = async () => {
-      const scope = `${d.selectedUnit}:${d.selectedYear}-${d.selectedMonth + 1}`;
+      const normalizedUnit = normalizePayrollSyncUnit(d.selectedUnit);
+      const scope = `${normalizedUnit}:${d.selectedYear}-${d.selectedMonth + 1}`;
+      const competence = previousCompetence({ month: d.selectedMonth + 1, year: d.selectedYear });
+      const payrollScope = `${normalizedUnit}:${competence.year}-${competence.month}`;
       const scopeChanged = automaticCostsScopeRef.current !== scope;
       automaticCostsScopeRef.current = scope;
       setLoadingAutomaticCosts(true);
-      if (scopeChanged) setAutomaticCosts(null);
+      if (scopeChanged) {
+        automaticCostsRef.current = null;
+        setAutomaticCosts(null);
+        payrollRevisionRef.current = { scope: payrollScope, revision: null };
+        pendingPayrollRevisionRef.current = null;
+      }
       setAutomaticCostsError(null);
       if (scopeChanged) setExpandedAutomaticRows(new Set());
       try {
         const params = new URLSearchParams({
           month: String(d.selectedMonth + 1),
           year: String(d.selectedYear),
-          unit: d.selectedUnit,
+          unit: normalizedUnit,
         });
         const response = await fetch(`/api/costs/automatic?${params.toString()}`, {
           cache: 'no-store',
@@ -520,10 +563,21 @@ export function CustosUnificado({ d }: { d: any }) {
         });
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error || 'Não foi possível carregar os custos automáticos.');
+        if (automaticCostsScopeRef.current !== scope) return;
+        automaticCostsRef.current = payload;
         setAutomaticCosts(payload);
+        payrollRevisionRef.current = {
+          scope: payrollScope,
+          revision: typeof payload.automaticCostsRevision?.revision === 'string'
+            ? payload.automaticCostsRevision.revision
+            : typeof payload.payrollRevision?.revision === 'string'
+              ? payload.payrollRevision.revision
+            : null,
+        };
+        pendingPayrollRevisionRef.current = null;
       } catch (error) {
         if (controller.signal.aborted) return;
-        setAutomaticCosts(null);
+        pendingPayrollRevisionRef.current = null;
         setAutomaticCostsError(error instanceof Error ? error.message : 'Não foi possível carregar os custos automáticos.');
       } finally {
         if (!controller.signal.aborted) setLoadingAutomaticCosts(false);
@@ -533,7 +587,95 @@ export function CustosUnificado({ d }: { d: any }) {
     return () => controller.abort();
   }, [automaticCostsRefreshVersion, d.selectedMonth, d.selectedUnit, d.selectedYear]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const competence = previousCompetence({
+      month: d.selectedMonth + 1,
+      year: d.selectedYear,
+    });
+    const normalizedUnit = normalizePayrollSyncUnit(d.selectedUnit);
+    const scope = `${normalizedUnit}:${competence.year}-${competence.month}`;
+    if (payrollRevisionRef.current.scope !== scope) {
+      payrollRevisionRef.current = { scope, revision: null };
+      pendingPayrollRevisionRef.current = null;
+    }
+    let checking = false;
+
+    const checkPayrollRevision = async () => {
+      if (document.visibilityState !== 'visible' || checking) return;
+      checking = true;
+      try {
+        const params = new URLSearchParams({
+          month: String(competence.month),
+          year: String(competence.year),
+          unit: normalizedUnit,
+          costMonth: String(d.selectedMonth + 1),
+          costYear: String(d.selectedYear),
+        });
+        const response = await fetch(`/api/payroll/revision?${params.toString()}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        if (!response.ok) return;
+
+        const payload = await response.json();
+        if (typeof payload.revision !== 'string') return;
+
+        const current = payrollRevisionRef.current;
+        if (current.scope !== scope) return;
+        // O baseline vem da mesma consulta que calculou os custos. Nunca
+        // associamos uma revisão nova a uma fotografia antiga.
+        if (current.revision === null) return;
+        if (current.revision !== payload.revision) {
+          const pending = pendingPayrollRevisionRef.current;
+          if (pending?.scope === scope && pending.revision === payload.revision) return;
+          pendingPayrollRevisionRef.current = { scope, revision: payload.revision };
+          setAutomaticCostsRefreshVersion(version => version + 1);
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.warn('Não foi possível verificar a revisão remota da folha.', error);
+        }
+      } finally {
+        checking = false;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void checkPayrollRevision();
+    };
+    const handleFocus = () => void checkPayrollRevision();
+    const handlePageShow = () => void checkPayrollRevision();
+    const unsubscribePayrollSync = subscribePayrollSync(signal => {
+      if (!payrollSyncSignalAffectsScope(signal, {
+        competenceMonth: competence.month,
+        competenceYear: competence.year,
+        unit: normalizedUnit,
+      })) return;
+      if (document.visibilityState !== 'visible') return;
+      // O sinal pode representar uma unidade dentro da visão global; a nova
+      // fotografia completa fornece a revisão composta autoritativa.
+      setAutomaticCostsRefreshVersion(version => version + 1);
+    });
+    const interval = window.setInterval(() => void checkPayrollRevision(), 60_000);
+
+    void checkPayrollRevision();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      unsubscribePayrollSync();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, [d.selectedMonth, d.selectedUnit, d.selectedYear]);
+
   const togglePayrollPayment = async (entry: AutomaticPayrollEntry) => {
+    const actionScope = visibleAutomaticCostsScopeRef.current;
+    const payrollCompetence = automaticCostsRef.current?.payroll;
     const isPaid = entry.paymentStatus === 'paid';
     const confirmed = await confirmDialog({
       title: isPaid ? 'Desfazer pagamento' : 'Confirmar pagamento',
@@ -544,6 +686,10 @@ export function CustosUnificado({ d }: { d: any }) {
       variant: isPaid ? 'warning' : 'info',
     });
     if (!confirmed) return;
+    if (visibleAutomaticCostsScopeRef.current !== actionScope) {
+      toast('A unidade ou competência mudou. Confirme o pagamento novamente na tela atual.', 'warning');
+      return;
+    }
 
     setPayrollPaymentBusyId(entry.id);
     try {
@@ -554,11 +700,23 @@ export function CustosUnificado({ d }: { d: any }) {
           id: entry.id,
           unit: entry.unit,
           paymentStatus: isPaid ? 'unpaid' : 'paid',
+          expectedUpdatedAt: entry.updatedAt,
         }),
       });
       const payload = await response.json().catch(() => ({}));
+      if (response.status === 409 && payload.reloadRequired) {
+        setAutomaticCostsRefreshVersion(version => version + 1);
+      }
       if (!response.ok) throw new Error(payload.error || 'Não foi possível atualizar o pagamento');
       toast(isPaid ? 'Pagamento devolvido para pendente' : 'Pagamento confirmado', 'success');
+      if (payrollCompetence) {
+        publishPayrollSync({
+          competenceMonth: payrollCompetence.competenceMonth,
+          competenceYear: payrollCompetence.competenceYear,
+          unit: entry.unit,
+          revision: null,
+        });
+      }
       setAutomaticCostsRefreshVersion(version => version + 1);
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Não foi possível atualizar o pagamento', 'error');
@@ -1063,7 +1221,7 @@ export function CustosUnificado({ d }: { d: any }) {
   };
 
   const handleGenerateReport = async () => {
-    if (generatingReport || loadingAutomaticCosts || automaticCostsError) return;
+    if (generatingReport || loadingAutomaticCosts || automaticCostsError || d.backupLoading || d.backupError) return;
     setGeneratingReport(true);
     try {
       const { downloadMonthlyFinancialReport } = await import('@/lib/monthly-financial-report');
@@ -1091,28 +1249,34 @@ export function CustosUnificado({ d }: { d: any }) {
   const totalLancado = costRows.reduce((sum, row) => sum + row.recognizedPortion, 0);
   const totalDespesas = totalPendente + totalPago + totalLancado;
   const displayedExpenseRows = costRows.filter(row => !isProductExpenseCategory(row.category));
+  const dreDataUnavailable = viewMode === 'lucratividade'
+    && (d.backupLoading || Boolean(d.backupError) || !automaticCosts);
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', paddingBottom: 60, fontFamily: 'Inter, sans-serif' }}>
       
       {/* ─── TOP BAR ─── */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, gap: 12 }}>
-        <div style={{ flex: '1 1 220px', minWidth: 0 }}>
+      <div className="costs-topbar" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, gap: 12 }}>
+        <div className="costs-period" style={{ flex: '1 1 220px', minWidth: 0 }}>
           <PeriodSelector selectedMonth={d.selectedMonth} setSelectedMonth={d.setSelectedMonth} selectedYear={d.selectedYear} setSelectedYear={d.setSelectedYear} />
         </div>
         
-        <div style={{ display: 'flex', maxWidth: '100%', overflowX: 'auto', background: 'var(--card-bg)', borderRadius: 12, padding: 4, border: '1px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
-          <button onClick={() => setViewMode('pagamentos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'pagamentos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'pagamentos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'pagamentos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'pagamentos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Despesas</button>
-          <button onClick={() => setViewMode('produtos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'produtos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'produtos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'produtos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'produtos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Produtos</button>
-          <button onClick={() => setViewMode('receitas')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'receitas' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'receitas' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'receitas' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'receitas' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Receitas</button>
-          <button onClick={() => setViewMode('calendario')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'calendario' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'calendario' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'calendario' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'calendario' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Calendário</button>
-          <button onClick={() => setViewMode('lucratividade')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'lucratividade' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'lucratividade' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'lucratividade' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'lucratividade' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Resultado gerencial</button>
+        <div className="costs-view-tabs" role="tablist" aria-label="Visões de custos e DRE" style={{ display: 'flex', maxWidth: '100%', overflowX: 'auto', background: 'var(--card-bg)', borderRadius: 12, padding: 4, border: '1px solid var(--border)', boxShadow: '0 2px 8px rgba(0,0,0,0.02)' }}>
+          {!dreOnly && (
+            <>
+              <button role="tab" aria-selected={viewMode === 'pagamentos'} onClick={() => setViewMode('pagamentos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'pagamentos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'pagamentos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'pagamentos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'pagamentos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Despesas</button>
+              <button role="tab" aria-selected={viewMode === 'produtos'} onClick={() => setViewMode('produtos')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'produtos' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'produtos' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'produtos' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'produtos' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Produtos</button>
+              <button role="tab" aria-selected={viewMode === 'receitas'} onClick={() => setViewMode('receitas')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'receitas' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'receitas' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'receitas' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'receitas' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Receitas</button>
+              <button role="tab" aria-selected={viewMode === 'calendario'} onClick={() => setViewMode('calendario')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'calendario' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'calendario' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'calendario' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'calendario' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>Calendário</button>
+            </>
+          )}
+          <button role="tab" aria-selected={viewMode === 'lucratividade'} onClick={() => setViewMode('lucratividade')} style={{ padding: '8px 16px', border: 'none', background: viewMode === 'lucratividade' ? 'var(--bg)' : 'transparent', borderRadius: 8, color: viewMode === 'lucratividade' ? 'var(--text-main)' : 'var(--text-muted)', fontWeight: viewMode === 'lucratividade' ? 700 : 600, fontSize: '0.9rem', cursor: 'pointer', boxShadow: viewMode === 'lucratividade' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none', transition: 'all 0.2s' }}>DRE gerencial</button>
         </div>
 
-        <div style={{ display: 'flex', flex: '1 1 220px', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 }}>
-          <button onClick={handleGenerateReport} disabled={generatingReport || loadingAutomaticCosts || Boolean(automaticCostsError)} title={automaticCostsError ? 'Relatório indisponível enquanto os custos automáticos não carregarem' : 'Gerar relatório financeiro mensal em PDF'} style={{ display: 'flex', alignItems: 'center', gap: 7, border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 12, background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, fontFamily: 'inherit', cursor: generatingReport || loadingAutomaticCosts ? 'wait' : automaticCostsError ? 'not-allowed' : 'pointer', opacity: generatingReport || loadingAutomaticCosts || automaticCostsError ? 0.65 : 1 }}>
+        <div className="costs-actions" style={{ display: 'flex', flex: '1 1 220px', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 }}>
+          <button onClick={handleGenerateReport} disabled={generatingReport || loadingAutomaticCosts || Boolean(automaticCostsError) || d.backupLoading || Boolean(d.backupError)} title={automaticCostsError || d.backupError ? 'Relatório indisponível enquanto todos os dados financeiros não carregarem' : 'Gerar relatório financeiro mensal em PDF'} style={{ display: 'flex', alignItems: 'center', gap: 7, border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 12, background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, fontFamily: 'inherit', cursor: generatingReport || loadingAutomaticCosts || d.backupLoading ? 'wait' : automaticCostsError || d.backupError ? 'not-allowed' : 'pointer', opacity: generatingReport || loadingAutomaticCosts || automaticCostsError || d.backupLoading || d.backupError ? 0.65 : 1 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 19, color: '#ef4444' }}>picture_as_pdf</span>
-            {generatingReport ? 'Gerando...' : loadingAutomaticCosts ? 'Atualizando...' : 'Relatório PDF'}
+            {generatingReport ? 'Gerando...' : loadingAutomaticCosts || d.backupLoading ? 'Atualizando...' : 'Relatório PDF'}
           </button>
           {viewMode === 'pagamentos' && (
             <>
@@ -1137,7 +1301,16 @@ export function CustosUnificado({ d }: { d: any }) {
 
       {automaticCostsError && (
         <div role="alert" style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, border: '1px solid rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.08)', color: '#b45309', fontSize: '0.82rem', fontWeight: 650 }}>
-          Custos manuais carregados. {automaticCostsError}
+          {automaticCosts
+            ? 'Mantendo a última atualização válida dos custos automáticos. '
+            : 'Custos manuais carregados. '}
+          {automaticCostsError}
+        </div>
+      )}
+
+      {viewMode === 'lucratividade' && d.backupError && (
+        <div role="alert" style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, border: '1px solid rgba(239,68,68,0.28)', background: 'rgba(239,68,68,0.08)', color: '#b91c1c', fontSize: '0.82rem', fontWeight: 650 }}>
+          {d.backupError} O DRE foi bloqueado para não exibir totais incompletos.
         </div>
       )}
 
@@ -1149,7 +1322,29 @@ export function CustosUnificado({ d }: { d: any }) {
         </div>
       )}
 
-      {viewMode === 'lucratividade' ? (
+      {dreDataUnavailable ? (
+        <div
+          role={automaticCostsError || d.backupError ? 'alert' : 'status'}
+          style={{
+            minHeight: 180,
+            display: 'grid',
+            placeItems: 'center',
+            padding: 24,
+            border: '1px solid var(--border)',
+            borderRadius: 16,
+            background: 'var(--card-bg)',
+            color: 'var(--text-muted)',
+            textAlign: 'center',
+            fontWeight: 650,
+          }}
+        >
+          {automaticCostsError
+            ? 'Não foi possível atualizar os custos automáticos. Tente novamente para exibir o DRE sem valores incompletos.'
+            : d.backupError
+              ? 'Não foi possível carregar receitas e despesas. Atualize a página para tentar novamente.'
+              : 'Atualizando todos os valores do DRE…'}
+        </div>
+      ) : viewMode === 'lucratividade' ? (
         <LucratividadeView
           d={d}
           automaticFixedCosts={automaticCosts?.payroll?.total || 0}
@@ -1537,6 +1732,23 @@ export function CustosUnificado({ d }: { d: any }) {
         .product-expense-auto-title > span { color: var(--primary); font-size: 20px; }
         .product-expense-auto-title strong { display: block; font-size: 0.85rem; }
         .product-expense-auto-title p { margin: 3px 0 0; color: var(--text-muted); font-size: 0.72rem; line-height: 1.4; }
+        @media (max-width: 768px) {
+          .costs-topbar { align-items: stretch !important; }
+          .costs-period { flex-basis: 100% !important; }
+          .costs-period > div,
+          .costs-period > div > div { width: 100%; }
+          .costs-period > div > div { justify-content: space-between; }
+          .costs-view-tabs {
+            display: grid !important;
+            width: 100%;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            overflow: visible !important;
+          }
+          .costs-view-tabs button { min-width: 0; min-height: 44px; padding: 8px 10px !important; }
+          .costs-view-tabs button:last-child { grid-column: 1 / -1; }
+          .costs-actions { flex-basis: 100% !important; justify-content: stretch !important; }
+          .costs-actions > * { flex: 1 1 145px; min-height: 44px; justify-content: center; }
+        }
         .product-costs-view { display: grid; gap: 16px; }
         .product-costs-heading {
           display: flex;

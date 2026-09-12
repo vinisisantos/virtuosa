@@ -49,7 +49,13 @@ export const formGroupS:React.CSSProperties = { display:'flex', flexDirection:'c
 export const formHeaderS:React.CSSProperties = { display:'flex', alignItems:'center', gap:12, marginBottom:24 };
 
 /* ─── Hook ─── */
-export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } = {}) {
+export function useDashboard({
+  syncPayroll = true,
+  readOnly = false,
+}: {
+  syncPayroll?: boolean;
+  readOnly?: boolean;
+} = {}) {
   const now = new Date();
   
   // Read initial tab from URL query param (e.g., ?tab=sales)
@@ -103,6 +109,8 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
   const [showPopup, setShowPopup] = useState(true);
   const [showMiniBell, setShowMiniBell] = useState(false);
   const [isDashboardAdmin, setIsDashboardAdmin] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(true);
+  const [backupError, setBackupError] = useState<string | null>(null);
 
   // Sale form
   const [saleName,setSaleName]=useState(''); const [saleValue,setSaleValue]=useState(''); const [saleDate,setSaleDate]=useState('');
@@ -135,12 +143,14 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
       }
     } catch {}
     // Init from global unit selector
-    if (globalUnit && allowedUnits.includes(globalUnit)) {
-      setSaleUnit(globalUnit);
-      setCostUnit(globalUnit);
-      setFixedUnit(globalUnit);
-      setBillUnit(globalUnit);
-      setSelectedUnit(globalUnit);
+    if (typeof globalUnit === 'string' && allowedUnits.includes(globalUnit)) {
+      setSelectedUnit(globalUnit || 'all');
+      if (globalUnit) {
+        setSaleUnit(globalUnit);
+        setCostUnit(globalUnit);
+        setFixedUnit(globalUnit);
+        setBillUnit(globalUnit);
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalUnit, allowedUnits]);
@@ -149,12 +159,14 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
   useEffect(() => {
     const handler = (e: Event) => {
       const unit = (e as CustomEvent).detail;
-      if (unit && allowedUnits.includes(unit)) {
-        setSaleUnit(unit);
-        setCostUnit(unit);
-        setFixedUnit(unit);
-        setBillUnit(unit);
-        setSelectedUnit(unit);
+      if (typeof unit === 'string' && allowedUnits.includes(unit)) {
+        setSelectedUnit(unit || 'all');
+        if (unit) {
+          setSaleUnit(unit);
+          setCostUnit(unit);
+          setFixedUnit(unit);
+          setBillUnit(unit);
+        }
       }
     };
     window.addEventListener('virtuosa-unit-change', handler);
@@ -163,31 +175,54 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
 
   // Load data (IndexedDB for logs, localStorage for others, then server backup)
   useEffect(() => {
+    let cancelled = false;
+    setBackupLoading(true);
+    setBackupError(null);
     const loadData = async () => {
+      try {
       // Load logs from IndexedDB (auto-migrates from localStorage)
       const savedLogs = await idbLoadLogs(STORAGE_KEY_LOGS);
       let loadedLogs:LogEntry[] = savedLogs ? JSON.parse(savedLogs) : [];
       const sg = localStorage.getItem(STORAGE_KEY_GOALS);
       const sf = localStorage.getItem(STORAGE_KEY_FIXED);
       const sb = localStorage.getItem(STORAGE_KEY_BILLS);
+      let loadedGoals:Record<string,Record<string,number>> = sg ? JSON.parse(sg) : {};
+      let loadedFixed:FixedExpense[] = sf ? JSON.parse(sf) : [];
+      let loadedBills:Bill[] = sb ? JSON.parse(sb) : [];
 
-      // If no data anywhere, try to restore from server backup
+      // A tela de DRE e outras visões somente leitura sempre usam a última
+      // fotografia do servidor. Assim, um cache antigo de outro dispositivo
+      // nunca substitui silenciosamente os dados mais recentes.
       const hasLocalData = savedLogs || sg || sf || sb;
-      if (!hasLocalData) {
+      if (readOnly || !hasLocalData) {
         try {
           const backupRes = await fetch('/api/backup');
-          if (backupRes.ok) {
-            const backup = await backupRes.json();
-            if (backup.exists) {
+          if (!backupRes.ok) throw new Error(`Backup indisponível (${backupRes.status})`);
+          const backup = await backupRes.json();
+          if (backup.exists) {
               loadedLogs = backup.logs || [];
-              await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(loadedLogs));
-              if (backup.goals) { setGoals(backup.goals); localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(backup.goals)); }
-              if (backup.fixed) { setFixedExpenses(backup.fixed); localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(backup.fixed)); }
-              if (backup.bills) { setBills(backup.bills); localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(backup.bills)); }
+              loadedGoals = backup.goals || {};
+              loadedFixed = backup.fixed || [];
+              loadedBills = backup.bills || [];
+              if (!readOnly) {
+                await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(loadedLogs));
+                localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(loadedGoals));
+                localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(loadedFixed));
+                localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(loadedBills));
+              }
               console.log('[Backup] Dados restaurados do servidor:', backup.updatedAt);
-            }
+          } else if (readOnly) {
+            loadedLogs = [];
+            loadedGoals = {};
+            loadedFixed = [];
+            loadedBills = [];
           }
-        } catch (e) { console.warn('[Backup] Falha ao restaurar do servidor:', e); }
+        } catch (e) {
+          console.warn('[Backup] Falha ao restaurar do servidor:', e);
+          if (readOnly && !cancelled) {
+            setBackupError('Não foi possível carregar os dados financeiros mais recentes.');
+          }
+        }
       }
 
       if (syncPayroll) {
@@ -203,7 +238,7 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
 
       // ── One-time data cleanup: fix retorno/cortesia procedure obs fields ──
       const cleanupDone = localStorage.getItem('virtuosa_retorno_cleanup_v1');
-      if (!cleanupDone && loadedLogs.length > 0) {
+      if (!readOnly && !cleanupDone && loadedLogs.length > 0) {
         const TARGET_UNITS = ['SBC', 'Osasco'];
         const ZERO_PATTERNS = ['retorno', 'cortesia', 'brinde', 'avaliação', 'avaliacao'];
         const isZeroProc = (name: string) => ZERO_PATTERNS.some(p => name.toLowerCase().includes(p));
@@ -267,14 +302,14 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
         console.log('[Cleanup] Varredura de retorno/cortesia concluída.', fixedCount > 0 ? `${fixedCount} correções aplicadas.` : 'Nenhuma correção necessária.');
       }
       // EXCLUIR BARUERI OVERRIDE
+      if (cancelled) return;
       setLogs(loadedLogs);
-      if(sf) setFixedExpenses(JSON.parse(sf));
-      if(sb) setBills(JSON.parse(sb));
-
-      if(sg) setGoals(JSON.parse(sg));
+      setFixedExpenses(loadedFixed);
+      setBills(loadedBills);
+      setGoals(loadedGoals);
       // Migrate from v2 (single number per month) to v3 (per-unit)
       const sgOld = localStorage.getItem('virtuosa_goals_v2');
-      if(sgOld && !sg) {
+      if(!readOnly && sgOld && !sg) {
         try {
           const old:Record<string,number> = JSON.parse(sgOld);
           const migrated:Record<string,Record<string,number>> = {};
@@ -282,13 +317,21 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
           setGoals(migrated); localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(migrated));
         } catch {}
       }
+      } catch (error) {
+        console.warn('[Financeiro] Falha ao carregar dados locais ou backup:', error);
+        if (!cancelled) setBackupError('Não foi possível carregar os dados financeiros mais recentes.');
+      } finally {
+        if (!cancelled) setBackupLoading(false);
+      }
     };
-    loadData();
-  }, [syncPayroll]);
+    void loadData();
+    return () => { cancelled = true; };
+  }, [readOnly, syncPayroll]);
 
   // Auto-sync to server (debounced — waits 5s after last change)
   const syncTimerRef = useRef<NodeJS.Timeout|null>(null);
   useEffect(() => {
+    if (readOnly) return;
     if (!logs.length && !Object.keys(goals).length && !fixedExpenses.length && !bills.length) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(() => {
@@ -305,7 +348,7 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
         .catch(e => console.warn('[Backup] Auto-sync falhou:', e));
     }, 5000);
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
-  }, [logs, goals, fixedExpenses, bills]);
+  }, [logs, goals, fixedExpenses, bills, readOnly]);
 
   // Filtered logs — memoized to avoid recalculation on every render
   const filteredLogs = useMemo(() => logs.filter(item => {
@@ -911,7 +954,7 @@ export function useDashboard({ syncPayroll = true }: { syncPayroll?: boolean } =
     activeTab, setActiveTab, selectedMonth, setSelectedMonth, selectedYear, setSelectedYear,
     selectedUnit, setSelectedUnit, isDashboardAdmin, allowedUnits,
     // Data
-    logs, filteredLogs, fixedExpenses, bills, dueBills, smartAlerts,
+    logs, filteredLogs, fixedExpenses, bills, dueBills, smartAlerts, backupLoading, backupError,
     // Calculations
     totalRev, totalCost, balance, margin, currentGoal, goalPerc, sortedProcs,
     salesCount, ticketMedio, revVariation, monthlyEvolution, revenueByUnit, sortedCostCats,

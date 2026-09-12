@@ -1,0 +1,229 @@
+.root {
+  min-width: 0;
+  animation: dreFadeSlide 0.3s ease-out;
+}
+
+@keyframes dreFadeSlide {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding: 11px 13px;
+  border: 1px solid rgba(59, 130, 246, 0.22);
+  border-radius: 11px;
+  background: rgba(59, 130, 246, 0.07);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.notice > :global(.material-symbols-outlined) {
+  flex-shrink: 0;
+  color: #3b82f6;
+  font-size: 18px;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.kpiCard,
+.statement {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card-bg);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.kpiCard {
+  padding: 24px;
+}
+
+.kpiLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+.kpiLabel > :global(.material-symbols-outlined) {
+  flex-shrink: 0;
+  font-size: 18px;
+}
+
+.kpiValue {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-main);
+  font-size: clamp(1.45rem, 5vw, 1.8rem);
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+}
+
+.statement {
+  padding: 32px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.02);
+}
+
+.statement h2 {
+  margin: 0 0 24px;
+  color: var(--text-main);
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.statementRows {
+  display: grid;
+  gap: 16px;
+}
+
+.statementRow,
+.resultRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, max-content);
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.statementRow {
+  padding-bottom: 16px;
+  border-bottom: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.statementRow > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.statementRow > strong {
+  min-width: 0;
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  text-align: right;
+}
+
+.revenueLabel {
+  color: var(--text-main);
+  font-weight: 650;
+}
+
+.statementRow > .revenueValue {
+  color: #3b82f6;
+  font-weight: 800;
+}
+
+.pendingLabel,
+.statementRow > .pendingValue {
+  color: #f59e0b;
+}
+
+.statementRow > .pendingValue {
+  font-weight: 700;
+}
+
+.lastCostRow {
+  border-bottom-style: solid;
+}
+
+.resultRow {
+  padding-top: 8px;
+  color: var(--text-main);
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.resultValue {
+  min-width: 0;
+  text-align: right;
+}
+
+.resultValue > strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 1.4rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 900;
+}
+
+.resultValue > span {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.progress {
+  display: flex;
+  width: 100%;
+  height: 12px;
+  margin-top: 32px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #ef4444;
+}
+
+.progress > span:first-child {
+  background: var(--border);
+  opacity: 0.5;
+}
+
+.progress > span:last-child {
+  background: #22c55e;
+}
+
+.progressLegend {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+
+@media (max-width: 768px) {
+  .kpiCard {
+    padding: 18px;
+  }
+
+  .statement {
+    padding: 20px 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .statementRow,
+  .resultRow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+  }
+
+  .statementRow > strong,
+  .resultValue {
+    text-align: left;
+  }
+
+  .progressLegend {
+    font-size: 0.66rem;
+  }
+}

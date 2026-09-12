@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { formatCurrency } from '@/lib/currency';
+import { normalizePayrollSyncUnit, publishPayrollSync } from '@/lib/payroll-client-sync';
 import {
   AUTOMATIC_TRANSPORT_LABEL,
   CURRENT_MINIMUM_WAGE,
@@ -35,7 +36,7 @@ interface PayrollControlProps {
   competenceMonth: number;
   competenceYear: number;
   selectedUnit: string;
-  onRefresh: () => Promise<void>;
+  onRefresh: () => Promise<string | null>;
 }
 
 interface EmployeeFormState {
@@ -49,6 +50,8 @@ interface EmployeeFormState {
   hazardPayBase: string;
   transportDiscountEnabled: boolean;
   unit: string;
+  expectedUpdatedAt?: string;
+  scope: PayrollMutationScope;
 }
 
 interface AdjustmentDraft {
@@ -57,10 +60,24 @@ interface AdjustmentDraft {
   direction: PayrollAdjustmentDirection;
   value: string;
   label: string;
+  expectedEntryUpdatedAt: string;
+  scope: PayrollMutationScope;
+}
+
+interface PayrollMutationScope {
+  competenceMonth: number;
+  competenceYear: number;
+  unit: string;
 }
 
 const UNITS = ['Osasco', 'SBC', 'SCS'];
 const ADJUSTMENT_ORDER: PayrollAdjustmentKind[] = ['absence', 'award', 'transport', 'advance', 'discount', 'addition', 'other'];
+
+function samePayrollScope(left: PayrollMutationScope, right: PayrollMutationScope) {
+  return left.competenceMonth === right.competenceMonth
+    && left.competenceYear === right.competenceYear
+    && normalizePayrollSyncUnit(left.unit) === normalizePayrollSyncUnit(right.unit);
+}
 
 function initials(name: string) {
   return name
@@ -111,7 +128,13 @@ function parseCurrencyInput(value: string) {
 
 async function parseResponse(response: Response) {
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a operação');
+  if (!response.ok) {
+    const error = new Error(data.error || 'Não foi possível concluir a operação') as Error & {
+      reloadRequired?: boolean;
+    };
+    error.reloadRequired = response.status === 409 && data.reloadRequired === true;
+    throw error;
+  }
   return data;
 }
 
@@ -137,6 +160,51 @@ export function PayrollControl({
   const [employeeForm, setEmployeeForm] = useState<EmployeeFormState | null>(null);
   const [adjustmentDraft, setAdjustmentDraft] = useState<AdjustmentDraft | null>(null);
   const [busyKey, setBusyKey] = useState('');
+  const mountedRef = useRef(true);
+  const activeScopeRef = useRef<PayrollMutationScope>({ competenceMonth, competenceYear, unit: selectedUnit });
+  const modalScopeKeyRef = useRef(`${competenceYear}-${competenceMonth}:${normalizePayrollSyncUnit(selectedUnit)}`);
+
+  activeScopeRef.current = { competenceMonth, competenceYear, unit: selectedUnit };
+
+  const isActiveScope = (scope: PayrollMutationScope) => (
+    mountedRef.current && samePayrollScope(scope, activeScopeRef.current)
+  );
+
+  const handleMutationError = async (error: unknown, fallback: string, scope: PayrollMutationScope) => {
+    if (error instanceof Error && 'reloadRequired' in error && error.reloadRequired === true) {
+      if (isActiveScope(scope)) {
+        setEmployeeForm(null);
+        setAdjustmentDraft(null);
+        await onRefresh();
+      }
+    }
+    toast(error instanceof Error ? error.message : fallback, 'error');
+  };
+
+  const refreshAfterMutation = async (scope: PayrollMutationScope) => {
+    if (!isActiveScope(scope)) {
+      publishPayrollSync({ ...scope, revision: null });
+      return;
+    }
+
+    const revision = await onRefresh();
+    publishPayrollSync({ ...scope, revision });
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const scopeKey = `${competenceYear}-${competenceMonth}:${normalizePayrollSyncUnit(selectedUnit)}`;
+    if (modalScopeKeyRef.current === scopeKey) return;
+    modalScopeKeyRef.current = scopeKey;
+    setEmployeeForm(null);
+    setAdjustmentDraft(null);
+  }, [competenceMonth, competenceYear, selectedUnit]);
 
   useEffect(() => {
     if (loading) return;
@@ -179,6 +247,7 @@ export function PayrollControl({
   const hasUndefinedRegime = summary.undefinedRegimeCount > 0;
 
   const openNewEmployee = () => {
+    const scope = { competenceMonth, competenceYear, unit: selectedUnit };
     setEmployeeForm({
       employeeName: '',
       cargo: '',
@@ -189,10 +258,12 @@ export function PayrollControl({
       hazardPayBase: formatCurrencyInput(CURRENT_MINIMUM_WAGE),
       transportDiscountEnabled: false,
       unit: selectedUnit === 'all' ? 'Osasco' : selectedUnit,
+      scope,
     });
   };
 
   const openEditEmployee = (entry: PayrollEntryData) => {
+    const scope = { competenceMonth, competenceYear, unit: selectedUnit };
     setEmployeeForm({
       id: entry.id,
       employeeName: entry.employeeName,
@@ -206,11 +277,18 @@ export function PayrollControl({
         adjustment => adjustment.kind === 'transport' && adjustment.label === AUTOMATIC_TRANSPORT_LABEL,
       ),
       unit: selectedUnit === 'all' ? 'Osasco' : selectedUnit,
+      expectedUpdatedAt: entry.updatedAt,
+      scope,
     });
   };
 
   const saveEmployee = async () => {
     if (!employeeForm) return;
+    const mutationScope = employeeForm.scope;
+    if (!isActiveScope(mutationScope)) {
+      setEmployeeForm(null);
+      return toast('A competência ou a unidade mudou. Abra o cadastro novamente.', 'warning');
+    }
     const salary = parseCurrencyInput(employeeForm.salary);
     const bonus = parseCurrencyInput(employeeForm.bonus);
     const hazardPayBase = parseCurrencyInput(employeeForm.hazardPayBase);
@@ -228,7 +306,10 @@ export function PayrollControl({
         method: isEditing ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(isEditing ? { id: employeeForm.id } : {}),
+          ...(isEditing ? {
+            id: employeeForm.id,
+            expectedUpdatedAt: employeeForm.expectedUpdatedAt,
+          } : {}),
           employeeName: employeeForm.employeeName.trim(),
           cargo: employeeForm.cargo.trim() || null,
           netSalary: salary,
@@ -242,42 +323,44 @@ export function PayrollControl({
           transportDiscountEnabled: employeeForm.employmentType === 'CLT' && employeeForm.transportDiscountEnabled,
           ...(!isEditing ? {
             unit: employeeForm.unit,
-            competenceMonth,
-            competenceYear,
+            competenceMonth: mutationScope.competenceMonth,
+            competenceYear: mutationScope.competenceYear,
             isRecurring: true,
           } : {}),
         }),
       });
       await parseResponse(response);
-      await onRefresh();
-      setEmployeeForm(null);
+      await refreshAfterMutation(mutationScope);
+      if (isActiveScope(mutationScope)) setEmployeeForm(null);
       toast(isEditing ? 'Colaborador atualizado' : 'Colaborador adicionado', 'success');
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Erro ao salvar colaborador', 'error');
+      await handleMutationError(error, 'Erro ao salvar colaborador', mutationScope);
     } finally {
       setBusyKey('');
     }
   };
 
   const updateRegime = async (entry: PayrollEntryData, employmentType: EmploymentType) => {
+    const mutationScope = { competenceMonth, competenceYear, unit: selectedUnit };
     setBusyKey(`regime:${entry.id}`);
     try {
       const response = await fetch('/api/payroll/entries', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: entry.id, employmentType }),
+        body: JSON.stringify({ id: entry.id, employmentType, expectedUpdatedAt: entry.updatedAt }),
       });
       await parseResponse(response);
-      await onRefresh();
+      await refreshAfterMutation(mutationScope);
       toast('Regime atualizado', 'success');
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Erro ao atualizar regime', 'error');
+      await handleMutationError(error, 'Erro ao atualizar regime', mutationScope);
     } finally {
       setBusyKey('');
     }
   };
 
   const deleteEmployee = async (entry: PayrollEntryData) => {
+    const mutationScope = { competenceMonth, competenceYear, unit: selectedUnit };
     const confirmed = await confirmDialog({
       title: 'Remover colaborador',
       message: `Remover ${entry.employeeName} desta competência? Os ajustes vinculados também serão removidos e a recorrência não recriará o colaborador neste mês.`,
@@ -285,21 +368,28 @@ export function PayrollControl({
       variant: 'danger',
     });
     if (!confirmed) return;
+    if (!isActiveScope(mutationScope)) {
+      return toast('A competência ou a unidade mudou. Selecione o colaborador novamente.', 'warning');
+    }
 
     setBusyKey(`delete:${entry.id}`);
     try {
-      const response = await fetch(`/api/payroll/entries?id=${encodeURIComponent(entry.id)}`, { method: 'DELETE' });
+      const response = await fetch(
+        `/api/payroll/entries?id=${encodeURIComponent(entry.id)}&expectedUpdatedAt=${encodeURIComponent(entry.updatedAt)}`,
+        { method: 'DELETE' },
+      );
       await parseResponse(response);
-      await onRefresh();
+      await refreshAfterMutation(mutationScope);
       toast('Colaborador removido', 'success');
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Erro ao remover colaborador', 'error');
+      await handleMutationError(error, 'Erro ao remover colaborador', mutationScope);
     } finally {
       setBusyKey('');
     }
   };
 
   const togglePayment = async (entry: PayrollEntryData) => {
+    const mutationScope = { competenceMonth, competenceYear, unit: selectedUnit };
     const markAsPaid = entry.paymentStatus !== 'paid';
     const hasFgts = entry.employmentType === 'CLT' && entry.hasFgts;
     const confirmed = await confirmDialog({
@@ -311,6 +401,9 @@ export function PayrollControl({
       variant: markAsPaid ? 'info' : 'warning',
     });
     if (!confirmed) return;
+    if (!isActiveScope(mutationScope)) {
+      return toast('A competência ou a unidade mudou. Selecione o pagamento novamente.', 'warning');
+    }
 
     setBusyKey(`payment:${entry.id}`);
     try {
@@ -320,14 +413,15 @@ export function PayrollControl({
         body: JSON.stringify({
           id: entry.id,
           paymentStatus: markAsPaid ? 'paid' : 'unpaid',
-          ...(selectedUnit !== 'all' ? { unit: selectedUnit } : {}),
+          expectedUpdatedAt: entry.updatedAt,
+          ...(mutationScope.unit !== 'all' ? { unit: mutationScope.unit } : {}),
         }),
       });
       await parseResponse(response);
-      await onRefresh();
+      await refreshAfterMutation(mutationScope);
       toast(markAsPaid ? 'Pagamento confirmado' : 'Confirmação de pagamento desfeita', 'success');
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Erro ao atualizar pagamento', 'error');
+      await handleMutationError(error, 'Erro ao atualizar pagamento', mutationScope);
     } finally {
       setBusyKey('');
     }
@@ -342,6 +436,8 @@ export function PayrollControl({
       direction: PAYROLL_ADJUSTMENT_KINDS[kind].defaultDirection,
       value: '',
       label: '',
+      expectedEntryUpdatedAt: entry.updatedAt,
+      scope: { competenceMonth, competenceYear, unit: selectedUnit },
     });
   };
 
@@ -357,6 +453,11 @@ export function PayrollControl({
 
   const saveAdjustment = async () => {
     if (!adjustmentDraft || !draftEntry || !draftConfig) return;
+    const mutationScope = adjustmentDraft.scope;
+    if (!isActiveScope(mutationScope)) {
+      setAdjustmentDraft(null);
+      return toast('A competência ou a unidade mudou. Abra o ajuste novamente.', 'warning');
+    }
     if (!draftEntry.employmentType) return toast('Defina o regime antes de adicionar ajustes', 'warning');
     if (draftValue <= 0) return toast('Informe um valor maior que zero', 'warning');
 
@@ -367,6 +468,7 @@ export function PayrollControl({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           payrollEntryId: adjustmentDraft.payrollEntryId,
+          expectedEntryUpdatedAt: adjustmentDraft.expectedEntryUpdatedAt,
           kind: adjustmentDraft.kind,
           direction: adjustmentDraft.direction,
           label: adjustmentDraft.label,
@@ -375,25 +477,29 @@ export function PayrollControl({
         }),
       });
       await parseResponse(response);
-      await onRefresh();
-      setAdjustmentDraft(null);
+      await refreshAfterMutation(mutationScope);
+      if (isActiveScope(mutationScope)) setAdjustmentDraft(null);
       toast('Ajuste adicionado', 'success');
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Erro ao adicionar ajuste', 'error');
+      await handleMutationError(error, 'Erro ao adicionar ajuste', mutationScope);
     } finally {
       setBusyKey('');
     }
   };
 
   const deleteAdjustment = async (adjustment: PayrollAdjustmentData) => {
+    const mutationScope = { competenceMonth, competenceYear, unit: selectedUnit };
     setBusyKey(`adjustment:${adjustment.id}`);
     try {
-      const response = await fetch(`/api/payroll/adjustments?id=${encodeURIComponent(adjustment.id)}`, { method: 'DELETE' });
+      const response = await fetch(
+        `/api/payroll/adjustments?id=${encodeURIComponent(adjustment.id)}&expectedUpdatedAt=${encodeURIComponent(adjustment.updatedAt)}`,
+        { method: 'DELETE' },
+      );
       await parseResponse(response);
-      await onRefresh();
+      await refreshAfterMutation(mutationScope);
       toast('Ajuste removido', 'success');
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Erro ao remover ajuste', 'error');
+      await handleMutationError(error, 'Erro ao remover ajuste', mutationScope);
     } finally {
       setBusyKey('');
     }
@@ -509,14 +615,16 @@ export function PayrollControl({
                   <div className={styles.entrySummary}>
                     <button
                       className={styles.expandButton}
-                      aria-label={expanded ? 'Recolher colaborador' : 'Expandir colaborador'}
+                      aria-label={`${expanded ? 'Ocultar' : 'Abrir'} detalhes e ajustes de ${entry.employeeName}`}
                       aria-expanded={expanded}
+                      aria-controls={`payroll-details-${entry.id}`}
                       onClick={() => {
                         setExpandedId(expanded ? null : entry.id);
                         if (isDraftEntry) setAdjustmentDraft(null);
                       }}
                     >
                       <span className="material-symbols-outlined">{expanded ? 'expand_more' : 'chevron_right'}</span>
+                      <span className={styles.expandLabel}>Detalhes e ajustes</span>
                     </button>
 
                     <div className={styles.employeeIdentity}>
@@ -613,7 +721,7 @@ export function PayrollControl({
                   </div>
 
                   {expanded && (
-                    <div className={styles.expandedPanel}>
+                    <div className={styles.expandedPanel} id={`payroll-details-${entry.id}`}>
                       <div className={`${styles.paymentStatusBar} ${
                         entry.paymentStatus === 'paid'
                           ? styles.paymentStatusPaid
