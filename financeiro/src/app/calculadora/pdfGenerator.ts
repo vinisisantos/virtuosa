@@ -1,199 +1,261 @@
-// PDF Generator for Pricing Calculator
-import { CalcState, calc, fmt } from './useCalc';
-import { LOGO_BASE64 } from './logoBase64';
+import { calc, fmt, type CalcState } from '@/app/calculadora/useCalc';
+import { LOGO_BASE64 } from '@/app/calculadora/logoBase64';
 
-// We use a lightweight approach: generate a styled HTML and trigger window.print()
-// This avoids adding a heavy PDF library dependency.
+function escapeHtml(value: unknown): string {
+  return String(value ?? '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  })[character]!);
+}
 
-export function generatePDF(s: CalcState) {
-  const r = calc(s);
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-  const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+function number(value: number, digits = 2): string {
+  return value.toLocaleString('pt-BR', { maximumFractionDigits: digits });
+}
 
-  const insumosRows = s.insumos
-    .filter(i => i.valor > 0)
-    .map(i => `<tr><td style="padding:6px 12px;border-bottom:1px solid #f3f4f6;font-size:13px;">${i.nome}</td><td style="padding:6px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:13px;font-weight:600;">${fmt(i.valor)}</td></tr>`)
-    .join('');
+function percent(value: number): string {
+  return `${number(value)}%`;
+}
 
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <title>Simulação - ${s.nome || 'Procedimento'}</title>
-  <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: 'Inter', -apple-system, sans-serif; color: #1f2937; background: #fff; padding: 40px; }
-    .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 2px solid #ec4899; }
-    .logo { display: flex; align-items: center; gap: 14px; }
-    .logo-img { height: 64px; width: auto; object-fit: contain; }
-    .logo-sub { font-size: 11px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
-    .date { text-align: right; font-size: 12px; color: #6b7280; }
-    .price-box { background: linear-gradient(135deg, #fdf2f8, #fce7f3); border-radius: 16px; padding: 24px 32px; margin-bottom: 28px; border: 1px solid rgba(236,72,153,0.15); }
-    .price-label { font-size: 12px; font-weight: 700; color: #ec4899; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
-    .price-name { font-size: 16px; font-weight: 700; color: #9d174d; margin-bottom: 4px; }
-    .price-value { font-size: 36px; font-weight: 900; color: #be185d; }
-    .price-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-top: 16px; }
-    .price-chip { background: rgba(255,255,255,0.7); border-radius: 10px; padding: 10px 14px; }
-    .price-chip-label { font-size: 11px; font-weight: 700; color: #9d174d; }
-    .price-chip-value { font-size: 16px; font-weight: 900; color: #be185d; }
-    .section { margin-bottom: 24px; }
-    .section-title { font-size: 13px; font-weight: 800; color: #ec4899; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #fce7f3; }
-    table { width: 100%; border-collapse: collapse; }
-    th { padding: 8px 12px; text-align: left; font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; border-bottom: 2px solid #f3f4f6; }
-    th:last-child { text-align: right; }
-    td { padding: 6px 12px; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
-    td:last-child { text-align: right; font-weight: 600; }
-    .total-row td { border-top: 2px solid #e5e7eb; font-weight: 800; font-size: 14px; background: #f9fafb; }
-    .kpi-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 28px; }
-    .kpi { background: #f9fafb; border-radius: 12px; padding: 14px 16px; border: 1px solid #f3f4f6; }
-    .kpi-label { font-size: 10px; font-weight: 700; color: #9ca3af; text-transform: uppercase; }
-    .kpi-value { font-size: 18px; font-weight: 900; color: #1f2937; margin-top: 2px; }
-    .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; text-align: center; }
-    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-    @media print {
-      body { padding: 20px; }
-      @page { margin: 15mm; size: A4; }
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div class="logo">
-      <img src="${LOGO_BASE64}" class="logo-img" alt="Virtuosa" />
-      <div>
-        <div class="logo-sub">Precificação de Procedimentos</div>
-      </div>
-    </div>
-    <div class="date">
-      <div style="font-weight:700;color:#374151;">Simulação</div>
-      <div>${dateStr}</div>
-      <div>${timeStr}</div>
-    </div>
-  </div>
+function row(label: string, value: string, total = false): string {
+  return `<tr${total ? ' class="total"' : ''}><th scope="row">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`;
+}
 
-  <div class="price-box">
-    <div class="price-label">Preço Sugerido</div>
-    <div class="price-name">${s.nome || 'Procedimento'}</div>
-    <div class="price-value">${fmt(r.preco)}</div>
-    <div class="price-grid">
-      <div class="price-chip">
-        <div class="price-chip-label">Lucro Clínica</div>
-        <div class="price-chip-value">${fmt(r.lucroClinicaVal)}</div>
-      </div>
-      <div class="price-chip">
-        <div class="price-chip-label">Lucro Parceiro</div>
-        <div class="price-chip-value">${fmt(r.lucroParceiroVal)}</div>
-      </div>
-      <div class="price-chip">
-        <div class="price-chip-label">Base de Custo</div>
-        <div class="price-chip-value">${fmt(r.baseCusto)}</div>
-      </div>
-    </div>
-  </div>
+function section(title: string, rows: string): string {
+  return `<section><h2>${escapeHtml(title)}</h2><table><tbody>${rows}</tbody></table></section>`;
+}
 
-  <div class="kpi-grid">
-    <div class="kpi">
-      <div class="kpi-label">Hora Maca</div>
-      <div class="kpi-value">${fmt(r.horaMaca)}</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Custos Mensais</div>
-      <div class="kpi-value">${fmt(r.custosMensais)}</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Total Insumos</div>
-      <div class="kpi-value">${fmt(r.totalInsumos)}</div>
-    </div>
-    <div class="kpi">
-      <div class="kpi-label">Margem Lucro</div>
-      <div class="kpi-value">${s.lucroClinica.toFixed(1)}%</div>
-    </div>
-  </div>
+function chip(label: string, value: string): string {
+  return `<div class="chip"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
+}
 
-  <div class="two-col">
-    <div class="section">
-      <div class="section-title">Custos Fixos Mensais</div>
-      <table>
-        <tr><td>Aluguel / Espaço</td><td>${fmt(s.aluguel)}</td></tr>
-        <tr><td>Energia Elétrica</td><td>${fmt(s.energiaEletrica)}</td></tr>
-        <tr><td>Água / Internet</td><td>${fmt(s.aguaInternet)}</td></tr>
-        <tr><td>Contador</td><td>${fmt(s.contador)}</td></tr>
-        <tr><td>Salários</td><td>${fmt(s.salarios)}</td></tr>
-        <tr><td>Pró-labore</td><td>${fmt(s.proLabore)}</td></tr>
-        <tr class="total-row"><td>Total Fixos</td><td>${fmt(r.fixos)}</td></tr>
-      </table>
-    </div>
+/** Pure HTML builder: an invalid simulation must not become a printable price quote. */
+export function buildPricingReportHtml(s: CalcState, generatedAt?: Date): string {
+  const result = calc(s);
+  if (!result.valid) return '';
 
-    <div class="section">
-      <div class="section-title">Custos Variáveis Mensais</div>
-      <table>
-        <tr><td>Materiais / Insumos gerais</td><td>${fmt(s.materiaisGerais)}</td></tr>
-        <tr><td>Marketing / Tráfego</td><td>${fmt(s.marketingTrafego)}</td></tr>
-        <tr><td>Comissões</td><td>${fmt(s.comissoes)}</td></tr>
-        <tr><td>Taxas e plataformas</td><td>${fmt(s.taxasPlataformas)}</td></tr>
-        <tr><td>Outros</td><td>${fmt(s.outros)}</td></tr>
-        <tr class="total-row"><td>Total Variáveis</td><td>${fmt(r.variaveis)}</td></tr>
-      </table>
-    </div>
-  </div>
+  const pricing = s.pricing?.version === 2 ? s.pricing : undefined;
+  const title = s.nome.trim() || 'Procedimento';
+  const monthlyRows = [
+    row('Aluguel / espaço', fmt(s.aluguel)),
+    row('Energia elétrica', fmt(s.energiaEletrica)),
+    row('Água / internet', fmt(s.aguaInternet)),
+    row('Contador', fmt(s.contador)),
+    row('Salários', fmt(s.salarios)),
+    row('Pró-labore', fmt(s.proLabore)),
+    row('Subtotal de custos fixos', fmt(result.fixos), true),
+    row('Materiais / insumos gerais', fmt(s.materiaisGerais)),
+    row('Marketing / tráfego', fmt(s.marketingTrafego)),
+    row('Comissões mensais', fmt(s.comissoes)),
+    row('Taxas / plataformas', fmt(s.taxasPlataformas)),
+    row('Outros', fmt(s.outros)),
+    row('Subtotal de outros custos mensais', fmt(result.variaveis), true),
+    row('Total mensal para rateio', fmt(result.custosMensais), true),
+  ].join('');
 
-  <div class="two-col" style="margin-top:8px;">
-    <div class="section">
-      <div class="section-title">Insumos do Procedimento</div>
-      <table>
-        <thead><tr><th>Insumo</th><th>Valor</th></tr></thead>
-        <tbody>
-          ${insumosRows || '<tr><td colspan="2" style="text-align:center;color:#9ca3af;padding:16px;">Nenhum insumo cadastrado</td></tr>'}
-          ${s.locacaoAparelho > 0 ? `<tr><td style="padding:6px 12px;border-bottom:1px solid #f3f4f6;font-size:13px;">Locação de Aparelho</td><td style="padding:6px 12px;border-bottom:1px solid #f3f4f6;text-align:right;font-size:13px;font-weight:600;">${fmt(s.locacaoAparelho)}</td></tr>` : ''}
-          <tr class="total-row"><td>Total Insumos</td><td>${fmt(r.totalInsumos)}</td></tr>
-        </tbody>
-      </table>
-    </div>
+  const operationRows = [
+    row('Dias trabalhados por mês', number(s.diasTrabalhados)),
+    row('Jornada diária', `${number(s.horasDia)}h ${number(s.minutosDia)}min`),
+    row('Salas / postos simultâneos', number(s.qtdSalas)),
+    ...(pricing ? [
+      row('Ocupação produtiva planejada', percent(pricing.occupancy)),
+      row('Horas produtivas mensais', `${number(result.horasProdutivas)}h`),
+    ] : []),
+    row('Duração do procedimento', `${number(s.duracaoHoras)}h ${number(s.duracaoMinutos)}min`),
+    ...(pricing ? [row('Preparo / intervalo por atendimento', `${number(pricing.preparationMinutes)}min`)] : []),
+    row('Custo da hora-maca', fmt(result.horaMaca), true),
+    row('Estrutura alocada ao atendimento', fmt(result.custoHoraProcedimento), true),
+  ].join('');
 
-    <div class="section">
-      <div class="section-title">Parâmetros da Simulação</div>
-      <table>
-        <tr><td>Dias trabalhados / mês</td><td>${s.diasTrabalhados} dias</td></tr>
-        <tr><td>Horas trabalhadas / dia</td><td>${s.horasDia}h ${s.minutosDia > 0 ? s.minutosDia + 'min' : ''}</td></tr>
-        <tr><td>Quantidade de salas</td><td>${s.qtdSalas}</td></tr>
-        <tr><td>Duração do procedimento</td><td>${s.duracaoHoras}h ${s.duracaoMinutos > 0 ? s.duracaoMinutos + 'min' : ''}</td></tr>
-        <tr><td>Impostos</td><td>${s.impostos}%</td></tr>
-        <tr><td>Taxa Cartão</td><td>${s.taxaCartao}%</td></tr>
-        <tr><td>Desconto Paciente</td><td>${s.descontoPaciente}%</td></tr>
-        <tr><td>Lucro Clínica</td><td>${s.lucroClinica}%</td></tr>
-        <tr><td>Lucro Parceiro</td><td>${s.lucroParceiro}%</td></tr>
-      </table>
-    </div>
-  </div>
+  const supplyRows = s.insumos.map(item => {
+    const quantity = pricing ? item.quantidade ?? 1 : 1;
+    const loss = pricing ? item.perdaPercentual ?? 0 : 0;
+    const cost = item.valor * quantity / (1 - loss / 100);
+    if (!item.valor && !cost) return '';
+    const values = pricing
+      ? [item.nome, number(quantity), item.unidade || '-', fmt(item.valor), percent(loss), fmt(cost)]
+      : [item.nome, fmt(item.valor)];
+    return `<tr>${values.map(value => `<td>${escapeHtml(value)}</td>`).join('')}</tr>`;
+  }).join('');
 
-  <div class="section" style="margin-top:8px;">
-    <div class="section-title">Composição do Preço Final</div>
-    <table>
-      <tr><td>Custo Hora no Procedimento</td><td>${fmt(r.custoHoraProcedimento)}</td></tr>
-      <tr><td>Total Insumos</td><td>${fmt(r.totalInsumos)}</td></tr>
-      <tr><td>Base de Custo</td><td>${fmt(r.baseCusto)}</td></tr>
-      <tr><td>+ Lucro Clínica (${s.lucroClinica}%)</td><td>${fmt(r.lucroClinicaVal)}</td></tr>
-      <tr><td>+ Lucro Parceiro (${s.lucroParceiro}%)</td><td>${fmt(r.lucroParceiroVal)}</td></tr>
-      <tr><td>+ Impostos e Taxas</td><td>${fmt(r.impostosVal)}</td></tr>
-      <tr class="total-row"><td style="font-size:15px;color:#be185d;">Preço Final Sugerido</td><td style="font-size:18px;color:#be185d;">${fmt(r.preco)}</td></tr>
-    </table>
-  </div>
+  const supplyHeader = pricing
+    ? ['Insumo', 'Quantidade', 'Unidade', 'Custo unitário', 'Perda', 'Custo utilizado']
+    : ['Insumo', 'Custo informado'];
+  const supplies = `<section class="supplies"><h2>Ficha de insumos do procedimento</h2>
+    <table><thead><tr>${supplyHeader.map(label => `<th scope="col">${escapeHtml(label)}</th>`).join('')}</tr></thead>
+    <tbody>${supplyRows || `<tr><td colspan="${supplyHeader.length}">Nenhum insumo com custo informado.</td></tr>`}</tbody></table>
+    ${pricing ? '<p class="note">Custo utilizado = custo unitário × quantidade ÷ (1 − perda%). A perda representa a fração da compra que não pode ser aproveitada.</p>' : ''}
+    <table><tbody>${row('Locação adicional de aparelho', fmt(s.locacaoAparelho))}${row('Materiais + locação', fmt(result.totalInsumos), true)}</tbody></table>
+  </section>`;
 
-  <div class="footer">
-    Virtuosa — Documento gerado automaticamente em ${dateStr} às ${timeStr} · Este documento é uma simulação e não constitui proposta comercial.
-  </div>
-</body>
-</html>`;
+  let summary: string;
+  let pricingSections: string;
+  if (pricing) {
+    const charged = result.precoCobrado;
+    const taxes = charged * s.impostos / 100;
+    const cardFee = charged * s.taxaCartao / 100 + pricing.paymentFixed;
+    const salesCommission = charged * pricing.salesCommission / 100;
+    const professionalPercent = charged * pricing.professionalPercent / 100;
 
-  // Open in new window and trigger print (save as PDF)
-  const win = window.open('', '_blank', 'width=900,height=700');
-  if (!win) return;
-  win.document.write(html);
-  win.document.close();
-  // Wait for image and fonts to load, then trigger print
-  setTimeout(() => {
-    win.print();
-  }, 1000);
+    summary = [
+      chip('Preço efetivamente cobrado', fmt(charged)),
+      chip('Lucro estimado por atendimento', fmt(result.lucroEfetivo)),
+      chip('Margem sobre o valor cobrado', percent(result.margemEfetiva)),
+    ].join('');
+
+    const directRows = [
+      row('Materiais + locação', fmt(result.totalInsumos)),
+      row('Profissional: valor fixo por atendimento', fmt(pricing.professionalFixed)),
+      row('Custo direto total', fmt(result.custoDireto), true),
+      row('Estrutura por atendimento', fmt(result.custoHoraProcedimento)),
+      row('Base total de custo por atendimento', fmt(result.baseCusto), true),
+    ].join('');
+
+    const feeRows = [
+      row('Forma de pagamento / configuração', pricing.paymentLabel || 'Taxa informada manualmente'),
+      row('Impostos sobre o cobrado', percent(s.impostos)),
+      row('Taxa percentual do pagamento', percent(s.taxaCartao)),
+      row('Taxa fixa do pagamento', fmt(pricing.paymentFixed)),
+      row('Comissão de venda sobre o cobrado', percent(pricing.salesCommission)),
+      row('Profissional: percentual sobre o cobrado', percent(pricing.professionalPercent)),
+      row('Margem-alvo sobre o cobrado', percent(pricing.targetMargin)),
+      row('Margem mínima sobre o cobrado', percent(pricing.minMargin)),
+      row('Desconto planejado sobre o preço comercial', percent(s.descontoPaciente)),
+    ].join('');
+
+    const priceRows = [
+      row('Piso econômico (lucro zero)', fmt(result.piso)),
+      row('Preço cobrado mínimo para a margem mínima', fmt(result.precoMinimoMargem)),
+      row('Preço-alvo cobrado (após desconto)', fmt(result.preco)),
+      row('Preço de tabela sugerido (antes do desconto)', fmt(result.precoTabela)),
+      row('Preço comercial escolhido (antes do desconto)', fmt(result.precoComercial)),
+      row('Desconto aplicado', `${percent(s.descontoPaciente)} · ${fmt(result.precoComercial - charged)}`),
+      row('Preço efetivamente cobrado', fmt(charged), true),
+      row('Desconto máximo sobre o preço comercial para manter a margem mínima', percent(result.descontoMaximo)),
+      row('Cenário Pix: alvo sem custo de pagamento', fmt(result.precoPix)),
+    ].join('');
+
+    const resultRows = [
+      row('Valor cobrado do paciente', fmt(charged)),
+      row('(-) Custo direto', fmt(result.custoDireto)),
+      row('(-) Estrutura alocada', fmt(result.custoHoraProcedimento)),
+      row('(-) Impostos', fmt(taxes)),
+      row('(-) Custo do pagamento (fixo + percentual)', fmt(cardFee)),
+      row('(-) Comissão de venda', fmt(salesCommission)),
+      row('(-) Profissional: remuneração percentual', fmt(professionalPercent)),
+      row('Lucro estimado após todos os custos informados', fmt(result.lucroEfetivo), true),
+      row('Margem efetiva sobre o cobrado', percent(result.margemEfetiva), true),
+    ].join('');
+
+    const installments = result.parcelas.map((amount, index) => row(`${index + 1}ª parcela`, fmt(amount))).join('');
+    pricingSections = `
+      <div class="columns">${section('Custo do atendimento', directRows)}${section('Encargos e metas de margem', feeRows)}</div>
+      <div class="columns">${section('Do custo ao preço final', priceRows)}${section('Resultado no preço escolhido', resultRows)}</div>
+      ${section(`Pagamento em ${pricing.installments} parcela(s)`, installments + row('Total das parcelas', fmt(charged), true))}
+      <section class="assumptions"><h2>Como interpretar a simulação</h2>
+        <p><strong>Preço-alvo cobrado</strong> = (base de custo + taxa fixa de pagamento) ÷ [1 − impostos% − taxa de pagamento% − comissão de venda% − profissional% − margem-alvo%]. Os percentuais usam a mesma base: o valor efetivamente cobrado.</p>
+        <p><strong>Preço de tabela</strong> = preço-alvo cobrado ÷ (1 − desconto%). O preço comercial é o valor escolhido antes do desconto. O lucro e a margem efetiva são recalculados sobre o valor que o paciente paga.</p>
+        <p><strong>Piso econômico</strong> cobre os custos informados e os encargos, sem lucro. O limite de desconto protege a margem mínima, não necessariamente a margem-alvo. A ocupação e os custos são premissas de planejamento, não garantia de receita ou lucro.</p>
+        <p><strong>Sem dupla contagem:</strong> não inclua no rateio mensal materiais, comissões ou remuneração profissional já lançados diretamente ou como percentual da venda. A taxa fixa de pagamento é cobrada uma vez por venda. O cenário Pix pressupõe taxa de pagamento zero; confirme se isso se aplica à operação.</p>
+        <p>Tributos, perdas, capacidade produtiva e remuneração profissional precisam refletir a operação real e ser conferidos pelos responsáveis. Salvar esta simulação não altera automaticamente os preços do catálogo.</p>
+      </section>`;
+  } else {
+    summary = [
+      chip('Preço sugerido legado', fmt(result.preco)),
+      chip('Acréscimo da clínica sobre o custo', fmt(result.lucroClinicaVal)),
+      chip('Markup da clínica', percent(s.lucroClinica)),
+    ].join('');
+    pricingSections = section('Composição do preço - fórmula legada', [
+      row('Estrutura por atendimento', fmt(result.custoHoraProcedimento)),
+      row('Insumos + locação', fmt(result.totalInsumos)),
+      row('Base total de custo', fmt(result.baseCusto), true),
+      row(`Markup da clínica sobre o custo (${percent(s.lucroClinica)})`, fmt(result.lucroClinicaVal)),
+      row(`Acréscimo do parceiro sobre o custo (${percent(s.lucroParceiro)})`, fmt(result.lucroParceiroVal)),
+      row('Impostos considerados', percent(s.impostos)),
+      row('Taxa de cartão considerada', percent(s.taxaCartao)),
+      row('Desconto considerado', percent(s.descontoPaciente)),
+      row('Residual legado de impostos, taxas e desconto', fmt(result.impostosVal)),
+      row('Preço sugerido legado', fmt(result.preco), true),
+    ].join('')) + `<section class="assumptions"><h2>Modelo legado preservado</h2>
+      <p>Preço = base de custo × (1 + markup da clínica% + acréscimo do parceiro%) ÷ (1 − impostos% − cartão% − desconto%).</p>
+      <p><strong>Markup não é margem.</strong> Os percentuais da clínica e do parceiro são acréscimos sobre a base de custo, não percentuais de lucro sobre o preço de venda. Este relatório mantém os parâmetros e a fórmula do protocolo original; não o converte automaticamente ao modelo de margem.</p>
+      <p>O rateio legado considera toda a capacidade informada. O desconto permanece agrupado com os encargos apenas para reproduzir a simulação histórica. Esses valores não devem ser interpretados como lucro efetivamente apurado.</p>
+    </section>`;
+  }
+
+  const warnings = result.warnings.length
+    ? `<aside class="warnings"><h2>Pontos de atenção</h2><ul>${result.warnings.map(warning => `<li>${escapeHtml(warning)}</li>`).join('')}</ul></aside>`
+    : '';
+  const metadata = [
+    pricing ? `Modelo de margem v2 · Unidade: ${pricing.unit || 'Não informada'}` : 'Modelo legado · fórmula original',
+    pricing?.referenceMonth ? `Mês de referência dos custos: ${pricing.referenceMonth}` : '',
+    generatedAt && Number.isFinite(generatedAt.getTime())
+      ? `Gerado em ${generatedAt.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })}`
+      : '',
+  ].filter(Boolean).map(value => `<div>${escapeHtml(value)}</div>`).join('');
+
+  return `<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Precificação - ${escapeHtml(title)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 28px; font: 13px/1.45 Arial, Helvetica, sans-serif; color: #1f2937; background: white; }
+  .report { max-width: 1040px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 2px solid #db2777; padding-bottom: 14px; margin-bottom: 18px; }
+  header img { height: 58px; width: 68px; object-fit: contain; }
+  h1 { font-size: 22px; line-height: 1.2; margin: 0 0 6px; overflow-wrap: anywhere; }
+  .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .metadata { font-size: 11px; color: #6b7280; text-align: right; overflow-wrap: anywhere; }
+  .subtitle { color: #6b7280; font-size: 11px; }
+  .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 16px; border: 1px solid #f9a8d4; background: #fdf2f8; border-radius: 12px; margin-bottom: 18px; }
+  .chip { min-width: 0; }
+  .chip span { display: block; font-size: 11px; color: #9d174d; }
+  .chip strong { display: block; font-size: 22px; color: #9d174d; overflow-wrap: anywhere; }
+  .columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 20px; }
+  section { margin: 0 0 20px; min-width: 0; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #be185d; margin: 0 0 8px; padding-bottom: 6px; border-bottom: 1px solid #fbcfe8; break-after: avoid; }
+  table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
+  th, td { padding: 6px 7px; vertical-align: top; border-bottom: 1px solid #e5e7eb; overflow-wrap: anywhere; }
+  tbody th { font-weight: 400; text-align: left; width: 67%; }
+  td { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+  thead th { font-weight: 700; text-align: right; color: #6b7280; }
+  thead th:first-child { text-align: left; }
+  .total th, .total td { font-weight: 700; background: #f9fafb; border-top: 1px solid #9ca3af; }
+  .supplies td:first-child { text-align: left; font-weight: 400; }
+  .supplies thead th:first-child { width: 28%; }
+  .note, .assumptions p { font-size: 11px; color: #4b5563; margin: 8px 0; }
+  .warnings { padding: 12px 16px; border: 1px solid #fcd34d; background: #fffbeb; border-radius: 8px; margin-bottom: 18px; }
+  .warnings h2 { color: #92400e; border: 0; padding: 0; }
+  .warnings ul { padding-left: 18px; margin: 0; font-size: 11px; }
+  footer { border-top: 1px solid #e5e7eb; padding-top: 12px; font-size: 10px; color: #6b7280; margin-top: 8px; }
+  @media (max-width: 640px) { body { padding: 16px; } header { flex-wrap: wrap; } .metadata { text-align: left; } .columns, .summary { grid-template-columns: 1fr; } .summary { gap: 14px; } .supplies { overflow-x: auto; } .supplies > table:first-of-type { min-width: 490px; } }
+  @media print { @page { size: A4; margin: 14mm; } body { padding: 0; font-size: 11px; } header { margin-bottom: 12px; } .columns { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); break-inside: avoid; padding: 12px; } .chip strong { font-size: 19px; } th, td { padding: 4px 6px; } section { break-inside: avoid; margin-bottom: 14px; } .supplies { break-inside: auto; overflow: visible; } .supplies > table:first-of-type { min-width: 0; } tr { break-inside: avoid; } thead { display: table-header-group; } h2 { break-after: avoid; } .warnings { break-inside: avoid; } * { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }
+</style></head><body><main class="report">
+<header><div class="brand"><img src="${LOGO_BASE64}" alt="Virtuosa"><div><h1>${escapeHtml(title)}</h1><div class="subtitle">Memória de cálculo e formação do preço</div></div></div><div class="metadata">${metadata}</div></header>
+<div class="summary">${summary}</div>${warnings}
+<div class="columns">${section('Custos mensais da estrutura', monthlyRows)}${section('Capacidade e tempo de atendimento', operationRows)}</div>
+${supplies}${pricingSections}
+<footer>Virtuosa · Simulação gerencial baseada nos dados informados. Não constitui proposta comercial nem substitui a validação contábil. Preços de catálogo e vendas existentes não são alterados por este relatório.</footer>
+</main></body></html>`;
+}
+
+/** Returns whether a valid report was opened; saving as PDF stays in the browser print dialog. */
+export function generatePDF(s: CalcState): boolean {
+  const html = buildPricingReportHtml(s, new Date());
+  if (!html || typeof window === 'undefined') return false;
+  const printWindow = window.open('', '_blank', 'width=1000,height=760');
+  if (!printWindow) return false;
+  try {
+    printWindow.opener = null;
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.setTimeout(() => {
+      if (printWindow.closed) return;
+      printWindow.focus();
+      printWindow.print();
+    }, 400);
+    return true;
+  } catch {
+    printWindow.close();
+    return false;
+  }
 }

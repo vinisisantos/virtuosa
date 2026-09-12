@@ -1,251 +1,178 @@
 'use client';
-import React, { useState, useEffect, useCallback } from 'react';
+
+import React, { useId, useState } from 'react';
 import { CalcState, Insumo, fmt, calc } from './useCalc';
+import { FieldHelp } from './FieldHelp';
 
-const card: React.CSSProperties = { background:'var(--card-bg)',borderRadius:20,border:'1px solid var(--border)',boxShadow:'var(--shadow-md)',padding:24 };
-const inp: React.CSSProperties = { width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid var(--border)',fontSize:'0.88rem',background:'var(--bg)',color:'var(--text-main)',fontFamily:'inherit',fontWeight:600,boxSizing:'border-box',textAlign:'right' };
-const lbl: React.CSSProperties = { display:'block',fontSize:'0.7rem',fontWeight:700,color:'var(--text-muted)',marginBottom:4,textTransform:'uppercase' };
-const row: React.CSSProperties = { display:'flex',justifyContent:'space-between',alignItems:'center',padding:'10px 0',borderBottom:'1px solid var(--border)' };
+interface Props { s: CalcState; set: (update: Partial<CalcState>) => void }
+type Pricing = NonNullable<CalcState['pricing']>;
 
-interface Props { s: CalcState; set: (u: Partial<CalcState>) => void }
+export const inp: React.CSSProperties = { width: '100%', minWidth: 0, minHeight: 44, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', font: 'inherit', boxSizing: 'border-box' };
 
-// Format number to Brazilian currency display (without R$ prefix): 1.234,56
-function fmtDisplay(v: number): string {
-  if (v === 0) return '';
-  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+interface InputProps {
+  id?: string;
+  'aria-describedby'?: string;
+  value: number;
+  onChange: (value: number) => void;
+  width?: number;
 }
 
-// Parse Brazilian formatted string to number: "1.234,56" -> 1234.56
-function parseBRL(s: string): number {
-  const cleaned = s.replace(/\./g, '').replace(',', '.');
-  return parseFloat(cleaned) || 0;
+const decimalDisplay = (value: number) => value ? value.toLocaleString('pt-BR', { maximumFractionDigits: 4 }) : '';
+const moneyDisplay = (value: number) => value ? value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '';
+
+export function CurrencyInput({ value, onChange, width, ...props }: InputProps) {
+  return <input {...props} type="text" inputMode="numeric" className="calc-input calc-input-number" value={moneyDisplay(value)}
+    onChange={event => { const next = Number(event.target.value.replace(/\D/g, '')) / 100; if (Number.isFinite(next)) onChange(next); }}
+    placeholder="0,00" style={width ? { width, maxWidth: '100%' } : undefined} />;
 }
 
-// Currency input component — formats live as user types (ATM-style)
-function CurrencyInput({ value, onChange, width = 130 }: { value: number; onChange: (v: number) => void; width?: number }) {
-  const [display, setDisplay] = useState(fmtDisplay(value));
-  const [focused, setFocused] = useState(false);
-
-  useEffect(() => {
-    if (!focused) setDisplay(fmtDisplay(value));
-  }, [value, focused]);
-
-  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    // Strip everything except digits
-    const digits = e.target.value.replace(/\D/g, '');
-    if (digits === '' || digits === '0' || digits === '00') {
-      setDisplay('');
-      onChange(0);
-      return;
-    }
-    // Convert to cents-based number: "150000" => 1500.00
-    const cents = parseInt(digits, 10);
-    const num = cents / 100;
-    // Format with thousand separators and decimal comma
-    const formatted = num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    setDisplay(formatted);
-    onChange(num);
-  }, [onChange]);
-
-  const handleBlur = useCallback(() => {
-    setFocused(false);
-    const num = parseBRL(display);
-    setDisplay(fmtDisplay(num));
-    onChange(num);
-  }, [display, onChange]);
-
-  return (
-    <input
-      type="text" inputMode="numeric" value={display}
-      onChange={handleChange}
-      onFocus={() => setFocused(true)}
-      onBlur={handleBlur}
-      placeholder="0,00"
-      style={{ ...inp, width }}
-    />
-  );
+function DecimalInput({ value, onChange, integer = false, ...props }: InputProps & { integer?: boolean }) {
+  const [editing, setEditing] = useState<string | null>(null);
+  return <input {...props} type="text" inputMode={integer ? 'numeric' : 'decimal'} className="calc-input calc-input-number" value={editing ?? decimalDisplay(value)}
+    onFocus={() => setEditing(value ? String(value).replace('.', ',') : '')}
+    onChange={event => {
+      const raw = event.target.value;
+      if (integer ? !/^\d*$/.test(raw) : !/^\d*([.,]\d*)?$/.test(raw)) return;
+      setEditing(raw);
+      const next = Number(raw.replace(',', '.'));
+      if (Number.isFinite(next)) onChange(next);
+    }}
+    onBlur={() => setEditing(null)} placeholder="0" />;
 }
 
-// Percentage input — also formatted
-function PctInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
-  const [display, setDisplay] = useState(value ? value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '');
-  const [focused, setFocused] = useState(false);
-
-  useEffect(() => {
-    if (!focused) setDisplay(value ? value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '');
-  }, [value, focused]);
-
-  return (
-    <input
-      type="text" inputMode="decimal" value={display}
-      onChange={e => { const raw = e.target.value.replace(/[^\d.,]/g, ''); setDisplay(raw); onChange(parseBRL(raw)); }}
-      onFocus={() => setFocused(true)}
-      onBlur={() => { setFocused(false); const n = parseBRL(display); setDisplay(n ? n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : ''); onChange(n); }}
-      placeholder="0"
-      style={{ ...inp, width: 80 }}
-    />
-  );
+function Field({ label, help, children }: { label: string; help: string; children: (id: string, descriptionId: string) => React.ReactNode }) {
+  const id = useId();
+  const descriptionId = `${id}-help`;
+  return <div className="calc-field"><div className="calc-field-label-row"><label htmlFor={id} className="calc-field-label">{label}</label><FieldHelp label={label} help={help} descriptionId={descriptionId} /></div>{children(id, descriptionId)}</div>;
 }
 
-function NumField({ label, value, onChange, prefix='R$', suffix }: { label:string; value:number; onChange:(v:number)=>void; prefix?:string; suffix?:string; min?:number }) {
-  const isPct = suffix === '%';
-  return (
-    <div style={row}>
-      <span style={{ fontSize:'0.85rem',fontWeight:600 }}>{label}</span>
-      <div style={{ display:'flex',alignItems:'center',gap:6,maxWidth:180 }}>
-        {prefix && <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>{prefix}</span>}
-        {isPct ? <PctInput value={value} onChange={onChange} /> : <CurrencyInput value={value} onChange={onChange} />}
-        {suffix && <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>{suffix}</span>}
-      </div>
-    </div>
-  );
+function NumberField({ label, help, value, onChange, kind = 'money', suffix }: { label: string; help: string; value: number; onChange: (value: number) => void; kind?: 'money' | 'decimal' | 'integer'; suffix?: string }) {
+  return <Field label={label} help={help}>{(id, descriptionId) => <div className="calc-input-wrap">
+    {kind === 'money' && <span className="calc-input-affix" aria-hidden="true">R$</span>}
+    {kind === 'money' ? <CurrencyInput id={id} aria-describedby={descriptionId} value={value} onChange={onChange} /> : <DecimalInput id={id} aria-describedby={descriptionId} value={value} onChange={onChange} integer={kind === 'integer'} />}
+    {suffix && <span className="calc-input-affix" aria-hidden="true">{suffix}</span>}
+  </div>}</Field>;
 }
 
-// Exported for use in Etapa3 insumo rows
-export { CurrencyInput, inp };
+function TextField({ label, help, value, onChange, placeholder, type = 'text' }: { label: string; help: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: 'text' | 'month' }) {
+  return <Field label={label} help={help}>{(id, descriptionId) => <input id={id} aria-describedby={descriptionId} type={type} className="calc-input" value={value} placeholder={placeholder} onChange={event => onChange(event.target.value)} />}</Field>;
+}
 
+function Step({ number, title, description, children }: { number: number; title: string; description: string; children: React.ReactNode }) {
+  return <section className="calc-step"><header className="calc-step-heading"><span className="calc-step-number" aria-hidden="true">{number}</span><div><h2>{title}</h2><p>{description}</p></div></header>{children}</section>;
+}
+
+function Subheading({ children }: { children: React.ReactNode }) { return <h3 className="calc-step-subheading">{children}</h3>; }
+
+function Result({ label, value, help }: { label: string; value: string; help: string }) {
+  return <div className="calc-step-result"><div className="calc-field-label-row"><span>{label}</span><FieldHelp label={label} help={help} /></div><strong>{value}</strong></div>;
+}
+
+function updatePricing(s: CalcState, set: Props['set'], update: Partial<Pricing>) {
+  if (s.pricing) set({ pricing: { ...s.pricing, ...update } });
+}
 
 export function Etapa1({ s, set }: Props) {
   const r = calc(s);
-  return (
-    <div style={card}>
-      <div style={{ display:'flex',alignItems:'center',gap:10,marginBottom:16 }}>
-        <div style={{ width:36,height:36,borderRadius:10,background:'rgba(236,72,153,0.1)',display:'flex',alignItems:'center',justifyContent:'center' }}>
-          <span className="material-symbols-outlined" style={{ fontSize:20,color:'#ec4899' }}>schedule</span>
-        </div>
-        <div><div style={{ fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase' }}>Etapa 1</div><div style={{ fontSize:'0.95rem',fontWeight:800 }}>Valor da Hora Maca</div></div>
-      </div>
-      <div style={{ fontSize:'0.72rem',fontWeight:800,color:'#ec4899',textTransform:'uppercase',marginBottom:4 }}>Custos Fixos Mensais</div>
-      <NumField label="Aluguel / Espaço" value={s.aluguel} onChange={v=>set({aluguel:v})} />
-      <NumField label="Energia Elétrica" value={s.energiaEletrica} onChange={v=>set({energiaEletrica:v})} />
-      <NumField label="Água / Internet" value={s.aguaInternet} onChange={v=>set({aguaInternet:v})} />
-      <NumField label="Contador" value={s.contador} onChange={v=>set({contador:v})} />
-      <NumField label="Salários" value={s.salarios} onChange={v=>set({salarios:v})} />
-      <NumField label="Pró-labore" value={s.proLabore} onChange={v=>set({proLabore:v})} />
-      <div style={{ fontSize:'0.72rem',fontWeight:800,color:'#ec4899',textTransform:'uppercase',marginTop:16,marginBottom:4 }}>Custos Variáveis Mensais</div>
-      <NumField label="Materiais / Insumos gerais" value={s.materiaisGerais} onChange={v=>set({materiaisGerais:v})} />
-      <NumField label="Marketing / Tráfego" value={s.marketingTrafego} onChange={v=>set({marketingTrafego:v})} />
-      <NumField label="Comissões" value={s.comissoes} onChange={v=>set({comissoes:v})} />
-      <NumField label="Taxas e plataformas" value={s.taxasPlataformas} onChange={v=>set({taxasPlataformas:v})} />
-      <NumField label="Outros" value={s.outros} onChange={v=>set({outros:v})} />
-      <div style={{ ...row, borderBottom:'none',marginTop:8 }}>
-        <span style={{ fontSize:'0.85rem',fontWeight:600 }}>Dias trabalhados / mês</span>
-        <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-          <input type="number" value={s.diasTrabalhados} min={1} onChange={e=>set({diasTrabalhados:parseInt(e.target.value)||1})} style={{ ...inp,width:80,textAlign:'center',padding:'10px 8px' }} />
-          <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>dias</span>
-        </div>
-      </div>
-      <div style={{ ...row, borderBottom:'none' }}>
-        <span style={{ fontSize:'0.85rem',fontWeight:600 }}>Horas trabalhadas / dia</span>
-        <div style={{ display:'flex',alignItems:'center',gap:4 }}>
-          <input type="number" value={s.horasDia} min={0} onChange={e=>set({horasDia:parseInt(e.target.value)||0})} style={{ ...inp,width:72,textAlign:'center',padding:'10px 8px' }} />
-          <span style={{ fontSize:'0.72rem',fontWeight:700,color:'var(--text-muted)' }}>h</span>
-          <input type="number" value={s.minutosDia} min={0} max={59} onChange={e=>set({minutosDia:parseInt(e.target.value)||0})} style={{ ...inp,width:72,textAlign:'center',padding:'10px 8px' }} />
-          <span style={{ fontSize:'0.72rem',fontWeight:700,color:'var(--text-muted)' }}>min</span>
-        </div>
-      </div>
-      <div style={{ ...row, borderBottom:'none' }}>
-        <span style={{ fontSize:'0.85rem',fontWeight:600 }}>Qnt de Salas / Profissionais</span>
-        <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-          <input type="number" value={s.qtdSalas} min={1} onChange={e=>set({qtdSalas:parseInt(e.target.value)||1})} style={{ ...inp,width:80,textAlign:'center',padding:'10px 8px' }} />
-          <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>sala(s)</span>
-        </div>
-      </div>
-      <div style={{ background:'linear-gradient(135deg,#fdf2f8,#fce7f3)',borderRadius:12,padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12 }}>
-        <span style={{ fontSize:'0.78rem',fontWeight:800,color:'#ec4899',display:'flex',alignItems:'center',gap:6 }}>▸ HORA MACA</span>
-        <span style={{ fontSize:'1.1rem',fontWeight:900,color:'#be185d' }}>{fmt(r.horaMaca)}</span>
-      </div>
+  const fixedFields: Array<[keyof Pick<CalcState, 'aluguel' | 'energiaEletrica' | 'aguaInternet' | 'contador' | 'salarios' | 'proLabore'>, string, string]> = [
+    ['aluguel', 'Aluguel / espaço', 'Custo mensal do imóvel usado pela unidade. Inclua condomínio e IPTU se fizerem parte desta despesa; não repita esses valores em Outros.'],
+    ['energiaEletrica', 'Energia elétrica', 'Média mensal de energia da unidade no período de referência. Use uma média representativa quando houver oscilação.'],
+    ['aguaInternet', 'Água / internet', 'Despesas mensais de água, internet e telefonia da unidade. Some apenas o que não aparece em outro campo.'],
+    ['contador', 'Contabilidade', 'Honorários mensais da contabilidade. Impostos sobre faturamento entram na etapa 2, não aqui.'],
+    ['salarios', 'Equipe: salários e encargos', 'Custo mensal completo da equipe: salários, encargos, benefícios e provisões de férias e 13º, quando aplicáveis. Não repita remuneração já atribuída por atendimento ou como percentual. A folha paga pode não incluir todos esses custos.'],
+    ['proLabore', 'Pró-labore', 'Remuneração mensal dos sócios pelo trabalho, com os encargos aplicáveis. Não é a margem de lucro da empresa.'],
+  ];
+  const otherFields: Array<[keyof Pick<CalcState, 'materiaisGerais' | 'marketingTrafego' | 'comissoes' | 'taxasPlataformas' | 'outros'>, string, string]> = [
+    ['materiaisGerais', 'Materiais de uso geral', 'Somente materiais de estrutura, como limpeza e escritório. Produtos consumidos no procedimento entram na etapa 3. Compra de estoque não é o mesmo que consumo mensal: evite duplicidade.'],
+    ['marketingTrafego', 'Marketing / tráfego', 'Investimento mensal atribuído à unidade. Não inclua novamente esse valor como custo direto de aquisição do mesmo atendimento.'],
+    ['comissoes', 'Comissões fixas mensais', 'Somente comissões ou remunerações fixas que não dependem do preço desta venda. Percentuais pagos por venda ou ao profissional entram na etapa 2.'],
+    ['taxasPlataformas', 'Sistemas e plataformas', 'Assinaturas mensais de software e plataformas. Taxas cobradas por transação ou parcela entram nas condições de pagamento, na etapa 2.'],
+    ['outros', 'Outras despesas da estrutura', 'Despesas mensais ainda não consideradas: manutenção, seguros, depreciação econômica e provisões, conforme sua base de custos. Não repita aluguel, equipe, produtos ou taxas já informados.'],
+  ];
+  return <Step number={1} title="Estrutura e capacidade" description="Distribua os custos mensais pelas horas que podem realmente ser ocupadas.">
+    <Subheading>Custos fixos mensais</Subheading>
+    <div className="calc-fields-grid">{fixedFields.map(([key, label, help]) => <NumberField key={key} label={label} help={help} value={s[key]} onChange={value => set({ [key]: value })} />)}</div>
+    <Subheading>Demais despesas mensais</Subheading>
+    <div className="calc-fields-grid">{otherFields.map(([key, label, help]) => <NumberField key={key} label={label} help={help} value={s[key]} onChange={value => set({ [key]: value })} />)}</div>
+    <Subheading>Capacidade de atendimento</Subheading>
+    <div className="calc-fields-grid">
+      <NumberField label="Dias trabalhados no mês" help="Quantidade de dias com atendimento no período. Desconte feriados, fechamentos e dias sem operação. Deve ser maior que zero." kind="integer" suffix="dias" value={s.diasTrabalhados} onChange={value => set({ diasTrabalhados: value })} />
+      <NumberField label="Horas disponíveis por dia" help="Horas inteiras de funcionamento por dia, sem intervalos em que não há atendimento. Complete os minutos no próximo campo. Não é a duração deste procedimento." kind="integer" suffix="h" value={s.horasDia} onChange={value => set({ horasDia: value })} />
+      <NumberField label="Minutos adicionais por dia" help="Minutos adicionais às horas diárias, entre 0 e 59. Exemplo: para 8h30, informe 8 horas e 30 minutos." kind="integer" suffix="min" value={s.minutosDia} onChange={value => set({ minutosDia: value })} />
+      <NumberField label="Salas atendidas simultaneamente" help="Quantidade de salas que a equipe consegue operar ao mesmo tempo. Se há 3 salas, mas equipe para apenas 2 atendimentos simultâneos, use 2. Não some salas sem profissional disponível." kind="integer" suffix="salas" value={s.qtdSalas} onChange={value => set({ qtdSalas: value })} />
+      {s.pricing && <NumberField label="Ocupação prevista" help="Percentual da capacidade que será efetivamente ocupado, incluindo preparo. Exemplo: 100 horas disponíveis e 60 ocupadas = 60%. Use a agenda como base. Zero deixa a simulação incompleta; 100% significa nenhuma ociosidade." kind="decimal" suffix="%" value={s.pricing.occupancy} onChange={occupancy => updatePricing(s, set, { occupancy })} />}
     </div>
-  );
+    {!s.pricing && <p className="calc-field-note">Modelo legado: o rateio considera 100% da capacidade disponível.</p>}
+    <Result label="Custo da hora produtiva" value={s.pricing && s.pricing.occupancy <= 0 ? 'Informe a ocupação' : r.valid ? fmt(r.horaMaca) : '—'} help="Custos mensais divididos pelas horas disponíveis × salas simultâneas × ocupação prevista. É um rateio estimado: uma ocupação real menor pode reduzir a rentabilidade." />
+  </Step>;
 }
 
 export function Etapa2({ s, set }: Props) {
   const r = calc(s);
-  return (
-    <div style={card}>
-      <div style={{ display:'flex',alignItems:'center',gap:10,marginBottom:16 }}>
-        <div style={{ width:36,height:36,borderRadius:10,background:'rgba(99,102,241,0.1)',display:'flex',alignItems:'center',justifyContent:'center' }}>
-          <span className="material-symbols-outlined" style={{ fontSize:20,color:'#6366f1' }}>bar_chart</span>
-        </div>
-        <div><div style={{ fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase' }}>Etapa 2</div><div style={{ fontSize:'0.95rem',fontWeight:800 }}>Impostos, Taxas & Lucratividade</div></div>
-      </div>
-      <NumField label="Impostos" value={s.impostos} onChange={v=>set({impostos:v})} prefix="" suffix="%" />
-      <NumField label="Taxa Cartão de Crédito" value={s.taxaCartao} onChange={v=>set({taxaCartao:v})} prefix="" suffix="%" />
-      <NumField label="Desconto ao Paciente" value={s.descontoPaciente} onChange={v=>set({descontoPaciente:v})} prefix="" suffix="%" />
-      <NumField label="Lucro da Clínica (%)" value={s.lucroClinica} onChange={v=>set({lucroClinica:v})} prefix="" suffix="%" />
-      <NumField label="Lucro do Profissional Parceiro (%)" value={s.lucroParceiro} onChange={v=>set({lucroParceiro:v})} prefix="" suffix="%" />
-      <div style={{ background:'var(--bg)',borderRadius:12,padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12,border:'1px solid var(--border)' }}>
-        <span style={{ fontSize:'0.82rem',fontWeight:600 }}>Base de Custo Total</span>
-        <span style={{ fontSize:'1.05rem',fontWeight:900,color:'var(--primary)' }}>{fmt(r.baseCusto)}</span>
-      </div>
+  return <Step number={2} title="Taxas, comissões e margem" description="Separe o que sai de cada venda do lucro que deve permanecer na clínica.">
+    <div className="calc-fields-grid">
+      <NumberField label="Impostos sobre a venda" help="Alíquota efetiva sobre o valor realmente cobrado do paciente. Confirme a alíquota aplicável com a contabilidade. Não use o total de impostos mensais dividido apenas por este procedimento." kind="decimal" suffix="%" value={s.impostos} onChange={impostos => set({ impostos })} />
+      <NumberField label="Taxa do pagamento" help="Percentual cobrado pelo meio de pagamento, considerando operadora, bandeira, parcelamento e antecipação, quando houver. Incide sobre o valor cobrado. Uma taxa cadastrada pode preencher este campo; revise se mudar as parcelas." kind="decimal" suffix="%" value={s.taxaCartao} onChange={taxaCartao => set({ taxaCartao })} />
+      <NumberField label="Desconto planejado" help={s.pricing ? 'Desconto aplicado sobre o preço de tabela. A tabela sugerida é ajustada para que o valor após desconto preserve a margem-alvo. Ao definir um preço comercial manual, o mesmo desconto será aplicado a ele. Deve ser menor que 100%.' : 'Regra legada: este percentual é somado às taxas no denominador. O comportamento foi preservado para não alterar simulações antigas.'} kind="decimal" suffix="%" value={s.descontoPaciente} onChange={descontoPaciente => set({ descontoPaciente })} />
+      {s.pricing ? <>
+        <NumberField label="Tarifa fixa por venda" help="Valor fixo cobrado pela transação, além da taxa percentual. Se for cobrado em cada parcela, informe a soma das tarifas de todas as parcelas. Não repita taxas mensais de plataforma." value={s.pricing.paymentFixed} onChange={paymentFixed => updatePricing(s, set, { paymentFixed })} />
+        <NumberField label="Comissão comercial" help="Percentual do valor efetivamente cobrado pago a quem realizou a venda. Não repita comissões já incluídas nas despesas mensais ou na remuneração profissional." kind="decimal" suffix="%" value={s.pricing.salesCommission} onChange={salesCommission => updatePricing(s, set, { salesCommission })} />
+        <NumberField label="Profissional: percentual" help="Percentual do valor efetivamente cobrado destinado ao profissional. Preencha somente quando o contrato usar essa base. Se também existir valor fixo por sessão, informe-o na etapa 3; não duplique o mesmo pagamento." kind="decimal" suffix="%" value={s.pricing.professionalPercent} onChange={professionalPercent => updatePricing(s, set, { professionalPercent })} />
+        <NumberField label="Margem-alvo da clínica" help="Percentual da receita cobrada que deve sobrar depois de todos os custos e taxas considerados. Não é acréscimo sobre custo. Venda de R$700 com sobra de R$140 tem margem de 20%. Defina sua meta; não há percentual ideal universal." kind="decimal" suffix="%" value={s.pricing.targetMargin} onChange={targetMargin => updatePricing(s, set, { targetMargin })} />
+        <NumberField label="Margem mínima para negociar" help="Menor margem a preservar nas negociações, usada no limite de desconto. Zero cobre apenas os custos atribuídos, sem lucro. Uma margem positiva protege uma sobra. Não deve superar a margem-alvo." kind="decimal" suffix="%" value={s.pricing.minMargin} onChange={minMargin => updatePricing(s, set, { minMargin })} />
+      </> : <>
+        <NumberField label="Acréscimo da clínica sobre custo" help="Markup legado: percentual acrescentado ao custo, não margem sobre a venda. Custo de R$100 com acréscimo de 70% resulta em R$170 antes das deduções. O histórico foi preservado sem reinterpretar o percentual." kind="decimal" suffix="%" value={s.lucroClinica} onChange={lucroClinica => set({ lucroClinica })} />
+        <NumberField label="Acréscimo do parceiro sobre custo" help="Markup legado aplicado sobre o custo-base. Não equivale a comissão sobre o preço vendido. Este campo conserva a regra das simulações antigas." kind="decimal" suffix="%" value={s.lucroParceiro} onChange={lucroParceiro => set({ lucroParceiro })} />
+      </>}
     </div>
-  );
+    <Result label="Custo-base atribuído" value={r.valid ? fmt(r.baseCusto) : '—'} help="Insumos, equipamentos e estrutura alocada ao tempo deste procedimento. No modelo por margem, inclui o profissional fixo por atendimento; a tarifa do pagamento será coberta na formação do preço." />
+  </Step>;
 }
 
 export function Etapa3({ s, set }: Props) {
   const r = calc(s);
-  const updateInsumo = (idx:number, field:'nome'|'valor', val:string|number) => {
-    const nw = [...s.insumos];
-    if (field==='nome') nw[idx] = { ...nw[idx], nome: val as string };
-    else nw[idx] = { ...nw[idx], valor: typeof val==='string' ? parseFloat(val)||0 : val };
-    set({ insumos: nw });
-  };
-  return (
-    <div style={card}>
-      <div style={{ display:'flex',alignItems:'center',gap:10,marginBottom:16 }}>
-        <div style={{ width:36,height:36,borderRadius:10,background:'rgba(16,185,129,0.1)',display:'flex',alignItems:'center',justifyContent:'center' }}>
-          <span className="material-symbols-outlined" style={{ fontSize:20,color:'#10b981' }}>inventory_2</span>
+  const updateInsumo = (index: number, update: Partial<Insumo>) => set({ insumos: s.insumos.map((item, i) => i === index ? { ...item, ...update } : item) });
+  return <Step number={3} title="Ficha de custos do procedimento" description="Registre o consumo de uma sessão. Use a mesma unidade na quantidade e no custo unitário.">
+    <div className="calc-supplies">
+      {s.insumos.map((item, index) => <div className="calc-supply-card" key={index}>
+        <div className="calc-supply-heading"><h3>Insumo {index + 1}</h3><button type="button" className="calc-button-subtle" onClick={() => set({ insumos: s.insumos.filter((_, i) => i !== index) })} aria-label={`Remover insumo ${index + 1}${item.nome ? `: ${item.nome}` : ''}`}>Remover</button></div>
+        <div className="calc-fields-grid">
+          <TextField label={`Nome do insumo ${index + 1}`} help="Material ou produto consumido nesta sessão. Não inclua produtos apenas comprados para estoque. Informe equipamentos no campo separado abaixo para evitar duplicidade." value={item.nome} onChange={nome => updateInsumo(index, { nome })} placeholder="Ex.: produto, seringa, luva" />
+          {s.pricing && <TextField label={`Unidade do insumo ${index + 1}`} help="Unidade usada no consumo e no custo: ml, unidade, par, g etc. Frasco de 10 ml a R$200 corresponde a R$20 por ml. O texto não converte unidades automaticamente." value={item.unidade ?? ''} onChange={unidade => updateInsumo(index, { unidade })} placeholder="Ex.: ml, un, par" />}
+          <NumberField label={s.pricing ? `Custo unitário do insumo ${index + 1}` : `Custo do insumo ${index + 1}`} help={s.pricing ? 'Custo de uma unidade na medida informada. Divida a compra pelo conteúdo: frasco de 10 ml a R$200 = R$20/ml. Frete e custos de aquisição podem compor esse valor; não repita custos mensais rateados.' : 'Custo direto deste insumo por procedimento no modelo legado. A quantidade não é multiplicada neste modo.'} value={item.valor} onChange={valor => updateInsumo(index, { valor })} />
+          {s.pricing && <>
+            <NumberField label={`Quantidade do insumo ${index + 1}`} help="Quantidade útil necessária para uma sessão, na unidade informada. Para consumo de 2,5 ml com custo por ml, informe 2,5. Quantidade zero exclui o custo do item." kind="decimal" value={item.quantidade ?? 1} onChange={quantidade => updateInsumo(index, { quantidade })} />
+            <NumberField label={`Perda do insumo ${index + 1}`} help="Percentual do produto comprado que não pode ser aproveitado. Consumo = quantidade útil ÷ (1 − perda). Exemplo: 10 unidades úteis com 20% de perda exigem 12,5 unidades compradas. Use zero se não houver perda; deve ser menor que 100%." kind="decimal" suffix="%" value={item.perdaPercentual ?? 0} onChange={perdaPercentual => updateInsumo(index, { perdaPercentual })} />
+          </>}
         </div>
-        <div><div style={{ fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase' }}>Etapa 3</div><div style={{ fontSize:'0.95rem',fontWeight:800 }}>Insumos do Procedimento</div></div>
-      </div>
-      {s.insumos.map((ins,i) => (
-        <div key={i} style={{ ...row, gap: 8 }}>
-          <input value={ins.nome} onChange={e=>updateInsumo(i,'nome',e.target.value)} style={{ ...inp,textAlign:'left',flex:1 }} />
-          <div style={{ display:'flex',alignItems:'center',gap:4,minWidth:150 }}>
-            <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>R$</span>
-            <CurrencyInput value={ins.valor} onChange={v=>updateInsumo(i,'valor',v)} width={100} />
-          </div>
-        </div>
-      ))}
-      <div style={{ background:'linear-gradient(135deg,#f0fdf4,#dcfce7)',borderRadius:12,padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:12 }}>
-        <span style={{ fontSize:'0.78rem',fontWeight:800,color:'#10b981',display:'flex',alignItems:'center',gap:6 }}>▸ TOTAL INSUMOS</span>
-        <span style={{ fontSize:'1.1rem',fontWeight:900,color:'#059669' }}>{fmt(r.totalInsumos)}</span>
-      </div>
+      </div>)}
+      {s.insumos.length === 0 && <p className="calc-field-note">Nenhum insumo informado. Adicione os materiais utilizados nesta sessão.</p>}
     </div>
-  );
+    <button type="button" className="calc-button-outline" disabled={s.insumos.length >= 100} onClick={() => set({ insumos: [...s.insumos, { nome: '', valor: 0, ...(s.pricing ? { quantidade: 1, unidade: 'un', perdaPercentual: 0 } : {}) }] })}>+ Adicionar insumo</button>
+    {s.insumos.length >= 100 && <p className="calc-field-note">Limite de 100 insumos por simulação.</p>}
+    <Subheading>Outros custos por atendimento</Subheading>
+    <div className="calc-fields-grid">
+      <NumberField label="Equipamento / locação por sessão" help="Custo do aparelho atribuído a uma sessão. Se a locação cobrir várias sessões, divida pelo número previsto. Preencha aqui ou como insumo, nunca nos dois. Não repita manutenção ou depreciação já rateada na estrutura." value={s.locacaoAparelho} onChange={locacaoAparelho => set({ locacaoAparelho })} />
+      {s.pricing && <NumberField label="Profissional: valor fixo por sessão" help="Remuneração fixa por atendimento. Não repita salário já considerado na estrutura. Se o contrato for percentual sobre a venda, use a etapa 2. Só combine fixo e percentual se ambos forem realmente pagos." value={s.pricing.professionalFixed} onChange={professionalFixed => updatePricing(s, set, { professionalFixed })} />}
+    </div>
+    <Result label="Insumos e equipamento" value={r.valid ? fmt(r.totalInsumos) : '—'} help="Consumo dos insumos com perdas, mais equipamento por sessão. A remuneração fixa do profissional é acrescentada separadamente ao custo-base." />
+  </Step>;
 }
 
 export function Etapa4({ s, set }: Props) {
   const r = calc(s);
-  return (
-    <div style={card}>
-      <div style={{ display:'flex',alignItems:'center',gap:10,marginBottom:16 }}>
-        <div style={{ width:36,height:36,borderRadius:10,background:'rgba(245,158,11,0.1)',display:'flex',alignItems:'center',justifyContent:'center' }}>
-          <span className="material-symbols-outlined" style={{ fontSize:20,color:'#f59e0b' }}>description</span>
-        </div>
-        <div><div style={{ fontSize:'0.65rem',fontWeight:700,color:'var(--text-muted)',textTransform:'uppercase' }}>Etapa 4</div><div style={{ fontSize:'0.95rem',fontWeight:800 }}>Dados do Protocolo</div></div>
-      </div>
-      <div style={{ marginBottom:12 }}>
-        <label style={lbl}>Nome do Protocolo</label>
-        <input value={s.nome} onChange={e=>set({nome:e.target.value})} placeholder="Ex: Preenchimento" style={{ ...inp,textAlign:'left',width:'100%' }} />
-      </div>
-      <div style={{ marginBottom:12 }}>
-        <label style={lbl}>Duração</label>
-        <div style={{ display:'flex',alignItems:'center',gap:6 }}>
-          <input type="number" value={s.duracaoHoras} min={0} onChange={e=>set({duracaoHoras:parseInt(e.target.value)||0})} style={{ ...inp,width:72,textAlign:'center',padding:'10px 8px' }} />
-          <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>h</span>
-          <input type="number" value={s.duracaoMinutos} min={0} max={59} onChange={e=>set({duracaoMinutos:parseInt(e.target.value)||0})} style={{ ...inp,width:72,textAlign:'center',padding:'10px 8px' }} />
-          <span style={{ fontSize:'0.75rem',fontWeight:700,color:'var(--text-muted)' }}>min</span>
-        </div>
-      </div>
-      <div style={{ ...row, borderBottom:'none' }}>
-        <span style={{ fontSize:'0.82rem',fontWeight:600 }}>Hora Maca (calculada)</span>
-        <span style={{ fontWeight:800 }}>{fmt(r.horaMaca)}</span>
-      </div>
-      <div style={{ background:'linear-gradient(135deg,#fffbeb,#fef3c7)',borderRadius:12,padding:'12px 16px',display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:8 }}>
-        <span style={{ fontSize:'0.78rem',fontWeight:800,color:'#f59e0b',display:'flex',alignItems:'center',gap:6 }}>▸ CUSTO HORA NO PROCEDIMENTO</span>
-        <span style={{ fontSize:'1.1rem',fontWeight:900,color:'#d97706' }}>{fmt(r.custoHoraProcedimento)}</span>
-      </div>
+  return <Step number={4} title="Procedimento e preço comercial" description="Defina o tempo ocupado e compare um preço escolhido com a recomendação.">
+    <div className="calc-fields-grid">
+      <TextField label="Nome do procedimento / protocolo" help="Identifique o procedimento e o tamanho da sessão: nome, volume de produto, região ou número de sessões. Todos os custos e tempos devem representar o mesmo serviço que será vendido." value={s.nome} onChange={nome => set({ nome })} placeholder="Ex.: procedimento — uma sessão" />
+      {s.pricing && <TextField label="Mês de referência dos custos" help="Mês usado como base para despesas e capacidade. Serve para rastrear a origem dos valores. Mudar o mês não busca dados financeiros nem atualiza custos automaticamente." type="month" value={s.pricing.referenceMonth} onChange={referenceMonth => updatePricing(s, set, { referenceMonth })} />}
+      <NumberField label="Duração: horas" help="Horas inteiras em que o atendimento ocupa sala/equipe. Complete os minutos no próximo campo. Para pacotes, informe tempo e insumos totais do mesmo pacote, ou calcule uma sessão separadamente." kind="integer" suffix="h" value={s.duracaoHoras} onChange={duracaoHoras => set({ duracaoHoras })} />
+      <NumberField label="Duração: minutos adicionais" help="Minutos adicionais da sessão, entre 0 e 59. Exemplo: para 1h30, informe 1 hora e 30 minutos. A duração total precisa ser maior que zero." kind="integer" suffix="min" value={s.duracaoMinutos} onChange={duracaoMinutos => set({ duracaoMinutos })} />
+      {s.pricing && <>
+        <NumberField label="Preparo / limpeza / apoio" help="Minutos adicionais em que sala/equipe fica ocupada antes e depois do procedimento: preparo, higienização e apoio desta sessão. Não repita tempo já incluído na duração." kind="integer" suffix="min" value={s.pricing.preparationMinutes} onChange={preparationMinutes => updatePricing(s, set, { preparationMinutes })} />
+        <NumberField label="Preço comercial de tabela" help="Preço de tabela que deseja praticar, antes do desconto planejado. Zero usa a tabela sugerida. A calculadora mostra o valor cobrado após desconto e a margem efetiva. A simulação não altera catálogo, contratos ou vendas existentes." value={s.pricing.finalPrice} onChange={finalPrice => updatePricing(s, set, { finalPrice })} />
+        <NumberField label="Número de parcelas" help="Quantidade de parcelas do valor cobrado, com eventual ajuste de centavos. Escolha a taxa correspondente nas condições de pagamento: aumentar parcelas não cria juros nem altera uma taxa manual automaticamente." kind="integer" suffix="vezes" value={s.pricing.installments} onChange={installments => updatePricing(s, set, { installments })} />
+      </>}
     </div>
-  );
+    <Result label="Estrutura neste procedimento" value={r.valid ? fmt(r.custoHoraProcedimento) : '—'} help="Custo da hora produtiva multiplicado pela duração e, no modelo por margem, pelo tempo adicional de preparo e limpeza. Não é o custo total: insumos e remunerações são somados depois." />
+  </Step>;
 }
