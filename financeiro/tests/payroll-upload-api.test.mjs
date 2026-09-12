@@ -260,6 +260,10 @@ test('substitui sob lock e CAS dentro de uma única transação', async () => {
   assert.equal(calls[0][1].timeout, 20_000);
   assert.equal(calls[3][1].where.updatedAt.toISOString(), originalUpdatedAt.toISOString());
   assert.match(calls[1][1].values.join(' '), /payroll-recurrence:2026-08:Osasco/);
+  assert.match(
+    calls[1][1].strings.join(''),
+    /CAST\(pg_advisory_xact_lock[\s\S]*AS text\)/,
+  );
 });
 
 test('rollback da transação preserva integralmente a folha se a criação falhar', async () => {

@@ -7,6 +7,7 @@ import {
   subscribePayrollSync,
 } from '@/lib/payroll-client-sync';
 import type { PayrollSyncSignal } from '@/lib/payroll-client-sync';
+import { getInitialPayrollCompetence } from '@/lib/payroll-competence';
 import type { PayrollEntryData, PayrollSummary } from '@/lib/types';
 
 type FinanceiroTab = 'folha' | 'adiantamento' | 'premiacao' | 'reembolso' | 'custos' | 'analise' | 'vt' | 'vr';
@@ -90,8 +91,9 @@ export function useFinanceiro() {
     }
     return 'folha';
   });
-  const [competenceMonthState, setCompetenceMonthState] = useState(new Date().getMonth() + 1);
-  const [competenceYearState, setCompetenceYearState] = useState(new Date().getFullYear());
+  const initialPayrollCompetence = getInitialPayrollCompetence();
+  const [competenceMonthState, setCompetenceMonthState] = useState(initialPayrollCompetence.month);
+  const [competenceYearState, setCompetenceYearState] = useState(initialPayrollCompetence.year);
   const [entries, setEntries] = useState<PayrollEntryData[]>([]);
   const [summary, setSummary] = useState<PayrollSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(false);

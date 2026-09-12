@@ -79,6 +79,10 @@ test('materialização trava a unidade antes de reler e criar recorrências', as
 
   assert.ok(lockIndex >= 0);
   assert.ok(currentReadIndex > lockIndex);
+  assert.match(
+    calls[lockIndex][1][0].strings.join(''),
+    /CAST\(pg_advisory_xact_lock[\s\S]*AS text\)/,
+  );
   assert.equal(creation[1].data.length, 1);
   assert.equal(creation[1].data[0].employeeName, 'Maria da Silva');
   assert.equal(calls.filter(([operation]) => operation === 'executeRaw').length, 1);

@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
         if (confirmImport) {
             const result = await prisma.$transaction(async transaction => {
                 await transaction.$queryRaw(
-                    Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${recurrenceLockKey(competenceMonth, competenceYear, unit)}))`,
+                    Prisma.sql`SELECT CAST(pg_advisory_xact_lock(hashtext(${recurrenceLockKey(competenceMonth, competenceYear, unit)})) AS text) AS "lock"`,
                 );
 
                 const existingImport = await transaction.payrollImport.findUnique({

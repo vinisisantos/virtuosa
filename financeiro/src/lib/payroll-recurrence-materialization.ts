@@ -44,7 +44,7 @@ export async function materializeRecurringPayrollEntries(scope: PayrollCompetenc
     // unidade/competência serializa a seleção e a criação sem exigir migração.
     for (const unit of lockedUnits) {
       await transaction.$queryRaw(
-        Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${recurrenceLockKey(scope, unit)}))`,
+        Prisma.sql`SELECT CAST(pg_advisory_xact_lock(hashtext(${recurrenceLockKey(scope, unit)})) AS text) AS "lock"`,
       );
     }
 
