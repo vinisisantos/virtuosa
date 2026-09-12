@@ -6,9 +6,11 @@ import AuthGuard from '@/components/auth-guard';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { toast } from '@/components/toast';
 import { valorPorExtenso } from '@/lib/valor-extenso';
+import { downloadDocumentBlob, generateDocxPreviewPdf } from '@/lib/docx-preview-pdf';
 
 interface DocField { tag: string; label: string; type: string; required: boolean; }
 interface Template { id: string; name: string; category: string; fileType?: string; fields: DocField[]; }
+interface GeneratedSnapshot { templateId: string; templateName: string; filledData: Record<string, string>; unit: string; }
 
 const MASKS: Record<string, (v: string) => string> = {
   cpf: (v) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').slice(0, 14),
@@ -45,7 +47,40 @@ export default function DocGerarPage() {
   const [loading, setLoading] = useState(true);
   const [step, setStep] = useState<'form' | 'preview'>('form');
   const [generatedBlob, setGeneratedBlob] = useState<Blob | null>(null);
+  const [generatedSnapshot, setGeneratedSnapshot] = useState<GeneratedSnapshot | null>(null);
+  const [previewReady, setPreviewReady] = useState(false);
+  const [previewError, setPreviewError] = useState('');
+  const [downloading, setDownloading] = useState<'pdf' | 'docx' | null>(null);
+  const downloadLock = useRef(false);
   const previewRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (step !== 'preview' || !generatedBlob || !previewRef.current) return;
+    let cancelled = false;
+    const container = previewRef.current;
+    container.replaceChildren();
+    setPreviewReady(false);
+    setPreviewError('');
+    void (async () => {
+      try {
+        const [docxPreview, bytes] = await Promise.all([import('docx-preview'), generatedBlob.arrayBuffer()]);
+        if (cancelled) return;
+        await docxPreview.renderAsync(bytes, container, undefined, {
+          className: 'docx-preview-wrapper', inWrapper: true,
+          ignoreWidth: false, ignoreHeight: false, ignoreFonts: false,
+          breakPages: true, ignoreLastRenderedPageBreak: false, experimental: true,
+          renderHeaders: true, renderFooters: true, renderFootnotes: true,
+          // Embedded VML/SVG images cannot resolve blob URLs when rasterized by html2canvas.
+          useBase64URL: true,
+        });
+        if (!cancelled) setPreviewReady(true);
+      } catch (error) {
+        console.error('Erro ao renderizar documento', error);
+        if (!cancelled) setPreviewError('Não foi possível carregar a prévia. Volte e gere novamente; os dados preenchidos foram mantidos. Você também pode baixar o DOCX.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [generatedBlob, step]);
 
   useEffect(() => {
     (async () => {
@@ -226,116 +261,45 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
       setGeneratedBlob(blob);
+      setGeneratedSnapshot({ templateId: currentTemplate.id, templateName: currentTemplate.name, filledData: filledValues, unit: globalUnit });
+      setPreviewReady(false);
+      setPreviewError('');
       setStep('preview');
-
-      // Render preview using docx-preview
-      setTimeout(async () => {
-        if (previewRef.current) {
-          previewRef.current.innerHTML = '';
-          const docxPreview = await import('docx-preview');
-          await docxPreview.renderAsync(outputBuf, previewRef.current, undefined, {
-            className: 'docx-preview-wrapper',
-            inWrapper: true,
-            ignoreWidth: false,
-            ignoreHeight: false,
-            ignoreFonts: false,
-            breakPages: true,
-            ignoreLastRenderedPageBreak: false,
-            experimental: true,
-            renderHeaders: true,
-            renderFooters: true,
-            renderFootnotes: true,
-          });
-        }
-      }, 100);
-
-      toast('Preview gerado! Confira antes de baixar.', 'success');
     } catch (e) {
       console.error(e);
       toast('Erro ao gerar documento', 'error');
     } finally { setGenerating(false); }
   };
 
-  const handleDownload = async () => {
-    if (!generatedBlob || !currentTemplate) return;
-
-    const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
-    const filledValues = buildFilledValues();
-    await fetch('/api/docs/generated', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        templateId: currentTemplate.id,
-        templateName: currentTemplate.name,
-        filledData: filledValues,
-        unit: globalUnit,
-        createdBy: user.id || 'unknown',
-        createdByName: user.name || 'Desconhecido',
-      }),
-    });
-
-    const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '_');
-    const url = URL.createObjectURL(generatedBlob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${currentTemplate.name} - ${dateStr}.docx`;
-    link.click();
-    URL.revokeObjectURL(url);
-    toast('Documento baixado com sucesso!', 'success');
-  };
-
-  const handleDownloadPDF = async () => {
-    if (!previewRef.current || !currentTemplate) return;
-
-    const docxWrapper = previewRef.current.querySelector('.docx-preview-wrapper') as HTMLElement;
-    if (!docxWrapper) {
-      toast('Aguarde o preview carregar completamente', 'warning');
-      return;
-    }
-
-    const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
-    const filledValues = buildFilledValues();
-    await fetch('/api/docs/generated', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        templateId: currentTemplate.id,
-        templateName: currentTemplate.name,
-        filledData: filledValues,
-        unit: globalUnit,
-        createdBy: user.id || 'unknown',
-        createdByName: user.name || 'Desconhecido',
-      }),
-    });
-
-    toast('Gerando PDF... Isso pode levar alguns segundos.', 'success');
-
-    // Remove gray background and padding temporarily so it looks native in the PDF
-    const originalBg = docxWrapper.style.background;
-    const originalPadding = docxWrapper.style.padding;
-    docxWrapper.style.background = 'white';
-    docxWrapper.style.padding = '0';
-
+  const handleDownload = async (format: 'pdf' | 'docx') => {
+    if (downloadLock.current || !generatedBlob || !generatedSnapshot) return;
+    if (format === 'pdf' && (!previewReady || !previewRef.current)) return;
+    downloadLock.current = true;
+    setDownloading(format);
     try {
-      // @ts-ignore
-      const html2pdf = (await import('html2pdf.js')).default;
+      const blob = format === 'pdf' ? await generateDocxPreviewPdf(previewRef.current!) : generatedBlob;
       const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '_');
-      const opt = {
-        margin:       0,
-        filename:     `${currentTemplate.name} - ${dateStr}.pdf`,
-        image:        { type: 'jpeg' as const, quality: 0.98 },
-        html2canvas:  { scale: 2, useCORS: true, windowWidth: 1200 },
-        jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' as const }
-      };
-
-      await html2pdf().set(opt).from(docxWrapper).save();
-      toast('PDF baixado com sucesso!', 'success');
+      downloadDocumentBlob(blob, `${generatedSnapshot.templateName} - ${dateStr}.${format}`);
+      toast(format === 'pdf' ? 'PDF baixado com sucesso!' : 'Documento baixado com sucesso!', 'success');
+      // A failed history request must not prevent the user receiving the generated file.
+      try {
+        const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
+        const response = await fetch('/api/docs/generated', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...generatedSnapshot, createdBy: user.id || 'unknown', createdByName: user.name || 'Desconhecido' }),
+          signal: AbortSignal.timeout(15000),
+        });
+        if (!response.ok) throw new Error(`Histórico indisponível (${response.status})`);
+      } catch (error) {
+        console.error('Erro ao registrar download no histórico', error);
+        toast('O arquivo foi baixado, mas não foi possível registrar no histórico.', 'warning');
+      }
     } catch (error) {
-      console.error(error);
-      toast('Erro ao gerar PDF', 'error');
+      console.error('Erro ao baixar documento', error);
+      toast(format === 'pdf' ? 'Erro ao gerar PDF. Os dados foram mantidos; tente novamente ou baixe o DOCX.' : 'Erro ao baixar documento. Tente novamente.', 'error');
     } finally {
-      docxWrapper.style.background = originalBg;
-      docxWrapper.style.padding = originalPadding;
+      downloadLock.current = false;
+      setDownloading(null);
     }
   };
 
@@ -360,8 +324,8 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
   return (
     <AuthGuard requiredPermission="termos">
       <style>{`
-        .docx-preview-wrapper { background: white !important; }
-        .docx-preview-wrapper section.docx { 
+        .docx-preview-wrapper-wrapper { background: white !important; }
+        section.docx-preview-wrapper {
           margin: 0 auto !important; 
           box-shadow: 0 2px 12px rgba(0,0,0,0.1) !important; 
           margin-bottom: 20px !important;
@@ -613,7 +577,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* Action bar */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)', padding: '14px 20px', flexWrap: 'wrap', gap: 10, position: 'sticky', top: 70, zIndex: 10 }}>
-                <button onClick={() => { setStep('form'); }} style={{
+                <button disabled={!!downloading} onClick={() => { setPreviewReady(false); setStep('form'); }} style={{
                   padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)',
                   background: 'transparent', color: 'var(--text-main)', fontWeight: 700,
                   cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6,
@@ -622,25 +586,25 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                   Voltar e Editar
                 </button>
 
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button onClick={handleDownload} style={{
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                  <button disabled={!!downloading} onClick={() => handleDownload('docx')} style={{
                     padding: '10px 24px', borderRadius: 10, border: '1px solid var(--border)',
                     background: 'transparent',
                     color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem',
                     display: 'flex', alignItems: 'center', gap: 6,
                   }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>download</span>
-                    Baixar DOCX
+                    {downloading === 'docx' ? 'Baixando DOCX...' : 'Baixar DOCX'}
                   </button>
-                  <button onClick={handleDownloadPDF} style={{
+                  <button disabled={!!downloading || !previewReady} onClick={() => handleDownload('pdf')} style={{
                     padding: '10px 24px', borderRadius: 10, border: 'none',
                     background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
                     color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: '0.9rem',
-                    display: 'flex', alignItems: 'center', gap: 6,
+                    display: 'flex', alignItems: 'center', gap: 6, opacity: downloading || !previewReady ? 0.6 : 1,
                     boxShadow: '0 4px 12px rgba(230,0,126,0.25)',
                   }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>picture_as_pdf</span>
-                    Baixar PDF
+                    {downloading === 'pdf' ? 'Gerando PDF...' : 'Baixar PDF'}
                   </button>
                 </div>
               </div>
@@ -651,7 +615,8 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                 overflow: 'hidden', minHeight: 600, padding: '20px 0',
               }}>
                 <div ref={previewRef} style={{ maxWidth: '100%', overflow: 'auto' }} />
-                {!previewRef.current?.innerHTML && (
+                {previewError && <p role="alert" style={{ padding: 24, color: '#b91c1c', background: '#fff' }}>{previewError}</p>}
+                {!previewReady && !previewError && (
                   <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
                     <div className="spinner" />
                   </div>
