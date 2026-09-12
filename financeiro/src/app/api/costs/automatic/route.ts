@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import {
   automaticPayrollPaymentTotals,
   canAccessAutomaticCosts,
+  canManageAutomaticCosts,
   parseCostsPeriod,
   previousCompetence,
   utcMonthRange,
@@ -19,6 +20,17 @@ type PayrollUnitSummary = {
   employeeCount: number;
 };
 
+type PayrollEntrySummary = {
+  id: string;
+  employeeName: string;
+  unit: string;
+  salary: number;
+  fgts: number;
+  total: number;
+  paymentStatus: string;
+  paymentDate: Date | null;
+};
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const requestedUnit = searchParams.get('unit');
@@ -28,6 +40,8 @@ export async function GET(request: NextRequest) {
   if (!canAccessAutomaticCosts(guard)) {
     return NextResponse.json({ error: 'Acesso negado' }, { status: 403 });
   }
+
+  const canManagePayrollPayments = canManageAutomaticCosts(guard);
 
   if (
     requestedUnit
@@ -65,10 +79,13 @@ export async function GET(request: NextRequest) {
           unit: true,
           entries: {
             select: {
+              id: true,
+              employeeName: true,
               netSalary: true,
               baseSalary: true,
               bonus: true,
               paymentStatus: true,
+              paymentDate: true,
               employmentType: true,
               hasFgts: true,
               hazardPayRate: true,
@@ -121,6 +138,7 @@ export async function GET(request: NextRequest) {
     let paidFgtsTotal = 0;
     let pendingFgtsTotal = 0;
     let employeeCount = 0;
+    const payrollEntries: PayrollEntrySummary[] = [];
 
     for (const payrollImport of payrollImports) {
       const unitSummary = payrollUnits.get(payrollImport.unit) || {
@@ -150,6 +168,19 @@ export async function GET(request: NextRequest) {
         paidFgtsTotal += paymentTotals.paidFgtsTotal;
         pendingFgtsTotal += paymentTotals.pendingFgtsTotal;
 
+        if (canManagePayrollPayments) {
+          payrollEntries.push({
+            id: entry.id,
+            employeeName: entry.employeeName,
+            unit: payrollImport.unit,
+            salary,
+            fgts,
+            total: salary + fgts,
+            paymentStatus: entry.paymentStatus,
+            paymentDate: entry.paymentDate,
+          });
+        }
+
         unitSummary.salaryTotal += salary;
         unitSummary.fgtsTotal += fgts;
         unitSummary.total += salary + fgts;
@@ -174,11 +205,21 @@ export async function GET(request: NextRequest) {
           paidFgtsTotal,
           pendingFgtsTotal,
           units: Array.from(payrollUnits.values()).sort((a, b) => a.unit.localeCompare(b.unit, 'pt-BR')),
+          entries: payrollEntries.sort((a, b) => (
+            a.unit.localeCompare(b.unit, 'pt-BR')
+            || a.employeeName.localeCompare(b.employeeName, 'pt-BR')
+          )),
         }
       : null;
 
+    const availablePayrollUnits = new Set(payrollImports.map(payrollImport => payrollImport.unit));
+    const expectedPayrollUnits = effectiveUnitFilter ? [effectiveUnitFilter] : [...ACTIVE_UNITS];
+
     return NextResponse.json({
       payroll,
+      payrollCompetence,
+      missingPayrollUnits: expectedPayrollUnits.filter(unit => !availablePayrollUnits.has(unit)),
+      canManagePayrollPayments,
       productOrders,
       productOrdersTotal: productOrders.reduce((total, order) => total + (order.totalPrice || 0), 0),
     });

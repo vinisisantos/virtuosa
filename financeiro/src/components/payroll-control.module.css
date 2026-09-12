@@ -117,6 +117,11 @@
 .employeeText small { font-size: .66rem; }
 .activeRule { color: var(--payroll-green); }
 .mutedRule { color: var(--text-muted); }
+.paymentBadge { width: fit-content; max-width: 100%; display: inline-flex; align-items: center; gap: 4px; font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.paymentBadge span { flex: 0 0 auto; font-size: 13px; }
+.paymentBadgePaid { color: var(--payroll-green); }
+.paymentBadgePending { color: var(--text-muted); }
+.paymentBadgeReview { color: #f59e0b; }
 
 .regimeCell,
 .salaryCell,
@@ -154,6 +159,29 @@
 .rowActions span, .savedAdjustment button span { font-size: 18px; }
 
 .expandedPanel { margin: 0 16px 12px 52px; padding: 14px; border: 1px solid var(--border); background: rgba(255,255,255,.012); border-radius: 13px; }
+.paymentStatusBar { min-height: 66px; margin-bottom: 12px; padding: 10px 11px 10px 13px; border: 1px solid var(--border); border-radius: 12px; display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.paymentStatusPaid { border-color: rgba(34,197,94,.3); background: rgba(34,197,94,.06); }
+.paymentStatusPending { background: rgba(255,255,255,.014); }
+.paymentStatusReview { border-color: rgba(245,158,11,.3); background: rgba(245,158,11,.06); }
+.paymentStatusDetails { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.paymentStatusDetails > span:last-child { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.paymentStatusDetails strong { color: var(--text-main); font-size: .79rem; }
+.paymentStatusDetails small { color: var(--text-muted); font-size: .65rem; line-height: 1.35; }
+.paymentStatusIcon { flex: 0 0 34px; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--text-muted); background: var(--border); font-size: 19px; }
+.paymentStatusPaid .paymentStatusIcon { color: var(--payroll-green); background: rgba(34,197,94,.12); }
+.paymentStatusReview .paymentStatusIcon { color: #f59e0b; background: rgba(245,158,11,.12); }
+.confirmPaymentButton,
+.undoPaymentButton { min-height: 44px; border-radius: 10px; padding: 0 15px; font-family: inherit; font-size: .73rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; transition: transform .18s ease, opacity .18s ease, border-color .18s ease; }
+.confirmPaymentButton { border: 0; color: #fff; background: #16a34a; box-shadow: 0 7px 18px rgba(22,163,74,.18); }
+.undoPaymentButton { border: 1px solid var(--border); color: var(--text-main); background: var(--card-bg); }
+.confirmPaymentButton:hover,
+.undoPaymentButton:hover { transform: translateY(-1px); }
+.confirmPaymentButton:disabled,
+.undoPaymentButton:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+.confirmPaymentButton span,
+.undoPaymentButton span { font-size: 18px; }
+.confirmPaymentButton:disabled span,
+.undoPaymentButton:disabled span { animation: spin 1s linear infinite; }
 .paymentOverview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 12px; }
 .paymentOverview > div { min-height: 72px; padding: 11px 12px; border: 1px solid var(--border); border-radius: 11px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
 .paymentOverview span { color: var(--text-muted); font-size: .62rem; font-weight: 800; text-transform: uppercase; letter-spacing: .045em; }
@@ -301,10 +329,11 @@
   .entry { background: var(--card-bg); border: 1px solid var(--border); border-radius: 15px; overflow: hidden; }
   .entrySummary { min-height: auto; padding: 14px; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 14px; }
   .expandButton { position: static; grid-column: 2; grid-row: 1; width: 44px; height: 44px; align-self: start; }
-  .employeeIdentity { grid-column: 1; grid-row: 1; padding-left: 0; }
+  .employeeIdentity { grid-column: 1; grid-row: 1; padding: 0 56px 0 0; }
   .avatar { width: 38px; height: 38px; flex-basis: 38px; }
   .employeeText strong { font-size: .88rem; }
   .regimeCell { position: absolute; top: 14px; right: 54px; }
+  .regimeCell .mobileLabel { display: none; }
   .regimeSelect { width: 70px; min-height: 44px; padding: 0 6px; font-size: .66rem; }
   .salaryCell, .adjustmentCell, .absenceCell, .totalCell { display: flex; justify-content: space-between; align-items: center; gap: 12px; grid-column: 1 / -1; font-size: .76rem; }
   .salaryCell { padding-top: 10px; border-top: 1px solid var(--border); }
@@ -316,6 +345,8 @@
   .rowActions { grid-column: 1 / -1; justify-content: flex-end; margin-top: -4px; }
   .rowActions button { width: 44px; height: 44px; }
   .expandedPanel { margin: 0; padding: 12px; border-width: 1px 0 0; border-radius: 0; }
+  .paymentStatusBar { align-items: stretch; flex-direction: column; gap: 10px; padding: 12px; }
+  .confirmPaymentButton, .undoPaymentButton { width: 100%; }
   .paymentOverview { grid-template-columns: 1fr 1fr; }
   .breakdownGrid { grid-template-columns: 1fr; }
   .legalSummary { grid-template-columns: 1fr 1fr; }

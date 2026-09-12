@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { formatCurrency } from '@/lib/currency';
@@ -88,6 +88,19 @@ function formatCurrencyInputFromTyping(value: string) {
   const digits = value.replace(/\D/g, '');
   if (!digits) return '';
   return formatCurrencyInput(Number(digits) / 100);
+}
+
+function formatPaymentDate(value: string, includeTime = false) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Data indisponível';
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    ...(includeTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+    timeZone: 'America/Sao_Paulo',
+  }).format(date);
 }
 
 function parseCurrencyInput(value: string) {
@@ -281,6 +294,40 @@ export function PayrollControl({
       toast('Colaborador removido', 'success');
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Erro ao remover colaborador', 'error');
+    } finally {
+      setBusyKey('');
+    }
+  };
+
+  const togglePayment = async (entry: PayrollEntryData) => {
+    const markAsPaid = entry.paymentStatus !== 'paid';
+    const hasFgts = entry.employmentType === 'CLT' && entry.hasFgts;
+    const confirmed = await confirmDialog({
+      title: markAsPaid ? 'Confirmar pagamento' : 'Desfazer confirmação',
+      message: markAsPaid
+        ? `Confirmar o pagamento de ${formatCurrency(calculatePayrollTotal(entry))} para ${entry.employeeName}? ${hasFgts ? 'O salário e o FGTS passarão a constar como pagos' : 'O salário passará a constar como pago'} nos Custos.`
+        : `Desfazer a confirmação de pagamento de ${entry.employeeName}? ${hasFgts ? 'O salário e o FGTS voltarão a constar como pendentes' : 'O salário voltará a constar como pendente'} nos Custos.`,
+      confirmText: markAsPaid ? 'Confirmar pagamento' : 'Desfazer',
+      variant: markAsPaid ? 'info' : 'warning',
+    });
+    if (!confirmed) return;
+
+    setBusyKey(`payment:${entry.id}`);
+    try {
+      const response = await fetch('/api/payroll/payment', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: entry.id,
+          paymentStatus: markAsPaid ? 'paid' : 'unpaid',
+          ...(selectedUnit !== 'all' ? { unit: selectedUnit } : {}),
+        }),
+      });
+      await parseResponse(response);
+      await onRefresh();
+      toast(markAsPaid ? 'Pagamento confirmado' : 'Confirmação de pagamento desfeita', 'success');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Erro ao atualizar pagamento', 'error');
     } finally {
       setBusyKey('');
     }
@@ -484,6 +531,30 @@ export function PayrollControl({
                               : 'Regime a definir'}
                           {entry.cargo ? ` · ${entry.cargo}` : ''}
                         </small>
+                        <small
+                          className={`${styles.paymentBadge} ${
+                            entry.paymentStatus === 'paid'
+                              ? styles.paymentBadgePaid
+                              : entry.paymentStatus === 'review'
+                                ? styles.paymentBadgeReview
+                                : styles.paymentBadgePending
+                          }`}
+                        >
+                          <span className="material-symbols-outlined">
+                            {entry.paymentStatus === 'paid'
+                              ? 'check_circle'
+                              : entry.paymentStatus === 'review'
+                                ? 'error'
+                                : 'schedule'}
+                          </span>
+                          {entry.paymentStatus === 'paid'
+                            ? entry.paymentDate
+                              ? `Pago em ${formatPaymentDate(entry.paymentDate)}`
+                              : 'Pagamento confirmado'
+                            : entry.paymentStatus === 'review'
+                              ? 'Pagamento em revisão'
+                              : 'Pagamento pendente'}
+                        </small>
                       </span>
                     </div>
 
@@ -543,6 +614,62 @@ export function PayrollControl({
 
                   {expanded && (
                     <div className={styles.expandedPanel}>
+                      <div className={`${styles.paymentStatusBar} ${
+                        entry.paymentStatus === 'paid'
+                          ? styles.paymentStatusPaid
+                          : entry.paymentStatus === 'review'
+                            ? styles.paymentStatusReview
+                            : styles.paymentStatusPending
+                      }`}>
+                        <div className={styles.paymentStatusDetails}>
+                          <span className={`${styles.paymentStatusIcon} material-symbols-outlined`}>
+                            {entry.paymentStatus === 'paid'
+                              ? 'check_circle'
+                              : entry.paymentStatus === 'review'
+                                ? 'error'
+                                : 'schedule'}
+                          </span>
+                          <span>
+                            <strong>
+                              {entry.paymentStatus === 'paid'
+                                ? 'Pagamento confirmado'
+                                : entry.paymentStatus === 'review'
+                                  ? 'Pagamento em revisão'
+                                  : 'Pagamento pendente'}
+                            </strong>
+                            <small>
+                              {entry.paymentStatus === 'paid'
+                                ? entry.paymentDate
+                                  ? `Confirmado em ${formatPaymentDate(entry.paymentDate, true)}`
+                                  : 'Confirmado sem data registrada.'
+                                : entry.paymentStatus === 'review'
+                                  ? 'Confira os dados antes de confirmar o pagamento.'
+                                  : 'Ainda não confirmado nesta competência.'}
+                            </small>
+                          </span>
+                        </div>
+                        <button
+                          className={entry.paymentStatus === 'paid' ? styles.undoPaymentButton : styles.confirmPaymentButton}
+                          disabled={busyKey === `payment:${entry.id}`}
+                          aria-busy={busyKey === `payment:${entry.id}`}
+                          aria-label={`${entry.paymentStatus === 'paid' ? 'Desfazer pagamento' : 'Confirmar pagamento'} de ${entry.employeeName}`}
+                          onClick={() => void togglePayment(entry)}
+                        >
+                          <span className="material-symbols-outlined">
+                            {busyKey === `payment:${entry.id}`
+                              ? 'progress_activity'
+                              : entry.paymentStatus === 'paid'
+                                ? 'undo'
+                                : 'check'}
+                          </span>
+                          {busyKey === `payment:${entry.id}`
+                            ? 'Atualizando...'
+                            : entry.paymentStatus === 'paid'
+                              ? 'Desfazer pagamento'
+                              : 'Confirmar pagamento'}
+                        </button>
+                      </div>
+
                       <div className={styles.paymentOverview}>
                         <div>
                           <span>Total rendimentos</span>

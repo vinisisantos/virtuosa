@@ -1,5 +1,7 @@
 'use client';
 import { Fragment, useState, useRef, useEffect, useMemo } from 'react';
+import { toast } from '@/components/toast';
+import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { FixedExpense, Bill, LogEntry, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, formatCurrency } from '@/hooks/useDashboard';
 import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
@@ -50,6 +52,17 @@ interface AutomaticPayrollUnit {
   employeeCount: number;
 }
 
+interface AutomaticPayrollEntry {
+  id: string;
+  employeeName: string;
+  unit: string;
+  salary: number;
+  fgts: number;
+  total: number;
+  paymentStatus: string;
+  paymentDate: string | null;
+}
+
 interface AutomaticPayrollCost {
   competenceMonth: number;
   competenceYear: number;
@@ -64,6 +77,7 @@ interface AutomaticPayrollCost {
   paidFgtsTotal: number;
   pendingFgtsTotal: number;
   units: AutomaticPayrollUnit[];
+  entries: AutomaticPayrollEntry[];
 }
 
 interface AutomaticProductOrder {
@@ -77,6 +91,9 @@ interface AutomaticProductOrder {
 
 interface AutomaticCostsResponse {
   payroll: AutomaticPayrollCost | null;
+  payrollCompetence: { month: number; year: number };
+  missingPayrollUnits: string[];
+  canManagePayrollPayments: boolean;
   productOrders: AutomaticProductOrder[];
   productOrdersTotal: number;
 }
@@ -166,7 +183,19 @@ function storedUserCanAccessOrders() {
   }
 }
 
-function AutomaticCostDetails({ row, canOpenOrders }: { row: CostRow; canOpenOrders: boolean }) {
+function AutomaticCostDetails({
+  row,
+  canOpenOrders,
+  canManagePayrollPayments,
+  payrollPaymentBusyId,
+  onTogglePayrollPayment,
+}: {
+  row: CostRow;
+  canOpenOrders: boolean;
+  canManagePayrollPayments: boolean;
+  payrollPaymentBusyId: string;
+  onTogglePayrollPayment: (entry: AutomaticPayrollEntry) => void;
+}) {
   if (row.source === 'automatic-payroll') {
     const payroll = row.raw as AutomaticPayrollCost;
     const competenceLabel = `${String(payroll.competenceMonth).padStart(2, '0')}/${payroll.competenceYear}`;
@@ -217,8 +246,50 @@ function AutomaticCostDetails({ row, canOpenOrders }: { row: CostRow; canOpenOrd
           </div>
         )}
 
+        {(payroll.entries || []).length > 0 && (
+          <div style={{ display: 'grid', gap: 8, marginTop: 14 }}>
+            <div style={{ color: 'var(--text-main)', fontSize: '0.78rem', fontWeight: 800 }}>
+              Pagamentos por colaborador
+            </div>
+            {(payroll.entries || []).map(entry => {
+              const isPaid = entry.paymentStatus === 'paid';
+              const isBusy = payrollPaymentBusyId === entry.id;
+              return (
+                <div key={entry.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, padding: '11px 12px', borderRadius: 10, background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+                  <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 800 }}>{entry.employeeName}</div>
+                    <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.68rem' }}>
+                      {entry.unit} · Salário {fmt(entry.salary)} · FGTS {fmt(entry.fgts)}
+                    </div>
+                  </div>
+                  <div style={{ minWidth: 90, color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 850 }}>{fmt(entry.total)}</div>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', borderRadius: 7, background: isPaid ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: isPaid ? '#22c55e' : '#ef4444', fontSize: '0.7rem', fontWeight: 800 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{isPaid ? 'check_circle' : 'schedule'}</span>
+                    {isPaid
+                      ? `Pago${entry.paymentDate ? ` em ${new Date(entry.paymentDate).toLocaleDateString('pt-BR')}` : ''}`
+                      : 'Pendente'}
+                  </span>
+                  {canManagePayrollPayments && (
+                    <button
+                      type="button"
+                      disabled={isBusy}
+                      onClick={() => onTogglePayrollPayment(entry)}
+                      style={{ minHeight: 44, padding: '9px 12px', borderRadius: 9, border: `1px solid ${isPaid ? 'rgba(239,68,68,0.3)' : 'rgba(34,197,94,0.3)'}`, background: isPaid ? 'rgba(239,68,68,0.08)' : 'rgba(34,197,94,0.08)', color: isPaid ? '#ef4444' : '#16a34a', cursor: isBusy ? 'wait' : 'pointer', opacity: isBusy ? 0.65 : 1, fontFamily: 'inherit', fontSize: '0.74rem', fontWeight: 800 }}
+                    >
+                      {isBusy ? 'Atualizando...' : isPaid ? 'Desfazer pagamento' : 'Confirmar pagamento'}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         <div style={{ marginTop: 12, color: 'var(--text-muted)', fontSize: '0.72rem', lineHeight: 1.45 }}>
-          Somente leitura em Custos. Qualquer alteração na competência {competenceLabel} é atualizada aqui automaticamente. Como a folha não possui baixa separada de FGTS, o status do encargo acompanha o status de pagamento de cada pessoa.
+          {canManagePayrollPayments
+            ? `A confirmação é individual e atualiza automaticamente a competência ${competenceLabel}. `
+            : `Somente leitura em Custos. Qualquer alteração na competência ${competenceLabel} é atualizada aqui automaticamente. `}
+          Como a folha não possui baixa separada de FGTS, o status do encargo acompanha o status de pagamento de cada pessoa.
         </div>
       </div>
     );
@@ -413,7 +484,10 @@ export function CustosUnificado({ d }: { d: any }) {
   const [loadingAutomaticCosts, setLoadingAutomaticCosts] = useState(true);
   const [automaticCostsError, setAutomaticCostsError] = useState<string | null>(null);
   const [expandedAutomaticRows, setExpandedAutomaticRows] = useState<Set<string>>(new Set());
+  const [automaticCostsRefreshVersion, setAutomaticCostsRefreshVersion] = useState(0);
+  const [payrollPaymentBusyId, setPayrollPaymentBusyId] = useState('');
   const [canOpenOrders] = useState(storedUserCanAccessOrders);
+  const automaticCostsScopeRef = useRef('');
 
   const isProductExpense = isProductExpenseCategory(addCategory);
   const calculatedProductItems = useMemo(() => productItems.map(item => ({
@@ -427,10 +501,13 @@ export function CustosUnificado({ d }: { d: any }) {
   useEffect(() => {
     const controller = new AbortController();
     const loadAutomaticCosts = async () => {
+      const scope = `${d.selectedUnit}:${d.selectedYear}-${d.selectedMonth + 1}`;
+      const scopeChanged = automaticCostsScopeRef.current !== scope;
+      automaticCostsScopeRef.current = scope;
       setLoadingAutomaticCosts(true);
-      setAutomaticCosts(null);
+      if (scopeChanged) setAutomaticCosts(null);
       setAutomaticCostsError(null);
-      setExpandedAutomaticRows(new Set());
+      if (scopeChanged) setExpandedAutomaticRows(new Set());
       try {
         const params = new URLSearchParams({
           month: String(d.selectedMonth + 1),
@@ -454,7 +531,41 @@ export function CustosUnificado({ d }: { d: any }) {
     };
     loadAutomaticCosts();
     return () => controller.abort();
-  }, [d.selectedMonth, d.selectedUnit, d.selectedYear]);
+  }, [automaticCostsRefreshVersion, d.selectedMonth, d.selectedUnit, d.selectedYear]);
+
+  const togglePayrollPayment = async (entry: AutomaticPayrollEntry) => {
+    const isPaid = entry.paymentStatus === 'paid';
+    const confirmed = await confirmDialog({
+      title: isPaid ? 'Desfazer pagamento' : 'Confirmar pagamento',
+      message: isPaid
+        ? `Deseja devolver o pagamento de ${entry.employeeName} para pendente? O salário e o FGTS serão atualizados juntos.`
+        : `Confirma o pagamento de ${entry.employeeName}? O salário e o FGTS serão marcados como pagos juntos.`,
+      confirmText: isPaid ? 'Desfazer' : 'Confirmar',
+      variant: isPaid ? 'warning' : 'info',
+    });
+    if (!confirmed) return;
+
+    setPayrollPaymentBusyId(entry.id);
+    try {
+      const response = await fetch('/api/payroll/payment', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: entry.id,
+          unit: entry.unit,
+          paymentStatus: isPaid ? 'unpaid' : 'paid',
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || 'Não foi possível atualizar o pagamento');
+      toast(isPaid ? 'Pagamento devolvido para pendente' : 'Pagamento confirmado', 'success');
+      setAutomaticCostsRefreshVersion(version => version + 1);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Não foi possível atualizar o pagamento', 'error');
+    } finally {
+      setPayrollPaymentBusyId('');
+    }
+  };
 
   /* ─── Derived Data ─── */
   const filteredFixed = d.fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (d.selectedUnit === 'all' || !e.unit || e.unit === d.selectedUnit));
@@ -1030,6 +1141,14 @@ export function CustosUnificado({ d }: { d: any }) {
         </div>
       )}
 
+      {!loadingAutomaticCosts && !automaticCostsError && automaticCosts && automaticCosts.missingPayrollUnits.length > 0 && (
+        <div role="status" style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, border: '1px solid rgba(59,130,246,0.28)', background: 'rgba(59,130,246,0.08)', color: '#2563eb', fontSize: '0.82rem', fontWeight: 650, lineHeight: 1.5 }}>
+          <strong>Folha ainda não refletida:</strong>{' '}
+          não há folha cadastrada na competência {String(automaticCosts.payrollCompetence.month).padStart(2, '0')}/{automaticCosts.payrollCompetence.year} para {automaticCosts.missingPayrollUnits.join(', ')}.
+          Cadastre essa competência na Folha de Pagamento; os valores aparecerão aqui automaticamente, sem copiar ou estimar dados.
+        </div>
+      )}
+
       {viewMode === 'lucratividade' ? (
         <LucratividadeView
           d={d}
@@ -1249,7 +1368,13 @@ export function CustosUnificado({ d }: { d: any }) {
                       {isExpanded && (
                         <tr className="cost-detail-row" style={{ background: 'var(--bg)', borderTop: '1px solid var(--border)' }}>
                           <td colSpan={5} style={{ padding: '0 20px 18px' }}>
-                            <AutomaticCostDetails row={row} canOpenOrders={canOpenOrders} />
+                            <AutomaticCostDetails
+                              row={row}
+                              canOpenOrders={canOpenOrders}
+                              canManagePayrollPayments={automaticCosts?.canManagePayrollPayments === true}
+                              payrollPaymentBusyId={payrollPaymentBusyId}
+                              onTogglePayrollPayment={entry => void togglePayrollPayment(entry)}
+                            />
                           </td>
                         </tr>
                       )}
