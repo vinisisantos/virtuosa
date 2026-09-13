@@ -15,6 +15,23 @@ const user = {
   unit: 'Osasco',
   permissions: { admin: true, financeiro: true, finCustos: true },
 };
+const serverFixed = [{
+  id: 10,
+  name: 'Aluguel sincronizado',
+  value: 13717.15,
+  category: 'Aluguel',
+  unit: 'Osasco',
+  recurrence: 'monthly',
+  effectiveFrom: '2026-09-01',
+}];
+const staleLocalFixed = [{
+  id: 99,
+  name: 'Aluguel antigo do celular',
+  value: 13000,
+  category: 'Aluguel',
+  unit: 'Osasco',
+  recurrence: 'monthly',
+}];
 
 function automaticCosts(paymentStatus, paymentDate) {
   const paid = paymentStatus === 'paid';
@@ -75,6 +92,8 @@ try {
   for (const width of [390, 430, 1440]) {
     let paymentStatus = 'unpaid';
     let paymentDate = null;
+    let activeServerFixed = serverFixed;
+    let backupUpdatedAt = '2026-09-12T21:10:53.179Z';
     const mutations = [];
     const page = await browser.newPage();
     const errors = [];
@@ -91,7 +110,14 @@ try {
 
       let data = {};
       if (url.pathname === '/api/auth/me') data = { authenticated: true, user };
-      else if (url.pathname === '/api/backup') data = { exists: false };
+      else if (url.pathname === '/api/backup') data = {
+        exists: true,
+        logs: [],
+        goals: {},
+        fixed: activeServerFixed,
+        bills: [],
+        updatedAt: backupUpdatedAt,
+      };
       else if (url.pathname === '/api/costs/automatic') data = automaticCosts(paymentStatus, paymentDate);
       else if (url.pathname === '/api/payroll/payment') {
         const body = JSON.parse(request.postData() || '{}');
@@ -103,16 +129,28 @@ try {
 
       void request.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
     });
-    await page.evaluateOnNewDocument(userValue => {
+    await page.evaluateOnNewDocument((userValue, staleLocalFixedValue) => {
       localStorage.setItem('virtuosa_user', JSON.stringify(userValue));
       localStorage.setItem('virtuosa_global_unit', 'Osasco');
       localStorage.setItem('virtuosa_financeiro_tab', 'custos');
-      localStorage.setItem('virtuosa_fixed_expenses_v2', '[]');
+      localStorage.setItem('virtuosa_fixed_expenses_v2', JSON.stringify(staleLocalFixedValue));
       localStorage.setItem('virtuosa_bills_v2', '[]');
-    }, user);
+    }, user, staleLocalFixed);
 
     await page.goto(`${origin}/?tab=custos&month=8&year=2026`, { waitUntil: 'networkidle0', timeout: 120000 });
     await page.waitForFunction(() => document.body.textContent?.includes('Folha de pagamento · competência 08/2026'));
+    await page.waitForFunction(() => document.body.textContent?.includes('Aluguel sincronizado'));
+    assert.equal(await page.evaluate(() => document.body.textContent?.includes('Aluguel antigo do celular')), false);
+    if (width === 390) {
+      activeServerFixed = [{
+        ...serverFixed[0],
+        name: 'Aluguel atualizado em outro dispositivo',
+        value: 14000,
+      }];
+      backupUpdatedAt = '2026-09-12T21:11:53.179Z';
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+      await page.waitForFunction(() => document.body.textContent?.includes('Aluguel atualizado em outro dispositivo'));
+    }
     await page.click('button[aria-label^="Exibir detalhes de Folha de pagamento"]');
     await page.waitForFunction(() => document.body.textContent?.includes('Pagamentos por colaborador'));
 

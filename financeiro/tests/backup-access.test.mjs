@@ -29,9 +29,13 @@ globalThis.prisma = {
         updatedAt: new Date('2026-09-12T12:00:00.000Z'),
       };
     },
-    update: async args => {
-      calls.push(['update', args]);
-      return { id: args.where.id, updatedAt: new Date('2026-09-12T12:01:00.000Z') };
+    updateMany: async args => {
+      calls.push(['updateMany', args]);
+      return {
+        count: args.where.updatedAt.getTime() === new Date('2026-09-12T12:00:00.000Z').getTime()
+          ? 1
+          : 0,
+      };
     },
     create: async args => {
       calls.push(['create', args]);
@@ -43,7 +47,13 @@ globalThis.prisma = {
 const { NextRequest } = await import('next/server.js');
 const { GET, POST } = await import('../src/app/api/backup/route.ts');
 
-function request(method, permissions, authenticated = true) {
+function request(
+  method,
+  permissions,
+  authenticated = true,
+  expectedUpdatedAt = '2026-09-12T12:00:00.000Z',
+  { role = 'GERENTE', unit = 'Osasco' } = {},
+) {
   return new NextRequest('http://localhost/api/backup', {
     method,
     headers: {
@@ -51,13 +61,15 @@ function request(method, permissions, authenticated = true) {
       ...(authenticated ? {
         'x-user-id': 'user-1',
         'x-user-name': 'Usuário teste',
-        'x-user-role': 'GERENTE',
-        'x-user-unit': 'Osasco',
+        'x-user-role': role,
+        'x-user-unit': unit,
         'x-user-permissions': JSON.stringify(permissions),
       } : {}),
     },
     ...(method === 'POST' ? {
-      body: JSON.stringify({ logs: [], goals: {}, fixed: [], bills: [], isAuto: true }),
+      body: JSON.stringify({
+        logs: [], goals: {}, fixed: [], bills: [], isAuto: true, expectedUpdatedAt,
+      }),
     } : {}),
   });
 }
@@ -81,10 +93,49 @@ test('Análise pode ler o snapshot sem poder sobrescrevê-lo', async () => {
   assert.equal(calls.length, 0);
 });
 
+test('administrador global lê o mesmo snapshot canônico usado na gravação', async () => {
+  const response = await GET(request(
+    'GET',
+    { admin: true },
+    true,
+    '2026-09-12T12:00:00.000Z',
+    { role: 'ADMINISTRADOR', unit: 'Todas' },
+  ));
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(calls[0][1].where, { unit: 'SCS' });
+});
+
 test('Custos pode atualizar apenas o snapshot resolvido para a própria unidade', async () => {
   const response = await POST(request('POST', { finCustos: true }));
   assert.equal(response.status, 200);
   assert.equal(calls[0][0], 'findFirst');
   assert.deepEqual(calls[0][1].where, { isAuto: true, unit: 'Osasco' });
-  assert.equal(calls[1][0], 'update');
+  assert.equal(calls[1][0], 'updateMany');
+  assert.equal(calls[1][1].where.id, 'backup-1');
+  assert.equal(calls[1][1].where.updatedAt.toISOString(), '2026-09-12T12:00:00.000Z');
+});
+
+test('backup antigo não sobrescreve atualização de outro dispositivo', async () => {
+  const response = await POST(request(
+    'POST',
+    { finCustos: true },
+    true,
+    '2026-09-12T11:59:00.000Z',
+  ));
+  const body = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(body.code, 'FINANCIAL_BACKUP_VERSION_CONFLICT');
+  assert.equal(body.reloadRequired, true);
+  assert.equal(calls[1][0], 'updateMany');
+});
+
+test('backup existente exige a versão que originou a edição', async () => {
+  const response = await POST(request('POST', { finCustos: true }, true, null));
+  const body = await response.json();
+
+  assert.equal(response.status, 428);
+  assert.equal(body.code, 'FINANCIAL_BACKUP_VERSION_REQUIRED');
+  assert.equal(calls.some(([operation]) => operation === 'updateMany'), false);
 });

@@ -2,9 +2,14 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from '@/components/toast';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { useVisiblePolling } from '@/hooks/use-visible-polling';
 import { loadLogs as idbLoadLogs, saveLogs as idbSaveLogs } from '@/lib/indexeddb-storage';
 import { formatCurrency as formatBRL } from '@/lib/currency';
 import { CostRecurrence, previousDateKey, recurringCostsTotalInMonth, resolveRecurringCostsInMonth } from '@/lib/cost-recurrence';
+import {
+  publishFinancialBackupSync,
+  subscribeFinancialBackupSync,
+} from '@/lib/financial-backup-client-sync';
 import { normalizeProductExpenseFreight, normalizeProductExpenseItems, ProductExpenseItem, sumProductExpenseTotal } from '@/lib/product-expense-items';
 import { isManualRevenue, isOperationalSale, isRevenueReceived } from '@/lib/revenue';
 
@@ -18,6 +23,7 @@ export const UNITS = ['SCS','SBC','Osasco'];
 export const COST_CATEGORIES = ['Salários','Produtos','Marketing','Aluguel','Equipamentos','Impostos','Serviços','Outros'];
 export const FIXED_CATEGORIES = ['Aluguel','Salários','Produtos','Internet','Luz','Marketing','Segurança','Sistema','Contabilidade','Royalties','Água','Parcela','Outros'];
 export const BILL_CATEGORIES = ['Aluguel','Salários','Produtos','Internet','Luz','Impostos','Fornecedores','Marketing','Outros'];
+const FINANCIAL_BACKUP_REVISION_INTERVAL_MS = 60_000;
 
 /* ─── Types ─── */
 export type RevenueStatus = 'pending' | 'received';
@@ -28,6 +34,15 @@ export interface Bill { id:number; name:string; value:number; dueDay:number|null
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
 export interface FixedExpenseDraft { name:string; value:string; category:string; date?:string; unit?:string; obs?:string; recurrence?:Exclude<CostRecurrence,'once'>; effectiveFrom?:string; items?:ProductExpenseItem[]; freight?:number; }
 export interface BillDraft { name:string; value:string; type:'fixo'|'variavel'; dueDay?:string; dueDate?:string; category:string; obs?:string; unit?:string; refMonth?:string; items?:ProductExpenseItem[]; freight?:number; }
+interface FinancialBackupResponse {
+  exists?: boolean;
+  logs?: LogEntry[];
+  goals?: Record<string, Record<string, number>>;
+  fixed?: FixedExpense[];
+  bills?: Bill[];
+  updatedAt?: string;
+  error?: string;
+}
 export type Tab = 'dashboard'|'sales'|'expenses'|'fixed-costs'|'goals'|'reports'|'analytics'|'commissions'|'units'|'activity'|'backup'|'retention'|'forecast'|'professionals'|'birthdays'|'audit'|'waitlist'|'loyalty'|'nps'|'heatmap'|'communications';
 
 /* ─── Formatters ─── */
@@ -111,6 +126,16 @@ export function useDashboard({
   const [isDashboardAdmin, setIsDashboardAdmin] = useState(false);
   const [backupLoading, setBackupLoading] = useState(true);
   const [backupError, setBackupError] = useState<string | null>(null);
+  const backupRevisionRef = useRef<string | null>(null);
+  const backupMutationVersionRef = useRef(0);
+  const [backupMutationVersion, setBackupMutationVersion] = useState(0);
+  const [backupSyncRetry, setBackupSyncRetry] = useState(0);
+
+  const markFinancialBackupChanged = useCallback(() => {
+    const nextVersion = backupMutationVersionRef.current + 1;
+    backupMutationVersionRef.current = nextVersion;
+    setBackupMutationVersion(nextVersion);
+  }, []);
 
   // Sale form
   const [saleName,setSaleName]=useState(''); const [saleValue,setSaleValue]=useState(''); const [saleDate,setSaleDate]=useState('');
@@ -190,38 +215,43 @@ export function useDashboard({
       let loadedFixed:FixedExpense[] = sf ? JSON.parse(sf) : [];
       let loadedBills:Bill[] = sb ? JSON.parse(sb) : [];
 
-      // A tela de DRE e outras visões somente leitura sempre usam a última
-      // fotografia do servidor. Assim, um cache antigo de outro dispositivo
-      // nunca substitui silenciosamente os dados mais recentes.
-      const hasLocalData = savedLogs || sg || sf || sb;
-      if (readOnly || !hasLocalData) {
-        try {
-          const backupRes = await fetch('/api/backup');
-          if (!backupRes.ok) throw new Error(`Backup indisponível (${backupRes.status})`);
-          const backup = await backupRes.json();
-          if (backup.exists) {
-              loadedLogs = backup.logs || [];
-              loadedGoals = backup.goals || {};
-              loadedFixed = backup.fixed || [];
-              loadedBills = backup.bills || [];
-              if (!readOnly) {
-                await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(loadedLogs));
-                localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(loadedGoals));
-                localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(loadedFixed));
-                localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(loadedBills));
-              }
-              console.log('[Backup] Dados restaurados do servidor:', backup.updatedAt);
-          } else if (readOnly) {
+      // O servidor é a fonte de verdade em qualquer dispositivo. O cache local
+      // existe apenas para contingência e nunca pode prevalecer sobre uma
+      // fotografia mais recente já sincronizada.
+      try {
+        const backupRes = await fetch('/api/backup', { cache: 'no-store' });
+        if (!backupRes.ok) throw new Error(`Backup indisponível (${backupRes.status})`);
+        const backup = await backupRes.json() as FinancialBackupResponse;
+        if (backup.exists) {
+          loadedLogs = Array.isArray(backup.logs) ? backup.logs : [];
+          loadedGoals = backup.goals && typeof backup.goals === 'object' ? backup.goals : {};
+          loadedFixed = Array.isArray(backup.fixed) ? backup.fixed : [];
+          loadedBills = Array.isArray(backup.bills) ? backup.bills : [];
+          backupRevisionRef.current = typeof backup.updatedAt === 'string' ? backup.updatedAt : null;
+          if (!readOnly) {
+            await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(loadedLogs));
+            localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(loadedGoals));
+            localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(loadedFixed));
+            localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(loadedBills));
+          }
+          console.log('[Backup] Dados restaurados do servidor:', backup.updatedAt);
+        } else {
+          backupRevisionRef.current = null;
+          if (readOnly) {
             loadedLogs = [];
             loadedGoals = {};
             loadedFixed = [];
             loadedBills = [];
+          } else if (savedLogs || sg || sf || sb) {
+            const firstVersion = 1;
+            backupMutationVersionRef.current = firstVersion;
+            setBackupMutationVersion(firstVersion);
           }
-        } catch (e) {
-          console.warn('[Backup] Falha ao restaurar do servidor:', e);
-          if (readOnly && !cancelled) {
-            setBackupError('Não foi possível carregar os dados financeiros mais recentes.');
-          }
+        }
+      } catch (e) {
+        console.warn('[Backup] Falha ao restaurar do servidor:', e);
+        if (!cancelled) {
+          setBackupError('Não foi possível carregar os dados financeiros mais recentes.');
         }
       }
 
@@ -328,27 +358,154 @@ export function useDashboard({
     return () => { cancelled = true; };
   }, [readOnly, syncPayroll]);
 
-  // Auto-sync to server (debounced — waits 5s after last change)
+  const applyRemoteFinancialBackup = useCallback(async (backup: FinancialBackupResponse) => {
+    const remoteLogs = backup.exists && Array.isArray(backup.logs) ? backup.logs : [];
+    const remoteGoals = backup.exists && backup.goals && typeof backup.goals === 'object'
+      ? backup.goals
+      : {};
+    const remoteFixed = backup.exists && Array.isArray(backup.fixed) ? backup.fixed : [];
+    const remoteBills = backup.exists && Array.isArray(backup.bills) ? backup.bills : [];
+
+    backupRevisionRef.current = backup.exists && typeof backup.updatedAt === 'string'
+      ? backup.updatedAt
+      : null;
+    if (!readOnly) {
+      await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(remoteLogs));
+      localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(remoteGoals));
+      localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(remoteFixed));
+      localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(remoteBills));
+    }
+    setLogs(current => syncPayroll
+      ? [...remoteLogs, ...current.filter(log => log.id?.toString().startsWith('payroll-'))]
+      : remoteLogs);
+    setGoals(remoteGoals);
+    setFixedExpenses(remoteFixed);
+    setBills(remoteBills);
+    setBackupError(null);
+  }, [readOnly, syncPayroll]);
+
+  const refreshFinancialBackup = useCallback(async (force = false) => {
+    if (!force && backupMutationVersionRef.current > 0) return;
+    try {
+      const response = await fetch('/api/backup', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`Backup indisponível (${response.status})`);
+      const backup = await response.json() as FinancialBackupResponse;
+      const remoteRevision = backup.exists && typeof backup.updatedAt === 'string'
+        ? backup.updatedAt
+        : null;
+      if (!force && remoteRevision === backupRevisionRef.current) return;
+      await applyRemoteFinancialBackup(backup);
+    } catch (error) {
+      console.warn('[Backup] Falha ao verificar atualização:', error);
+      setBackupError('Não foi possível carregar os dados financeiros mais recentes.');
+    }
+  }, [applyRemoteFinancialBackup]);
+
+  // Envia somente mudanças locais reais. O versionamento impede que um
+  // dispositivo com cache antigo sobrescreva a fotografia mais recente.
   const syncTimerRef = useRef<NodeJS.Timeout|null>(null);
+  const backupSyncInFlightRef = useRef(false);
   useEffect(() => {
-    if (readOnly) return;
-    if (!logs.length && !Object.keys(goals).length && !fixedExpenses.length && !bills.length) return;
+    if (readOnly || backupLoading || backupMutationVersion === 0) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+
+    let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    const requestVersion = backupMutationVersion;
     syncTimerRef.current = setTimeout(() => {
+      if (backupSyncInFlightRef.current) {
+        retryTimer = setTimeout(() => setBackupSyncRetry(value => value + 1), 1_000);
+        return;
+      }
+      backupSyncInFlightRef.current = true;
       const payload = {
         logs: logs.filter(l => !l.id || !l.id.toString().startsWith('payroll-')),
         goals,
         fixed: fixedExpenses,
         bills,
         isAuto: true,
+        expectedUpdatedAt: backupRevisionRef.current,
       };
-      fetch('/api/backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
-        .then(r => r.json())
-        .then(d => { if (d.success) console.log('[Backup] Auto-sync OK:', d.updatedAt); })
-        .catch(e => console.warn('[Backup] Auto-sync falhou:', e));
+      void fetch('/api/backup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(async response => {
+        const result = await response.json() as {
+          success?: boolean;
+          updatedAt?: string;
+          error?: string;
+          reloadRequired?: boolean;
+        };
+        if (response.status === 409 || response.status === 428 || result.reloadRequired) {
+          backupMutationVersionRef.current = 0;
+          setBackupMutationVersion(0);
+          await refreshFinancialBackup(true);
+          toast('Os dados foram atualizados em outro dispositivo. A versão mais recente foi carregada.', 'warning');
+          return;
+        }
+        if (!response.ok || !result.success || typeof result.updatedAt !== 'string') {
+          throw new Error(result.error || `Falha ao sincronizar (${response.status})`);
+        }
+
+        backupRevisionRef.current = result.updatedAt;
+        setBackupError(null);
+        publishFinancialBackupSync({ revision: result.updatedAt });
+        if (backupMutationVersionRef.current === requestVersion) {
+          backupMutationVersionRef.current = 0;
+          setBackupMutationVersion(0);
+        }
+        console.log('[Backup] Auto-sync OK:', result.updatedAt);
+      }).catch(error => {
+        if (cancelled) return;
+        console.warn('[Backup] Auto-sync falhou:', error);
+        setBackupError('Alterações locais aguardando sincronização com o servidor.');
+        retryTimer = setTimeout(() => setBackupSyncRetry(value => value + 1), 15_000);
+      }).finally(() => {
+        backupSyncInFlightRef.current = false;
+        if (!cancelled && backupMutationVersionRef.current > requestVersion) {
+          setBackupSyncRetry(value => value + 1);
+        }
+      });
     }, 5000);
-    return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
-  }, [logs, goals, fixedExpenses, bills, readOnly]);
+
+    return () => {
+      cancelled = true;
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [
+    backupLoading,
+    backupMutationVersion,
+    backupSyncRetry,
+    bills,
+    fixedExpenses,
+    goals,
+    logs,
+    readOnly,
+    refreshFinancialBackup,
+  ]);
+
+  useVisiblePolling(refreshFinancialBackup, FINANCIAL_BACKUP_REVISION_INTERVAL_MS, {
+    enabled: !backupLoading,
+    runImmediately: false,
+    runOnFocus: true,
+    resumeThrottleMs: 0,
+  });
+
+  useEffect(() => {
+    if (backupLoading) return;
+    const handlePageShow = () => { void refreshFinancialBackup(); };
+    const unsubscribe = subscribeFinancialBackupSync(signal => {
+      if (signal.revision === backupRevisionRef.current) return;
+      void refreshFinancialBackup();
+    });
+    window.addEventListener('pageshow', handlePageShow);
+    return () => {
+      unsubscribe();
+      window.removeEventListener('pageshow', handlePageShow);
+    };
+  }, [backupLoading, refreshFinancialBackup]);
 
   // Filtered logs — memoized to avoid recalculation on every render
   const filteredLogs = useMemo(() => logs.filter(item => {
@@ -581,6 +738,7 @@ export function useDashboard({
   // Save helpers
   const saveLogs = (newLogs:LogEntry[]) => {
     setLogs(newLogs);
+    markFinancialBackupChanged();
     const filtered = newLogs.filter(l=>!l.id||!l.id.toString().startsWith('payroll-'));
     // Save to IndexedDB (no quota issues)
     idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(filtered)).catch(err => {
@@ -589,8 +747,8 @@ export function useDashboard({
       catch { console.error('[saveLogs] All storage options failed'); }
     });
   };
-  const saveFixed = (f:FixedExpense[]) => { setFixedExpenses(f); localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(f)); };
-  const saveBillsState = (b:Bill[]) => { setBills(b); localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(b)); };
+  const saveFixed = (f:FixedExpense[]) => { setFixedExpenses(f); markFinancialBackupChanged(); localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(f)); };
+  const saveBillsState = (b:Bill[]) => { setBills(b); markFinancialBackupChanged(); localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(b)); };
 
   // Actions
   const addSale = () => {
@@ -804,7 +962,7 @@ export function useDashboard({
     const updated = {...existing};
     goalUnits.forEach(u => { updated[u] = val; });
     const newGoals = {...goals,[gk]:updated};
-    setGoals(newGoals); localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(newGoals));
+    setGoals(newGoals); markFinancialBackupChanged(); localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(newGoals));
     const total = goalUnits.length * val;
     toast(`Meta salva! ${goalUnits.length} unidade(s) × R$ ${fmt(val)} = R$ ${fmt(total)}`, 'success');
   };

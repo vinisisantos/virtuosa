@@ -12,9 +12,12 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    // UNIT GUARD: Filter backup by unit
+    // O snapshot contém o conjunto financeiro usado pelo perfil. Ler e gravar
+    // sempre a mesma unidade canônica evita que administradores com unidade
+    // "Todas" alternem acidentalmente entre backups de filiais diferentes.
+    const backupUnit = guard.createUnit();
     const backup = await prisma.financialBackup.findFirst({
-      where: guard.unitFilter ? { unit: guard.unitFilter } : undefined,
+      where: { unit: backupUnit },
       orderBy: { updatedAt: 'desc' },
     });
     if (!backup) {
@@ -46,7 +49,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { logs, goals, fixed, bills, isAuto = true } = body;
+    const { logs, goals, fixed, bills, isAuto = true, expectedUpdatedAt } = body;
     if (!logs || !goals || !fixed || !bills) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
     }
@@ -61,14 +64,36 @@ export async function POST(req: NextRequest) {
 
     let backup;
     if (existing && isAuto) {
-      backup = await prisma.financialBackup.update({
-        where: { id: existing.id },
+      if (typeof expectedUpdatedAt !== 'string') {
+        return NextResponse.json({
+          error: 'A versão atual do financeiro é obrigatória para sincronizar.',
+          code: 'FINANCIAL_BACKUP_VERSION_REQUIRED',
+          reloadRequired: true,
+        }, { status: 428 });
+      }
+
+      const expectedRevision = new Date(expectedUpdatedAt);
+      if (Number.isNaN(expectedRevision.getTime())) {
+        return NextResponse.json({ error: 'Versão do financeiro inválida.' }, { status: 400 });
+      }
+
+      const nextUpdatedAt = new Date();
+      const updated = await prisma.financialBackup.updateMany({
+        where: { id: existing.id, updatedAt: expectedRevision },
         data: {
           logs: JSON.stringify(logs), goals: JSON.stringify(goals),
           fixed: JSON.stringify(fixed), bills: JSON.stringify(bills),
-          updatedAt: new Date(),
+          updatedAt: nextUpdatedAt,
         },
       });
+      if (updated.count !== 1) {
+        return NextResponse.json({
+          error: 'Os dados financeiros foram atualizados em outro dispositivo.',
+          code: 'FINANCIAL_BACKUP_VERSION_CONFLICT',
+          reloadRequired: true,
+        }, { status: 409 });
+      }
+      backup = { id: existing.id, updatedAt: nextUpdatedAt };
     } else {
       backup = await prisma.financialBackup.create({
         data: {
@@ -94,8 +119,9 @@ export async function DELETE(req: NextRequest) {
   if (!guard.isAdmin) return NextResponse.json({ error: 'Apenas administradores' }, { status: 403 });
 
   try {
+    const backupUnit = guard.createUnit();
     await prisma.financialBackup.deleteMany({
-      where: guard.unitFilter ? { unit: guard.unitFilter } : undefined,
+      where: { unit: backupUnit },
     });
     return NextResponse.json({ success: true });
   } catch (err) {
