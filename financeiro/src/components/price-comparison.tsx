@@ -35,7 +35,7 @@ export function PriceComparisonPanel({ products, onClose }: PriceComparisonPanel
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20,
         }} onClick={onClose}>
-            <div style={{
+            <div className="price-comparison-panel" style={{
                 background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
                 boxShadow: 'var(--shadow-lg)', maxWidth: 600, width: '100%',
                 maxHeight: '90vh', display: 'flex', flexDirection: 'column',
@@ -43,7 +43,7 @@ export function PriceComparisonPanel({ products, onClose }: PriceComparisonPanel
             }} onClick={e => e.stopPropagation()}>
 
                 {/* Header */}
-                <div style={{
+                <div className="price-comparison-header" style={{
                     padding: '24px 28px 16px', borderBottom: '1px solid var(--border)',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0,
                 }}>
@@ -72,7 +72,7 @@ export function PriceComparisonPanel({ products, onClose }: PriceComparisonPanel
                 {/* Products List */}
                 <div style={{ flex: 1, overflowY: 'auto', padding: '16px 28px' }}>
                     {products.map((product, idx) => (
-                        <div key={idx} style={{
+                        <div key={idx} className="price-comparison-item" style={{
                             display: 'flex', alignItems: 'center', gap: 12,
                             padding: '14px 16px', background: 'var(--bg)',
                             border: '1px solid var(--border)', borderRadius: 14,
@@ -116,7 +116,7 @@ export function PriceComparisonPanel({ products, onClose }: PriceComparisonPanel
                 </div>
 
                 {/* Footer */}
-                <div style={{
+                <div className="price-comparison-footer" style={{
                     padding: '16px 28px', borderTop: '1px solid var(--border)',
                     background: 'var(--bg)', flexShrink: 0,
                     display: 'flex', gap: 12,
@@ -139,6 +139,16 @@ export function PriceComparisonPanel({ products, onClose }: PriceComparisonPanel
                         Abrir todos no Mercado Livre
                     </button>
                 </div>
+                <style>{`
+                    .price-comparison-panel { min-width: 0; }
+                    @media (max-width: 640px) {
+                        .price-comparison-panel { max-height: calc(100dvh - 24px) !important; }
+                        .price-comparison-header { padding: 18px 16px 14px !important; }
+                        .price-comparison-item { display: grid !important; grid-template-columns: 36px minmax(0, 1fr); }
+                        .price-comparison-item > button { grid-column: 1 / -1; min-height: 44px; justify-content: center; }
+                        .price-comparison-footer { padding: 14px 16px max(14px, env(safe-area-inset-bottom)) !important; flex-direction: column-reverse; }
+                    }
+                `}</style>
             </div>
         </div>
     );

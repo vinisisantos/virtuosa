@@ -143,12 +143,9 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
         return { text: `${dateStr} (${diffDays}d)`, color: '#3b82f6' };
     };
 
-    const thS: React.CSSProperties = { padding: '14px 16px', fontSize: '0.72rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' };
-    const tdS: React.CSSProperties = { padding: '14px 16px' };
-
     return (
         <>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div className="orders-batches">
                 {batches.map((batch) => {
                     const isCollapsed = collapsedBatches.has(batch.batchNumber);
                     const statusSummary = getBatchStatusSummary(batch.orders);
@@ -156,7 +153,7 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                     const batchUnits = [...new Set(batch.orders.map(o => o.unit).filter(Boolean))];
 
                     return (
-                        <div key={batch.batchNumber ?? 'null'} style={{
+                        <div key={batch.batchNumber ?? 'null'} className="orders-batch" style={{
                             background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
                             boxShadow: 'var(--shadow-sm)', border: '1px solid var(--border)',
                             overflow: 'hidden',
@@ -164,14 +161,14 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                             {/* Batch Header */}
                             <div
                                 onClick={() => toggleBatch(batch.batchNumber)}
+                                className="orders-batch-header"
                                 style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                                     padding: '14px 20px', cursor: 'pointer',
                                     background: 'var(--bg)', borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
                                     transition: 'all 0.2s', userSelect: 'none',
                                 }}
                             >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                                <div className="orders-batch-main">
                                     <div style={{
                                         width: 36, height: 36, borderRadius: 10,
                                         background: 'linear-gradient(135deg, var(--primary), #ff4db1)',
@@ -180,7 +177,7 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                     }}>
                                         <span className="material-symbols-outlined" style={{ fontSize: 18 }}>package_2</span>
                                     </div>
-                                    <div>
+                                    <div className="orders-batch-copy">
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                                             <span style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-main)' }}>
                                                 Lote #{batch.batchNumber ?? '—'}
@@ -227,7 +224,7 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                         </div>
                                     </div>
                                 </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                                <div className="orders-batch-summary">
                                     <span style={{ fontWeight: 900, fontSize: '1rem', color: batch.totalPrice > 0 ? '#10b981' : 'var(--text-muted)' }}>
                                         {batch.totalPrice > 0 ? fmtBRL(batch.totalPrice) : '—'}
                                     </span>
@@ -239,25 +236,10 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                 </div>
                             </div>
 
-                            {/* Batch Items Table */}
+                            {/* Batch items adapt to the available width without horizontal scrolling. */}
                             {!isCollapsed && (
-                                <div style={{ overflowX: 'auto' }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
-                                        <thead>
-                                            <tr style={{ background: 'var(--bg)', borderBottom: '1px solid var(--border)' }}>
-                                                <th style={thS}>Produto</th>
-                                                <th style={{ ...thS, textAlign: 'center' }}>Qtd</th>
-                                                <th style={thS}>Unidade</th>
-                                                <th style={{ ...thS, textAlign: 'right' }}>Preço Unit.</th>
-                                                <th style={{ ...thS, textAlign: 'right' }}>Preço Total</th>
-                                                <th style={thS}>Urgência</th>
-                                                <th style={thS}>Status</th>
-                                                <th style={thS}>Obs</th>
-                                                <th style={{ ...thS, textAlign: 'right' }}>Ações</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {batch.orders.map((order) => {
+                                <div className="orders-items-list">
+                                    {batch.orders.map((order) => {
                                                 const statusCfg = getStatusConfig(order.status);
                                                 const urgencyCfg = getUrgencyConfig(order.urgency);
                                                 const eta = formatEta(order.estimatedArrival);
@@ -268,9 +250,10 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                                 const recognitionUnavailable = !isCostRecognized && (!hasFinancialValue || order.status === 'Cancelado');
 
                                                 return (
-                                                    <tr key={order.id} style={{ borderBottom: '1px solid var(--border)', transition: 'var(--transition)' }} className="hover-row">
-                                                        <td style={tdS}>
-                                                            <div>
+                                                    <article key={order.id} className="orders-item-card">
+                                                        <div className="orders-field orders-product-field">
+                                                            <span className="orders-field-label">Produto</span>
+                                                            <div className="orders-product-content">
                                                                 <p style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: '0.9rem', margin: 0 }}>{order.productName}</p>
                                                                 {order.sourceUrl && (
                                                                     <a href={order.sourceUrl} target="_blank" rel="noopener noreferrer"
@@ -299,14 +282,13 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                                                                         : isCostRecognized ? 'Corrigir data ou remover de Custos' : 'Lançar na categoria Produtos em Custos'
                                                                             }
                                                                             style={{
-                                                                                minHeight: 44, display: 'inline-flex', alignItems: 'center', gap: 5,
+                                                                                minHeight: 40, display: 'inline-flex', alignItems: 'center', gap: 5,
                                                                                 padding: '0 9px', borderRadius: 8,
                                                                                 border: `1px solid ${recognitionUnavailable ? 'var(--border)' : 'rgba(16,185,129,0.28)'}`,
                                                                                 background: recognitionUnavailable ? 'var(--bg)' : 'rgba(16,185,129,0.08)',
                                                                                 color: recognitionUnavailable ? 'var(--text-muted)' : '#10b981',
                                                                                 fontFamily: 'inherit', fontSize: '0.7rem', fontWeight: 800,
                                                                                 cursor: recognitionUnavailable ? 'not-allowed' : 'pointer', opacity: recognitionUnavailable ? 0.65 : 1,
-                                                                                whiteSpace: 'nowrap',
                                                                             }}
                                                                         >
                                                                             <span className="material-symbols-outlined" style={{ fontSize: 15 }}>{isCostRecognized ? 'edit_calendar' : 'add_card'}</span>
@@ -320,27 +302,41 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                        </td>
-                                                        <td style={{ ...tdS, textAlign: 'center' }}>
+                                                        </div>
+
+                                                        <div className="orders-field orders-quantity-field">
+                                                            <span className="orders-field-label">Quantidade</span>
                                                             <span style={{ display: 'inline-block', background: 'var(--bg)', padding: '3px 10px', borderRadius: 'var(--radius-full)', fontWeight: 800, color: 'var(--text-main)', border: '1px solid var(--border)', fontSize: '0.85rem' }}>
                                                                 {order.quantity}
                                                             </span>
-                                                        </td>
-                                                        <td style={tdS}>
+                                                        </div>
+
+                                                        <div className="orders-field orders-unit-field">
+                                                            <span className="orders-field-label">Unidade</span>
                                                             {order.unit ? (
                                                                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 8, fontSize: '0.78rem', fontWeight: 800, background: `${uColor}12`, color: uColor, border: `1px solid ${uColor}25` }}>
                                                                     <span className="material-symbols-outlined" style={{ fontSize: 12 }}>apartment</span>
                                                                     {order.unit}
                                                                 </span>
                                                             ) : '—'}
-                                                        </td>
-                                                        <td style={{ ...tdS, textAlign: 'right', fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>
+                                                        </div>
+
+                                                        <div className="orders-field orders-unit-price-field">
+                                                            <span className="orders-field-label">Preço unitário</span>
+                                                            <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--text-main)' }}>
                                                             {fmtBRL(order.unitPrice)}
-                                                        </td>
-                                                        <td style={{ ...tdS, textAlign: 'right', fontWeight: 800, fontSize: '0.88rem', color: order.totalPrice ? '#10b981' : 'var(--text-muted)' }}>
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="orders-field orders-total-field">
+                                                            <span className="orders-field-label">Preço total</span>
+                                                            <span style={{ fontWeight: 800, fontSize: '0.88rem', color: order.totalPrice ? '#10b981' : 'var(--text-muted)' }}>
                                                             {fmtBRL(order.totalPrice)}
-                                                        </td>
-                                                        <td style={tdS}>
+                                                            </span>
+                                                        </div>
+
+                                                        <div className="orders-field orders-urgency-field">
+                                                            <span className="orders-field-label">Urgência</span>
                                                             <div style={{
                                                                 display: 'inline-flex', alignItems: 'center', gap: 5,
                                                                 padding: '3px 8px', borderRadius: 'var(--radius-md)',
@@ -350,9 +346,11 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                                                 <span className="material-symbols-outlined" style={{ fontSize: 13 }}>{urgencyCfg.icon}</span>
                                                                 {order.urgency}
                                                             </div>
-                                                        </td>
-                                                        <td style={tdS}>
-                                                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                                                        </div>
+
+                                                        <div className="orders-field orders-status-field">
+                                                            <span className="orders-field-label">Status</span>
+                                                            <div className="orders-status-control">
                                                                 <select
                                                                     value={order.status}
                                                                     onChange={(e) => order.id && handleStatusSelect(order.id, order.productName, e.target.value)}
@@ -362,7 +360,7 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                                                         border: `1px solid ${statusCfg.text}30`, backgroundColor: statusCfg.bg,
                                                                         color: statusCfg.text, fontWeight: 800, fontFamily: 'inherit',
                                                                         fontSize: '0.8rem', cursor: 'pointer', outline: 'none',
-                                                                        appearance: 'none', minWidth: 140,
+                                                                        appearance: 'none', width: '100%', minWidth: 0,
                                                                         backgroundImage: `url('data:image/svg+xml;utf8,<svg fill="${encodeURIComponent(statusCfg.text)}" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>')`,
                                                                         backgroundRepeat: 'no-repeat', backgroundPositionX: 'calc(100% - 8px)', backgroundPositionY: 'center',
                                                                     }}
@@ -378,30 +376,34 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                                                 }}></span>
                                                             </div>
                                                             {eta && (
-                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 6, padding: '1px 6px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 700, background: `${eta.color}15`, color: eta.color, border: `1px solid ${eta.color}25` }}>
+                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginTop: 5, padding: '1px 6px', borderRadius: 6, fontSize: '0.7rem', fontWeight: 700, background: `${eta.color}15`, color: eta.color, border: `1px solid ${eta.color}25` }}>
                                                                     <span className="material-symbols-outlined" style={{ fontSize: 11 }}>schedule</span>
                                                                     {eta.text}
                                                                 </div>
                                                             )}
-                                                        </td>
-                                                        <td style={{ ...tdS, maxWidth: 160 }}>
-                                                            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', margin: 0 }} title={order.notes}>{order.notes || '—'}</p>
-                                                        </td>
-                                                        <td style={{ ...tdS, textAlign: 'right' }}>
-                                                            <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                                                                <button onClick={() => onEdit(order)} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--text-muted)', cursor: 'pointer', transition: 'var(--transition)' }} className="hover-btn" title="Editar">
+                                                        </div>
+
+                                                        <div className="orders-field orders-notes-field">
+                                                            <span className="orders-field-label">Observações</span>
+                                                            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', overflowWrap: 'anywhere', margin: 0 }}>{order.notes || '—'}</p>
+                                                        </div>
+
+                                                        <div className="orders-field orders-actions-field">
+                                                            <span className="orders-field-label">Ações</span>
+                                                            <div className="orders-actions">
+                                                                <button onClick={() => onEdit(order)} className="orders-action-button hover-btn" title="Editar">
                                                                     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit</span>
+                                                                    <span>Editar</span>
                                                                 </button>
-                                                                <button onClick={() => order.id && onDelete(order.id)} disabled={isCostRecognized} style={{ width: 30, height: 30, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', borderRadius: 8, color: 'var(--text-muted)', cursor: isCostRecognized ? 'not-allowed' : 'pointer', opacity: isCostRecognized ? 0.45 : 1, transition: 'var(--transition)' }} className="hover-btn-danger" title={isCostRecognized ? 'Remova de Custos antes de excluir' : 'Excluir'}>
+                                                                <button onClick={() => order.id && onDelete(order.id)} disabled={isCostRecognized} style={{ cursor: isCostRecognized ? 'not-allowed' : 'pointer', opacity: isCostRecognized ? 0.45 : 1 }} className="orders-action-button hover-btn-danger" title={isCostRecognized ? 'Remova de Custos antes de excluir' : 'Excluir'}>
                                                                     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>delete</span>
+                                                                    <span>Excluir</span>
                                                                 </button>
                                                             </div>
-                                                        </td>
-                                                    </tr>
+                                                        </div>
+                                                    </article>
                                                 );
-                                            })}
-                                        </tbody>
-                                    </table>
+                                    })}
                                 </div>
                             )}
                         </div>
@@ -410,9 +412,53 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
             </div>
 
             <style>{`
-                .hover-row:hover { background: var(--bg); }
+                .orders-batches { display: flex; flex-direction: column; gap: 16px; min-width: 0; overflow-x: hidden; }
+                .orders-batch { min-width: 0; }
+                .orders-batch-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; }
+                .orders-batch-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
+                .orders-batch-copy { min-width: 0; }
+                .orders-batch-summary { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
+                .orders-items-list { display: flex; flex-direction: column; min-width: 0; }
+                .orders-item-card { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: start; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--border); min-width: 0; transition: var(--transition); }
+                .orders-item-card:last-child { border-bottom: 0; }
+                .orders-item-card:hover { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+                .orders-field { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; min-width: 0; }
+                .orders-field-label { color: var(--text-muted); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em; line-height: 1.2; text-transform: uppercase; }
+                .orders-product-field { grid-column: span 3; }
+                .orders-product-content { min-width: 0; width: 100%; }
+                .orders-quantity-field, .orders-unit-field, .orders-unit-price-field, .orders-total-field, .orders-urgency-field { grid-column: span 1; }
+                .orders-status-field, .orders-actions-field { grid-column: span 2; }
+                .orders-notes-field { grid-column: 1 / -1; padding-top: 2px; }
+                .orders-status-control { position: relative; width: 100%; min-width: 0; }
+                .orders-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; }
+                .orders-action-button { min-height: 40px; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; color: var(--text-muted); font: 800 0.72rem/1 inherit; transition: var(--transition); }
                 .hover-btn:hover { background: var(--bg); color: var(--text-main) !important; }
                 .hover-btn-danger:hover { background: #fee2e2; color: #ef4444 !important; }
+
+                @media (max-width: 1199px) {
+                    .orders-item-card { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+                    .orders-product-field { grid-column: 1 / -1; }
+                    .orders-quantity-field, .orders-unit-field, .orders-unit-price-field, .orders-total-field, .orders-urgency-field, .orders-status-field { grid-column: span 1; }
+                    .orders-notes-field { grid-column: span 4; }
+                    .orders-actions-field { grid-column: span 2; }
+                }
+
+                @media (max-width: 720px) {
+                    .orders-batch-header { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px !important; }
+                    .orders-batch-main { align-items: flex-start; }
+                    .orders-batch-summary { justify-content: space-between; padding-left: 48px; }
+                    .orders-item-card { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; padding: 16px 14px; }
+                    .orders-product-field, .orders-status-field, .orders-notes-field, .orders-actions-field { grid-column: 1 / -1; }
+                    .orders-quantity-field, .orders-unit-field, .orders-unit-price-field, .orders-total-field, .orders-urgency-field { grid-column: span 1; }
+                    .orders-actions { gap: 8px; }
+                    .orders-action-button { min-height: 44px; font-size: 0.78rem; }
+                }
+
+                @media (max-width: 380px) {
+                    .orders-item-card { grid-template-columns: minmax(0, 1fr); }
+                    .orders-product-field, .orders-quantity-field, .orders-unit-field, .orders-unit-price-field, .orders-total-field, .orders-urgency-field, .orders-status-field, .orders-notes-field, .orders-actions-field { grid-column: 1; }
+                    .orders-batch-summary { padding-left: 0; }
+                }
             `}</style>
 
             {/* ETA Modal */}

@@ -49,14 +49,14 @@ export function OrderFilters({
     });
 
     return (
-        <div style={{
+        <div className="order-filters" style={{
             display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
             background: 'var(--card-bg)', padding: '16px 20px',
             borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
             border: '1px solid var(--border)', marginBottom: 24,
         }}>
             {/* Search Input */}
-            <div style={{ flex: '1 1 300px', position: 'relative' }}>
+            <div className="order-filter-search" style={{ flex: '1 1 300px', position: 'relative', minWidth: 0 }}>
                 <span className="material-symbols-outlined" style={{
                     position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
                     color: 'var(--primary)', fontSize: 18
@@ -75,7 +75,7 @@ export function OrderFilters({
                 />
             </div>
 
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <div className="order-filter-pickers" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
                 {/* Status Picker */}
                 <div style={{ position: 'relative' }}>
                     <button onClick={() => { setShowStatus(!showStatus); setShowUrgency(false); }} style={pillStyle(showStatus)}>
@@ -148,6 +148,18 @@ export function OrderFilters({
                     )}
                 </div>
             </div>
+            <style>{`
+                .order-filters { min-width: 0; max-width: 100%; }
+                @media (max-width: 640px) {
+                    .order-filters { padding: 14px !important; }
+                    .order-filter-search { flex-basis: 100% !important; }
+                    .order-filter-pickers { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+                    .order-filter-pickers > div, .order-filter-pickers > div > button { width: 100%; min-width: 0; }
+                }
+                @media (max-width: 380px) {
+                    .order-filter-pickers { grid-template-columns: minmax(0, 1fr); }
+                }
+            `}</style>
         </div>
     );
 }

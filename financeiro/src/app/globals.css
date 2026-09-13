@@ -1058,6 +1058,58 @@ input.date-picker-text-input:focus {
   }
 }
 
+/* Tablet: use the compact shell automatically instead of squeezing desktop navigation. */
+@media (min-width: 769px) and (max-width: 1023px) {
+  .app-header {
+    padding: 8px 14px;
+    gap: 8px;
+  }
+
+  .app-header-left {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .app-header-logo-img {
+    height: 24px;
+  }
+
+  .app-header-nav,
+  .app-header .theme-toggle,
+  .app-profile-info,
+  .profile-trigger .chevron,
+  .app-search-label,
+  .app-header button[title="Pesquisar (Ctrl+K)"] kbd {
+    display: none !important;
+  }
+
+  .app-header button[title="Pesquisar (Ctrl+K)"] {
+    min-width: 44px !important;
+    min-height: 44px;
+    padding: 8px !important;
+    justify-content: center;
+  }
+
+  .profile-trigger {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 4px !important;
+    justify-content: center;
+  }
+
+  .app-header-actions {
+    gap: 6px !important;
+  }
+
+  html,
+  body,
+  .app-container,
+  main {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+}
+
 /* Extra small screens */
 @media (max-width: 400px) {
   .app-header {
@@ -1080,7 +1132,7 @@ input.date-picker-text-input:focus {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1023px) {
   .mobile-tab-bar {
     display: flex;
     position: fixed;

@@ -122,7 +122,7 @@ export function MobileTabBar() {
     const [isAdmin, setIsAdmin] = useState(false);
 
     useEffect(() => {
-        const check = () => setIsMobile(window.innerWidth <= 768);
+        const check = () => setIsMobile(window.innerWidth <= 1023);
         check();
         window.addEventListener('resize', check);
 

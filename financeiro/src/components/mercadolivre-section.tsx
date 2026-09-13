@@ -123,9 +123,9 @@ export function MercadoLivreSection({ unit }: { unit: string }) {
   const isConnected = connection?.connected;
 
   return (
-    <section style={{ marginTop: 30 }}>
+    <section className="ml-orders-section" style={{ marginTop: 30 }}>
       {/* Header */}
-      <div onClick={toggleCollapsed} style={{ ...cardS, padding: '14px 24px', marginBottom: collapsed ? 0 : 16, cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="ml-orders-header" onClick={toggleCollapsed} style={{ ...cardS, padding: '14px 24px', marginBottom: collapsed ? 0 : 16, cursor: 'pointer', userSelect: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: '#FFF159', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <span className="material-symbols-outlined" style={{ fontSize: 20, color: '#333' }}>shopping_bag</span>
@@ -175,7 +175,7 @@ export function MercadoLivreSection({ unit }: { unit: string }) {
         ) : (
           <>
             {/* Actions bar */}
-            <div style={{ ...cardS, padding: '12px 20px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="ml-orders-actions-bar" style={{ ...cardS, padding: '12px 20px', marginBottom: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={handleSync} disabled={syncing} style={{
                   display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 10,
@@ -214,7 +214,7 @@ export function MercadoLivreSection({ unit }: { unit: string }) {
                   const status = getStatus(order.orderStatus);
                   const shipping = getShipping(order.shippingStatus);
                   return (
-                    <div key={order.id} style={{ ...cardS, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                    <div key={order.id} className="ml-order-card" style={{ ...cardS, padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
                       {/* Product Image */}
                       <div style={{ width: 50, height: 50, borderRadius: 10, overflow: 'hidden', flexShrink: 0, background: 'var(--bg)' }}>
                         {order.productImageUrl ? (
@@ -228,7 +228,7 @@ export function MercadoLivreSection({ unit }: { unit: string }) {
 
                       {/* Info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{order.productTitle}</div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 700, overflowWrap: 'anywhere' }}>{order.productTitle}</div>
                         <div style={{ display: 'flex', gap: 8, marginTop: 4, alignItems: 'center', flexWrap: 'wrap' }}>
                           {order.sellerNickname && (
                             <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
@@ -247,7 +247,7 @@ export function MercadoLivreSection({ unit }: { unit: string }) {
                       </div>
 
                       {/* Status badges */}
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
+                      <div className="ml-order-status" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 }}>
                         <span style={{
                           display: 'flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 8,
                           fontSize: '0.75rem', fontWeight: 700, background: `${status.color}15`, color: status.color,
@@ -281,6 +281,23 @@ export function MercadoLivreSection({ unit }: { unit: string }) {
           </>
         )}
       </div>
+      <style>{`
+        .ml-orders-section { min-width: 0; max-width: 100%; overflow-x: hidden; }
+
+        @media (max-width: 720px) {
+          .ml-orders-header { align-items: flex-start !important; gap: 12px; padding: 14px !important; }
+          .ml-orders-header > div:last-child { flex-wrap: wrap; justify-content: flex-end; }
+          .ml-orders-actions-bar { gap: 10px; padding: 12px 14px !important; }
+          .ml-order-card { display: grid !important; grid-template-columns: 50px minmax(0, 1fr); align-items: start !important; padding: 14px !important; }
+          .ml-order-status { grid-column: 2; align-items: flex-start !important; }
+          .ml-order-card > div:last-child { grid-column: 2; }
+        }
+
+        @media (max-width: 380px) {
+          .ml-orders-header { flex-direction: column; }
+          .ml-orders-header > div:last-child, .ml-orders-actions-bar { width: 100%; justify-content: space-between; }
+        }
+      `}</style>
     </section>
   );
 }

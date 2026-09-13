@@ -57,22 +57,22 @@ export function OrdersClient() {
   }, [o]);
 
   return (
-    <div>
+    <div className="orders-page">
       {/* Hero — mobile-first */}
-      <section style={{ background: 'transparent', margin: '16px 0 14px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+      <section className="orders-page-hero" style={{ background: 'transparent', margin: '16px 0 14px' }}>
+        <div className="orders-page-hero-row">
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ fontSize: '1.3rem', fontWeight: 900, letterSpacing: '-0.3px', margin: 0 }}>
               Controle de <span style={{ color: 'var(--primary)' }}>Compras</span>
             </h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: '3px 0 0' }}>Gerencie pedidos, preços e histórico por unidade.</p>
           </div>
-          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button onClick={o.openCreateModal} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--primary)', color: 'white', border: 'none', padding: '0 14px', height: 40, borderRadius: 10, fontFamily: 'inherit', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          <div className="orders-page-actions">
+            <button className="orders-page-action" onClick={o.openCreateModal} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--primary)', color: 'white', border: 'none', padding: '0 14px', minHeight: 44, borderRadius: 10, fontFamily: 'inherit', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 17 }}>add</span> Novo Pedido
             </button>
             {o.orders.length > 0 && (
-              <button onClick={() => o.setShowPrices(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#FFF159', color: '#333', border: 'none', padding: '0 12px', height: 40, borderRadius: 10, fontFamily: 'inherit', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <button className="orders-page-action" onClick={() => o.setShowPrices(true)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: '#FFF159', color: '#333', border: 'none', padding: '0 12px', minHeight: 44, borderRadius: 10, fontFamily: 'inherit', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 17 }}>search</span> Cotar Preços
               </button>
             )}
@@ -81,7 +81,7 @@ export function OrdersClient() {
       </section>
 
       {/* ─── KPI Cards — auto-fit, 2 cols em mobile ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 14 }}>
+      <div className="orders-kpi-grid">
         {[
           { label: 'Total Pedidos', value: o.totalOrders.toString(), icon: 'inventory_2', color: '#6366f1' },
           { label: 'Total Gasto', value: fmtBRL(o.totalSpent), icon: 'payments', color: '#10b981' },
@@ -99,19 +99,19 @@ export function OrdersClient() {
                 <span className="material-symbols-outlined" style={{ fontSize: 14, color: kpi.color }}>{kpi.icon}</span>
               </div>
             </div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 900, color: kpi.color, lineHeight: 1.1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{kpi.value}</div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 900, color: kpi.color, lineHeight: 1.1, overflowWrap: 'anywhere' }}>{kpi.value}</div>
           </div>
         ))}
       </div>
 
       {/* ─── Date Filters — inline compacto ─── */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <div className="orders-date-filters">
+        <div className="orders-date-label">
           <span className="material-symbols-outlined" style={{ fontSize: 15, color: 'var(--text-muted)' }}>calendar_today</span>
           <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Período:</span>
         </div>
         <DatePicker value={o.dateFrom} onChange={o.setDateFrom} label="Início" />
-        <span style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.75rem' }}>até</span>
+        <span className="orders-date-separator" style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.75rem' }}>até</span>
         <DatePicker value={o.dateTo} onChange={o.setDateTo} label="Fim" />
         {(o.dateFrom || o.dateTo) && (
           <button onClick={() => { o.setDateFrom(''); o.setDateTo(''); }}
@@ -197,7 +197,34 @@ export function OrdersClient() {
         </div>
       )}
 
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg) } }
+        .orders-page { min-width: 0; max-width: 100%; overflow-x: hidden; }
+        .orders-page-hero-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-width: 0; }
+        .orders-page-actions { display: grid; grid-auto-flow: column; gap: 8px; flex-shrink: 0; }
+        .orders-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+        .orders-date-filters { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; min-width: 0; }
+        .orders-date-label { display: flex; align-items: center; gap: 5px; }
+
+        @media (max-width: 1023px) {
+          .orders-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+
+        @media (max-width: 640px) {
+          .orders-page-hero-row { align-items: stretch; }
+          .orders-page-actions { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+          .orders-page-action { width: 100%; min-width: 0; }
+          .orders-date-filters { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+          .orders-date-label { grid-column: 1 / -1; }
+          .orders-date-filters > button:last-child { grid-column: 1 / -1; justify-content: center; width: 100%; min-height: 44px; }
+        }
+
+        @media (max-width: 380px) {
+          .orders-page-actions, .orders-kpi-grid, .orders-date-filters { grid-template-columns: minmax(0, 1fr); }
+          .orders-date-label, .orders-date-filters > button:last-child { grid-column: 1; }
+          .orders-date-separator { display: none; }
+        }
+      `}</style>
 
       {o.showPrices && (
         <PriceComparisonPanel products={o.orders.map(x => ({ productName: x.productName, quantity: x.quantity }))} onClose={() => o.setShowPrices(false)} />

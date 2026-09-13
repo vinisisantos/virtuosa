@@ -91,7 +91,7 @@ export function DeliveredBatches({ orders }: Props) {
   const unitColors: Record<string, string> = {  Osasco: '#f59e0b', SBC: '#10b981', SCS: '#ef4444' };
 
   return (
-    <div style={{ marginTop: 32 }}>
+    <div className="delivered-orders" style={{ marginTop: 32 }}>
       {/* ─── Section Header ─── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
         <div style={{ width: 42, height: 42, borderRadius: 12, background: '#10b98112', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -104,7 +104,7 @@ export function DeliveredBatches({ orders }: Props) {
       </div>
 
       {/* ─── Analytics Dashboard ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 20 }}>
+      <div className="delivered-orders-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Total Investido', value: fmtBRL(analytics.totalSpent), icon: 'account_balance', color: '#10b981' },
           { label: 'Custo Médio/Lote', value: fmtBRL(analytics.avgBatchCost), icon: 'avg_pace', color: '#3b82f6' },
@@ -125,7 +125,7 @@ export function DeliveredBatches({ orders }: Props) {
       </div>
 
       {/* ─── Charts Row ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+      <div className="delivered-orders-analytics" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 16, marginBottom: 24 }}>
         {/* Top Products */}
         <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
@@ -213,7 +213,7 @@ export function DeliveredBatches({ orders }: Props) {
               overflow: 'hidden', transition: 'all 0.2s',
             }}>
               {/* Batch Header */}
-              <button onClick={() => setExpandedBatch(isExpanded ? null : batchNum)}
+              <button className="delivered-orders-batch-header" onClick={() => setExpandedBatch(isExpanded ? null : batchNum)}
                 style={{
                   width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   padding: '14px 20px', background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit',
@@ -249,12 +249,12 @@ export function DeliveredBatches({ orders }: Props) {
               {isExpanded && (
                 <div style={{ borderTop: '1px solid var(--border)', padding: '12px 20px' }}>
                   {items.map((item, idx) => (
-                    <div key={item.id} style={{
+                    <div key={item.id} className="delivered-orders-item" style={{
                       display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0',
                       borderBottom: idx < items.length - 1 ? '1px solid var(--border)' : 'none',
                     }}>
                       <span style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', width: 24 }}>{idx + 1}.</span>
-                      <div style={{ flex: 1 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                           <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--text-main)' }}>{item.productName}</span>
                           {item.sourceUrl && (
@@ -284,6 +284,26 @@ export function DeliveredBatches({ orders }: Props) {
           );
         })}
       </div>
+      <style>{`
+        .delivered-orders { min-width: 0; max-width: 100%; overflow-x: hidden; }
+        .delivered-orders-kpis > div, .delivered-orders-analytics > div { min-width: 0; }
+
+        @media (max-width: 1023px) {
+          .delivered-orders-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+          .delivered-orders-analytics { grid-template-columns: minmax(0, 1fr) !important; }
+        }
+
+        @media (max-width: 640px) {
+          .delivered-orders-batch-header { align-items: flex-start !important; flex-direction: column; gap: 10px; }
+          .delivered-orders-batch-header > div:last-child { justify-content: space-between; width: 100%; padding-left: 48px; }
+          .delivered-orders-item { display: grid !important; grid-template-columns: auto minmax(0, 1fr); align-items: start !important; }
+          .delivered-orders-item > div:last-child { grid-column: 2; text-align: left !important; }
+        }
+
+        @media (max-width: 380px) {
+          .delivered-orders-kpis { grid-template-columns: minmax(0, 1fr) !important; }
+        }
+      `}</style>
     </div>
   );
 }

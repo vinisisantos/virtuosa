@@ -528,7 +528,7 @@ export function AppHeader({ activePage = 'dashboard' }: AppHeaderProps) {
             </div>
 
             {/* Right: Unit Selector + Search + Notifications + Theme toggle + Profile */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div className="app-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                 {/* Global Unit Selector */}
                 <div ref={unitDropdownRef} style={{ position: 'relative' }}>
                     {UNITS_LIST.length <= 1 ? (

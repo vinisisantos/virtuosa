@@ -451,7 +451,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
         && (!order?.costRecognizedAt || items.every(item => parseCur(item.totalPrice) > 0));
 
     return (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 }} onClick={pricePrompt ? undefined : onClose}>
+        <div className="order-modal-overlay" style={{ position: 'fixed', inset: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', padding: 20 }} onClick={pricePrompt ? undefined : onClose}>
 
             {/* ── Inline price-prompt mini-modal ── */}
             {pricePrompt && (
@@ -551,7 +551,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                     </div>
                 </div>
             )}
-            <div style={{
+            <div className="order-modal-panel" style={{
                 background: 'var(--card-bg)', borderRadius: 'var(--radius-lg)',
                 boxShadow: 'var(--shadow-lg)', maxWidth: 800, width: '100%', padding: '28px 28px 24px 28px',
                 maxHeight: '90vh', display: 'flex', flexDirection: 'column'
@@ -578,9 +578,9 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                 </div>
 
                 <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-                    <div style={{ overflowY: 'auto', flex: 1, paddingRight: 8, margin: '0 -8px 16px -8px', padding: '0 8px' }}>
+                    <div className="order-modal-scroll" style={{ overflowY: 'auto', flex: 1, paddingRight: 8, margin: '0 -8px 16px -8px', padding: '0 8px' }}>
                         {items.map((item, index) => (
-                            <div key={index} style={{
+                            <div key={index} className="order-modal-item" style={{
                                 background: 'var(--bg)', border: '1px solid var(--border)',
                                 borderRadius: 'var(--radius-md)', padding: 16, marginBottom: 16,
                                 position: 'relative'
@@ -599,7 +599,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                 </div>
 
                                 {/* Row 1: Product, Qty, Urgency, Unit */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '2fr 0.7fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                                <div className="order-modal-grid-primary" style={{ display: 'grid', gridTemplateColumns: '2fr 0.7fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
                                     <div>
                                         <label style={labelS}>Produto *</label>
                                         <div style={{ position: 'relative' }}>
@@ -648,7 +648,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                 </div>
 
                                 {/* Row 2: Prices + Obs */}
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 10 }}>
+                                <div className="order-modal-grid-secondary" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 10 }}>
                                     <div>
                                         <label style={labelS}>Preço Unit. (R$)</label>
                                         <input value={item.unitPrice} onChange={e => handleItemChange(index, 'unitPrice', formatCurrency(e.target.value))}
@@ -677,7 +677,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                                             >⏳ Buscando informações...</span>
                                         )}
                                     </label>
-                                    <div style={{ display: 'flex', gap: 8 }}>
+                                    <div className="order-modal-source-row" style={{ display: 'flex', gap: 8 }}>
                                         <input
                                             type="url"
                                             value={item.sourceUrl}
@@ -723,7 +723,7 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                     </div>
 
                     {/* Footer */}
-                    <div style={{ display: 'flex', gap: 12, paddingTop: 16, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+                    <div className="order-modal-footer" style={{ display: 'flex', gap: 12, paddingTop: 16, borderTop: '1px solid var(--border)', flexShrink: 0 }}>
                         <button type="button" onClick={onClose} style={{
                             flex: 1, padding: '12px 20px', border: '2px solid var(--border)', borderRadius: 'var(--radius-md)', background: 'var(--bg)',
                             fontFamily: 'inherit', fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-muted)', cursor: 'pointer',
@@ -741,6 +741,34 @@ export function OrderModal({ order, onSave, onClose, defaultUnit }: OrderModalPr
                         </button>
                     </div>
                 </form>
+                <style>{`
+                    .order-modal-panel, .order-modal-scroll, .order-modal-item,
+                    .order-modal-grid-primary > div, .order-modal-grid-secondary > div { min-width: 0; }
+
+                    @media (max-width: 1023px) {
+                        .order-modal-panel { max-width: 720px !important; padding: 24px !important; }
+                        .order-modal-grid-primary { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+                        .order-modal-grid-primary > div:first-child { grid-column: 1 / -1; }
+                        .order-modal-grid-secondary { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+                        .order-modal-grid-secondary > div:last-child { grid-column: 1 / -1; }
+                    }
+
+                    @media (max-width: 640px) {
+                        .order-modal-overlay { align-items: flex-end !important; padding: 0 !important; }
+                        .order-modal-panel { max-width: 100% !important; max-height: calc(100dvh - env(safe-area-inset-top)) !important; padding: 20px 14px max(16px, env(safe-area-inset-bottom)) !important; border-radius: 20px 20px 0 0 !important; }
+                        .order-modal-grid-primary, .order-modal-grid-secondary { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+                        .order-modal-grid-primary > div:first-child, .order-modal-grid-secondary > div:last-child { grid-column: 1 / -1; }
+                        .order-modal-source-row { flex-direction: column; }
+                        .order-modal-source-row > button { width: 100%; justify-content: center; min-height: 44px; }
+                        .order-modal-footer { position: sticky; bottom: 0; z-index: 2; margin: 0 -14px -16px; padding: 12px 14px max(12px, env(safe-area-inset-bottom)) !important; background: var(--card-bg); }
+                    }
+
+                    @media (max-width: 380px) {
+                        .order-modal-grid-primary, .order-modal-grid-secondary { grid-template-columns: minmax(0, 1fr) !important; }
+                        .order-modal-grid-primary > div:first-child, .order-modal-grid-secondary > div:last-child { grid-column: 1; }
+                        .order-modal-footer { flex-direction: column-reverse; }
+                    }
+                `}</style>
             </div>
         </div>
     );
