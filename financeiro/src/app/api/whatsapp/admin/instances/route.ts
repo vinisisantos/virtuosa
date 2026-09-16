@@ -86,6 +86,7 @@ async function getConnectionState(instanceName: string, provider = 'evolution') 
   try {
     const res = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${instanceName}`, {
       headers: { apikey: EVOLUTION_API_KEY },
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return null;
     const data = await res.json();
@@ -107,6 +108,9 @@ export async function GET(req: Request) {
     const unit = url.searchParams.get('unit');
     const includeInactive = url.searchParams.get('includeInactive') === 'true';
     const includeArchived = url.searchParams.get('includeArchived') === 'true';
+    // O Inbox precisa do cadastro, não de uma manutenção remota por abertura.
+    // Atualização ao vivo permanece explícita em Configurações > Atualizar.
+    const refresh = url.searchParams.get('refresh') === 'true';
     const permittedUnits = permittedUnitsForAccess(access);
 
     if (!access.canManage && unit && !permittedUnits.includes(unit)) {
@@ -142,12 +146,14 @@ export async function GET(req: Request) {
 
     // Tentar buscar status real do Evolution API
     let evolutionInstances: EvolutionInstance[] = [];
-    try {
+    if (refresh) try {
       const res = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances`, {
         headers: { apikey: EVOLUTION_API_KEY },
+        signal: AbortSignal.timeout(5000),
       });
       if (res.ok) {
-        evolutionInstances = await res.json();
+        const payload = await res.json();
+        evolutionInstances = Array.isArray(payload) ? payload : [];
       }
     } catch (e) {
       // Se não conseguir, usar status do banco
@@ -199,16 +205,16 @@ export async function GET(req: Request) {
     const userMap = new Map(users.map(u => [u.id, u]));
     const { displayNames, channels } = await getInstancePresentationSettings();
     const evoMap = new Map(evolutionInstances.map((e) => [e.instance?.instanceName || e.instanceName, e]));
-    const connectionStateEntries = await Promise.all(
-      instances.map(async (inst) => [inst.name, await getConnectionState(inst.name, getInstanceProvider(inst))] as const),
-    );
+    const connectionStateEntries = refresh ? await Promise.all(
+      instances.filter((inst) => !isArchivedStatus(inst.status)).map(async (inst) => [inst.name, await getConnectionState(inst.name, getInstanceProvider(inst))] as const),
+    ) : [];
     const connectionStateMap = new Map(connectionStateEntries);
 
     const result = await Promise.all(instances.map(async (inst) => {
       const user = inst.userId ? userMap.get(inst.userId) : null;
       const provider = getInstanceProvider(inst);
       const evo = provider === 'evolution' ? evoMap.get(inst.name) : null;
-      const liveStatus = normalizeStatus(
+      const liveStatus = isArchivedStatus(inst.status) ? 'archived' : normalizeStatus(
         connectionStateMap.get(inst.name) ||
         evo?.instance?.state ||
         evo?.instance?.connectionStatus ||
@@ -219,7 +225,7 @@ export async function GET(req: Request) {
         inst.status,
       );
 
-      if (liveStatus !== inst.status && !isArchivedStatus(inst.status)) {
+      if (refresh && liveStatus !== inst.status && !isArchivedStatus(inst.status)) {
         await prisma.whatsAppInstance.update({
           where: { id: inst.id },
           data: { status: liveStatus },

@@ -3445,6 +3445,9 @@ export default function InboxPage() {
   const [collaboratorsLoaded, setCollaboratorsLoaded] = useState(false);
   const [ownInstances, setOwnInstances] = useState<CollaboratorInstance[]>([]);
   const [ownInstancesLoaded, setOwnInstancesLoaded] = useState(false);
+  const [instanceListError, setInstanceListError] = useState<string | null>(null);
+  const [instanceListRetry, setInstanceListRetry] = useState(0);
+  const instanceListScopeRef = useRef("");
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
   const [targetInstanceId, setTargetInstanceId] = useState<string | null>(null);
   const [selectedCollaborator, setSelectedCollaborator] = useState<CollaboratorInstance | null>(null);
@@ -3542,63 +3545,53 @@ export default function InboxPage() {
       .catch(() => {});
   }, []);
 
-  // Buscar instâncias dos colaboradores: admin gerencia; marketing visualiza/acessa não-admin.
+  // Falha de rede não significa caixa removida: só uma resposta válida pode
+  // invalidar a seleção da URL. A listagem não consulta o provedor remoto.
   useEffect(() => {
-    if (canViewCollaborators) {
-      let cancelled = false;
-      setCollaboratorsLoaded(false);
-      const params = new URLSearchParams();
-      if (effectiveUnit && effectiveUnit !== "all") params.set("unit", effectiveUnit);
-      // Uma desconexão não apaga nem arquiva a caixa. O Inbox mantém a instância
-      // no seletor para que o histórico continue acessível e sinaliza seu estado.
-      params.set("includeInactive", "true");
-      fetch(`/api/whatsapp/admin/instances?${params.toString()}`)
-        .then((r) => r.json())
-        .then((d) => {
-          if (!cancelled && d.instances) setCollaborators(d.instances);
-        })
-        .catch(() => {
-          if (!cancelled) setCollaborators([]);
-        })
-        .finally(() => {
-          if (!cancelled) setCollaboratorsLoaded(true);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-    setCollaborators([]);
-    setCollaboratorsLoaded(false);
-  }, [canViewCollaborators, effectiveUnit]);
-
-  // Usuários comuns recebem somente as próprias instâncias, sem consultar a Evolution.
-  useEffect(() => {
-    if (!currentUser || canViewCollaborators) {
+    if (!currentUser) return;
+    const scope = `${currentUser.id}:${canViewCollaborators}:${effectiveUnit || "all"}`;
+    if (instanceListScopeRef.current !== scope) {
+      setCollaborators([]);
       setOwnInstances([]);
-      setOwnInstancesLoaded(canViewCollaborators);
-      return;
+      instanceListScopeRef.current = scope;
     }
-
-    let cancelled = false;
+    setCollaboratorsLoaded(false);
     setOwnInstancesLoaded(false);
+    setInstanceListError(null);
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 20000);
     const params = new URLSearchParams();
     if (effectiveUnit && effectiveUnit !== "all") params.set("unit", effectiveUnit);
-    fetch(`/api/whatsapp/instances?${params.toString()}`)
-      .then((response) => response.json())
+    if (canViewCollaborators) params.set("includeInactive", "true");
+    const endpoint = canViewCollaborators ? "/api/whatsapp/admin/instances" : "/api/whatsapp/instances";
+    fetch(`${endpoint}?${params.toString()}`, { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Falha ao carregar instâncias");
+        const data = await response.json();
+        if (!Array.isArray(data.instances)) throw new Error("Lista de instâncias inválida");
+        return data;
+      })
       .then((data) => {
-        if (!cancelled) setOwnInstances(Array.isArray(data.instances) ? data.instances : []);
+        if (cancelled) return;
+        if (canViewCollaborators) {
+          setCollaborators(data.instances);
+          setCollaboratorsLoaded(true);
+        } else {
+          setOwnInstances(data.instances);
+          setOwnInstancesLoaded(true);
+        }
       })
       .catch(() => {
-        if (!cancelled) setOwnInstances([]);
+        if (!cancelled) setInstanceListError("Não foi possível carregar as instâncias. Sua seleção foi preservada.");
       })
-      .finally(() => {
-        if (!cancelled) setOwnInstancesLoaded(true);
-      });
-
+      .finally(() => clearTimeout(timer));
     return () => {
       cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
     };
-  }, [canViewCollaborators, currentUser, effectiveUnit]);
+  }, [canViewCollaborators, currentUser, effectiveUnit, instanceListRetry]);
 
   const inboxInstanceOptions = canViewCollaborators ? collaborators : ownInstances;
   const inboxInstanceOptionsLoaded = canViewCollaborators ? collaboratorsLoaded : ownInstancesLoaded;
@@ -6497,6 +6490,9 @@ export default function InboxPage() {
                     <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Contas
                     </div>
+                    {!inboxInstanceOptionsLoaded && !instanceListError && (
+                      <p role="status" className="px-3 py-2 text-xs text-muted-foreground">Carregando instâncias…</p>
+                    )}
                     <button
                       onClick={() => selectCollaborator(null)}
                       className={`flex min-h-11 w-full items-center gap-3 px-3 py-2 text-sm transition-colors hover:bg-muted ${
@@ -6690,6 +6686,14 @@ export default function InboxPage() {
           </div>
         )}
 
+        {instanceListError && (
+          <div role="alert" className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-foreground">
+            <p>{instanceListError}</p>
+            <button type="button" onClick={() => setInstanceListRetry((value) => value + 1)} className="mt-1 min-h-11 font-semibold text-primary underline">
+              Tentar carregar instâncias novamente
+            </button>
+          </div>
+        )}
         {/* Search + Tabs */}
         <div className="flex flex-col border-b border-border/70 bg-card">
           <div className="p-4 pb-3">

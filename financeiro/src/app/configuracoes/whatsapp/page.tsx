@@ -148,11 +148,11 @@ export default function WhatsAppSettingsPage() {
   }, [isAdmin]);
 
   // Buscar instâncias dos colaboradores (admin gerencia; marketing visualiza/acessa).
-  const fetchInstances = useCallback(async () => {
+  const fetchInstances = useCallback(async (refresh = false) => {
     if (!canViewCollaborators) return;
     setInstancesLoading(true);
     try {
-      const res = await fetch("/api/whatsapp/admin/instances?includeInactive=true");
+      const res = await fetch(`/api/whatsapp/admin/instances?includeInactive=true${refresh ? "&refresh=true" : ""}`, { cache: "no-store" });
       const data = await res.json();
       if (data.instances) {
         setInstances(data.instances);
@@ -783,7 +783,7 @@ export default function WhatsAppSettingsPage() {
                 </button>
               ))}
               <button
-                onClick={fetchInstances}
+                onClick={() => fetchInstances(true)}
                 className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
               >
                 <RefreshCw className={`w-3 h-3 ${instancesLoading ? "animate-spin" : ""}`} />
