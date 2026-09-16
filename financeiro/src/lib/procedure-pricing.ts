@@ -12,6 +12,7 @@ export interface PricingOptions {
   professionalFixed: number; professionalPercent: number; salesCommission: number;
   targetMargin: number; minMargin: number; finalPrice: number;
   paymentFixed: number; installments: number; paymentLabel: string;
+  marketLow?: number; marketHigh?: number; marketReference?: string;
 }
 
 export interface CalcState {
@@ -107,6 +108,11 @@ export function validateState(value: unknown): string[] {
     if (typeof p.unit !== 'string' || (p.unit !== '' && !units.includes(p.unit))) errors.push('Selecione Osasco, SBC ou SCS.');
     if (typeof p.referenceMonth !== 'string' || (p.referenceMonth !== '' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(p.referenceMonth))) errors.push('Mês de referência inválido. Use AAAA-MM.');
     if (typeof p.paymentLabel !== 'string' || p.paymentLabel.length > 200) errors.push('Identificação da taxa de pagamento inválida.');
+    for (const field of ['marketLow', 'marketHigh']) if (p[field] !== undefined) check(p[field], 'Preço de referência do mercado');
+    if (p.marketReference !== undefined && (typeof p.marketReference !== 'string' || p.marketReference.length > 500)) errors.push('Referência do mercado: use até 500 caracteres.');
+    const low = p.marketLow ?? 0;
+    const high = p.marketHigh ?? 0;
+    if (typeof low === 'number' && typeof high === 'number' && ((low > 0) !== (high > 0) || low > high)) errors.push('Informe os dois preços da faixa de mercado, com o menor antes do maior, ou deixe ambos zerados.');
   }
   return errors;
 }
@@ -242,7 +248,12 @@ function cleanItems(items: Insumo[]): Insumo[] {
 }
 
 function cleanPricing(pricing: PricingOptions): PricingOptions {
-  return Object.fromEntries(Object.keys(defaultPricing).map(key => [key, pricing[key as keyof PricingOptions]])) as unknown as PricingOptions;
+  return {
+    ...Object.fromEntries(Object.keys(defaultPricing).map(key => [key, pricing[key as keyof PricingOptions]])) as unknown as PricingOptions,
+    ...(pricing.marketLow !== undefined ? { marketLow: pricing.marketLow } : {}),
+    ...(pricing.marketHigh !== undefined ? { marketHigh: pricing.marketHigh } : {}),
+    ...(pricing.marketReference !== undefined ? { marketReference: pricing.marketReference } : {}),
+  };
 }
 
 /** Store v2 in the existing JSON column; old arrays remain old calculations. */

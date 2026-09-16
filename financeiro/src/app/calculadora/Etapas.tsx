@@ -46,7 +46,7 @@ function Field({ label, help, children }: { label: string; help: string; childre
   return <div className="calc-field"><div className="calc-field-label-row"><label htmlFor={id} className="calc-field-label">{label}</label><FieldHelp label={label} help={help} descriptionId={descriptionId} /></div>{children(id, descriptionId)}</div>;
 }
 
-function NumberField({ label, help, value, onChange, kind = 'money', suffix }: { label: string; help: string; value: number; onChange: (value: number) => void; kind?: 'money' | 'decimal' | 'integer'; suffix?: string }) {
+export function NumberField({ label, help, value, onChange, kind = 'money', suffix }: { label: string; help: string; value: number; onChange: (value: number) => void; kind?: 'money' | 'decimal' | 'integer'; suffix?: string }) {
   return <Field label={label} help={help}>{(id, descriptionId) => <div className="calc-input-wrap">
     {kind === 'money' && <span className="calc-input-affix" aria-hidden="true">R$</span>}
     {kind === 'money' ? <CurrencyInput id={id} aria-describedby={descriptionId} value={value} onChange={onChange} /> : <DecimalInput id={id} aria-describedby={descriptionId} value={value} onChange={onChange} integer={kind === 'integer'} />}
@@ -54,12 +54,12 @@ function NumberField({ label, help, value, onChange, kind = 'money', suffix }: {
   </div>}</Field>;
 }
 
-function TextField({ label, help, value, onChange, placeholder, type = 'text' }: { label: string; help: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: 'text' | 'month' }) {
+export function TextField({ label, help, value, onChange, placeholder, type = 'text' }: { label: string; help: string; value: string; onChange: (value: string) => void; placeholder?: string; type?: 'text' | 'month' }) {
   return <Field label={label} help={help}>{(id, descriptionId) => <input id={id} aria-describedby={descriptionId} type={type} className="calc-input" value={value} placeholder={placeholder} onChange={event => onChange(event.target.value)} />}</Field>;
 }
 
 function Step({ number, title, description, children }: { number: number; title: string; description: string; children: React.ReactNode }) {
-  return <section className="calc-step"><header className="calc-step-heading"><span className="calc-step-number" aria-hidden="true">{number}</span><div><h2>{title}</h2><p>{description}</p></div></header>{children}</section>;
+  return <section className="calc-step" id={`pricing-step-${number}`}><header className="calc-step-heading"><span className="calc-step-number" aria-hidden="true">{number}</span><div><h2>{title}</h2><p>{description}</p></div></header>{children}</section>;
 }
 
 function Subheading({ children }: { children: React.ReactNode }) { return <h3 className="calc-step-subheading">{children}</h3>; }
@@ -90,7 +90,8 @@ export function Etapa1({ s, set }: Props) {
     ['outros', 'Outras despesas da estrutura', 'Despesas mensais ainda não consideradas: manutenção, seguros, depreciação econômica e provisões, conforme sua base de custos. Não repita aluguel, equipe, produtos ou taxas já informados.'],
   ];
   return <Step number={1} title="Estrutura e capacidade" description="Distribua os custos mensais pelas horas que podem realmente ser ocupadas.">
-    <Subheading>Custos fixos mensais</Subheading>
+    <Subheading>Estrutura mensal · custos e despesas para rateio</Subheading>
+    <p className="calc-field-note">Aluguel e salários fixos existem mesmo sem atendimento. Energia e água podem variar: use a parcela mensal estimada da estrutura. Consumo por sessão e percentuais de venda entram nas próximas etapas.</p>
     <div className="calc-fields-grid">{fixedFields.map(([key, label, help]) => <NumberField key={key} label={label} help={help} value={s[key]} onChange={value => set({ [key]: value })} />)}</div>
     <Subheading>Demais despesas mensais</Subheading>
     <div className="calc-fields-grid">{otherFields.map(([key, label, help]) => <NumberField key={key} label={label} help={help} value={s[key]} onChange={value => set({ [key]: value })} />)}</div>
@@ -163,8 +164,7 @@ export function Etapa4({ s, set }: Props) {
   const r = calc(s);
   return <Step number={4} title="Procedimento e preço comercial" description="Defina o tempo ocupado e compare um preço escolhido com a recomendação.">
     <div className="calc-fields-grid">
-      <TextField label="Nome do procedimento / protocolo" help="Identifique o procedimento e o tamanho da sessão: nome, volume de produto, região ou número de sessões. Todos os custos e tempos devem representar o mesmo serviço que será vendido." value={s.nome} onChange={nome => set({ nome })} placeholder="Ex.: procedimento — uma sessão" />
-      {s.pricing && <TextField label="Mês de referência dos custos" help="Mês usado como base para despesas e capacidade. Serve para rastrear a origem dos valores. Mudar o mês não busca dados financeiros nem atualiza custos automaticamente." type="month" value={s.pricing.referenceMonth} onChange={referenceMonth => updatePricing(s, set, { referenceMonth })} />}
+      {!s.pricing && <TextField label="Nome do procedimento / protocolo" help="Identifique o procedimento e o tamanho da sessão: nome, volume de produto, região ou número de sessões. Todos os custos e tempos devem representar o mesmo serviço que será vendido." value={s.nome} onChange={nome => set({ nome })} placeholder="Ex.: procedimento — uma sessão" />}
       <NumberField label="Duração: horas" help="Horas inteiras em que o atendimento ocupa sala/equipe. Complete os minutos no próximo campo. Para pacotes, informe tempo e insumos totais do mesmo pacote, ou calcule uma sessão separadamente." kind="integer" suffix="h" value={s.duracaoHoras} onChange={duracaoHoras => set({ duracaoHoras })} />
       <NumberField label="Duração: minutos adicionais" help="Minutos adicionais da sessão, entre 0 e 59. Exemplo: para 1h30, informe 1 hora e 30 minutos. A duração total precisa ser maior que zero." kind="integer" suffix="min" value={s.duracaoMinutos} onChange={duracaoMinutos => set({ duracaoMinutos })} />
       {s.pricing && <>

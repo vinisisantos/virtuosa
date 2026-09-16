@@ -1,5 +1,6 @@
 import { calc, fmt, type CalcState } from '@/app/calculadora/useCalc';
 import { LOGO_BASE64 } from '@/app/calculadora/logoBase64';
+import { pricingInsights } from '@/lib/pricing-insights';
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replace(/[&<>"']/g, character => ({
@@ -145,11 +146,25 @@ export function buildPricingReportHtml(s: CalcState, generatedAt?: Date): string
       row('Margem efetiva sobre o cobrado', percent(result.margemEfetiva), true),
     ].join('');
 
+    const insight = pricingInsights(s, result)!;
+    const decisionRows = [
+      row('Classificação financeira', insight.label),
+      row('Margem de contribuição por atendimento', `${fmt(insight.contribution)} · ${percent(insight.contributionPercent)}`),
+      row('Markup multiplicador sobre custo atribuído + tarifa fixa', `${number(insight.markup)}×`),
+      row('Atendimentos para cobrir estrutura (somente este serviço)', insight.breakEvenSessions === null ? 'Sem equilíbrio: contribuição não positiva' : String(insight.breakEvenSessions)),
+      row('Capacidade planejada (somente este serviço)', String(insight.capacity)),
+      row('Posicionamento na pesquisa', insight.marketLabel),
+      row('Faixa final de mercado informada', pricing.marketLow && pricing.marketHigh ? `${fmt(pricing.marketLow)} a ${fmt(pricing.marketHigh)}` : 'Não informada'),
+      row('Fonte, data e diferenciais', pricing.marketReference || 'Não informados'),
+    ].join('');
     const installments = result.parcelas.map((amount, index) => row(`${index + 1}ª parcela`, fmt(amount))).join('');
     pricingSections = `
       <div class="columns">${section('Custo do atendimento', directRows)}${section('Encargos e metas de margem', feeRows)}</div>
       <div class="columns">${section('Do custo ao preço final', priceRows)}${section('Resultado no preço escolhido', resultRows)}</div>
       ${section(`Pagamento em ${pricing.installments} parcela(s)`, installments + row('Total das parcelas', fmt(charged), true))}
+      ${section('Decisão de venda e comparação de mercado', decisionRows)}
+      <p class="note">${escapeHtml(insight.guidance)} ${insight.targetAboveMarket ? 'O preço-alvo supera o maior valor pesquisado; valide custos, ocupação e diferenciais antes de definir o preço.' : ''}</p>
+      <p class="note">Contribuição não é lucro: ela ainda paga a estrutura. O volume de equilíbrio acima supõe apenas este serviço e estrutura mensal constante; não representa o mix real da clínica. A faixa de mercado é informada pela gestão, não consultada automaticamente.</p>
       <section class="assumptions"><h2>Como interpretar a simulação</h2>
         <p><strong>Preço-alvo cobrado</strong> = (base de custo + taxa fixa de pagamento) ÷ [1 − impostos% − taxa de pagamento% − comissão de venda% − profissional% − margem-alvo%]. Os percentuais usam a mesma base: o valor efetivamente cobrado.</p>
         <p><strong>Preço de tabela</strong> = preço-alvo cobrado ÷ (1 − desconto%). O preço comercial é o valor escolhido antes do desconto. O lucro e a margem efetiva são recalculados sobre o valor que o paciente paga.</p>

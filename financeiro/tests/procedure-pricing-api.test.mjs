@@ -91,3 +91,14 @@ test('unidade inválida e snapshot divergente não escrevem', async () => {
   assert.equal((await POST(req('POST', { ...body, unit: 'SBC' }, { role: 'ADMINISTRADOR' }))).status, 400);
   assert.deepEqual(calls, []);
 });
+test('pesquisa de mercado é preservada e valores malformados são rejeitados antes da escrita', async () => {
+  const body = serializeProtocol(state());
+  Object.assign(body.insumos.pricing, { marketLow: 600, marketHigh: 850, marketReference: 'Pesquisa local' });
+  const saved = await POST(req('POST', body));
+  assert.equal(saved.status, 201);
+  assert.equal((await saved.json()).insumos.pricing.marketReference, 'Pesquisa local');
+  calls = [];
+  body.insumos.pricing.marketHigh = 500;
+  assert.equal((await POST(req('POST', body))).status, 400);
+  assert.deepEqual(calls, []);
+});

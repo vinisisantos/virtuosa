@@ -13,6 +13,7 @@ const protocol = { ...serializeProtocol(state), id: 'fixture-protocol', updatedA
 const user = { id: 'pricing-ui', name: 'Teste local', role: 'ADMINISTRADOR', unit: 'Osasco', permissions: { admin: true } };
 const browser = await puppeteer.launch({ headless: true });
 const results = [];
+const widths = process.env.PRICING_UI_WIDTHS ? process.env.PRICING_UI_WIDTHS.split(',').map(Number) : [390, 430, 768, 834, 1024, 1440];
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function clickText(page, selector, text) {
   const handle = await page.evaluateHandle((selector, text) => [...document.querySelectorAll(selector)].find(el => el.textContent.trim() === text), selector, text);
@@ -22,7 +23,7 @@ async function clickText(page, selector, text) {
   await handle.asElement().click(); await handle.dispose();
 }
 try {
-  for (const theme of ['light', 'dark']) for (const width of [390, 430, 1440]) {
+  for (const theme of ['light', 'dark']) for (const width of widths) {
     const page = await browser.newPage();
     const errors = [], calls = [], mutations = [];
     await page.setViewport({ width, height: 900, hasTouch: width < 600, isMobile: width < 600 });
@@ -86,13 +87,25 @@ try {
     await page.evaluate(() => window.scrollTo(0, 0));
     await pause(100);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), width, 'sem overflow horizontal');
-    if (width < 768) assert.ok(await page.evaluate(() => { const bar = document.querySelector('.pricing-bottom').getBoundingClientRect(); const nav = document.querySelector('.mobile-tab-bar')?.getBoundingClientRect(); return !nav || bar.bottom <= nav.top; }), 'barra de salvar não fica atrás da navegação mobile');
+    if (width <= 1023) assert.ok(await page.evaluate(() => { const bar = document.querySelector('.pricing-bottom').getBoundingClientRect(); const nav = document.querySelector('.mobile-tab-bar')?.getBoundingClientRect(); return !nav || bar.bottom <= nav.top; }), 'barra de salvar não fica atrás da navegação mobile/tablet');
     await page.screenshot({ path: join(output, `${theme}-${width}-top.png`) });
+    await page.$eval('.pricing-decision', el => el.scrollIntoView({ block: 'start' }));
+    assert.equal(await page.$eval('.pricing-status', el => el.textContent), 'Meta de margem atingida');
+    await page.screenshot({ path: join(output, `${theme}-${width}-decision.png`) });
+    for (const [label, value] of [['Menor preço pesquisado', '65000'], ['Maior preço pesquisado', '80000'], ['Fonte, data e diferenciais', 'Pesquisa local de setembro; mesma sessão e condição de pagamento.']]) {
+      const marketId = await page.evaluate(label => [...document.querySelectorAll('label')].find(el => el.textContent === label).htmlFor, label);
+      const field = await page.$(`[id="${marketId}"]`);
+      await field.evaluate(el => el.scrollIntoView({ block: 'center' }));
+      await field.click(); await field.type(value); await page.keyboard.press('Tab'); await page.keyboard.press('Escape');
+    }
+    assert.ok(await page.$eval('.pricing-market-reading', el => el.textContent.includes('Dentro da faixa pesquisada')));
     await clickText(page, '.pricing-actions button', 'Atualizar protocolo');
     await page.waitForFunction(() => document.body.textContent.includes('Protocolo salvo.'));
     assert.equal(mutations.at(-1).insumos.version, 2);
     assert.equal(mutations.at(-1).insumos.pricing.targetMargin, 20);
     assert.equal(mutations.at(-1).precoSugerido, 700);
+    assert.equal(mutations.at(-1).insumos.pricing.marketLow, 650);
+    assert.equal(mutations.at(-1).insumos.pricing.marketHigh, 800);
     await clickText(page, '.pricing-panel button', 'Consultar taxas cadastradas');
     await page.waitForSelector('#pricing-fee');
     await page.select('#pricing-fee', 'fixture-fee:3');
