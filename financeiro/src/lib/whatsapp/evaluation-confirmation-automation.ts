@@ -101,6 +101,7 @@ export function getEvaluationConfirmationWindowHours(triggerConfig: unknown) {
 export async function findEvaluationConfirmationRequestAutomation(
   unit: EvaluationScheduleUnit,
   database: EvaluationConfirmationAutomationDatabase = prisma,
+  upgradeLegacy = true,
 ) {
   const automation = await database.automation.findFirst({
     where: {
@@ -111,7 +112,7 @@ export async function findEvaluationConfirmationRequestAutomation(
   });
 
   if (!automation) return null;
-  return upgradeLegacyConfirmationAutomation(automation, database);
+  return upgradeLegacy ? upgradeLegacyConfirmationAutomation(automation, database) : automation;
 }
 
 function confirmationAutomationData(
@@ -119,6 +120,7 @@ function confirmationAutomationData(
   createdBy?: string | null,
 ) {
   return {
+    id: `evaluation-confirmation-request:${config.unit}`,
     name: `Confirmação de presença — ${config.unit}`,
     description: `Disponibiliza no Inbox a confirmação de presença antes da avaliação da ${config.clinicName}.`,
     triggerType: EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER,
@@ -153,8 +155,11 @@ export async function ensureEvaluationConfirmationRequestAutomation(
   const config = getEvaluationScheduleUnitConfigByUnit(unit);
   if (!config) throw new Error(`Unidade sem automação de confirmação: ${unit}`);
 
-  return database.automation.create({
-    data: confirmationAutomationData(config, createdBy),
+  const data = confirmationAutomationData(config, createdBy);
+  return database.automation.upsert({
+    where: { id: data.id },
+    update: {},
+    create: data,
   });
 }
 
@@ -176,9 +181,10 @@ export async function ensureEvaluationConfirmationRequestAutomations(
   const created = await Promise.all(
     EVALUATION_SCHEDULE_UNIT_CONFIGS
       .filter((config) => !existingUnits.has(config.unit))
-      .map((config) => database.automation.create({
-        data: confirmationAutomationData(config, createdBy),
-      })),
+      .map((config) => {
+        const data = confirmationAutomationData(config, createdBy);
+        return database.automation.upsert({ where: { id: data.id }, update: {}, create: data });
+      }),
   );
   return [...upgradedExisting, ...created];
 }

@@ -146,6 +146,7 @@ export async function createConversationForInstance(params: {
       id: true,
       instanceId: true,
       status: true,
+      lastKnownJid: true,
       assignedTo: true,
       assignedToName: true,
       archivedAt: true,

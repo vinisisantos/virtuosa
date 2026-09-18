@@ -2,11 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 
 import {
-  evaluationAssignedUserMarker,
   ensureProfessionalForEvaluationUser,
   getEvaluationAssignedUserIdFromNotes,
   getPipelineDealIdFromEvaluationNotes,
-  normalizeEvaluationText,
   replaceEvaluationAssignedUserMarker,
   resolveEvaluationAssignee,
   EvaluationSchedulingError,
@@ -19,6 +17,7 @@ import {
   type EvaluationStatus,
 } from "@/lib/evaluation-status";
 import { prisma } from "@/lib/db";
+import { canManageAllEvaluations, isOwnEvaluation } from "@/lib/evaluation-access";
 import { saoPauloDayRange } from "@/lib/date-filter";
 import {
   getPipelineProcedureSelections,
@@ -53,29 +52,6 @@ function dateFromParam(value: string | null, fallback: Date) {
   if (!value) return fallback;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? fallback : date;
-}
-
-function isOwnEvaluation(
-  agendamento: { notes?: string | null; profissional?: { name: string } | null },
-  user: { id: string; name: string },
-) {
-  if (agendamento.notes?.includes(evaluationAssignedUserMarker(user.id))) return true;
-
-  const userName = normalizeEvaluationText(user.name);
-  const professionalName = normalizeEvaluationText(agendamento.profissional?.name);
-  if (!userName || !professionalName) return false;
-
-  const userTokens = userName.split(/\s+/).filter((token) => token.length >= 3);
-  return userTokens.some((token) => professionalName.includes(token));
-}
-
-function canManageAllEvaluations(guard: Exclude<ReturnType<typeof requireUnitGuard>, NextResponse>) {
-  return (
-    guard.isAdmin ||
-    guard.permissions?.admin === true ||
-    guard.permissions?.multiUnit === true ||
-    guard.permissions?.crmEvaluationsAll === true
-  );
 }
 
 type EvaluationAuditDetails = {

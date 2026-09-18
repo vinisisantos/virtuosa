@@ -142,6 +142,11 @@ type EvaluationConfirmationAvailability = {
   startTime?: string;
   eligibleAt?: string;
   windowHours?: number;
+  startsConversation?: boolean;
+  instanceName?: string;
+  phone?: string;
+  connected?: boolean;
+  error?: string;
 };
 
 type EvaluationDayReminderAvailability = EvaluationConfirmationAvailability;
@@ -308,17 +313,13 @@ function fullDateTimeLabel(value: string) {
 }
 
 function evaluationConfirmationEndpoint(params: {
-  conversationId: string;
   appointmentId: string;
-  targetInstanceId?: string;
   unit: string;
 }) {
   const searchParams = new URLSearchParams({
-    appointmentId: params.appointmentId,
     unit: params.unit,
   });
-  if (params.targetInstanceId) searchParams.set("targetInstanceId", params.targetInstanceId);
-  return `/api/whatsapp/conversations/${encodeURIComponent(params.conversationId)}/evaluation-confirmation?${searchParams.toString()}`;
+  return `/api/crm/evaluations/${encodeURIComponent(params.appointmentId)}/confirmation?${searchParams.toString()}`;
 }
 
 function evaluationDayReminderEndpoint(params: {
@@ -741,6 +742,8 @@ export default function AvaliacoesAgendaPage() {
   const [showAllMetrics, setShowAllMetrics] = useState(false);
   const [calendarView, setCalendarView] = useState<"month" | "week" | "list">("month");
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null);
+  const selectedEvaluationIdRef = useRef(selectedEvaluationId);
+  selectedEvaluationIdRef.current = selectedEvaluationId;
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<EvaluationStatus | null>(null);
   const [activeEvaluationId, setActiveEvaluationId] = useState<string | null>(null);
@@ -981,14 +984,12 @@ export default function AvaliacoesAgendaPage() {
     setLoadingEvaluationConfirmation(false);
     setSendingEvaluationConfirmation(false);
 
-    if (!selectedEvaluation || !chatLink?.available || !chatLink.conversationId) return;
+    if (!selectedEvaluation) return;
 
     const controller = new AbortController();
     let boundaryTimer: number | null = null;
     const endpoint = evaluationConfirmationEndpoint({
-      conversationId: chatLink.conversationId,
       appointmentId: selectedEvaluation.id,
-      targetInstanceId: chatLink.targetInstanceId,
       unit: selectedEvaluation.unit,
     });
 
@@ -996,7 +997,7 @@ export default function AvaliacoesAgendaPage() {
     fetch(endpoint, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "Não foi possível verificar a confirmação da avaliação");
+        if (!response.ok) return { visible: false, alreadySent: false, error: data.error || "Não foi possível verificar a confirmação da avaliação" } as EvaluationConfirmationAvailability;
         return data as EvaluationConfirmationAvailability;
       })
       .then((data) => {
@@ -1016,6 +1017,7 @@ export default function AvaliacoesAgendaPage() {
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         console.error(error);
+        setEvaluationConfirmation({ visible: false, alreadySent: false, error: "Não foi possível verificar a confirmação. Feche e abra a avaliação para tentar novamente." });
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoadingEvaluationConfirmation(false);
@@ -1026,9 +1028,6 @@ export default function AvaliacoesAgendaPage() {
       if (boundaryTimer !== null) window.clearTimeout(boundaryTimer);
     };
   }, [
-    chatLink?.available,
-    chatLink?.conversationId,
-    chatLink?.targetInstanceId,
     evaluationConfirmationRefreshKey,
     selectedEvaluation,
   ]);
@@ -1515,24 +1514,30 @@ export default function AvaliacoesAgendaPage() {
   const sendSelectedEvaluationConfirmation = async () => {
     if (
       !selectedEvaluation
-      || !chatLink?.conversationId
       || !evaluationConfirmation?.visible
       || evaluationConfirmation.alreadySent
+      || sendingEvaluationConfirmation
+      || scheduleHasUnsavedChanges
+      || evaluationConfirmation.connected === false
     ) return;
 
+    const sendingId = selectedEvaluation.id;
     setSendingEvaluationConfirmation(true);
     try {
       const endpoint = evaluationConfirmationEndpoint({
-        conversationId: chatLink.conversationId,
         appointmentId: selectedEvaluation.id,
-        targetInstanceId: chatLink.targetInstanceId,
         unit: selectedEvaluation.unit,
       });
       const response = await fetch(endpoint, { method: "POST" });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível enviar a confirmação da avaliação");
 
+      if (selectedEvaluationIdRef.current !== sendingId) return;
       setEvaluationConfirmation((current) => current ? { ...current, visible: true, alreadySent: true } : current);
+      if (data.conversationId && data.targetInstanceId) {
+        const query = new URLSearchParams({ conversationId: data.conversationId, targetInstanceId: data.targetInstanceId, unit: selectedEvaluation.unit });
+        setChatLink({ loading: false, available: true, conversationId: data.conversationId, targetInstanceId: data.targetInstanceId, url: `/crm/inbox?${query}` });
+      }
       toast.success(
         data.status === "already_sent"
           ? "A confirmação já havia sido enviada"
@@ -1541,7 +1546,7 @@ export default function AvaliacoesAgendaPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível enviar a confirmação da avaliação");
     } finally {
-      setSendingEvaluationConfirmation(false);
+      if (selectedEvaluationIdRef.current === sendingId) setSendingEvaluationConfirmation(false);
     }
   };
 
@@ -2009,7 +2014,7 @@ export default function AvaliacoesAgendaPage() {
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[620px]">
           {selectedEvaluation && (
             <>
-              <DialogHeader>
+              <DialogHeader className="pr-8">
                 <DialogTitle>Avaliação: {selectedEvaluation.clientName}</DialogTitle>
               </DialogHeader>
 
@@ -2191,12 +2196,13 @@ export default function AvaliacoesAgendaPage() {
                         <Button
                           type="button"
                           variant="outline"
-                          className="w-full gap-2 border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 sm:w-auto"
+                          className="min-h-11 w-full gap-2 border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 sm:w-auto"
                           onClick={() => void sendSelectedEvaluationConfirmation()}
                           disabled={
                             loadingEvaluationConfirmation
                             || sendingEvaluationConfirmation
                             || evaluationConfirmation.alreadySent
+                            || evaluationConfirmation.connected === false
                             || scheduleHasUnsavedChanges
                           }
                         >
@@ -2211,6 +2217,18 @@ export default function AvaliacoesAgendaPage() {
                         </Button>
                       </span>
                     )}
+
+                    <div className="w-full min-w-0 break-words text-xs text-muted-foreground" aria-live="polite">
+                      {loadingEvaluationConfirmation ? "Verificando confirmação pelo WhatsApp…"
+                        : evaluationConfirmation?.error ? evaluationConfirmation.error
+                        : evaluationConfirmation?.visible && !evaluationConfirmation.alreadySent
+                          ? evaluationConfirmation.connected === false
+                            ? `Conecte a caixa ${evaluationConfirmation.instanceName} para enviar a confirmação.`
+                            : `${evaluationConfirmation.startsConversation ? "Será iniciada uma conversa" : "Envio"} com ${evaluationConfirmation.phone} pela caixa ${evaluationConfirmation.instanceName}. A origem do cadastro será preservada.`
+                          : evaluationConfirmation?.reason === "too_early"
+                            ? `A confirmação ficará disponível nas ${evaluationConfirmation.windowHours} horas anteriores à avaliação.`
+                            : evaluationConfirmation?.reason === "automation_inactive" ? "A confirmação está desativada em Automações." : null}
+                    </div>
 
                     {evaluationDayReminder?.visible && (
                       <span
