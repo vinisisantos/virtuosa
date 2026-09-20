@@ -19,6 +19,9 @@ import {
 } from "../src/lib/campaign-track-mapping.ts";
 
 const exactAdCases = [
+  ["SBC", "120250178920860006", GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME],
+  ["SBC", "120250180063610006", "Glúteo Perfeito"],
+  ["SBC", "120250180269700006", HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME],
   ["Osasco", HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID, HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME],
   ["SCS", HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID, HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME],
   ["Osasco", "120249502709450006", "Preenchimento Facial"],
@@ -59,6 +62,32 @@ test("não aplica o ID de anúncio canônico em outra unidade", () => {
     assert.equal(campaignNameFromMetaSignals(adId, null, "SBC"), null);
     assert.equal(campaignNameFromMetaSignals(adId, null, "SCS"), null);
   }
+});
+
+test("novos IDs de SBC permanecem isolados e funcionam como anúncio ou sinal de campanha", () => {
+  for (const [id, name] of [
+    ["120250178920860006", GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME],
+    ["120250180063610006", "Glúteo Perfeito"],
+    ["120250180269700006", HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME],
+  ]) {
+    assert.equal(campaignNameFromMetaAdAndTrackSignals(id, "campanha-generica", null, "SBC"), name);
+    assert.equal(campaignNameFromMetaAdAndTrackSignals(null, id, null, "SBC"), name);
+    assert.equal(campaignNameFromMetaSignals(id, null, " sbc "), name);
+    for (const unit of ["Osasco", "SCS", "Barueri", null]) {
+      assert.equal(campaignNameFromMetaSignals(id, null, unit), null, `${unit}: ${id}`);
+    }
+  }
+});
+
+test("IDs novos não são inventados quando a entrada contém somente texto", () => {
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage("Vim pela harmonização de mamas", "SBC"), {
+    campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+    campaignTrackId: null,
+  });
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage("Vim pelo Glúteos Perfeitos", "SBC"), {
+    campaignName: "Glúteo Perfeito",
+    campaignTrackId: null,
+  });
 });
 
 test("preserva o reconhecimento legado por marcador do link", () => {
