@@ -21,6 +21,7 @@ import {
 
 import { formatCurrency } from "@/lib/currency";
 import { isNotLeadSource } from "@/lib/lead-source";
+import { pausesCommercialCallbacks } from "@/lib/pipeline/commercial-status";
 
 interface PipelineAnalyticsProps {
   stages: PipelineStage[];
@@ -66,7 +67,7 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
     const leadDeals = deals.filter((deal) => !isNotLeadSource(deal.source));
     const eligibleLeads = leadDeals.filter((deal) => !isDiscarded(deal));
     const closedLeads = eligibleLeads.filter(isClosed);
-    const openLeads = eligibleLeads.filter((deal) => !isClosed(deal));
+    const openLeads = eligibleLeads.filter((deal) => !isClosed(deal) && !pausesCommercialCallbacks(deal.commercialStatus));
 
     const openValue = openLeads.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
     const closedValue = closedLeads.reduce((sum, deal) => sum + Number(deal.value || 0), 0);
@@ -89,7 +90,7 @@ export function PipelineAnalytics({ stages, deals }: PipelineAnalyticsProps) {
           icon={<BarChart3 className="h-4 w-4 text-muted-foreground" />}
           label="Leads abertos"
           value={String(stats.openCount)}
-          tooltip="Quantidade de leads em etapas abertas. Vendas diretas e negócios fechados não entram neste total."
+          tooltip="Leads ativos em etapas abertas. Pausados, perdas, não qualificados, vendas diretas e fechados ficam fora deste total."
         />
         <Metric
           icon={<DollarSign className="h-4 w-4 text-primary" />}

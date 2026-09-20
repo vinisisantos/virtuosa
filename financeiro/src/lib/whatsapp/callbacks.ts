@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { phoneLookupKey } from "@/lib/phone";
 import { isDiscardPipelineStage, pipelineStageKeyFromName } from "@/lib/pipeline/stages";
+import { PAUSED_COMMERCIAL_STATUSES } from "@/lib/pipeline/commercial-status";
 import {
   WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS,
   WHATSAPP_CALLBACK_QUEUE_STATUS,
@@ -51,6 +52,7 @@ export async function recordInboundForCallbackTracking(
     where: { id: conversationId },
     select: {
       callbackQueueStatus: true,
+      commercialPaused: true,
       callbackAttempts: {
         where: { status: WHATSAPP_CALLBACK_ATTEMPT_STATUS.waitingResponse },
         select: { id: true },
@@ -59,7 +61,7 @@ export async function recordInboundForCallbackTracking(
       },
     },
   });
-  if (conversation?.callbackQueueStatus === WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE) {
+  if (conversation?.commercialPaused || conversation?.callbackQueueStatus === WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE) {
     await tx.whatsAppConversation.update({
       where: { id: conversationId },
       data: { lastInboundAt: receivedAt },
@@ -126,6 +128,7 @@ export async function recordOutboundForCallbackTracking(
     where: {
       id: conversationId,
       callbackTrackingStartedAt: { not: null },
+      commercialPaused: false,
       callbackDueAt: { lte: sentAt },
       callbackStreakCount: { lt: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
       callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
@@ -144,6 +147,7 @@ export async function recordOutboundForCallbackTracking(
       where: {
         id: conversationId,
         callbackTrackingStartedAt: { not: null },
+        commercialPaused: false,
         callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
         status: { notIn: CLOSED_CONVERSATION_STATUSES },
       },
@@ -224,6 +228,7 @@ export async function processExpiredWhatsAppCallbacks(
       callbackDueAt: { lte: now },
       callbackStreakCount: { gte: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
       callbackPipelineSyncedAt: null,
+      commercialPaused: false,
       callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
       status: { notIn: CLOSED_CONVERSATION_STATUSES },
     },
@@ -255,6 +260,7 @@ export async function processExpiredWhatsAppCallbacks(
           callbackDueAt: { lte: now },
           callbackStreakCount: { gte: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
           callbackPipelineSyncedAt: null,
+          commercialPaused: false,
           callbackQueueStatus: { not: WHATSAPP_CALLBACK_SUPPRESSED_CLOSED_PACKAGE },
           status: { notIn: CLOSED_CONVERSATION_STATUSES },
         },
@@ -300,7 +306,11 @@ export async function processExpiredWhatsAppCallbacks(
 
         if (client) {
           const deals = await tx.salesPipeline.findMany({
-            where: { clientId: client.id, ...(targetUnit ? { unit: targetUnit } : {}) },
+            where: {
+              clientId: client.id, ...(targetUnit ? { unit: targetUnit } : {}),
+              stage: { not: "fechado" },
+              OR: [{ commercialStatus: null }, { commercialStatus: { notIn: PAUSED_COMMERCIAL_STATUSES } }],
+            },
             select: { id: true, pipelineId: true, stage: true, clientName: true, unit: true },
             orderBy: { updatedAt: "desc" },
             take: 20,
@@ -318,16 +328,23 @@ export async function processExpiredWhatsAppCallbacks(
             const lostStage = preferredLostStage(stages);
             const nextStage = lostStage ? pipelineStageKeyFromName(lostStage.name) : "sem_retorno";
 
-            await tx.salesPipeline.update({
-              where: { id: deal.id },
+            const saved = await tx.salesPipeline.updateMany({
+              where: {
+                id: deal.id, stage: { not: "fechado" },
+                OR: [{ commercialStatus: null }, { commercialStatus: { notIn: PAUSED_COMMERCIAL_STATUSES } }],
+              },
               data: {
                 stage: nextStage,
                 stageId: lostStage?.id || null,
                 lostReason: "Sem resposta após 6 rechamadas",
+                commercialStatus: "lost",
+                commercialReason: "no_response",
+                commercialNote: "Sem resposta após 6 rechamadas. Motivo da ausência de resposta desconhecido.",
+                nextContactAt: null,
                 closedAt: now,
               },
             });
-            await tx.auditLog.create({
+            if (saved.count === 1) await tx.auditLog.create({
               data: {
                 userName: "Sistema · Rechamada",
                 action: "update",
@@ -337,10 +354,10 @@ export async function processExpiredWhatsAppCallbacks(
                 unit: deal.unit,
               },
             });
-            pipelineUpdated = true;
+            pipelineUpdated = saved.count === 1;
           }
 
-          await tx.client.update({ where: { id: client.id }, data: { stage: "nao_venda" } });
+          if (pipelineUpdated) await tx.client.update({ where: { id: client.id }, data: { stage: "nao_venda" } });
         }
       }
 

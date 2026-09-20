@@ -19,6 +19,7 @@ if (process.env.VERCEL_ENV === "production") {
   if (!process.env.DATABASE_URL) process.exit(1);
   const migrationUrl = migrationDatabaseUrl(process.env.DATABASE_URL);
   const requiredMigrations = [
+    "prisma/migrations/20260920120000_pipeline_commercial_status/migration.sql",
     "prisma/migrations/20260730143000_whatsapp_conversation_archiving/migration.sql",
     "prisma/migrations/20260730200000_crm_lead_count_adjustments/migration.sql",
     "prisma/migrations/20260730213000_whatsapp_saved_replies/migration.sql",

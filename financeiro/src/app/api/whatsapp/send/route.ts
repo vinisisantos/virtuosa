@@ -854,6 +854,7 @@ export async function POST(req: Request) {
           updatedAt: true,
           lastOutboundAt: true,
           callbackDueAt: true,
+          commercialPaused: true,
           callbackTrackingStartedAt: true,
           callbackStreakCount: true,
           callbackTotalCount: true,

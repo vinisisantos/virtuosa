@@ -51,6 +51,7 @@ function pilotConversationWhere(instanceIds: string[], now: Date): Prisma.WhatsA
     instanceId: { in: instanceIds },
     archivedAt: null,
     callbackTrackingStartedAt: { not: null },
+    commercialPaused: false,
     lastOutboundAt: { not: null, lte: lastTeamContactCutoff },
     callbackDueAt: { lte: now },
     callbackStreakCount: { lt: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
@@ -184,6 +185,7 @@ export async function GET(req: Request) {
         WHERE conversation."instanceId" IN (${Prisma.join(instanceIds)})
           AND conversation."archivedAt" IS NULL
           AND conversation."callbackTrackingStartedAt" IS NOT NULL
+          AND conversation."commercialPaused" = false
           AND conversation."lastOutboundAt" IS NOT NULL
           AND conversation."lastOutboundAt" <= ${lastTeamContactCutoff}
           AND (

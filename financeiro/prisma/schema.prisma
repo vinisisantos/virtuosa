@@ -884,6 +884,11 @@ model SalesPipeline {
   notes                       String?
   leadId                      String?
   lostReason                  String?
+  commercialStatus            String?
+  commercialReason            String?
+  commercialNote              String?
+  nextContactAt               DateTime?
+  commercialHolds             PipelineCommercialHold[]
   closedAt                    DateTime?
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
@@ -903,6 +908,17 @@ model SalesPipeline {
   @@index([createdAt])
   @@index([pipelineId])
   @@index([stageId])
+  @@index([unit, commercialStatus, nextContactAt])
+}
+
+model PipelineCommercialHold {
+  dealId         String
+  conversationId String
+  deal           SalesPipeline        @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@id([dealId, conversationId])
+  @@index([conversationId])
 }
 
 model PipelineSaleItem {
@@ -1373,6 +1389,8 @@ model WhatsAppConversation {
   callbackTotalCount        Int               @default(0)
   callbackPipelineSyncedAt  DateTime?
   callbackQueueStatus       String            @default("inactive")
+  commercialPaused          Boolean           @default(false)
+  commercialHolds           PipelineCommercialHold[]
   internalNotesUpdatedAt    DateTime?
   contact                   WhatsAppContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
   instance                  WhatsAppInstance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)

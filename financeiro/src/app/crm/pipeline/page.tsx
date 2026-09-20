@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { PipelineBoard } from "@/components/pipelines/pipeline-board";
 import { PipelineAnalytics } from "@/components/pipelines/pipeline-analytics";
+import { CommercialPanel } from "@/components/pipelines/commercial-panel";
+import { COMMERCIAL_REASONS, commercialReasonLabel, pausesCommercialCallbacks } from "@/lib/pipeline/commercial-status";
 import { Pipeline, PipelineStage } from "@prisma/client";
 import { Deal } from "@/components/pipelines/deal-card";
 import { useGlobalUnit } from "@/contexts/UnitContext";
@@ -163,6 +165,8 @@ export default function PipelinePage() {
   const [filterOrder, setFilterOrder] = useState("recent");
   const [filterStageIds, setFilterStageIds] = useState<string[]>([]);
   const [globalSearch, setGlobalSearch] = useState("");
+  const [commercialView, setCommercialView] = useState("active");
+  const [commercialReasonFilter, setCommercialReasonFilter] = useState("");
   const [canManageStages, setCanManageStages] = useState(false);
   const [evaluationAssignees, setEvaluationAssignees] = useState<EvaluationAssignee[]>([]);
   const [loadingAssignees, setLoadingAssignees] = useState(false);
@@ -462,6 +466,10 @@ export default function PipelinePage() {
   const handleDealMoved = (dealId: string, newStageId: string) => {
     const deal = deals.find((d) => d.id === dealId);
     if (!deal || deal.stageId === newStageId) return;
+    if (pausesCommercialCallbacks(deal.commercialStatus)) {
+      toast.info("Abra o negócio e salve Em atendimento para retomar antes de mover.");
+      return;
+    }
 
     const stage = stages.find((s) => s.id === newStageId);
 
@@ -1095,7 +1103,19 @@ export default function PipelinePage() {
   const visibleFilterStageIds = filterStageIds.filter((id) => visibleStageIds.has(id));
   const activeFilterCount =
     visibleFilterStageIds.length + (hasPeriod ? 1 : 0) + (filterOrder !== "recent" ? 1 : 0);
-  const visibleDeals = deals.filter((deal) => !!deal.stageId && visibleStageIds.has(deal.stageId));
+  const scopeQuery = new URLSearchParams({ ...(targetUserId ? { targetUserId } : {}), ...(targetInstanceId ? { targetInstanceId } : {}) }).toString();
+  const allVisibleDeals = deals.filter((deal) => !!deal.stageId && visibleStageIds.has(deal.stageId));
+  const visibleDeals = allVisibleDeals.filter((deal) => {
+    if (commercialReasonFilter && deal.commercialReason !== commercialReasonFilter) return false;
+    if (commercialView === "all") return true;
+    if (commercialView === "active") return !pausesCommercialCallbacks(deal.commercialStatus);
+    if (commercialView === "returns") return deal.commercialStatus === "later";
+    return deal.commercialStatus === commercialView;
+  });
+  const returnDeals = visibleDeals.filter((deal) => `${deal.clientName} ${deal.clientPhone || ""}`.toLowerCase().includes(globalSearch.toLowerCase()))
+    .sort((a, b) => new Date(a.nextContactAt || 0).getTime() - new Date(b.nextContactAt || 0).getTime());
+  const commercialSaved = () => { setEditModalOpen(false); setLostModalOpen(false); setDealToLose(null); void fetchData(); };
+  const losingDeal = dealToLose ? deals.find((deal) => deal.id === dealToLose.dealId) : null;
 
   return (
     <div className="absolute inset-0 flex flex-col bg-background px-3 pb-0 pt-3 sm:px-6">
@@ -1127,7 +1147,7 @@ export default function PipelinePage() {
       </div>
 
       <div className="mb-2">
-        <PipelineAnalytics stages={visibleStages} deals={visibleDeals} />
+        <PipelineAnalytics stages={visibleStages} deals={allVisibleDeals} />
       </div>
 
       {/* Card único: filtros como cabeçalho (com divisória) + funil logo abaixo,
@@ -1309,20 +1329,49 @@ export default function PipelinePage() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between px-3 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground lg:hidden">
+      <div className="grid shrink-0 grid-cols-1 gap-2 border-b p-3 sm:grid-cols-2">
+        <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">Visão comercial
+          <select aria-label="Visão comercial" value={commercialView} onChange={(event) => setCommercialView(event.target.value)} className="min-h-11 w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground">
+            <option value="active">Funil ativo</option><option value="all">Todos — incluindo pausados</option>
+            <option value="returns">Retomadas ({allVisibleDeals.filter((deal) => deal.commercialStatus === "later").length})</option>
+            <option value="nurture">Nutrição / interesse futuro</option><option value="no_response">Sem resposta</option>
+            <option value="lost">Negociação perdida</option><option value="unqualified">Não qualificado</option>
+          </select>
+        </label>
+        <label className="grid min-w-0 gap-1 text-xs text-muted-foreground">Motivo · {visibleDeals.length} nos filtros atuais
+          <select aria-label="Filtrar motivo comercial" value={commercialReasonFilter} onChange={(event) => setCommercialReasonFilter(event.target.value)} className="min-h-11 w-full min-w-0 rounded-md border bg-background px-2 text-sm text-foreground">
+            <option value="">Todos os motivos</option>{COMMERCIAL_REASONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+        </label>
+      </div>
+      {commercialView !== "returns" && <div className="flex items-center justify-between px-3 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground lg:hidden">
         <span>Deslize para ver as etapas</span>
         <span aria-hidden="true">← →</span>
-      </div>
+      </div>}
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-2 sm:px-3 sm:pb-2">
-        <PipelineBoard
+        {commercialView === "returns" ? <div className="min-h-0 overflow-y-auto p-1">
+          <p className="mb-3 text-xs text-muted-foreground">Retornos manuais, considerando os filtros de período e etapa. Nenhuma mensagem é enviada automaticamente.</p>
+          {!returnDeals.length && <p className="py-8 text-center text-sm text-muted-foreground">Nenhuma retomada nos filtros atuais.</p>}
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{returnDeals.map((deal) => {
+            const due = !!deal.nextContactAt && new Date(deal.nextContactAt).getTime() <= Date.now();
+            return <button key={deal.id} onClick={() => handleEditDeal(deal)} className="min-w-0 space-y-2 rounded-lg border bg-card p-4 text-left hover:border-primary">
+              <p className="break-words font-semibold">{deal.clientName}</p>
+              <p className={due ? "text-sm font-semibold text-amber-600 dark:text-amber-400" : "text-sm text-muted-foreground"}>{due ? "Retorno atrasado" : "Retorno agendado"} · {deal.nextContactAt ? new Date(deal.nextContactAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }) : "Sem data"}</p>
+              <p className="break-words text-sm">{commercialReasonLabel(deal.commercialReason)}</p>
+              <p className="break-words text-xs text-muted-foreground">{deal.commercialNote}</p>
+              <p className="text-xs text-muted-foreground">Responsável: {deal.assignedName || "Não informado"}</p>
+              <span className="inline-block pt-1 text-sm font-semibold text-primary">Abrir e retomar atendimento</span>
+            </button>;
+          })}</div>
+        </div> : <PipelineBoard
           stages={visibleStages}
           deals={visibleDeals}
           searchValue={globalSearch}
           onDealMoved={handleDealMoved}
           onAddDeal={handleAddDeal}
           onEditDeal={handleEditDeal}
-        />
+        />}
       </div>
       </div>
 
@@ -1359,11 +1408,11 @@ export default function PipelinePage() {
       </Dialog>
 
       <Dialog open={lostModalOpen} onOpenChange={(open) => (open ? setLostModalOpen(true) : cancelLost())}>
-        <DialogContent>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Motivo do Encerramento</DialogTitle>
           </DialogHeader>
-          <div className="py-4">
+          {losingDeal ? <CommercialPanel key={losingDeal.id} deal={losingDeal} initialStatus="lost" scopeQuery={scopeQuery} onSaved={commercialSaved} /> : <div className="py-4">
             <p className="mb-2 text-sm text-muted-foreground">
               Por que este lead foi encerrado ou descartado?
             </p>
@@ -1373,14 +1422,14 @@ export default function PipelinePage() {
               placeholder="Ex: Sem retorno, não viável, sem interesse, valor incompatível, número inválido..."
               className="min-h-[100px]"
             />
-          </div>
+          </div>}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={cancelLost}>
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={confirmLost}>
+            {!losingDeal && <Button variant="destructive" onClick={confirmLost} disabled={!lostReason.trim()}>
               Confirmar Encerramento
-            </Button>
+            </Button>}
           </div>
         </DialogContent>
       </Dialog>
@@ -1672,11 +1721,12 @@ export default function PipelinePage() {
           if (!open) setEditScheduleConflict(null);
         }}
       >
-        <DialogContent className={editingClosedDeal ? "max-h-[90vh] overflow-y-auto sm:max-w-[720px]" : "sm:max-w-[520px]"}>
+        <DialogContent className={editingClosedDeal ? "max-h-[90dvh] overflow-y-auto sm:max-w-[720px]" : "max-h-[90dvh] overflow-y-auto sm:max-w-[520px]"}>
           <DialogHeader>
             <DialogTitle>Editar Negócio: {dealToEdit?.clientName}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            {dealToEdit && !editingClosedDeal && <CommercialPanel key={`${dealToEdit.id}-${dealToEdit.updatedAt}`} deal={dealToEdit} scopeQuery={scopeQuery} onSaved={commercialSaved} />}
             <div className="grid gap-3 rounded-lg border border-border bg-muted/20 p-3">
               <div className="grid gap-2 sm:grid-cols-3">
                 <div className="min-w-0">

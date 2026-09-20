@@ -12,6 +12,7 @@ export interface Contact {
 }
 
 export interface Conversation {
+  commercialPaused?: boolean;
   id: string;
   instanceId?: string;
   status: string;

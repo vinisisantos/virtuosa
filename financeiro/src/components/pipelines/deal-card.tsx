@@ -5,6 +5,7 @@ import { CalendarClock, Clock3, MapPin, Phone, X } from "lucide-react";
 import { formatCurrency } from "@/lib/currency";
 import { formatBrazilianPhone } from "@/lib/phone";
 import { formatLeadSource } from "@/lib/lead-source";
+import { commercialLabel, commercialReasonLabel, pausesCommercialCallbacks } from "@/lib/pipeline/commercial-status";
 import type { PipelineSaleItemView } from "@/lib/pipeline/sale-item-types";
 
 export type Deal = SalesPipeline & {
@@ -80,7 +81,7 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         }).format(evaluationDate)
       : null;
   const activity = activityAge(deal.updatedAt);
-  const needsAttention = activity.stale && !discarded;
+  const needsAttention = activity.stale && !discarded && !pausesCommercialCallbacks(deal.commercialStatus);
 
   return (
     <div
@@ -106,6 +107,10 @@ export function DealCard({ deal, stage, onEdit, isOverlay }: DealCardProps) {
         )}
       </div>
 
+      {deal.commercialStatus && <div className="mt-2 min-w-0 space-y-1 text-xs">
+        <p className="break-words font-semibold text-primary">{commercialLabel(deal.commercialStatus)}</p>
+        {deal.commercialReason && <p className="break-words text-muted-foreground">{commercialReasonLabel(deal.commercialReason)}</p>}
+      </div>}
       <div className="mt-2 flex h-5 items-center gap-1.5 text-xs text-muted-foreground">
         <Phone className="h-3.5 w-3.5 shrink-0" />
         <span className="min-w-0 truncate font-mono">{phone || "Sem telefone"}</span>

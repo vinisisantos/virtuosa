@@ -70,6 +70,7 @@ function getStatusFilter(status: string) {
   if (status === "callback") {
     return {
       callbackTrackingStartedAt: { not: null },
+      commercialPaused: false,
       callbackDueAt: { lte: new Date() },
       callbackStreakCount: { lt: WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS },
       status: { notIn: ["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS] },
@@ -122,6 +123,7 @@ function isConversationVisibleForRequest(
     callbackTrackingStartedAt?: Date | string | null;
     callbackDueAt?: Date | string | null;
     callbackStreakCount?: number | null;
+    commercialPaused?: boolean;
     followUps?: Array<{ status?: string | null; scheduledAt?: Date | string | null }>;
   },
   requestedStatus: string,
@@ -149,6 +151,7 @@ function isConversationVisibleForRequest(
     const dueAt = conversation.callbackDueAt ? new Date(conversation.callbackDueAt).getTime() : Number.POSITIVE_INFINITY;
     return Boolean(
       conversation.callbackTrackingStartedAt
+      && !conversation.commercialPaused
       && dueAt <= Date.now()
       && (conversation.callbackStreakCount || 0) < WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS
       && !["closed", "resolved", WHATSAPP_CALLBACK_LOST_STATUS].includes(conversationStatus || ""),
@@ -193,6 +196,7 @@ function fullSearchStatusSql(status: string, showArchived: boolean, requesterUse
   if (status === "callback") {
     return Prisma.sql`
       AND conversation."callbackTrackingStartedAt" IS NOT NULL
+      AND conversation."commercialPaused" = false
       AND conversation."callbackDueAt" <= NOW()
       AND conversation."callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
       AND conversation."status" NOT IN ('closed', 'resolved', ${WHATSAPP_CALLBACK_LOST_STATUS})
@@ -530,6 +534,7 @@ export async function GET(req: NextRequest) {
       lastInboundAt: true,
       lastOutboundAt: true,
       callbackDueAt: true,
+      commercialPaused: true,
       callbackTrackingStartedAt: true,
       callbackStreakCount: true,
       callbackTotalCount: true,
@@ -788,6 +793,7 @@ export async function GET(req: NextRequest) {
         ) AS "unreadCount",
         COUNT(*) FILTER (
           WHERE "callbackTrackingStartedAt" IS NOT NULL
+            AND "commercialPaused" = false
             AND "callbackDueAt" <= NOW()
             AND "callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
             AND "status" NOT IN ('closed', 'resolved', ${WHATSAPP_CALLBACK_LOST_STATUS})

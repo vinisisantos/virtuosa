@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { parseDateTimeRange } from '@/lib/date-filter';
@@ -45,6 +45,8 @@ import {
 import { sendEvaluationScheduleConfirmation } from '@/lib/whatsapp/evaluation-schedule-confirmation';
 import { sendEvaluationRescheduleNotification } from '@/lib/whatsapp/evaluation-reschedule-notification';
 import { suppressWhatsAppCallbacksForClosedPackage } from '@/lib/whatsapp/callback-suppression';
+import { CommercialError, refreshCommercialPauses, saveCommercialClassification } from '@/lib/pipeline/commercial-service';
+import { pausesCommercialCallbacks } from '@/lib/pipeline/commercial-status';
 
 type EvaluationScheduleConflict = NonNullable<Awaited<ReturnType<typeof findEvaluationScheduleConflict>>>;
 
@@ -493,6 +495,9 @@ export async function POST(req: NextRequest) {
     const existingEntry = ownerPhoneCandidates[0] || ownerDuplicateCandidates[0] || null;
 
     if (existingEntry) {
+      if (pausesCommercialCallbacks(existingEntry.commercialStatus)) {
+        return NextResponse.json({ error: 'Retome o atendimento no funil antes de mover esta oportunidade.' }, { status: 409 });
+      }
       const movedToScheduled = didPipelineMoveToScheduled({
         previousStage: existingEntry.stage,
         previousStageId: existingEntry.stageId,
@@ -782,6 +787,15 @@ export async function PUT(req: NextRequest) {
       return unitAccessDeniedResponse();
     }
 
+    if (body.commercial !== undefined) {
+      const updated = await saveCommercialClassification({ req, guard, existing, phone: existingClient?.phone || null,
+        draft: body.commercial, expectedUpdatedAt: body.expectedUpdatedAt });
+      return NextResponse.json(updated);
+    }
+    if (pausesCommercialCallbacks(existing.commercialStatus) && (stage !== undefined || stageId !== undefined)) {
+      return NextResponse.json({ error: 'Retome o atendimento pela classificação comercial antes de mover este negócio' }, { status: 409 });
+    }
+
     // Mantém a string `stage` em sincronia com o `stageId`: quando a UI move o
     // lead enviando só o stageId (ex.: seletor do chat), derivamos a etapa pelo
     // nome do PipelineStage. Sem isso, a string `stage` ficava congelada e
@@ -873,6 +887,14 @@ export async function PUT(req: NextRequest) {
     const data: Record<string, unknown> = {};
     if (effectiveStage !== undefined) {
       data.stage = effectiveStage;
+      if (existing.commercialStatus === 'no_response' && effectiveStage !== existing.stage && !isDiscard) {
+        data.commercialStatus = 'active';
+        data.commercialReason = null;
+        data.nextContactAt = null;
+      }
+      if (isDiscard && !existing.lostReason && (typeof lostReason !== 'string' || !lostReason.trim())) {
+        return NextResponse.json({ error: 'Informe o motivo do encerramento' }, { status: 400 });
+      }
       if (isClosing) data.closedAt = closedAt ? new Date(closedAt) : scheduledClosingDate || new Date();
       if (isDiscard && lostReason === undefined && !existing.lostReason) {
         data.lostReason = 'Encerrado sem motivo informado';
@@ -1013,6 +1035,7 @@ export async function PUT(req: NextRequest) {
       rescheduleNotification,
     });
   } catch (error) {
+    if (error instanceof CommercialError) return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof EvaluationSchedulingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
@@ -1044,7 +1067,14 @@ export async function DELETE(req: NextRequest) {
     return unitAccessDeniedResponse();
   }
 
-  await prisma.salesPipeline.delete({ where: { id } });
+  await prisma.$transaction(async (tx) => {
+    const holds = await tx.pipelineCommercialHold.findMany({ where: { dealId: id }, select: { conversationId: true } });
+    const ids = holds.map((hold) => hold.conversationId);
+    if (ids.length) await tx.$queryRaw`SELECT id FROM "WhatsAppConversation" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`;
+    // Só a pausa deste negócio é retirada; pausas de outros negócios permanecem.
+    await tx.salesPipeline.delete({ where: { id } });
+    await refreshCommercialPauses(tx, ids);
+  });
 
   // Reset client stage to 'entrada' when pipeline entry is removed
   if (existing.clientId) {

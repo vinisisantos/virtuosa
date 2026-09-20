@@ -211,6 +211,7 @@ type CallbackTrackingSnapshot = {
   callbackDueAt?: string | null;
   callbackTrackingStartedAt?: string | null;
   callbackStreakCount?: number;
+  commercialPaused?: boolean;
   callbackTotalCount?: number;
   attemptCounted?: boolean;
 };
@@ -281,6 +282,7 @@ function isConversationCallbackDue(conversation: Conversation, now = Date.now())
   const dueAt = conversation.callbackDueAt ? new Date(conversation.callbackDueAt).getTime() : Number.POSITIVE_INFINITY;
   return Boolean(
     conversation.callbackTrackingStartedAt
+    && !conversation.commercialPaused
     && dueAt <= now
     && (conversation.callbackStreakCount || 0) < CALLBACK_MAX_TEAM_ATTEMPTS
     && !["closed", "resolved", "lost"].includes(conversation.status),
@@ -2964,7 +2966,8 @@ function ConversationItem({
                 {followUpDue ? "Retorno atrasado" : formatFollowUpSchedule(conv.activeFollowUp.scheduledAt)}
               </span>
             )}
-            {(callbackDue || callbackStreakCount > 0) && conv.status !== "lost" && (
+            {conv.commercialPaused && <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-400">Pausa comercial · retomar no funil</span>}
+            {!conv.commercialPaused && (callbackDue || callbackStreakCount > 0) && conv.status !== "lost" && (
               <span
                 className={`rounded-full px-1.5 py-0.5 text-[9px] font-semibold ${
                   callbackDue
@@ -4261,6 +4264,7 @@ export default function InboxPage() {
       callbackDueAt: snapshot.callbackDueAt,
       callbackTrackingStartedAt: snapshot.callbackTrackingStartedAt,
       callbackStreakCount: snapshot.callbackStreakCount,
+      commercialPaused: snapshot.commercialPaused,
       callbackTotalCount: snapshot.callbackTotalCount,
     };
 
