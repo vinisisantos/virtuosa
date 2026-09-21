@@ -8,7 +8,7 @@ import {
   aiAssistantDigest,
   aiAssistantPublicConfig,
 } from "@/lib/ai-assistant/policy";
-import { sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
+import { resolveAiAssistantContactName, sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
 
 type ContextMessage = {
   id: string;
@@ -159,6 +159,7 @@ export async function loadAiAssistantSuggestionContext(params: {
     .slice(0, 8)
     .map(({ item }) => ({ id: `resposta:${item.id}`, title: item.title, content: item.content }));
   const publicConfig = aiAssistantPublicConfig(config);
+  const personalizationName = resolveAiAssistantContactName(conversation.contact.name);
   const sourceFingerprint = aiAssistantDigest(messages.map((message) => [
     message.id,
     message.body,
@@ -170,6 +171,7 @@ export async function loadAiAssistantSuggestionContext(params: {
     conversation,
     latestMessageId: latest.id,
     sourceFingerprint,
+    personalizationName,
     config,
     prompt: {
       DADOS_DA_EMPRESA: {
@@ -190,6 +192,9 @@ export async function loadAiAssistantSuggestionContext(params: {
         customInstructions: config.customInstructions,
       },
       CAMPANHA: params.campaignName || "Não identificada",
+      CONTATO: {
+        nomeSalvoDisponivel: Boolean(personalizationName),
+      },
       CATALOGO_APROVADO: catalog,
       CONHECIMENTO_APROVADO: knowledge,
       RESPOSTAS_DE_EXEMPLO: examples,

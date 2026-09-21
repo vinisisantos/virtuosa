@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { reserveAiAssistantOperation, failAiAssistantOperation, finishAiAssistantOperation } from "@/lib/ai-assistant/budget";
 import { loadAiAssistantSuggestionContext } from "@/lib/ai-assistant/context";
 import { generateAiAssistantReply } from "@/lib/ai-assistant/provider";
+import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
 import {
   AI_ASSISTANT_MODEL,
   AI_ASSISTANT_RESERVED_MICRO_USD,
@@ -29,7 +30,13 @@ export async function generateConversationSuggestion(params: {
     && current.sourceFingerprint === context.sourceFingerprint
     && ["active", "inserted"].includes(current.status)
   ) {
-    return { draft: current, cached: true };
+    return {
+      draft: {
+        ...current,
+        content: personalizeAiAssistantResponse(current.content, context.personalizationName),
+      },
+      cached: true,
+    };
   }
 
   const operation = await reserveAiAssistantOperation({
@@ -41,6 +48,10 @@ export async function generateConversationSuggestion(params: {
   const usage = { input: 0, output: 0 };
   try {
     const result = await generateAiAssistantReply(context.prompt, usage);
+    const personalizedResponse = personalizeAiAssistantResponse(result.response, context.personalizationName);
+    if (!personalizedResponse) {
+      throw new AiAssistantError("A IA devolveu uma sugestão vazia", 502);
+    }
     const latest = await prisma.whatsAppMessage.findFirst({
       where: {
         conversationId: params.conversationId,
@@ -72,7 +83,7 @@ export async function generateConversationSuggestion(params: {
         unit: "SBC",
         sourceFingerprint: context.sourceFingerprint,
         sourceMessageId: context.latestMessageId,
-        content: result.response,
+        content: personalizedResponse,
         status: "active",
         model: AI_ASSISTANT_MODEL,
         generatedBy: params.userId,
@@ -81,7 +92,7 @@ export async function generateConversationSuggestion(params: {
       update: {
         sourceFingerprint: context.sourceFingerprint,
         sourceMessageId: context.latestMessageId,
-        content: result.response,
+        content: personalizedResponse,
         status: "active",
         version: { increment: 1 },
         model: AI_ASSISTANT_MODEL,

@@ -7,7 +7,11 @@ import {
   normalizeAiAssistantMode,
   parseAiAssistantConfig,
 } from "#lib/ai-assistant/policy";
-import { sanitizeAiAssistantText } from "#lib/ai-assistant/privacy";
+import {
+  personalizeAiAssistantResponse,
+  resolveAiAssistantContactName,
+  sanitizeAiAssistantText,
+} from "#lib/ai-assistant/privacy";
 import { buildDeepSeekAssistantRequest } from "#lib/ai-assistant/provider";
 
 test("assistente de SBC falha fechado sem configuração persistida", () => {
@@ -51,6 +55,24 @@ test("contexto enviado ao provedor mascara dados pessoais", () => {
   assert.match(sanitized, /\[documento\]/);
   assert.match(sanitized, /\[telefone\]/);
   assert.match(sanitized, /\[email\]/);
+});
+
+test("placeholder de pessoa recebe somente o primeiro nome válido salvo", () => {
+  assert.equal(resolveAiAssistantContactName("Erice da Silva"), "Erice");
+  assert.equal(resolveAiAssistantContactName("Erice 💜"), "Erice");
+  assert.equal(
+    personalizeAiAssistantResponse("Perfeito, [pessoa]! Fico no aguardo.", "Erice da Silva"),
+    "Perfeito, Erice! Fico no aguardo.",
+  );
+});
+
+test("contato identificado apenas por número não deixa nome nem placeholder", () => {
+  assert.equal(resolveAiAssistantContactName("+55 11 99999-0000"), null);
+  assert.equal(resolveAiAssistantContactName("5511999990000"), null);
+  assert.equal(
+    personalizeAiAssistantResponse("Perfeito, [pessoa]! Fico no aguardo.", "+55 11 99999-0000"),
+    "Perfeito! Fico no aguardo.",
+  );
 });
 
 test("custo é calculado em microdólares para auditoria", () => {

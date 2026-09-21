@@ -5,6 +5,7 @@ import { loadAccessibleSbcConversation } from "@/lib/ai-assistant/context";
 import { generateConversationSuggestion } from "@/lib/ai-assistant/generate";
 import { aiAssistantErrorResponse } from "@/lib/ai-assistant/http";
 import { AiAssistantError, normalizeAiAssistantMode } from "@/lib/ai-assistant/policy";
+import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +29,11 @@ function serializeDraft(draft: {
   usage: unknown;
   createdAt: Date;
   updatedAt: Date;
-} | null) {
+} | null, savedContactName?: string | null) {
   if (!draft) return null;
   return {
     id: draft.id,
-    content: draft.content,
+    content: personalizeAiAssistantResponse(draft.content, savedContactName),
     status: draft.status,
     version: draft.version,
     sourceMessageId: draft.sourceMessageId,
@@ -61,7 +62,10 @@ export async function GET(req: NextRequest) {
       && ["active", "inserted"].includes(draft.status)
       ? draft
       : null;
-    return NextResponse.json({ mode: conversation.aiMode, draft: serializeDraft(currentDraft) });
+    return NextResponse.json({
+      mode: conversation.aiMode,
+      draft: serializeDraft(currentDraft, conversation.contact.name),
+    });
   } catch (error) {
     return aiAssistantErrorResponse(error);
   }
