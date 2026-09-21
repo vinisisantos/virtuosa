@@ -141,6 +141,7 @@ import {
   Clock3,
   BellRing,
   Video,
+  Sparkles,
 } from "lucide-react";
 import {
   isWhatsAppFollowUpDue,
@@ -2218,7 +2219,9 @@ function MessageBubble({
   msg,
   albumImages,
   canReact,
+  canAiReply,
   onReply,
+  onAiReply,
   onReact,
   onCopy,
   onEdit,
@@ -2238,7 +2241,9 @@ function MessageBubble({
   msg: Message;
   albumImages?: Message[];
   canReact: boolean;
+  canAiReply: boolean;
   onReply: (msg: Message) => void;
+  onAiReply: (msg: Message) => void;
   onReact: (msg: Message, reaction: string) => void;
   onCopy: (msg: Message) => void;
   onEdit: (msg: Message) => void;
@@ -2302,6 +2307,13 @@ function MessageBubble({
     ? albumImages?.map(visibleMediaBody).find(Boolean) || ""
     : visibleMediaBody(msg);
   const canReply = Boolean(msg.messageId && msg.status !== "deleted" && !msg.readOnly);
+  const aiReplyEnabled = Boolean(
+    canAiReply
+    && canReply
+    && !msg.fromMe
+    && msg.type === "text"
+    && msg.body.trim(),
+  );
   const reactionEnabled = canReact && canReply;
   const reactionSummaries = useMemo(() => {
     const reactions = (albumImages?.length ? albumImages : [msg]).flatMap((message) => [
@@ -2341,7 +2353,7 @@ function MessageBubble({
     const viewportWidth = visualViewport?.width || window.innerWidth;
     const viewportHeight = visualViewport?.height || window.innerHeight;
     const menuWidth = 168;
-    const menuHeight = 182;
+    const menuHeight = aiReplyEnabled ? 218 : 182;
     const gap = 6;
     const margin = 8;
     const viewportRight = viewportLeft + viewportWidth;
@@ -2356,7 +2368,7 @@ function MessageBubble({
     );
 
     setMenuPosition({ top, left });
-  }, []);
+  }, [aiReplyEnabled]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -2547,6 +2559,21 @@ function MessageBubble({
                   <Reply className="h-3.5 w-3.5" />
                   Responder
                 </button>
+                {aiReplyEnabled && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAiReply(msg);
+                      setMenuOpen(false);
+                    }}
+                    className={`${menuButtonClass} text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300`}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Responder com IA
+                  </button>
+                )}
                 <button
                   type="button"
                   role="menuitem"
@@ -3516,6 +3543,15 @@ export default function InboxPage() {
   const [editingMessageBody, setEditingMessageBody] = useState("");
   const [messageActionId, setMessageActionId] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [aiGenerationRequest, setAiGenerationRequest] = useState<{
+    requestId: number;
+    conversationId: string;
+    targetMessageId: string;
+  } | null>(null);
+  const aiGenerationRequestSequenceRef = useRef(0);
+  useEffect(() => {
+    setAiGenerationRequest(null);
+  }, [selectedConversationId]);
   const [imagePreview, setImagePreview] = useState<{
     sources: string[];
     index: number;
@@ -5108,6 +5144,29 @@ export default function InboxPage() {
     if (!msg.messageId || msg.status === "deleted" || msg.readOnly) return;
     setReplyingTo(msg);
     requestAnimationFrame(() => textareaRef.current?.focus());
+  };
+
+  const handleAiReplyMessage = (msg: Message) => {
+    const conversation = selectedConvRef.current;
+    if (
+      !conversation
+      || selectedConversationUnit !== "SBC"
+      || !canReplyToConversation(conversation)
+      || msg.fromMe
+      || msg.type !== "text"
+      || !msg.body.trim()
+      || !msg.messageId
+      || msg.status === "deleted"
+      || msg.readOnly
+    ) return;
+
+    setReplyingTo(msg);
+    aiGenerationRequestSequenceRef.current += 1;
+    setAiGenerationRequest({
+      requestId: aiGenerationRequestSequenceRef.current,
+      conversationId: conversation.id,
+      targetMessageId: msg.id,
+    });
   };
 
   const handleMessageReaction = useCallback(async (msg: Message, reaction: string) => {
@@ -7503,7 +7562,9 @@ export default function InboxPage() {
                         msg={msg}
                         albumImages={item.kind === "album" ? item.images : undefined}
                         canReact={canReplyToSelectedConversation}
+                        canAiReply={selectedConversationUnit === "SBC" && canReplyToSelectedConversation}
                         onReply={handleReplyMessage}
+                        onAiReply={handleAiReplyMessage}
                         onReact={handleMessageReaction}
                         onCopy={handleCopyMessage}
                         onEdit={openEditMessage}
@@ -7838,12 +7899,21 @@ export default function InboxPage() {
             ) : selectedConversationNeedsStart ? null : (
             <div className="inbox-thread-composer shrink-0 border-t px-2 py-1.5 sm:px-3 sm:py-2.5">
               <AiAssistantComposer
+                key={selectedConv.id}
                 conversationId={selectedConv.id}
                 campaignName={selectedConv.campaignName}
                 activityVersion={selectedConv.lastMessageAt}
                 unit={selectedConversationUnit}
                 initialMode={selectedConv.aiMode}
                 scopeQuery={waParams()}
+                targetMessage={replyingTo && !replyingTo.fromMe ? {
+                  id: replyingTo.id,
+                  preview: messageReplyPreview(replyingTo),
+                } : null}
+                generationRequest={aiGenerationRequest}
+                onGenerationRequestHandled={(requestId) => {
+                  setAiGenerationRequest((current) => current?.requestId === requestId ? null : current);
+                }}
                 onModeChange={(mode) => {
                   setConversations((current) => current.map((conversation) => (
                     conversation.id === selectedConv.id ? { ...conversation, aiMode: mode } : conversation

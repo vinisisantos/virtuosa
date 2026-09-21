@@ -15,6 +15,7 @@ export async function generateConversationSuggestion(params: {
   conversationId: string;
   userId: string;
   campaignName?: string | null;
+  targetMessageId?: string | null;
   force?: boolean;
 }) {
   const context = await loadAiAssistantSuggestionContext(params);
@@ -62,8 +63,24 @@ export async function generateConversationSuggestion(params: {
       select: { id: true, fromMe: true },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }],
     });
-    if (!latest || latest.id !== context.latestMessageId || latest.fromMe) {
+    if (!latest || latest.id !== context.latestMessageId) {
       throw new AiAssistantError("A conversa mudou durante a geração. Gere uma nova sugestão.", 409);
+    }
+    if (context.targetMessageId) {
+      const targetStillAvailable = await prisma.whatsAppMessage.findFirst({
+        where: {
+          id: context.targetMessageId,
+          conversationId: params.conversationId,
+          fromMe: false,
+          type: "text",
+          status: { not: "deleted" },
+          body: { not: "" },
+        },
+        select: { id: true },
+      });
+      if (!targetStillAvailable) {
+        throw new AiAssistantError("A mensagem selecionada mudou durante a geração.", 409);
+      }
     }
     const previousHistory = Array.isArray(current?.history) ? current.history : [];
     const history = current ? [
@@ -87,7 +104,7 @@ export async function generateConversationSuggestion(params: {
         status: "active",
         model: AI_ASSISTANT_MODEL,
         generatedBy: params.userId,
-        usage: { ...usage, confidence: result.confidence, needsHuman: result.needsHuman, usedKnowledge: result.usedKnowledge },
+        usage: { ...usage, confidence: result.confidence, needsHuman: result.needsHuman, usedKnowledge: result.usedKnowledge, targetMessageId: context.targetMessageId },
       },
       update: {
         sourceFingerprint: context.sourceFingerprint,
@@ -100,7 +117,7 @@ export async function generateConversationSuggestion(params: {
         usedBy: null,
         usedAt: null,
         sentMessageId: null,
-        usage: { ...usage, confidence: result.confidence, needsHuman: result.needsHuman, usedKnowledge: result.usedKnowledge },
+        usage: { ...usage, confidence: result.confidence, needsHuman: result.needsHuman, usedKnowledge: result.usedKnowledge, targetMessageId: context.targetMessageId },
         history: history as Prisma.InputJsonValue,
       },
     });

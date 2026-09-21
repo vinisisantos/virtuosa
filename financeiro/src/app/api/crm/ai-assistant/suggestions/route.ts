@@ -20,6 +20,14 @@ function conversationIdFrom(value: unknown) {
   return value.trim();
 }
 
+function targetMessageIdFrom(value: unknown) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string" || !value.trim() || value.length > 120) {
+    throw new AiAssistantError("Mensagem selecionada inválida");
+  }
+  return value.trim();
+}
+
 function serializeDraft(draft: {
   id: string;
   content: string;
@@ -57,7 +65,6 @@ export async function GET(req: NextRequest) {
       }),
     ]);
     const currentDraft = draft
-      && !latestMessage?.fromMe
       && latestMessage?.id === draft.sourceMessageId
       && ["active", "inserted"].includes(draft.status)
       ? draft
@@ -81,6 +88,7 @@ export async function POST(req: NextRequest) {
       conversationId,
       userId: user.userId,
       campaignName: typeof input.campaignName === "string" ? input.campaignName.slice(0, 240) : null,
+      targetMessageId: targetMessageIdFrom(input.targetMessageId),
       force: input.force === true,
     });
     return NextResponse.json({ draft: serializeDraft(result.draft), cached: result.cached });
@@ -117,7 +125,7 @@ export async function PATCH(req: NextRequest) {
           orderBy: [{ timestamp: "desc" }, { id: "desc" }],
         }),
       ]);
-      if (!draft || latestMessage?.fromMe || latestMessage?.id !== draft.sourceMessageId) {
+      if (!draft || latestMessage?.id !== draft.sourceMessageId) {
         throw new AiAssistantError("A conversa mudou; gere uma nova sugestão", 409);
       }
       const updated = await prisma.aiAssistantDraft.updateMany({

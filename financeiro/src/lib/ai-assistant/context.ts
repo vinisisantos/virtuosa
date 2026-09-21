@@ -71,6 +71,7 @@ export async function loadAiAssistantSuggestionContext(params: {
   conversationId: string;
   userId: string;
   campaignName?: string | null;
+  targetMessageId?: string | null;
 }) {
   const { conversation } = await loadAccessibleSbcConversation(params.req, params.conversationId);
   const messages = (await prisma.whatsAppMessage.findMany({
@@ -85,16 +86,61 @@ export async function loadAiAssistantSuggestionContext(params: {
     take: 18,
   })).reverse() as ContextMessage[];
   const latest = messages.at(-1);
-  if (!latest || latest.fromMe) {
+  if (!latest) {
+    throw new AiAssistantError("A conversa ainda não possui mensagens de texto.", 409);
+  }
+  if (!params.targetMessageId && latest.fromMe) {
     throw new AiAssistantError("A última mensagem já é da equipe. Aguarde uma nova resposta do cliente.", 409);
   }
 
-  const names = [conversation.contact.name || "", ...messages.map((message) => message.respondedByName || "")];
+  const targetMessage = params.targetMessageId
+    ? await prisma.whatsAppMessage.findFirst({
+      where: {
+        id: params.targetMessageId,
+        conversationId: conversation.id,
+        fromMe: false,
+        type: "text",
+        status: { not: "deleted" },
+        body: { not: "" },
+      },
+      select: { id: true, body: true, fromMe: true, timestamp: true, respondedByName: true },
+    }) as ContextMessage | null
+    : null;
+  if (params.targetMessageId && !targetMessage) {
+    throw new AiAssistantError("A mensagem selecionada não está mais disponível para resposta.", 409);
+  }
+
+  const names = [
+    conversation.contact.name || "",
+    ...messages.map((message) => message.respondedByName || ""),
+    targetMessage?.respondedByName || "",
+  ];
   const dialogue = messages.map((message) => ({
     role: message.fromMe ? "atendente" : "cliente",
     text: sanitizeAiAssistantText(message.body, names),
   }));
-  const conversationText = dialogue.map((message) => message.text).join(" ");
+  let lastTeamMessageIndex = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index].fromMe) {
+      lastTeamMessageIndex = index;
+      break;
+    }
+  }
+  const pendingMessages = messages
+    .slice(lastTeamMessageIndex + 1)
+    .filter((message) => !message.fromMe)
+    .map((message) => ({
+      id: message.id,
+      text: sanitizeAiAssistantText(message.body, names),
+    }));
+  const sanitizedTargetMessage = targetMessage ? {
+    id: targetMessage.id,
+    text: sanitizeAiAssistantText(targetMessage.body, names),
+  } : null;
+  const conversationText = [
+    ...dialogue.map((message) => message.text),
+    ...(sanitizedTargetMessage ? [sanitizedTargetMessage.text] : []),
+  ].join(" ");
   const contextWords = normalizedWords(conversationText);
   const config = await loadAiAssistantConfig();
   if (!config.enabled) throw new AiAssistantError("As sugestões estão pausadas", 503);
@@ -160,16 +206,24 @@ export async function loadAiAssistantSuggestionContext(params: {
     .map(({ item }) => ({ id: `resposta:${item.id}`, title: item.title, content: item.content }));
   const publicConfig = aiAssistantPublicConfig(config);
   const personalizationName = resolveAiAssistantContactName(conversation.contact.name);
-  const sourceFingerprint = aiAssistantDigest(messages.map((message) => [
-    message.id,
-    message.body,
-    message.fromMe,
-    message.timestamp.toISOString(),
-  ]));
+  const sourceFingerprint = aiAssistantDigest({
+    messages: messages.map((message) => [
+      message.id,
+      message.body,
+      message.fromMe,
+      message.timestamp.toISOString(),
+    ]),
+    targetMessage: targetMessage ? [
+      targetMessage.id,
+      targetMessage.body,
+      targetMessage.timestamp.toISOString(),
+    ] : null,
+  });
 
   return {
     conversation,
     latestMessageId: latest.id,
+    targetMessageId: targetMessage?.id || null,
     sourceFingerprint,
     personalizationName,
     config,
@@ -198,6 +252,8 @@ export async function loadAiAssistantSuggestionContext(params: {
       CATALOGO_APROVADO: catalog,
       CONHECIMENTO_APROVADO: knowledge,
       RESPOSTAS_DE_EXEMPLO: examples,
+      MENSAGEM_ALVO: sanitizedTargetMessage,
+      MENSAGENS_RECENTES_SEM_RESPOSTA: pendingMessages,
       CONVERSA: dialogue,
     },
   };

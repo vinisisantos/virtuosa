@@ -80,9 +80,20 @@ test("custo é calculado em microdólares para auditoria", () => {
 });
 
 test("requisição do copiloto é stateless, estruturada e sem raciocínio", () => {
-  const request = buildDeepSeekAssistantRequest({ CONVERSA: [{ role: "cliente", text: "Olá" }] });
+  const input = {
+    MENSAGEM_ALVO: { id: "message-1", text: "Qual é o horário?" },
+    MENSAGENS_RECENTES_SEM_RESPOSTA: [
+      { id: "message-1", text: "Qual é o horário?" },
+      { id: "message-2", text: "E qual é o endereço?" },
+    ],
+    CONVERSA: [{ role: "cliente", text: "Olá" }],
+  };
+  const request = buildDeepSeekAssistantRequest(input);
   assert.equal(request.model, "deepseek-flash");
   assert.equal(request.reasoning.effort, "none");
   assert.equal(request.text.format.type, "json_schema");
   assert.equal("store" in request, false);
+  assert.match(request.instructions, /responda especificamente a ela/i);
+  assert.match(request.instructions, /todas as MENSAGENS_RECENTES_SEM_RESPOSTA/i);
+  assert.deepEqual(JSON.parse(request.input), input);
 });

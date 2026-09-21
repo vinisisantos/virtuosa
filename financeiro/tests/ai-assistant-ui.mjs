@@ -116,6 +116,30 @@ try {
     await page.waitForFunction(() => document.querySelector('textarea[placeholder="Digite uma mensagem"]')?.value.includes("qual região"));
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 1, "uma chamada somente após ação explícita");
     assert.match(await page.$eval('textarea[placeholder="Digite uma mensagem"]', (element) => element.value), /qual região/);
+
+    await page.click('button[aria-label="Opções da mensagem"]');
+    await page.waitForFunction(() => document.body.innerText.includes("Responder com IA"));
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Responder com IA"))?.click());
+    await page.waitForFunction(() => document.body.textContent.includes("Respondendo esta mensagem"));
+    await new Promise((resolve, reject) => {
+      const deadline = Date.now() + 3_000;
+      const timer = setInterval(() => {
+        if (assistantCalls.filter((call) => call.method === "POST").length >= 2) {
+          clearInterval(timer);
+          resolve();
+        } else if (Date.now() >= deadline) {
+          clearInterval(timer);
+          reject(new Error("A sugestão ancorada não foi solicitada."));
+        }
+      }, 25);
+    });
+    const assistantPosts = assistantCalls.filter((call) => call.method === "POST");
+    assert.equal(assistantPosts.length, 2, "ação por mensagem faz uma nova chamada explícita");
+    const targetedRequest = JSON.parse(assistantPosts.at(-1).body);
+    assert.equal(targetedRequest.targetMessageId, "message-1");
+    assert.equal(targetedRequest.force, true);
+    assert.match(await page.$eval("body", (element) => element.innerText), /Respondendo esta mensagem/i);
+    assert.match(await page.$eval("body", (element) => element.innerText), /Gostaria de saber mais sobre o procedimento/);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `inbox sem overflow em ${width}`);
     await page.screenshot({ path: join(output, `inbox-${width}.png`), fullPage: true });
     results.push({ width, errors, assistantCalls: assistantCalls.length });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   Check,
@@ -35,6 +35,9 @@ type Props = {
   unit: string;
   initialMode?: Conversation["aiMode"];
   scopeQuery: string;
+  targetMessage?: { id: string; preview: string } | null;
+  generationRequest?: { requestId: number; conversationId: string; targetMessageId: string } | null;
+  onGenerationRequestHandled?: (requestId: number) => void;
   onModeChange: (mode: "manual" | "suggestions") => void;
   onUseSuggestion: (content: string, draftId: string) => void;
 };
@@ -52,6 +55,9 @@ export function AiAssistantComposer({
   unit,
   initialMode,
   scopeQuery,
+  targetMessage,
+  generationRequest,
+  onGenerationRequestHandled,
   onModeChange,
   onUseSuggestion,
 }: Props) {
@@ -62,6 +68,10 @@ export function AiAssistantComposer({
   const [draft, setDraft] = useState<AiAssistantDraft | null>(null);
   const [loading, setLoading] = useState(false);
   const [changingMode, setChangingMode] = useState(false);
+  const handledGenerationRequestRef = useRef<number | null>(null);
+  const generationInFlightRef = useRef(false);
+  const activeConversationRef = useRef(conversationId);
+  activeConversationRef.current = conversationId;
   const apiUrl = useMemo(
     () => endpoint(scopeQuery, conversationId),
     [conversationId, scopeQuery],
@@ -71,10 +81,15 @@ export function AiAssistantComposer({
     setMode(initialMode === "suggestions" ? "suggestions" : "manual");
     setMenuOpen(false);
     setDraft(null);
+    handledGenerationRequestRef.current = null;
   }, [conversationId, initialMode]);
 
   useEffect(() => {
-    if (unit !== "SBC" || mode !== "suggestions") return;
+    setDraft(null);
+  }, [conversationId, targetMessage?.id]);
+
+  useEffect(() => {
+    if (unit !== "SBC" || mode !== "suggestions" || generationInFlightRef.current) return;
     const controller = new AbortController();
     setDraft(null);
     fetch(apiUrl, { cache: "no-store", signal: controller.signal })
@@ -115,14 +130,15 @@ export function AiAssistantComposer({
     }
   }, [apiUrl, changingMode, conversationId, mode, onModeChange]);
 
-  const generate = useCallback(async (force = false) => {
-    if (loading) return;
+  const generate = useCallback(async (force = false, selectedTargetMessageId = targetMessage?.id || null) => {
+    if (loading || generationInFlightRef.current) return;
+    generationInFlightRef.current = true;
     setLoading(true);
     try {
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, campaignName, force }),
+        body: JSON.stringify({ conversationId, campaignName, force, targetMessageId: selectedTargetMessageId }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar a sugestão.");
@@ -130,9 +146,86 @@ export function AiAssistantComposer({
     } catch (error) {
       toast(error instanceof Error ? error.message : "Não foi possível gerar a sugestão.", "error");
     } finally {
+      generationInFlightRef.current = false;
       setLoading(false);
     }
-  }, [apiUrl, campaignName, conversationId, loading]);
+  }, [apiUrl, campaignName, conversationId, loading, targetMessage?.id]);
+
+  useEffect(() => {
+    if (
+      unit !== "SBC"
+      || !generationRequest
+      || generationRequest.conversationId !== conversationId
+      || handledGenerationRequestRef.current === generationRequest.requestId
+      || loading
+      || changingMode
+    ) return;
+
+    handledGenerationRequestRef.current = generationRequest.requestId;
+    generationInFlightRef.current = true;
+    const requestConversationId = conversationId;
+    const requestId = generationRequest.requestId;
+    const targetMessageId = generationRequest.targetMessageId;
+    const activateSuggestions = mode !== "suggestions";
+    if (activateSuggestions) setChangingMode(true);
+    setLoading(true);
+
+    void (async () => {
+      try {
+        if (activateSuggestions) {
+          const modeResponse = await fetch(apiUrl, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conversationId: requestConversationId, action: "mode", mode: "suggestions" }),
+          });
+          const modeData = await modeResponse.json().catch(() => ({}));
+          if (!modeResponse.ok) throw new Error(modeData.error || "Não foi possível ativar as sugestões.");
+          if (activeConversationRef.current === requestConversationId) {
+            setMode("suggestions");
+            setDraft(null);
+            setMenuOpen(false);
+            onModeChange("suggestions");
+          }
+        }
+
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            conversationId: requestConversationId,
+            campaignName,
+            force: true,
+            targetMessageId,
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Não foi possível gerar a sugestão.");
+        if (activeConversationRef.current === requestConversationId) setDraft(data.draft || null);
+      } catch (error) {
+        if (activeConversationRef.current === requestConversationId) {
+          toast(error instanceof Error ? error.message : "Não foi possível gerar a sugestão.", "error");
+        }
+      } finally {
+        generationInFlightRef.current = false;
+        if (activeConversationRef.current === requestConversationId) {
+          setLoading(false);
+          setChangingMode(false);
+        }
+        onGenerationRequestHandled?.(requestId);
+      }
+    })();
+  }, [
+    apiUrl,
+    campaignName,
+    changingMode,
+    conversationId,
+    generationRequest,
+    loading,
+    mode,
+    onGenerationRequestHandled,
+    onModeChange,
+    unit,
+  ]);
 
   const useSuggestion = useCallback(async () => {
     if (!draft) return;
@@ -226,6 +319,16 @@ export function AiAssistantComposer({
 
       {mode === "suggestions" && (
         <div className="mt-1.5 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.07] p-2.5">
+          {targetMessage && (
+            <div className="mb-2 rounded-lg border-l-2 border-emerald-500 bg-background/65 px-2.5 py-1.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                Respondendo esta mensagem
+              </p>
+              <p className="line-clamp-2 break-words text-xs leading-4 text-muted-foreground">
+                {targetMessage.preview}
+              </p>
+            </div>
+          )}
           {draft ? (
             <>
               <div className="flex items-start gap-2">
