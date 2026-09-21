@@ -1399,6 +1399,8 @@ model WhatsAppConversation {
   callbackAttempts          WhatsAppCallbackAttempt[]
   internalNotes             WhatsAppConversationInternalNote[]
   welcomeJob                WhatsAppWelcomeJob?
+  aiLearningObservation     AiLearningObservation?
+  aiLearningCandidates      AiLearningCandidate[]
 
   @@unique([contactId, instanceId])
   @@index([instanceId])
@@ -1541,6 +1543,61 @@ model WhatsAppMessage {
   @@unique([conversationId, messageId])
   @@index([conversationId, timestamp])
   @@index([timestamp])
+}
+
+
+model AiLearningObservation {
+  conversationId   String               @id
+  unit             String               @default("SBC")
+  revision         Int                  @default(1)
+  processedRevision Int                 @default(0)
+  lastEventKey     String
+  leaseToken       String?
+  leaseUntil       DateTime?
+  dueAt            DateTime             @default(now())
+  attempts         Int                  @default(0)
+  error            String?
+  updatedAt        DateTime             @updatedAt
+  conversation     WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([unit, dueAt])
+}
+
+model AiLearningCandidate {
+  id                   String                @id @default(uuid())
+  unit                 String                @default("SBC")
+  content              Json
+  status               String                @default("pending")
+  version              Int                   @default(1)
+  sourceConversationId String?
+  sourceMessageIds     Json                  @default("[]")
+  sourceFingerprint    String                @unique
+  reviewedBy           String?
+  reviewedAt           DateTime?
+  history              Json                  @default("[]")
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  sourceConversation   WhatsAppConversation? @relation(fields: [sourceConversationId], references: [id], onDelete: SetNull)
+
+  @@index([unit, status, updatedAt])
+}
+
+model AiLearningOperation {
+  id               String    @id @default(uuid())
+  unit             String    @default("SBC")
+  kind             String
+  idempotencyKey   String    @unique
+  status           String    @default("running")
+  snapshot         String
+  reservedMicroUsd Int
+  actualMicroUsd   Int?
+  usage            Json?
+  result           Json?
+  error            String?
+  createdAt        DateTime  @default(now())
+  completedAt      DateTime?
+
+  @@index([unit, createdAt, kind])
 }
 
 model Broadcast {

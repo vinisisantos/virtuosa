@@ -35,6 +35,7 @@ import { firstWhatsAppLink, loadWhatsAppLinkPreview } from "@/lib/whatsapp/link-
 import { evolutionMessageLidCandidates } from "@/lib/whatsapp/chat-action-identifiers";
 import { getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import { dispatchMetadataForSend, dispatchSnapshot, parseDispatchRequest } from "@/lib/whatsapp/dispatch";
+import { enqueueAiLearningObservation } from "@/lib/ai-learning/queue";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -884,6 +885,11 @@ export async function POST(req: Request) {
           attemptCounted,
         },
       };
+    });
+
+    await enqueueAiLearningObservation(message, {
+      id: dbInstance.id,
+      unit: dbInstance.unit,
     });
 
     const [responseMessage] = await signPrivateMediaUrls([message]);
