@@ -41,6 +41,7 @@ const pageTitles: Record<string, string> = {
   "/crm/avaliacoes": "Avaliações de Atendimento",
   "/crm/leads": "Leads",
   "/crm/whatsapp-admin": "WhatsApp Admin",
+  "/crm/aprendizado-ia": "Aprendizado da IA",
   "/crm/ouvidoria": "Avaliações",
   "/configuracoes/whatsapp": "WhatsApp Settings",
   "/perfil": "Perfil",
