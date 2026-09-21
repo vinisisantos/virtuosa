@@ -1390,6 +1390,9 @@ model WhatsAppConversation {
   callbackPipelineSyncedAt  DateTime?
   callbackQueueStatus       String            @default("inactive")
   commercialPaused          Boolean           @default(false)
+  aiMode                    String            @default("manual")
+  aiModeUpdatedAt           DateTime?
+  aiModeUpdatedBy           String?
   commercialHolds           PipelineCommercialHold[]
   internalNotesUpdatedAt    DateTime?
   contact                   WhatsAppContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
@@ -1401,6 +1404,7 @@ model WhatsAppConversation {
   welcomeJob                WhatsAppWelcomeJob?
   aiLearningObservation     AiLearningObservation?
   aiLearningCandidates      AiLearningCandidate[]
+  aiAssistantDraft          AiAssistantDraft?
 
   @@unique([contactId, instanceId])
   @@index([instanceId])
@@ -1412,6 +1416,46 @@ model WhatsAppConversation {
   @@index([unreadCount])
   @@index([callbackDueAt, callbackStreakCount, status])
   @@index([instanceId, callbackQueueStatus, lastMessageAt])
+}
+
+model AiAssistantDraft {
+  id                String               @id @default(uuid())
+  conversationId    String               @unique
+  unit              String               @default("SBC")
+  sourceFingerprint String
+  sourceMessageId   String?
+  content           String
+  status            String               @default("active")
+  version           Int                  @default(1)
+  model             String
+  generatedBy       String?
+  usedBy            String?
+  usedAt            DateTime?
+  sentMessageId     String?
+  editedContent     String?
+  usage             Json?
+  history           Json                 @default("[]")
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  conversation      WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([unit, status, updatedAt])
+}
+
+model AiAssistantOperation {
+  id               String    @id @default(uuid())
+  unit             String    @default("SBC")
+  kind             String
+  conversationId   String?
+  status           String    @default("running")
+  reservedMicroUsd Int
+  actualMicroUsd   Int?
+  usage            Json?
+  error            String?
+  createdAt        DateTime  @default(now())
+  completedAt      DateTime?
+
+  @@index([unit, createdAt, kind])
 }
 
 model WhatsAppCallbackAttempt {

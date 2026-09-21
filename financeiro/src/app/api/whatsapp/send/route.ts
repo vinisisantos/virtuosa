@@ -206,6 +206,9 @@ export async function POST(req: Request) {
     const conversationId = typeof body.conversationId === "string" ? body.conversationId.trim() : "";
     const { type, viewOnce } = body;
     const rawMessageBody = typeof body.body === "string" ? body.body : "";
+    const aiAssistantDraftId = typeof body.aiAssistantDraftId === "string"
+      ? body.aiAssistantDraftId.trim().slice(0, 100)
+      : "";
     const claimConversation = body.claimConversation === true;
     const requireCallbackDue = body.requireCallbackDue === true;
     if (body.dispatch !== undefined && (!parseDispatchRequest(body.dispatch) || !conversationId || !claimConversation
@@ -841,6 +844,23 @@ export async function POST(req: Request) {
           data: { status: reportedStatus },
         });
         if (receipt.count) savedMessage = { ...savedMessage, status: reportedStatus };
+      }
+      if (aiAssistantDraftId && messageData.body.trim()) {
+        await tx.aiAssistantDraft.updateMany({
+          where: {
+            id: aiAssistantDraftId,
+            conversationId: conversation.id,
+            unit: "SBC",
+            status: { in: ["active", "inserted"] },
+          },
+          data: {
+            status: "sent",
+            usedBy: messageData.respondedBy,
+            usedAt: sentAt,
+            sentMessageId: savedMessage.id,
+            editedContent: messageData.body,
+          },
+        });
       }
       const attemptCounted = await recordOutboundForCallbackTracking(tx, conversation.id, sentAt, {
         messageId: savedMessage.id,

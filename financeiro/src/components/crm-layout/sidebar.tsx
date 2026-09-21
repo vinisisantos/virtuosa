@@ -390,6 +390,7 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     ...(userRole === "ADMINISTRADOR"
       ? [
           { href: "/crm/whatsapp-admin", label: "WhatsApp Admin", icon: Shield },
+          { href: "/crm/assistente-ia", label: "Assistente IA", icon: Bot, beta: true },
           { href: "/crm/aprendizado-ia", label: "Aprendizado IA", icon: BrainCircuit, beta: true },
           { href: "/crm/team-performance", label: "Performance da equipe", icon: TrendingUp },
         ]

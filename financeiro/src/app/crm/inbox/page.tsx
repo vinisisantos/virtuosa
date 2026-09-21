@@ -14,6 +14,7 @@ import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
 import { InboxChatHeader } from "@/components/whatsapp/inbox-chat-header";
+import { AiAssistantComposer } from "@/components/whatsapp/ai-assistant-composer";
 import { MessageStatusIcon } from "@/components/whatsapp/message-status-icon";
 import { DispatchBadge, DispatchDetails } from "@/components/whatsapp/dispatch-details";
 import { dispatchLabel, dispatchSnapshot, dispatchUnitEnabled, type DispatchSnapshot } from "@/lib/whatsapp/dispatch";
@@ -3069,6 +3070,7 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [dispatchTarget, setDispatchTarget] = useState<DispatchSnapshot | null>(null);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
+  const [aiAssistantDraftIds, setAiAssistantDraftIds] = useState<Record<string, string>>({});
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const selectedConversationId = selectedConv?.id || null;
   const newMessage = selectedConversationId ? messageDrafts[selectedConversationId] || "" : "";
@@ -4891,6 +4893,7 @@ export default function InboxPage() {
     const mediaBatchUrl = `/api/whatsapp/media/batch${qs ? `?${qs}` : ""}`;
     const sentImageBatchMessageIds = new Map<string, Array<string | undefined>>();
     let sentCount = 0;
+    let aiAssistantDraftSent = false;
     let activePendingAttachment: PendingAttachment | null = null;
     setIsSending(true);
 
@@ -4901,6 +4904,8 @@ export default function InboxPage() {
         body: messageBody,
         type,
       };
+      const aiAssistantDraftId = aiAssistantDraftIds[sendConversation.id];
+      if (aiAssistantDraftId && messageBody.trim()) payload.aiAssistantDraftId = aiAssistantDraftId;
       if (sendConversation.instanceId || targetInstanceId) {
         payload.instanceId = sendConversation.instanceId || targetInstanceId;
       } else if (targetUserId) {
@@ -4949,6 +4954,7 @@ export default function InboxPage() {
         if (data.message) {
           setMessages((prev) => prev.map((message) => message.id === tempId ? data.message : message));
         }
+        aiAssistantDraftSent = Boolean(payload.aiAssistantDraftId);
         applyCallbackTrackingSnapshot(sendConversation.id, data.callbackTracking);
         sentCount = 1;
       } else {
@@ -5023,6 +5029,7 @@ export default function InboxPage() {
           if (data.message && selectedConversationIdRef.current === sendConversation.id) {
             setMessages((prev) => prev.map((message) => message.id === tempId ? data.message : message));
           }
+          if (payload.aiAssistantDraftId) aiAssistantDraftSent = true;
           applyCallbackTrackingSnapshot(sendConversation.id, data.callbackTracking);
           if (imageBatch && typeof data.message?.messageId === "string") {
             const messageIds = sentImageBatchMessageIds.get(imageBatch.id) || Array<string | undefined>(imageBatch.size);
@@ -5059,6 +5066,14 @@ export default function InboxPage() {
 
       if (queuedAttachments.length > 1) {
         toast(`${sentCount} arquivos enviados com sucesso.`, "success");
+      }
+      if (aiAssistantDraftSent) {
+        setAiAssistantDraftIds((current) => {
+          if (!current[sendConversation.id]) return current;
+          const next = { ...current };
+          delete next[sendConversation.id];
+          return next;
+        });
       }
     } catch (error) {
       console.error(error);
@@ -7822,6 +7837,25 @@ export default function InboxPage() {
               </div>
             ) : selectedConversationNeedsStart ? null : (
             <div className="inbox-thread-composer shrink-0 border-t px-2 py-1.5 sm:px-3 sm:py-2.5">
+              <AiAssistantComposer
+                conversationId={selectedConv.id}
+                campaignName={selectedConv.campaignName}
+                activityVersion={selectedConv.lastMessageAt}
+                unit={selectedConversationUnit}
+                initialMode={selectedConv.aiMode}
+                scopeQuery={waParams()}
+                onModeChange={(mode) => {
+                  setConversations((current) => current.map((conversation) => (
+                    conversation.id === selectedConv.id ? { ...conversation, aiMode: mode } : conversation
+                  )));
+                  setSelectedConv((current) => current?.id === selectedConv.id ? { ...current, aiMode: mode } : current);
+                }}
+                onUseSuggestion={(content, draftId) => {
+                  setNewMessage(content);
+                  setAiAssistantDraftIds((current) => ({ ...current, [selectedConv.id]: draftId }));
+                  window.requestAnimationFrame(() => textareaRef.current?.focus());
+                }}
+              />
               {composerHasFormatting && !isRecording && !isPreparingRecordedAudio && !selectedPendingRecordedAudio && (
                 <div
                   className="inbox-composer-field mb-1 overflow-hidden rounded-lg border border-black/5 shadow-sm dark:border-white/5"
