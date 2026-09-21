@@ -42,6 +42,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260908020000_campaign_welcome_queue/migration.sql",
     "prisma/migrations/20260909120000_whatsapp_dispatch_metadata/migration.sql",
     "prisma/migrations/20260909120100_whatsapp_dispatch_index/migration.sql",
+    "prisma/migrations/20260920180000_ai_learning_sbc/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {
@@ -61,6 +62,9 @@ if (process.env.VERCEL_ENV === "production") {
     });
   }
   run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-campaign-welcome-cron.mjs"], {
+    ...process.env, DATABASE_URL: migrationUrl,
+  });
+  run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-ai-learning-cron.mjs"], {
     ...process.env, DATABASE_URL: migrationUrl,
   });
   if (process.env.SCS_CATALOG_IMPORT_ON_DEPLOY === "pdf-2026-09-06-confirmed") {

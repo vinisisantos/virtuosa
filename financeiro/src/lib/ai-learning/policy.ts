@@ -127,6 +127,14 @@ export function validateAiLearningCandidate(value: unknown): AiLearningCandidate
   };
 }
 
+export function isSafeAiLearningCandidate(content: AiLearningCandidateContent) {
+  const combined = [content.topic, ...content.questions, content.answer, content.procedure, content.conditions].join(" ");
+  return !/\[(?:telefone|email|documento|link|data|horário|valor|pessoa)\]/i.test(combined)
+    && !/\b(?:[0-2]?\d|3[01])[/-](?:0?\d|1[0-2])(?:[/-]\d{2,4})?\b/.test(combined)
+    && !/\b(?:[01]?\d|2[0-3])[:h][0-5]\d\b/i.test(combined)
+    && !/R\$\s*\d/i.test(combined);
+}
+
 export function aiLearningReservation(inputTokens: number, outputTokens: number) {
   // Preço de pico do DeepSeek V4.1 Flash: US$ 0,30/M input e US$ 1,20/M output.
   return Math.ceil(inputTokens * 0.3 + outputTokens * 1.2);

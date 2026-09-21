@@ -13,7 +13,7 @@ test('runtime não contém integrações, rotas ou modelos retirados', () => {
   const retired = /@google\/generative-ai|generativelanguage\.googleapis|api\.(openai|groq|mistral)|@\/lib\/ai-(?!learning\/)|@\/lib\/ai\/|AI_INBOX_|AI_WHATSAPP_|crmSilentAnalysis/;
   for (const file of sources('src')) assert.doesNotMatch(read(file), retired, file);
   assert.doesNotMatch(read('prisma/schema.prisma'), /model (Ai(?!Learning(?:Observation|Candidate|Operation)\b)\w+|CrmSilentAnalysisSetting|CrmConversationInsight|WhatsAppMessageTranscript|InsumoUpload)\b/);
-  assert.doesNotMatch(read('scripts/vercel-build.mjs'), /_ai_|approved_campaign_knowledge|prepare-ai-inbox/);
+  assert.doesNotMatch(read('scripts/vercel-build.mjs'), /_ai_(?!learning_sbc)|approved_campaign_knowledge|prepare-ai-inbox/);
   assert.doesNotMatch(read('middleware.ts'), /ai-inbox|ai-test|testar-ia/);
   assert.equal(existsSync(new URL('public/ai-training', root)), false);
   for(const route of ['chat','insumos','crm/ai-shadow','crm/ai-insights','testar-ia/[token]']) {
