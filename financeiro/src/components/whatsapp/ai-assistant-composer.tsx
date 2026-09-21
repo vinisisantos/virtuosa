@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/components/toast";
 import type { Conversation } from "@/lib/whatsapp/inbox-utils";
+import styles from "./ai-assistant-composer.module.css";
 
 type AiAssistantDraft = {
   id: string;
@@ -259,66 +260,112 @@ export function AiAssistantComposer({
 
   return (
     <div className="relative mx-auto mb-1 w-full max-w-3xl">
-      <button
-        type="button"
-        onClick={() => setMenuOpen((current) => !current)}
-        className={`inline-flex min-h-9 items-center gap-2 rounded-full border px-3 text-xs font-semibold transition-colors ${
-          mode === "suggestions"
-            ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-300"
-            : "border-border bg-background/80 text-muted-foreground hover:bg-muted hover:text-foreground"
-        }`}
-        aria-expanded={menuOpen}
-      >
-        {mode === "suggestions" ? <Sparkles className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
-        {mode === "suggestions" ? "Sugestões" : "Minha resposta"}
-        {changingMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
-      </button>
+      <div className="relative w-fit max-w-full">
+        <div
+          className={`${styles.modeControlShell} ${
+            mode === "suggestions" ? styles.aiModeActive : styles.manualMode
+          } ${changingMode ? styles.processing : ""}`}
+        >
+          <button
+            type="button"
+            onClick={() => setMenuOpen((current) => !current)}
+            className={styles.modeControl}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            aria-label={`Modo de resposta: ${mode === "suggestions" ? "Sugestões da IA" : "Resposta manual"}`}
+          >
+            <span className={`${styles.modeIcon} ${mode === "suggestions" ? styles.aiIcon : ""}`}>
+              {mode === "suggestions" ? <Sparkles className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
+            </span>
+            <span className="min-w-0 flex-1 text-left">
+              <span className={styles.modeLabel}>
+                {mode === "suggestions" ? "Sugestões da IA" : "Resposta manual"}
+              </span>
+              <span className={styles.modeCaption}>
+                {mode === "suggestions" ? "IA disponível" : "Você escreve e envia"}
+              </span>
+            </span>
+            <span className={styles.modeChevron}>
+              {changingMode ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronDown className="h-4 w-4" />}
+            </span>
+          </button>
+        </div>
 
-      {menuOpen && (
-        <div className="absolute bottom-11 left-0 z-40 w-[min(92vw,390px)] overflow-hidden rounded-2xl border border-border bg-popover p-2 text-popover-foreground shadow-2xl">
-          <div className="flex items-center justify-between px-2 py-1.5">
-            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Selecionar modo</p>
-            <button type="button" onClick={() => setMenuOpen(false)} className="rounded-full p-1.5 hover:bg-muted" aria-label="Fechar">
+        {menuOpen && (
+          <div
+            className="absolute bottom-full left-0 z-40 mb-2 w-[min(calc(100vw-2rem),400px)] overflow-hidden rounded-2xl border border-border bg-popover p-2.5 text-popover-foreground shadow-2xl"
+            role="menu"
+            aria-label="Selecionar modo de resposta"
+          >
+          <div className="flex items-center justify-between px-2 pb-2 pt-1">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Como deseja responder?</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">Você pode trocar de modo a qualquer momento.</p>
+            </div>
+            <button type="button" onClick={() => setMenuOpen(false)} className="rounded-full p-2 hover:bg-muted" aria-label="Fechar">
               <X className="h-4 w-4" />
             </button>
           </div>
           <button
             type="button"
             onClick={() => void changeMode("manual")}
-            className="flex min-h-14 w-full items-center gap-3 rounded-xl px-3 text-left hover:bg-muted"
+            className={`flex min-h-16 w-full items-center gap-3 rounded-xl border px-3 text-left transition-colors ${
+              mode === "manual"
+                ? "border-foreground/10 bg-muted/80"
+                : "border-transparent hover:border-border hover:bg-muted/60"
+            }`}
+            role="menuitemradio"
+            aria-checked={mode === "manual"}
           >
-            <Pencil className="h-5 w-5 text-muted-foreground" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">Minha resposta</span>
-              <span className="block text-xs text-muted-foreground">Você escreve e envia sem assistência da IA.</span>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background text-foreground shadow-sm ring-1 ring-border">
+              <Pencil className="h-4 w-4" />
             </span>
-            {mode === "manual" && <Check className="h-5 w-5 text-primary" />}
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold">Resposta manual</span>
+              <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">Você escreve e envia sem assistência da IA.</span>
+            </span>
+            {mode === "manual" && <Check className="h-5 w-5 shrink-0 text-emerald-600" />}
           </button>
           <button
             type="button"
             onClick={() => void changeMode("suggestions")}
-            className="flex min-h-14 w-full items-center gap-3 rounded-xl px-3 text-left hover:bg-muted"
+            className={`mt-1 flex min-h-16 w-full items-center gap-3 rounded-xl border px-3 text-left transition-colors ${
+              mode === "suggestions"
+                ? "border-emerald-500/25 bg-emerald-500/[0.08]"
+                : "border-transparent hover:border-emerald-500/20 hover:bg-emerald-500/[0.06]"
+            }`}
+            role="menuitemradio"
+            aria-checked={mode === "suggestions"}
           >
-            <Sparkles className="h-5 w-5 text-emerald-600" />
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">Sugestões</span>
-              <span className="block text-xs text-muted-foreground">A IA sugere; você revisa, edita e envia.</span>
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 shadow-sm ring-1 ring-emerald-500/20 dark:text-emerald-300">
+              <Sparkles className="h-4 w-4" />
             </span>
-            {mode === "suggestions" && <Check className="h-5 w-5 text-primary" />}
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold">Sugestões da IA</span>
+              <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">A IA prepara; você revisa, edita e envia.</span>
+            </span>
+            {mode === "suggestions" && <Check className="h-5 w-5 shrink-0 text-emerald-600" />}
           </button>
-          <div className="flex min-h-14 items-center gap-3 rounded-xl px-3 opacity-55" aria-disabled="true">
-            <Bot className="h-5 w-5" />
+          <div className="mt-1 flex min-h-16 items-center gap-3 rounded-xl border border-transparent px-3 opacity-55" aria-disabled="true">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted ring-1 ring-border">
+              <Bot className="h-4 w-4" />
+            </span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold">Agente de IA</span>
-              <span className="block text-xs">Envio automático bloqueado neste piloto.</span>
+              <span className="mt-0.5 block text-xs leading-4">Envio automático bloqueado neste piloto.</span>
             </span>
             <LockKeyhole className="h-4 w-4" />
           </div>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
 
       {mode === "suggestions" && (
-        <div className="mt-1.5 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.07] p-2.5">
+        <div
+          className={`${styles.assistantSurface} ${loading ? styles.processing : styles.aiModeActive}`}
+          aria-busy={loading}
+          aria-live="polite"
+        >
           {targetMessage && (
             <div className="mb-2 rounded-lg border-l-2 border-emerald-500 bg-background/65 px-2.5 py-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
@@ -329,7 +376,22 @@ export function AiAssistantComposer({
               </p>
             </div>
           )}
-          {draft ? (
+          {loading && !draft ? (
+            <div className={styles.processingState}>
+              <span className={styles.processingOrb} aria-hidden="true">
+                <Sparkles className="h-4 w-4" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-foreground">A IA está preparando a resposta</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Analisando o contexto da conversa</span>
+              </span>
+              <span className={styles.thinkingDots} aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+            </div>
+          ) : draft ? (
             <>
               <div className="flex items-start gap-2">
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
@@ -358,8 +420,8 @@ export function AiAssistantComposer({
           ) : (
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                <Sparkles className="h-4 w-4 shrink-0 text-emerald-600" />
-                A IA só será consultada quando você pedir.
+                <span className={styles.readyDot} aria-hidden="true" />
+                <span><strong className="font-semibold text-foreground">IA disponível.</strong> Ela só será consultada quando você pedir.</span>
               </div>
               <button type="button" onClick={() => void generate(false)} disabled={loading} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
