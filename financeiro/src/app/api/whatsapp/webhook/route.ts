@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { isFreshWelcomeEvent } from "@/lib/whatsapp/campaign-welcome-policy";
 import { enqueueWelcome, findWelcomeReception } from "@/lib/whatsapp/campaign-welcome";
 
@@ -60,6 +61,16 @@ import {
   recordInboundForCallbackTracking,
   recordOutboundForCallbackTracking,
 } from "@/lib/whatsapp/callbacks";
+import {
+  claimInboundPostProcessJob,
+  compactInboundPostProcessPayload,
+  completeInboundPostProcessJob,
+  enqueueInboundPostProcessJob,
+  INBOUND_POSTPROCESS_EVENT,
+  recoverStaleInboundPostProcessJobs,
+  retryInboundPostProcessJob,
+  type InboundPostProcessPayload,
+} from "@/lib/whatsapp/inbound-postprocess-queue";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -161,6 +172,72 @@ function parseMediaSizeBytes(value: unknown): number | null {
     return parseMediaSizeBytes(candidate);
   }
   return null;
+}
+
+const MEDIA_MESSAGE_TYPES = new Set([
+  "image", "video", "audio", "document", "ptt", "sticker",
+  "imageMessage", "videoMessage", "audioMessage", "documentMessage",
+  "stickerMessage", "pttMessage", "media", "videoplay",
+]);
+
+function mediaMessageFromPayload(msg: any) {
+  return msg.message?.imageMessage || msg.message?.videoMessage ||
+    msg.message?.audioMessage || msg.message?.documentMessage ||
+    msg.message?.stickerMessage || null;
+}
+
+function normalizedMediaMessageType(messageType: string) {
+  if (messageType === "media" || messageType === "imageMessage") return "image";
+  if (messageType === "videoMessage" || messageType === "videoplay") return "video";
+  if (["audioMessage", "ptt", "pttMessage"].includes(messageType)) return "audio";
+  if (messageType === "documentMessage") return "document";
+  if (messageType === "stickerMessage") return "sticker";
+  return messageType;
+}
+
+function extractMediaMetadata(msg: any, messageType: string) {
+  const mediaMessage = mediaMessageFromPayload(msg);
+  if (!MEDIA_MESSAGE_TYPES.has(messageType)) {
+    return {
+      isMedia: false,
+      type: messageType,
+      mediaUrl: null as string | null,
+      mediaFileName: null as string | null,
+      mediaMimeType: null as string | null,
+      mediaSizeBytes: null as number | null,
+    };
+  }
+
+  const mediaMimeType = cleanMediaMimeType(
+    mediaMessage?.mimetype || mediaMessage?.mimeType || msg.mimetype,
+  );
+  const directUrl = typeof mediaMessage?.url === "string" ? mediaMessage.url : null;
+  const directBase64 = typeof mediaMessage?.base64 === "string" ? mediaMessage.base64 : null;
+  return {
+    isMedia: true,
+    type: normalizedMediaMessageType(messageType),
+    mediaUrl: directUrl || (directBase64
+      ? `data:${mediaMimeType || "application/octet-stream"};base64,${directBase64}`
+      : null),
+    mediaFileName: cleanMediaFileName(
+      mediaMessage?.fileName || mediaMessage?.filename || mediaMessage?.title ||
+      msg.fileName || msg.filename,
+    ),
+    mediaMimeType,
+    mediaSizeBytes: parseMediaSizeBytes(
+      mediaMessage?.fileLength || mediaMessage?.fileSize || mediaMessage?.size ||
+      msg.fileLength || msg.fileSize,
+    ),
+  };
+}
+
+function isAuthorizedInternalWorker(req: Request) {
+  const secret = process.env.CRON_SECRET?.trim();
+  const authorization = req.headers.get("authorization") || "";
+  if (!secret || !authorization.startsWith("Bearer ")) return false;
+  const expected = createHash("sha256").update(secret).digest();
+  const received = createHash("sha256").update(authorization.slice(7)).digest();
+  return timingSafeEqual(expected, received);
 }
 
 async function logWebhookStatusChange(params: {
@@ -991,6 +1068,267 @@ async function handleWahaAck(payload: any, dbInstance: WebhookInstance) {
   return true;
 }
 
+type ProcessMessageOptions = {
+  phase?: "ingest" | "postprocess";
+  conversationWasCreated?: boolean;
+  receivedAt?: Date;
+};
+
+async function persistIncomingMessageFast(params: {
+  msg: any;
+  payload: any;
+  dbInstance: WebhookInstance;
+  conversation: any;
+  contact: any;
+  messageId: string;
+  messageBody: string;
+  messageType: string;
+  timestamp: Date;
+  isFromMe: boolean;
+  isSendablePhone: boolean;
+  quotedMessageData: Record<string, unknown> | null;
+  conversationWasCreated: boolean;
+  receivedAt: Date;
+}) {
+  const media = extractMediaMetadata(params.msg, params.messageType);
+  const jobPayload = compactInboundPostProcessPayload({
+    message: params.msg,
+    webhook: params.payload || {},
+    conversationWasCreated: params.conversationWasCreated,
+    receivedAt: params.receivedAt,
+  });
+
+  return prisma.$transaction(async (tx) => {
+    const inserted = await tx.whatsAppMessage.createMany({
+      data: [{
+        conversationId: params.conversation.id,
+        messageId: params.messageId,
+        body: params.messageBody,
+        type: media.type,
+        mediaUrl: media.mediaUrl,
+        mediaFileName: media.mediaFileName,
+        mediaMimeType: media.mediaMimeType,
+        mediaSizeBytes: media.mediaSizeBytes,
+        ...(params.quotedMessageData || {}),
+        fromMe: params.isFromMe,
+        status: params.isFromMe
+          ? normalizeWhatsAppMessageStatus(params.msg.status) || "sent"
+          : "delivered",
+        timestamp: params.timestamp,
+      }],
+      skipDuplicates: true,
+    });
+
+    let persisted = await tx.whatsAppMessage.findUnique({
+      where: {
+        conversationId_messageId: {
+          conversationId: params.conversation.id,
+          messageId: params.messageId,
+        },
+      },
+    });
+    if (!persisted) throw new Error("Mensagem não encontrada após persistência idempotente.");
+
+    if (inserted.count === 0) {
+      const dataToUpdate: Record<string, unknown> = {};
+      if (params.quotedMessageData && !persisted.quotedMessageId) {
+        Object.assign(dataToUpdate, params.quotedMessageData);
+      }
+      if (params.messageBody && !persisted.body.trim()) {
+        dataToUpdate.body = params.messageBody;
+        dataToUpdate.type = media.type;
+      }
+      const nextStatus = mergeWhatsAppMessageStatus(persisted.status, params.msg.status);
+      if (persisted.fromMe && nextStatus !== persisted.status) dataToUpdate.status = nextStatus;
+      if (Object.keys(dataToUpdate).length > 0) {
+        persisted = await tx.whatsAppMessage.update({
+          where: { id: persisted.id },
+          data: dataToUpdate,
+        });
+      }
+      return { message: persisted, isNew: false, queued: false };
+    }
+
+    const isFirstInboundMessage = !params.isFromMe &&
+      !params.conversation.lastInboundAt && !params.conversation.lastOutboundAt;
+    if (params.isSendablePhone) {
+      if (params.isFromMe) {
+        await recordOutboundForCallbackTracking(tx, params.conversation.id, params.timestamp, {
+          messageId: persisted.id,
+          unit: params.dbInstance.unit === "Todas"
+            ? params.contact.unit
+            : params.dbInstance.unit || params.contact.unit,
+        });
+      } else {
+        await recordInboundForCallbackTracking(tx, params.conversation.id, params.timestamp, {
+          messageId: persisted.id,
+        });
+      }
+    }
+
+    await tx.whatsAppConversation.update({
+      where: { id: params.conversation.id },
+      data: {
+        lastMessage: whatsAppConversationPreview(params.messageBody, persisted.type),
+        lastMessageAt: params.timestamp,
+        unreadCount: params.isSendablePhone ? (params.isFromMe ? 0 : { increment: 1 }) : 0,
+        ...(isFirstInboundMessage ? { status: "waiting_response" } : {}),
+        ...(params.isSendablePhone
+          ? { archivedAt: null, archivedBy: null, archivedByName: null }
+          : {
+              archivedAt: params.conversation.archivedAt || new Date(),
+              archivedBy: null,
+              archivedByName: TECHNICAL_LID_ARCHIVE_ACTOR,
+            }),
+      },
+    });
+
+    const shouldQueue = media.isMedia || (!params.isFromMe && params.isSendablePhone);
+    if (shouldQueue) {
+      await enqueueInboundPostProcessJob({
+        instanceId: params.dbInstance.id,
+        conversationId: params.conversation.id,
+        messageId: params.messageId,
+        payload: jobPayload,
+      }, tx);
+    }
+
+    return { message: persisted, isNew: true, queued: shouldQueue };
+  });
+}
+
+async function hydratePersistedMedia(params: {
+  msg: any;
+  dbInstance: WebhookInstance;
+  conversationId: string;
+  messageId: string;
+  messageType: string;
+}) {
+  const metadata = extractMediaMetadata(params.msg, params.messageType);
+  if (!metadata.isMedia) return;
+
+  const existing = await prisma.whatsAppMessage.findUnique({
+    where: {
+      conversationId_messageId: {
+        conversationId: params.conversationId,
+        messageId: params.messageId,
+      },
+    },
+    select: {
+      id: true,
+      mediaUrl: true,
+      mediaFileName: true,
+      mediaMimeType: true,
+      mediaSizeBytes: true,
+    },
+  });
+  if (!existing) return;
+
+  let mediaUrl = metadata.mediaUrl;
+  if (!existing.mediaUrl && !mediaUrl && getInstanceProvider(params.dbInstance) === "evolution") {
+    try {
+      const { url, apiKey } = getEvolutionConfig();
+      const response = await fetch(
+        `${url}/chat/getBase64FromMediaMessage/${params.dbInstance.name}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: apiKey },
+          body: JSON.stringify({ message: params.msg }),
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (typeof data?.base64 === "string" && data.base64) {
+          mediaUrl = `data:${metadata.mediaMimeType || "application/octet-stream"};base64,${data.base64}`;
+        }
+      }
+    } catch (error) {
+      console.error("[WhatsApp Postprocess] Falha ao baixar mídia:", error);
+    }
+  }
+
+  const update = {
+    ...(!existing.mediaUrl && mediaUrl ? { mediaUrl } : {}),
+    ...(!existing.mediaFileName && metadata.mediaFileName
+      ? { mediaFileName: metadata.mediaFileName }
+      : {}),
+    ...(!existing.mediaMimeType && metadata.mediaMimeType
+      ? { mediaMimeType: metadata.mediaMimeType }
+      : {}),
+    ...(!existing.mediaSizeBytes && metadata.mediaSizeBytes !== null
+      ? { mediaSizeBytes: metadata.mediaSizeBytes }
+      : {}),
+  };
+  if (Object.keys(update).length > 0) {
+    await prisma.whatsAppMessage.update({ where: { id: existing.id }, data: update });
+  }
+}
+
+async function processInboundPostProcessJobs() {
+  const startedAt = Date.now();
+  let completed = 0;
+  let failed = 0;
+  await recoverStaleInboundPostProcessJobs();
+
+  while (completed + failed < 20 && Date.now() - startedAt < 45_000) {
+    const claim = await claimInboundPostProcessJob();
+    if (!claim) break;
+    const payload = claim.job.payload as unknown as InboundPostProcessPayload;
+    try {
+      if (!payload?.message || !payload?.webhook) throw new Error("Payload de pós-processamento inválido.");
+      const dbInstance = await prisma.whatsAppInstance.findUnique({
+        where: { id: claim.job.instanceId },
+        include: {
+          user: { select: { name: true } },
+          defaultAssignee: { select: { name: true } },
+        },
+      });
+      if (!dbInstance) {
+        await completeInboundPostProcessJob(claim.job.id, claim.token);
+        completed += 1;
+        continue;
+      }
+
+      const processStartedAt = Date.now();
+      await processMessage(
+        payload.message,
+        dbInstance,
+        {
+          event: payload.webhook.event,
+          type: payload.webhook.type,
+          data: { type: payload.webhook.dataType },
+        },
+        {
+          phase: "postprocess",
+          conversationWasCreated: payload.conversationWasCreated,
+          receivedAt: new Date(payload.receivedAt),
+        },
+      );
+      await completeInboundPostProcessJob(claim.job.id, claim.token);
+      console.info("[WhatsApp Postprocess] completed", {
+        jobId: claim.job.id,
+        instanceId: claim.job.instanceId,
+        conversationId: claim.job.conversationId,
+        queueWaitMs: processStartedAt - claim.job.createdAt.getTime(),
+        processMs: Date.now() - processStartedAt,
+      });
+      completed += 1;
+    } catch (error) {
+      await retryInboundPostProcessJob(claim.job, claim.token, error);
+      console.error("[WhatsApp Postprocess] failed", {
+        jobId: claim.job.id,
+        instanceId: claim.job.instanceId,
+        attempt: claim.job.attempts,
+        error: error instanceof Error ? error.message : "Falha desconhecida",
+      });
+      failed += 1;
+    }
+  }
+
+  return { completed, failed, elapsedMs: Date.now() - startedAt };
+}
+
 async function handleWahaWebhook(payload: any, event: string | undefined, dbInstance: WebhookInstance) {
   if (event === "session.status") {
     const status = normalizeWahaStatus(payload?.payload?.status || payload?.status || payload?.data?.status);
@@ -1069,6 +1407,7 @@ async function handleWahaWebhook(payload: any, event: string | undefined, dbInst
  */
 export async function POST(req: Request) {
   try {
+    const receivedAt = new Date();
     const payload = await req.json();
 
     // Evolution API v2 envia: { event, instance, data, ... }
@@ -1076,6 +1415,13 @@ export async function POST(req: Request) {
     const rawEvent = payload.event || payload.EventType || payload.action;
     const event = normalizeEvolutionWebhookEvent(rawEvent);
     const instanceName = payload.instance || payload.instanceName || payload.session;
+
+    if (event === INBOUND_POSTPROCESS_EVENT) {
+      if (!isAuthorizedInternalWorker(req)) {
+        return NextResponse.json({ success: false }, { status: 401 });
+      }
+      return NextResponse.json({ success: true, ...(await processInboundPostProcessJobs()) });
+    }
 
     if (!instanceName && !payload.token) {
       return NextResponse.json({ success: true });
@@ -1129,7 +1475,7 @@ export async function POST(req: Request) {
 
       for (const msg of messages) {
         try {
-          await processMessage(msg, dbInstance, payload);
+          await processMessage(msg, dbInstance, payload, { receivedAt });
         } catch (messageError: any) {
           console.error("[WhatsApp Webhook Message Error]:", messageError);
           await prisma.webhookLog.create({
@@ -1210,8 +1556,11 @@ export async function POST(req: Request) {
 async function processMessage(
   msg: any,
   dbInstance: WebhookInstance,
-  payload: any
+  payload: any,
+  options: ProcessMessageOptions = {},
 ) {
+  const phase = options.phase || "ingest";
+  const receivedAt = options.receivedAt || new Date();
   // Evolution emits flat keyId/remoteJid ACKs; they are not message upserts.
   if (isMessageStatusUpdateEvent(payload)) {
     const update = extractEvolutionStatusUpdate(msg);
@@ -1419,7 +1768,7 @@ async function processMessage(
   const privateAssignment = privateConversationAssignment(dbInstance);
 
   let conversation = existingConv;
-  let createdConversation = false;
+  let createdConversation = options.conversationWasCreated || false;
   if (!conversation) {
     try {
       conversation = await prisma.whatsAppConversation.create({
@@ -1526,7 +1875,7 @@ async function processMessage(
   const directFormLeadName = canCaptureLead && !isFromMe && isSendablePhone
     ? extractDirectFormLeadName(messageBody, contactPhone)
     : null;
-  if (!canCaptureLead && !isFromMe && isSendablePhone) {
+  if (phase === "postprocess" && !canCaptureLead && !isFromMe && isSendablePhone) {
     await prisma.webhookLog.create({
       data: {
         source: "whatsapp",
@@ -1591,6 +1940,39 @@ async function processMessage(
         quotedMessageFromMe: quotedMessageFromDb?.fromMe ?? null,
       }
     : null;
+
+  if (phase === "ingest") {
+    const persisted = await persistIncomingMessageFast({
+      msg,
+      payload,
+      dbInstance,
+      conversation,
+      contact,
+      messageId,
+      messageBody,
+      messageType: msgType,
+      timestamp,
+      isFromMe: Boolean(isFromMe),
+      isSendablePhone,
+      quotedMessageData,
+      conversationWasCreated: createdConversation,
+      receivedAt,
+    });
+    if (persisted.isNew) {
+      const providerTimestamp = timestamp.getTime();
+      console.info("[WhatsApp Ingest] persisted", {
+        instanceId: dbInstance.id,
+        conversationId: conversation.id,
+        messageId,
+        providerToReceiveMs: Number.isFinite(providerTimestamp)
+          ? Math.max(0, receivedAt.getTime() - providerTimestamp)
+          : null,
+        receivedToPersistMs: Date.now() - receivedAt.getTime(),
+        queued: persisted.queued,
+      });
+    }
+    return;
+  }
 
   if (adReply) {
     adTitle = adReply.title || adReply.body || adReply.description || "Campanha Desconhecida";
@@ -2001,6 +2383,7 @@ async function processMessage(
         const previousInboundReplies = await prisma.whatsAppMessage.count({
           where: {
             conversationId: conversation.id,
+            messageId: { not: messageId },
             fromMe: false,
             timestamp: { gte: previousWaitingLog.executedAt },
           },
@@ -2096,7 +2479,7 @@ async function processMessage(
         orderBy: { executedAt: "desc" },
       }) : null;
       const messageCountBeforeCurrent = await prisma.whatsAppMessage.count({
-        where: { conversationId: conversation.id },
+        where: { conversationId: conversation.id, messageId: { not: messageId } },
       });
 
       if (
@@ -2160,254 +2543,27 @@ async function processMessage(
       await prisma.whatsAppConversation.update({
         where: { id: conversation.id },
         data: { satisfactionScore: score },
+      }).catch((error) => {
+        console.error("[WhatsApp Postprocess] Falha ao registrar CSAT:", error);
       });
     }
   }
 
-  // ═══ 4. Salvar ou atualizar mensagem ═══════════════════════
-  // A busca é escopada à conversa: o messageId do WhatsApp é o mesmo para
-  // remetente e destinatário, então quando dois números conectados no CRM
-  // conversam entre si a mensagem precisa existir nas DUAS caixas.
-  const existingMsg = await prisma.whatsAppMessage.findUnique({
-    where: {
-      conversationId_messageId: {
-        conversationId: conversation.id,
-        messageId,
-      },
-    },
+  await hydratePersistedMedia({
+    msg,
+    dbInstance,
+    conversationId: conversation.id,
+    messageId,
+    messageType: msgType,
+  }).catch((error) => {
+    console.error("[WhatsApp Postprocess] Falha ao hidratar mídia:", error);
   });
-  let persistedMessageDbId = existingMsg?.id || null;
-  let persistedMessageType = existingMsg?.type || null;
-  let isNewMessagePersisted = false;
 
-  if (!existingMsg) {
-    let mediaUrl: string | null = null;
-    let mediaFileName: string | null = null;
-    let mediaMimeType: string | null = null;
-    let mediaSizeBytes: number | null = null;
-    let finalMsgType = msgType;
-
-    // Na Evolution API v2, mídia pode vir como base64 no payload ou precisar download
-    const isMedia = ["image", "video", "audio", "document", "ptt", "sticker",
-      "imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage",
-      "pttMessage", "media", "videoplay"].includes(msgType);
-
-    if (isMedia) {
-      const mediaMessage = msg.message?.imageMessage || msg.message?.videoMessage ||
-        msg.message?.audioMessage || msg.message?.documentMessage ||
-        msg.message?.stickerMessage;
-
-      if (mediaMessage) {
-        mediaFileName = cleanMediaFileName(
-          mediaMessage.fileName ||
-          mediaMessage.filename ||
-          mediaMessage.title ||
-          msg.fileName ||
-          msg.filename
-        );
-        mediaMimeType = cleanMediaMimeType(mediaMessage.mimetype || mediaMessage.mimeType || msg.mimetype);
-        mediaSizeBytes = parseMediaSizeBytes(
-          mediaMessage.fileLength ||
-          mediaMessage.fileSize ||
-          mediaMessage.size ||
-          msg.fileLength ||
-          msg.fileSize
-        );
-
-        // Tentar baixar mídia via Evolution API getBase64FromMediaMessage
-        try {
-          const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'http://localhost:8080';
-          const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || '';
-
-          const mediaRes = await fetch(
-            `${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${dbInstance.name}`,
-            {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'apikey': EVOLUTION_API_KEY,
-              },
-              body: JSON.stringify({ message: msg }),
-            }
-          );
-
-          if (mediaRes.ok) {
-            const mediaData = await mediaRes.json();
-            if (mediaData.base64) {
-              const mimetype = mediaMessage.mimetype || 'application/octet-stream';
-              mediaUrl = `data:${mimetype};base64,${mediaData.base64}`;
-              mediaMimeType = mediaMimeType || cleanMediaMimeType(mimetype);
-            }
-          }
-        } catch (e) {
-          console.error('[Webhook] Erro ao baixar mídia via Evolution API:', e);
-        }
-
-        // Fallback: verificar se URL ou base64 já veio no payload
-        if (!mediaUrl) {
-          if (mediaMessage.url) {
-            mediaUrl = mediaMessage.url;
-          } else if (mediaMessage.base64) {
-            const mimetype = mediaMessage.mimetype || 'application/octet-stream';
-            mediaUrl = `data:${mimetype};base64,${mediaMessage.base64}`;
-            mediaMimeType = mediaMimeType || cleanMediaMimeType(mimetype);
-          }
-        }
-      }
-
-      // Normalizar tipo da mensagem
-      if (finalMsgType === "media" || finalMsgType === "imageMessage") finalMsgType = "image";
-      else if (finalMsgType === "videoMessage" || finalMsgType === "videoplay") finalMsgType = "video";
-      else if (finalMsgType === "audioMessage" || finalMsgType === "ptt" || finalMsgType === "pttMessage") finalMsgType = "audio";
-      else if (finalMsgType === "documentMessage") finalMsgType = "document";
-      else if (finalMsgType === "stickerMessage") finalMsgType = "sticker";
-    }
-
-    try {
-      const savedMessage = await prisma.whatsAppMessage.create({
-        data: {
-          conversationId: conversation.id,
-          messageId,
-          body: messageBody,
-          type: finalMsgType,
-          mediaUrl,
-          mediaFileName,
-          mediaMimeType,
-          mediaSizeBytes,
-          ...(quotedMessageData || {}),
-          fromMe: isFromMe,
-          status: isFromMe ? normalizeWhatsAppMessageStatus(msg.status) || "sent" : "delivered",
-          timestamp,
-        },
-      });
-      persistedMessageDbId = savedMessage.id;
-      persistedMessageType = savedMessage.type;
-      isNewMessagePersisted = true;
-    } catch (error) {
-      if (!isPrismaUniqueConstraintError(error)) throw error;
-
-      const duplicatedMessage = await prisma.whatsAppMessage.findUnique({
-        where: {
-          conversationId_messageId: {
-            conversationId: conversation.id,
-            messageId,
-          },
-        },
-      });
-      if (!duplicatedMessage) throw error;
-
-      let currentMessage = duplicatedMessage;
-      const duplicateUpdate: Record<string, unknown> = {};
-      if (duplicatedMessage.fromMe && mergeWhatsAppMessageStatus(duplicatedMessage.status, msg.status) !== duplicatedMessage.status) {
-        await updateOutgoingMessageStatus(duplicatedMessage.id, msg.status);
-      }
-      if (messageBody && !duplicatedMessage.body.trim()) {
-        duplicateUpdate.body = messageBody;
-        duplicateUpdate.type = msgType;
-      }
-      if (Object.keys(duplicateUpdate).length > 0) {
-        currentMessage = await prisma.whatsAppMessage.update({
-          where: { id: duplicatedMessage.id },
-          data: duplicateUpdate,
-        });
-      }
-
-      persistedMessageDbId = currentMessage.id;
-      persistedMessageType = currentMessage.type;
-    }
-  } else {
-    // Atualiza status de mensagem existente
-    const dataToUpdate: any = {};
-    const previousStatus = existingMsg.status;
-    const nextStatus = mergeWhatsAppMessageStatus(existingMsg.status, msg.status);
-    const statusUpdated = existingMsg.fromMe && nextStatus !== existingMsg.status
-      ? await updateOutgoingMessageStatus(existingMsg.id, msg.status)
-      : 0;
-    if (quotedMessageData && !existingMsg.quotedMessageId) {
-      dataToUpdate.quotedMessageId = quotedMessageData.quotedMessageId;
-      dataToUpdate.quotedMessageBody = quotedMessageData.quotedMessageBody;
-      dataToUpdate.quotedMessageType = quotedMessageData.quotedMessageType;
-      dataToUpdate.quotedMessageFromMe = quotedMessageData.quotedMessageFromMe;
-    }
-    if (messageBody && !existingMsg.body.trim()) {
-      dataToUpdate.body = messageBody;
-      dataToUpdate.type = msgType;
-    }
-
-    if (Object.keys(dataToUpdate).length > 0) {
-      const updatedMessage = await prisma.whatsAppMessage.update({
-        where: { id: existingMsg.id },
-        data: dataToUpdate,
-      });
-      persistedMessageType = updatedMessage.type;
-    }
-
-    if (statusUpdated) {
-      await prisma.webhookLog.create({
-        data: {
-          source: "whatsapp_evolution",
-          eventType: "message_status_update",
-          status: "received",
-          payload: JSON.stringify({
-            instanceId: dbInstance.id,
-            instanceName: dbInstance.name,
-            conversationId: conversation.id,
-            messageDbId: existingMsg.id,
-            messageId,
-            remoteJid,
-            webhookStatus: msg.status,
-            previousStatus,
-            nextStatus,
-            event: payload?.event || payload?.EventType || payload?.action || null,
-          }).slice(0, 3000),
-        },
-      }).catch(() => {});
-    }
-  }
-
-  // ═══ 5. Atualizar a conversa somente para mensagem realmente nova ════════
-  // Webhooks de status/ack repetem o mesmo messageId. Eles não podem renovar
-  // atividade, não lidos nem a janela de rechamada.
-  if (isNewMessagePersisted) {
-    const isFirstInboundMessage = !isFromMe && !conversation.lastInboundAt && !conversation.lastOutboundAt;
-    await prisma.$transaction(async (tx) => {
-      if (isSendablePhone) {
-        if (isFromMe) {
-          await recordOutboundForCallbackTracking(tx, conversation.id, timestamp, {
-            messageId: persistedMessageDbId,
-            unit: dbInstance.unit === "Todas" ? contact.unit : dbInstance.unit || contact.unit,
-          });
-        } else {
-          await recordInboundForCallbackTracking(tx, conversation.id, timestamp, {
-            messageId: persistedMessageDbId,
-          });
-        }
-      }
-
-      await tx.whatsAppConversation.update({
-        where: { id: conversation.id },
-        data: {
-          lastMessage: whatsAppConversationPreview(messageBody, persistedMessageType || msgType),
-          lastMessageAt: timestamp,
-          unreadCount: isSendablePhone ? (isFromMe ? 0 : { increment: 1 }) : 0,
-          ...(isFirstInboundMessage ? { status: "waiting_response" } : {}),
-          ...(isSendablePhone
-            ? {
-                archivedAt: null,
-                archivedBy: null,
-                archivedByName: null,
-              }
-            : {
-                archivedAt: conversation.archivedAt || new Date(),
-                archivedBy: null,
-                archivedByName: TECHNICAL_LID_ARCHIVE_ACTOR,
-              }),
-        },
-      });
+  if (welcomeInput && welcomeReception?.isActive) {
+    await enqueueWelcome(welcomeInput).catch((error) => {
+      console.error("[WhatsApp Postprocess] Falha ao enfileirar recepção:", error);
     });
   }
-
-  if (welcomeInput && welcomeReception?.isActive) await enqueueWelcome(welcomeInput);
 }
 
 function isMessageStatusUpdateEvent(payload: any) {

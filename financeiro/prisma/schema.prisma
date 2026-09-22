@@ -66,13 +66,13 @@ model PayrollAdjustment {
 }
 
 model PayrollEntryExclusion {
-  id               String   @id @default(cuid())
-  competenceMonth  Int
-  competenceYear   Int
-  unit             String
-  employeeKey      String
-  employeeName     String
-  createdAt        DateTime @default(now())
+  id              String   @id @default(cuid())
+  competenceMonth Int
+  competenceYear  Int
+  unit            String
+  employeeKey     String
+  employeeName    String
+  createdAt       DateTime @default(now())
 
   @@unique([competenceMonth, competenceYear, unit, employeeKey])
 }
@@ -151,25 +151,25 @@ model OrderAuditLog {
 }
 
 model User {
-  id                       String                    @id @default(uuid())
-  name                     String
-  phone                    String?
-  email                    String                    @unique
-  password                 String
-  role                     String                    @default("VENDEDOR")
-  unit                     String?                   @default("Barueri")
-  permissions              Json?
-  isActive                 Boolean                   @default(true)
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  whatsappInstances        WhatsAppInstance[]       @relation("WhatsAppInstanceOwner")
-  defaultWhatsAppInstances WhatsAppInstance[]       @relation("WhatsAppDefaultAssignee")
-  whatsappInstanceMembers  WhatsAppInstanceMember[]
+  id                                      String                                   @id @default(uuid())
+  name                                    String
+  phone                                   String?
+  email                                   String                                   @unique
+  password                                String
+  role                                    String                                   @default("VENDEDOR")
+  unit                                    String?                                  @default("Barueri")
+  permissions                             Json?
+  isActive                                Boolean                                  @default(true)
+  createdAt                               DateTime                                 @default(now())
+  updatedAt                               DateTime                                 @updatedAt
+  whatsappInstances                       WhatsAppInstance[]                       @relation("WhatsAppInstanceOwner")
+  defaultWhatsAppInstances                WhatsAppInstance[]                       @relation("WhatsAppDefaultAssignee")
+  whatsappInstanceMembers                 WhatsAppInstanceMember[]
   whatsappInstanceNotificationPreferences WhatsAppInstanceNotificationPreference[]
-  whatsappSavedReplyCategories WhatsAppSavedReplyCategory[]
-  whatsappSavedReplies     WhatsAppSavedReply[]
-  clients                  Client[]
-  pipelineStagePreferences PipelineStagePreference[]
+  whatsappSavedReplyCategories            WhatsAppSavedReplyCategory[]
+  whatsappSavedReplies                    WhatsAppSavedReply[]
+  clients                                 Client[]
+  pipelineStagePreferences                PipelineStagePreference[]
 }
 
 model PushSubscription {
@@ -872,15 +872,15 @@ model MetaLead {
 }
 
 model SalesPipeline {
-  id                          String             @id @default(uuid())
+  id                          String                   @id @default(uuid())
   clientId                    String
   clientName                  String
-  stage                       String             @default("novo_lead")
-  value                       Float              @default(0)
+  stage                       String                   @default("novo_lead")
+  value                       Float                    @default(0)
   source                      String?
   assignedTo                  String?
   assignedName                String?
-  unit                        String             @default("Barueri")
+  unit                        String                   @default("Barueri")
   notes                       String?
   leadId                      String?
   lostReason                  String?
@@ -890,15 +890,15 @@ model SalesPipeline {
   nextContactAt               DateTime?
   commercialHolds             PipelineCommercialHold[]
   closedAt                    DateTime?
-  createdAt                   DateTime           @default(now())
-  updatedAt                   DateTime           @updatedAt
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
   pipelineId                  String?
   stageId                     String?
   campaignIdSnapshot          String?
   campaignNameSnapshot        String?
   campaignAttributionSnapshot String?
-  pipeline                    Pipeline?          @relation(fields: [pipelineId], references: [id])
-  pipelineStage               PipelineStage?     @relation(fields: [stageId], references: [id])
+  pipeline                    Pipeline?                @relation(fields: [pipelineId], references: [id])
+  pipelineStage               PipelineStage?           @relation(fields: [stageId], references: [id])
   saleItems                   PipelineSaleItem[]
 
   @@index([stage])
@@ -992,22 +992,22 @@ model WebhookLog {
 }
 
 model Campaign {
-  id                    String                       @id @default(uuid())
-  name                  String
-  platform              String                       @default("meta_ads")
-  status                String                       @default("ativa")
-  objective             String?
-  budget                Float?
-  startDate             String?
-  endDate               String?
-  unit                  String                       @default("Barueri")
-  notes                 String?
-  createdBy             String?
-  createdAt             DateTime                     @default(now())
-  updatedAt             DateTime                     @updatedAt
-  budgetGroupId         String?
-  budgetGroup           CampaignBudgetGroup?         @relation(fields: [budgetGroupId], references: [id], onDelete: SetNull)
-  offerItems            CampaignOfferItem[]
+  id            String               @id @default(uuid())
+  name          String
+  platform      String               @default("meta_ads")
+  status        String               @default("ativa")
+  objective     String?
+  budget        Float?
+  startDate     String?
+  endDate       String?
+  unit          String               @default("Barueri")
+  notes         String?
+  createdBy     String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  budgetGroupId String?
+  budgetGroup   CampaignBudgetGroup? @relation(fields: [budgetGroupId], references: [id], onDelete: SetNull)
+  offerItems    CampaignOfferItem[]
 
   @@index([status])
   @@index([unit])
@@ -1276,26 +1276,27 @@ model DocGenerated {
 }
 
 model WhatsAppInstance {
-  id            String                 @id @default(uuid())
-  instanceId    String                 @unique
-  name          String
-  provider      String                 @default("evolution")
-  status        String                 @default("disconnected")
-  token         String
-  qrcode        String?
-  unit          String?
-  capturesLeads Boolean                @default(true)
-  assignmentMode String                @default("OWNER")
-  createdAt     DateTime               @default(now())
-  updatedAt     DateTime               @updatedAt
-  phoneNumber   String?
-  userId        String?
-  defaultAssigneeId String?
-  conversations WhatsAppConversation[]
-  members       WhatsAppInstanceMember[]
+  id                      String                                   @id @default(uuid())
+  instanceId              String                                   @unique
+  name                    String
+  provider                String                                   @default("evolution")
+  status                  String                                   @default("disconnected")
+  token                   String
+  qrcode                  String?
+  unit                    String?
+  capturesLeads           Boolean                                  @default(true)
+  assignmentMode          String                                   @default("OWNER")
+  createdAt               DateTime                                 @default(now())
+  updatedAt               DateTime                                 @updatedAt
+  phoneNumber             String?
+  userId                  String?
+  defaultAssigneeId       String?
+  conversations           WhatsAppConversation[]
+  inboundPostProcessJobs  WhatsAppInboundPostProcessJob[]
+  members                 WhatsAppInstanceMember[]
   notificationPreferences WhatsAppInstanceNotificationPreference[]
-  user          User?                  @relation("WhatsAppInstanceOwner", fields: [userId], references: [id])
-  defaultAssignee User?                @relation("WhatsAppDefaultAssignee", fields: [defaultAssigneeId], references: [id])
+  user                    User?                                    @relation("WhatsAppInstanceOwner", fields: [userId], references: [id])
+  defaultAssignee         User?                                    @relation("WhatsAppDefaultAssignee", fields: [defaultAssigneeId], references: [id])
 
   @@index([userId])
   @@index([defaultAssigneeId])
@@ -1350,21 +1351,21 @@ model WhatsAppContact {
 }
 
 model WhatsAppConversation {
-  id                        String            @id @default(uuid())
+  id                        String                             @id @default(uuid())
   instanceId                String
   contactId                 String
-  status                    String            @default("open")
+  status                    String                             @default("open")
   // JID (frequentemente @lid) observado na última mensagem recebida deste
   // contato NESTA instância. Enviar pelo telefone falha silenciosamente
   // (fica em "sent") quando a sessão só reconhece o contato pelo LID —
   // reenviar por este JID é o que garante a entrega real.
   lastKnownJid              String?
   assignedTo                String?
-  unreadCount               Int               @default(0)
+  unreadCount               Int                                @default(0)
   lastMessage               String?
   lastMessageAt             DateTime?
-  createdAt                 DateTime          @default(now())
-  updatedAt                 DateTime          @updatedAt
+  createdAt                 DateTime                           @default(now())
+  updatedAt                 DateTime                           @updatedAt
   assignedToName            String?
   archivedAt                DateTime?
   archivedBy                String?
@@ -1376,7 +1377,7 @@ model WhatsAppConversation {
   closedAt                  DateTime?
   closedBy                  String?
   closedByName              String?
-  reopenCount               Int               @default(0)
+  reopenCount               Int                                @default(0)
   reopenedAt                DateTime?
   resolution                String?
   satisfactionNote          String?
@@ -1385,19 +1386,20 @@ model WhatsAppConversation {
   lastOutboundAt            DateTime?
   callbackDueAt             DateTime?
   callbackTrackingStartedAt DateTime?
-  callbackStreakCount       Int               @default(0)
-  callbackTotalCount        Int               @default(0)
+  callbackStreakCount       Int                                @default(0)
+  callbackTotalCount        Int                                @default(0)
   callbackPipelineSyncedAt  DateTime?
-  callbackQueueStatus       String            @default("inactive")
-  commercialPaused          Boolean           @default(false)
-  aiMode                    String            @default("manual")
+  callbackQueueStatus       String                             @default("inactive")
+  commercialPaused          Boolean                            @default(false)
+  aiMode                    String                             @default("manual")
   aiModeUpdatedAt           DateTime?
   aiModeUpdatedBy           String?
   commercialHolds           PipelineCommercialHold[]
   internalNotesUpdatedAt    DateTime?
-  contact                   WhatsAppContact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  instance                  WhatsAppInstance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  contact                   WhatsAppContact                    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  instance                  WhatsAppInstance                   @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   messages                  WhatsAppMessage[]
+  inboundPostProcessJobs    WhatsAppInboundPostProcessJob[]
   followUps                 WhatsAppConversationFollowUp[]
   callbackAttempts          WhatsAppCallbackAttempt[]
   internalNotes             WhatsAppConversationInternalNote[]
@@ -1520,16 +1522,16 @@ model WhatsAppConversationInternalNote {
 }
 
 model WhatsAppSavedReply {
-  id              String   @id @default(uuid())
+  id              String                      @id @default(uuid())
   userId          String
   categoryId      String?
   title           String
   normalizedTitle String
   content         String
-  position        Int      @default(0)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  position        Int                         @default(0)
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+  user            User                        @relation(fields: [userId], references: [id], onDelete: Cascade)
   category        WhatsAppSavedReplyCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@unique([userId, normalizedTitle])
@@ -1539,14 +1541,14 @@ model WhatsAppSavedReply {
 }
 
 model WhatsAppSavedReplyCategory {
-  id              String   @id @default(uuid())
+  id              String               @id @default(uuid())
   userId          String
   title           String
   normalizedTitle String
   campaignName    String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   replies         WhatsAppSavedReply[]
 
   @@unique([userId, normalizedTitle])
@@ -1554,55 +1556,78 @@ model WhatsAppSavedReplyCategory {
 }
 
 model WhatsAppMessage {
-  id                  String                      @id @default(uuid())
-  conversationId      String
+  id                      String               @id @default(uuid())
+  conversationId          String
   // messageId do WhatsApp é o MESMO para remetente e destinatário — quando
   // dois números conectados no CRM conversam entre si, a unicidade global
   // impedia a gravação da mensagem na segunda caixa (só o preview atualizava).
   // Por isso a unicidade é por conversa.
-  messageId           String
-  body                String
-  type                String                      @default("text")
-  mediaUrl            String?
-  mediaFileName       String?
-  mediaMimeType       String?
-  mediaSizeBytes      Int?
-  linkPreviewUrl String?
-  linkPreviewTitle String?
-  linkPreviewDescription String?
+  messageId               String
+  body                    String
+  type                    String               @default("text")
+  mediaUrl                String?
+  mediaFileName           String?
+  mediaMimeType           String?
+  mediaSizeBytes          Int?
+  linkPreviewUrl          String?
+  linkPreviewTitle        String?
+  linkPreviewDescription  String?
   linkPreviewThumbnailUrl String?
-  quotedMessageId     String?
-  quotedMessageBody   String?
-  quotedMessageType   String?
-  quotedMessageFromMe Boolean?
-  fromMe              Boolean                     @default(false)
-  status              String                      @default("sent")
-  timestamp           DateTime
-  createdAt           DateTime                    @default(now())
-  respondedBy         String?
-  respondedByName     String?
-  dispatchMetadata    Json?
-  conversation        WhatsAppConversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  quotedMessageId         String?
+  quotedMessageBody       String?
+  quotedMessageType       String?
+  quotedMessageFromMe     Boolean?
+  fromMe                  Boolean              @default(false)
+  status                  String               @default("sent")
+  timestamp               DateTime
+  createdAt               DateTime             @default(now())
+  respondedBy             String?
+  respondedByName         String?
+  dispatchMetadata        Json?
+  conversation            WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, messageId])
   @@index([conversationId, timestamp])
   @@index([timestamp])
 }
 
+model WhatsAppInboundPostProcessJob {
+  id             String               @id @default(uuid())
+  instanceId     String
+  conversationId String
+  messageId      String
+  payload        Json
+  status         String               @default("pending")
+  attempts       Int                  @default(0)
+  availableAt    DateTime             @default(now())
+  claimToken     String?
+  claimedAt      DateTime?
+  completedAt    DateTime?
+  lastError      String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  instance       WhatsAppInstance     @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([instanceId, messageId])
+  @@index([status, availableAt])
+  @@index([instanceId, status, availableAt])
+  @@index([conversationId])
+}
 
 model AiLearningObservation {
-  conversationId   String               @id
-  unit             String               @default("SBC")
-  revision         Int                  @default(1)
-  processedRevision Int                 @default(0)
-  lastEventKey     String
-  leaseToken       String?
-  leaseUntil       DateTime?
-  dueAt            DateTime             @default(now())
-  attempts         Int                  @default(0)
-  error            String?
-  updatedAt        DateTime             @updatedAt
-  conversation     WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId    String               @id
+  unit              String               @default("SBC")
+  revision          Int                  @default(1)
+  processedRevision Int                  @default(0)
+  lastEventKey      String
+  leaseToken        String?
+  leaseUntil        DateTime?
+  dueAt             DateTime             @default(now())
+  attempts          Int                  @default(0)
+  error             String?
+  updatedAt         DateTime             @updatedAt
+  conversation      WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([unit, dueAt])
 }
@@ -1684,19 +1709,19 @@ model BroadcastRecipient {
 }
 
 model Automation {
-  id             String          @id @default(uuid())
+  id             String               @id @default(uuid())
   name           String
   description    String?
   triggerType    String
   triggerConfig  Json?
   steps          Json
-  isActive       Boolean         @default(false)
-  executionCount Int             @default(0)
+  isActive       Boolean              @default(false)
+  executionCount Int                  @default(0)
   lastExecutedAt DateTime?
   createdBy      String?
   unit           String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
   logs           AutomationLog[]
   welcomeJobs    WhatsAppWelcomeJob[]
 
@@ -1705,33 +1730,33 @@ model Automation {
 }
 
 model WhatsAppWelcomeJob {
-  id                 String   @id @default(uuid())
-  conversationId     String   @unique
-  clientId           String
-  automationId       String
-  instanceId         String
-  unit               String
-  contactPhone       String
-  inboundMessageId   String
-  dueAt              DateTime
-  status             String   @default("pending")
-  phase              Int      @default(0)
-  claimToken         String?
-  claimedAt          DateTime?
-  campaignKey        String?
-  configUpdatedAt    DateTime?
-  greeting           String?
-  question           String?
-  replyId            String?
-  greetingMessageId  String?
-  greetingSentAt     DateTime?
-  questionMessageId  String?
-  questionSentAt     DateTime?
-  reason             String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
-  conversation       WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  automation         Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  id                String               @id @default(uuid())
+  conversationId    String               @unique
+  clientId          String
+  automationId      String
+  instanceId        String
+  unit              String
+  contactPhone      String
+  inboundMessageId  String
+  dueAt             DateTime
+  status            String               @default("pending")
+  phase             Int                  @default(0)
+  claimToken        String?
+  claimedAt         DateTime?
+  campaignKey       String?
+  configUpdatedAt   DateTime?
+  greeting          String?
+  question          String?
+  replyId           String?
+  greetingMessageId String?
+  greetingSentAt    DateTime?
+  questionMessageId String?
+  questionSentAt    DateTime?
+  reason            String?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  conversation      WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  automation        Automation           @relation(fields: [automationId], references: [id], onDelete: Cascade)
 
   @@index([status, dueAt])
 }
