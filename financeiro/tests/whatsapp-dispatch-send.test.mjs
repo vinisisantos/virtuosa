@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import test,{beforeEach} from 'node:test';
 import {registerHooks} from 'node:module';
+const nextServerUrl=import.meta.resolve('next/server.js');
 const modules={
+  'next/server':`export { NextResponse } from ${JSON.stringify(nextServerUrl)}; export function after(task){globalThis.dispatchAfterTasks.push(task)}`,
   '@/lib/whatsapp/instance-resolver':'export async function getInstancesForRequest(){return {instances:globalThis.dispatchInstances,isProxy:false}}',
   '@/lib/whatsapp/callbacks':'export async function recordOutboundForCallbackTracking(){return false}',
   '@/lib/whatsapp/media-storage':'export const isPrivateBlobUrl=()=>!!globalThis.dispatchPrivateBlob;export const signPrivateMediaUrls=async x=>x;export const inspectPrivateBlob=async()=>globalThis.dispatchPrivateBlob;export const createPrivateBlobReadUrl=async x=>x+"?signed=mock";',
@@ -31,6 +33,7 @@ const db={
       writes++;saved=echo?{...echo,...update}:{id:'message-db',...create};return saved;
     },
     updateMany:async({where,data})=>{
+      if(data.linkPreviewUrl){writes++;assert.equal(where.id,saved.id);assert.equal(where.conversationId,conv.id);Object.assign(saved,data);return {count:1};}
       writes++;assert.equal(where.id,saved.id);assert.equal(where.fromMe,true);
       if(where.status.notIn.some(status=>status.toUpperCase()===saved.status.toUpperCase()))return {count:0};
       Object.assign(saved,data);return {count:1};
@@ -48,11 +51,16 @@ const {POST}=await import('../src/app/api/whatsapp/send/route.ts');
 const dispatch={batchId:'12345678-1234-1234-1234-123456789abc',size:2,source:'inbox_bulk',campaignName:'Botox'};
 beforeEach(()=>{
   saved=null;sent=[];providerOk=true;echo=null;writes=0;missingMessageId=false;providerStatus=undefined;
+  globalThis.dispatchAfterTasks=[];
   globalThis.dispatchLinkPreview=null;globalThis.dispatchPrivateBlob=null;globalThis.dispatchQuotedMessage=null;
   globalThis.dispatchInstances=[{id:'instance',unit:'Osasco',name:'test-instance',status:'connected',provider:'evolution',canReply:true}];
   conv={id:'chat',instanceId:'instance',assignedTo:'operator',contact:{phone:'5511900000000',name:'Teste',unit:'Osasco'}};
 });
-const send=async(extra={},query='')=>POST(new Request('http://localhost/api/whatsapp/send'+query,{method:'POST',headers:{'Content-Type':'application/json','x-user-id':'operator','x-user-name':'Operadora real'},body:JSON.stringify({conversationId:'chat',body:'Olá!',type:'text',claimConversation:true,dispatch,...extra})}));
+const send=async(extra={},query='')=>{
+  const response=await POST(new Request('http://localhost/api/whatsapp/send'+query,{method:'POST',headers:{'Content-Type':'application/json','x-user-id':'operator','x-user-name':'Operadora real'},body:JSON.stringify({conversationId:'chat',body:'Olá!',type:'text',claimConversation:true,dispatch,...extra})}));
+  await Promise.all(globalThis.dispatchAfterTasks.splice(0).map(task=>task()));
+  return response;
+};
 test('novo lote grava origem/autoria na mensagem após envio e retorna selo',async()=>{
   const res=await send();assert.equal(res.status,200);const result=await res.json();
   assert.equal(sent.length,1);assert.equal(writes,1);assert.equal(saved.dispatchMetadata.unit,'Osasco');
@@ -125,6 +133,23 @@ test('eco anterior recebe preview confirmado sem alterar corpo editado, data ou 
   assert.equal(saved.linkPreviewTitle,'Página');assert.equal(saved.linkPreviewUrl,'https://example.test');
   assert.equal(saved.linkPreviewDescription,'Descrição');assert.equal(saved.linkPreviewThumbnailUrl,'https://example.test/thumb.jpg');
   assert.equal(saved.status,'read');assert.equal(saved.body,'Corpo já editado');assert.equal(saved.timestamp,timestamp);
+});
+test('envio confirma antes da prévia de link e grava metadados depois da resposta',async()=>{
+  let resolvePreview;
+  globalThis.dispatchLinkPreview=new Promise(resolve=>{resolvePreview=resolve});
+  const responsePromise=POST(new Request('http://localhost/api/whatsapp/send',{
+    method:'POST',headers:{'Content-Type':'application/json','x-user-id':'operator','x-user-name':'Operadora real'},
+    body:JSON.stringify({conversationId:'chat',body:'Veja https://example.test',type:'text',claimConversation:true}),
+  }));
+  let timeout;
+  const result=await Promise.race([responsePromise,new Promise(resolve=>{timeout=setTimeout(()=>resolve('timeout'),2_000)})]);
+  clearTimeout(timeout);
+  resolvePreview({url:'https://example.test',title:'Página',description:null,thumbnailUrl:null});
+  assert.notEqual(result,'timeout','a prévia não pode bloquear a confirmação do envio');
+  assert.equal(result.status,200);
+  assert.equal(saved.linkPreviewTitle,undefined);
+  await Promise.all(globalThis.dispatchAfterTasks.splice(0).map(task=>task()));
+  assert.equal(saved.linkPreviewTitle,'Página');
 });
 test('eco anterior recebe mídia privada permanente e citação, omissões não apagam preview existente',async()=>{
   echo={id:'echo-db',conversationId:'chat',messageId:'wa-id',body:'',timestamp:new Date(),fromMe:true,status:'delivered',linkPreviewTitle:'Preservado'};

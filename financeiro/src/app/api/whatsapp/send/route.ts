@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import {
   mergeWhatsAppMessageStatus,
   normalizeWhatsAppMessageStatus,
@@ -428,7 +428,7 @@ export async function POST(req: Request) {
       attendantName: userName || conversation.assignedToName,
     });
     const linkPreviewSourceUrl = !isMedia ? firstWhatsAppLink(messageBody) : null;
-    // A busca acontece em paralelo ao envio e nunca impede a entrega da mensagem.
+    // A busca acontece em paralelo ao envio e não bloqueia a confirmação ao operador.
     const linkPreviewPromise = linkPreviewSourceUrl
       ? loadWhatsAppLinkPreview(messageBody)
       : Promise.resolve(null);
@@ -726,7 +726,8 @@ export async function POST(req: Request) {
       : (sendDataObject.key?.id || sendDataObject.id || `temp_${Date.now()}`);
     const providerMessageId = provider === "waha" ? extractWahaMessageId(sendData) : sendDataObject.key?.id || sendDataObject.id;
     if (sendDiagnostic) {
-      await logSendDiagnostic({
+      const acceptedSendDiagnostic = sendDiagnostic;
+      after(() => logSendDiagnostic({
         instanceId: dbInstance.id,
         instanceName,
         userId,
@@ -738,9 +739,9 @@ export async function POST(req: Request) {
         type: type || "text",
         apiKey,
         provider,
-        ...sendDiagnostic,
+        ...acceptedSendDiagnostic,
         messageId,
-      });
+      }));
     }
     
     // Mantém a referência privada permanente; somente URLs assinadas e temporárias
@@ -753,8 +754,6 @@ export async function POST(req: Request) {
     const mediaFileName = cleanFileName(body.docName || body.fileName);
     const mediaMimeType = verifiedMediaMimeType || parsedMedia.mimeType;
     const mediaSizeBytes = verifiedMediaSizeBytes ?? parsedMedia.sizeBytes;
-    const linkPreview = await linkPreviewPromise;
-
     // Texto de fallback para mensagens de mídia sem legenda
     const displayBody = whatsAppConversationPreview(messageBody, type);
 
@@ -771,12 +770,6 @@ export async function POST(req: Request) {
       mediaFileName,
       mediaMimeType,
       mediaSizeBytes,
-      ...(linkPreview ? {
-        linkPreviewUrl: linkPreview.url,
-        linkPreviewTitle: linkPreview.title,
-        linkPreviewDescription: linkPreview.description,
-        linkPreviewThumbnailUrl: linkPreview.thumbnailUrl,
-      } : {}),
       fromMe: true,
       status: (provider === "waha"
         ? normalizeWahaMessageAck(sendDataObject.ackName, sendDataObject.ack)
@@ -907,9 +900,31 @@ export async function POST(req: Request) {
       };
     });
 
-    await enqueueAiLearningObservation(message, {
-      id: dbInstance.id,
-      unit: dbInstance.unit,
+    after(async () => {
+      const previewTask = linkPreviewPromise.then(async (linkPreview) => {
+        if (!linkPreview) return;
+        await prisma.whatsAppMessage.updateMany({
+          where: { id: message.id, conversationId: conversation.id },
+          data: {
+            linkPreviewUrl: linkPreview.url,
+            linkPreviewTitle: linkPreview.title,
+            linkPreviewDescription: linkPreview.description,
+            linkPreviewThumbnailUrl: linkPreview.thumbnailUrl,
+          },
+        });
+      });
+      const results = await Promise.allSettled([
+        previewTask,
+        enqueueAiLearningObservation(message, {
+          id: dbInstance.id,
+          unit: dbInstance.unit,
+        }),
+      ]);
+      for (const result of results) {
+        if (result.status === "rejected") {
+          console.error("[WhatsApp Send] Falha em processamento pós-resposta:", result.reason);
+        }
+      }
     });
 
     const [responseMessage] = await signPrivateMediaUrls([message]);
