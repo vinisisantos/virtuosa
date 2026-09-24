@@ -21,6 +21,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@prisma/client": "^6.19.2",
+    "@supabase/supabase-js": "^2.117.0",
     "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.6.1",
     "@vercel/speed-insights": "^2.0.0",

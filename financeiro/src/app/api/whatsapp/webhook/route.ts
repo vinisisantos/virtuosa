@@ -71,6 +71,7 @@ import {
   retryInboundPostProcessJob,
   type InboundPostProcessPayload,
 } from "@/lib/whatsapp/inbound-postprocess-queue";
+import { broadcastInboxRealtimeChange } from "@/lib/whatsapp/inbox-realtime";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -1065,6 +1066,13 @@ async function handleWahaAck(payload: any, dbInstance: WebhookInstance) {
     },
   }).catch(() => {});
 
+  await broadcastInboxRealtimeChange({
+    instanceId: dbInstance.id,
+    conversationId: existing.conversationId,
+    messageId: existing.id,
+    kind: "status",
+  });
+
   return true;
 }
 
@@ -1970,6 +1978,12 @@ async function processMessage(
         receivedToPersistMs: Date.now() - receivedAt.getTime(),
         queued: persisted.queued,
       });
+      await broadcastInboxRealtimeChange({
+        instanceId: dbInstance.id,
+        conversationId: conversation.id,
+        messageId: persisted.message.id,
+        kind: "message",
+      });
     }
     return;
   }
@@ -2652,6 +2666,13 @@ async function processMessageStatusUpdate(params: {
       },
     }).catch(() => {});
   }
+
+  await broadcastInboxRealtimeChange({
+    instanceId: dbInstance.id,
+    conversationId: conversation.id,
+    messageId: existingMessage.id,
+    kind: "status",
+  });
 }
 
 async function processMessageReactionUpdate(params: {
@@ -2699,6 +2720,12 @@ async function processMessageReactionUpdate(params: {
     targetMessageId: params.targetMessageId,
     actor: params.actorFromMe ? "own" : "contact",
     reaction,
+  });
+  await broadcastInboxRealtimeChange({
+    instanceId: params.dbInstance.id,
+    conversationId: conversation.id,
+    messageId: message.id,
+    kind: "reaction",
   });
 }
 

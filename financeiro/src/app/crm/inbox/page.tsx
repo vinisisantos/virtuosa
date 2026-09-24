@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { upload } from "@vercel/blob/client";
+import { createClient } from "@supabase/supabase-js";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { toast } from "@/components/toast";
 import { useVisiblePolling } from "@/hooks/use-visible-polling";
@@ -4649,6 +4650,99 @@ export default function InboxPage() {
     runImmediately: false,
     runOnFocus: false,
   });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let disposed = false;
+    let refreshTimer: number | null = null;
+    let realtimeClient: ReturnType<typeof createClient> | null = null;
+
+    const scheduleRefresh = (conversationId?: string) => {
+      if (document.visibilityState === "hidden") return;
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        const hasSyncCursor = Boolean(conversationsLastSyncRef.current);
+        void fetchConversations({ incremental: hasSyncCursor });
+
+        const selectedConversation = selectedConvRef.current;
+        if (
+          selectedConversation
+          && (!conversationId || selectedConversation.id === conversationId)
+          && !activeAudioMessageIdRef.current
+        ) {
+          void fetchMessages(
+            selectedConversation.id,
+            isConversationInService(selectedConversation),
+          );
+        }
+      }, 120);
+    };
+
+    const connect = async () => {
+      try {
+        const query = waParams();
+        const response = await fetch(`/api/whatsapp/realtime${query ? `?${query}` : ""}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const config = await response.json().catch(() => ({})) as {
+          enabled?: boolean;
+          event?: string;
+          topics?: string[];
+          url?: string;
+          publishableKey?: string;
+        };
+        if (
+          disposed
+          || !response.ok
+          || !config.enabled
+          || !config.url
+          || !config.publishableKey
+          || !config.event
+          || !Array.isArray(config.topics)
+          || config.topics.length === 0
+        ) return;
+
+        realtimeClient = createClient(config.url, config.publishableKey, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
+          },
+        });
+
+        for (const topic of config.topics) {
+          realtimeClient
+            .channel(topic, { config: { broadcast: { self: false }, private: false } })
+            .on("broadcast", { event: config.event }, (event) => {
+              const payload = event?.payload as { conversationId?: unknown } | undefined;
+              const conversationId = typeof payload?.conversationId === "string"
+                ? payload.conversationId
+                : undefined;
+              scheduleRefresh(conversationId);
+            })
+            .subscribe((status, error) => {
+              if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+                console.warn("[WhatsApp Realtime] Polling de contingência permanece ativo.", error);
+              }
+            });
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        console.warn("[WhatsApp Realtime] Não foi possível conectar; polling permanece ativo.", error);
+      }
+    };
+
+    void connect();
+
+    return () => {
+      disposed = true;
+      controller.abort();
+      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      if (realtimeClient) void realtimeClient.removeAllChannels();
+    };
+  }, [fetchConversations, fetchMessages, inboxScopeKey, isConversationInService, waParams]);
 
   const handleAudioPlaybackChange = useCallback((messageId: string, isPlaying: boolean) => {
     if (isPlaying) {

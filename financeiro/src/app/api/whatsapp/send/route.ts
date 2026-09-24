@@ -28,6 +28,7 @@ import { recordOutboundForCallbackTracking } from "@/lib/whatsapp/callbacks";
 import { isWhatsAppConversationInCallbackQueue } from "@/lib/whatsapp/callback-queue";
 import { whatsAppCallbackIntervalMsForUnit } from "@/lib/whatsapp/callback-interval";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
+import { broadcastInboxRealtimeChange } from "@/lib/whatsapp/inbox-realtime";
 import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
 import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
 import { whatsAppConversationPreview } from "@/lib/whatsapp/message-content";
@@ -915,6 +916,12 @@ export async function POST(req: Request) {
       });
       const results = await Promise.allSettled([
         previewTask,
+        broadcastInboxRealtimeChange({
+          instanceId: dbInstance.id,
+          conversationId: conversation.id,
+          messageId: message.id,
+          kind: "message",
+        }),
         enqueueAiLearningObservation(message, {
           id: dbInstance.id,
           unit: dbInstance.unit,
