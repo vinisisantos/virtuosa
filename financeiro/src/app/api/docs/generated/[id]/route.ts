@@ -19,7 +19,7 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(doc);
+    return NextResponse.json(doc, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('Error fetching generated doc:', error);
     return NextResponse.json(

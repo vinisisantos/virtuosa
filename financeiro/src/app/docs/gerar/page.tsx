@@ -7,6 +7,13 @@ import { useGlobalUnit } from '@/contexts/UnitContext';
 import { toast } from '@/components/toast';
 import { valorPorExtenso } from '@/lib/valor-extenso';
 import { downloadDocumentBlob, generateDocxPreviewPdf } from '@/lib/docx-preview-pdf';
+import {
+  base64DocumentBlob,
+  documentBlobBase64,
+  editableContractParagraphs,
+  updateContractParagraphs,
+  type EditableContractParagraph,
+} from '@/lib/docx-contract-editor';
 
 interface DocField { tag: string; label: string; type: string; required: boolean; }
 interface Template { id: string; name: string; category: string; fileType?: string; fields: DocField[]; }
@@ -45,13 +52,21 @@ export default function DocGerarPage() {
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [generating, setGenerating] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [step, setStep] = useState<'form' | 'preview'>('form');
+  const [step, setStep] = useState<'form' | 'edit' | 'preview'>('form');
   const [generatedBlob, setGeneratedBlob] = useState<Blob | null>(null);
   const [generatedSnapshot, setGeneratedSnapshot] = useState<GeneratedSnapshot | null>(null);
+  const [paragraphs, setParagraphs] = useState<EditableContractParagraph[]>([]);
+  const [paragraphChanges, setParagraphChanges] = useState<Record<number, string>>({});
+  const [applyingChanges, setApplyingChanges] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [savedDocumentId, setSavedDocumentId] = useState<string | null>(null);
+  const [openedFromHistory, setOpenedFromHistory] = useState(false);
+  const [paragraphSearch, setParagraphSearch] = useState('');
   const [previewReady, setPreviewReady] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const [downloading, setDownloading] = useState<'pdf' | 'docx' | null>(null);
   const downloadLock = useRef(false);
+  const saveLock = useRef(false);
   const previewRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -92,6 +107,38 @@ export default function DocGerarPage() {
       finally { setLoading(false); }
     })();
   }, [globalUnit]);
+
+  useEffect(() => {
+    const documentId = new URLSearchParams(window.location.search).get('documentId');
+    if (!documentId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/docs/generated/${encodeURIComponent(documentId)}`, { cache: 'no-store' });
+        const saved = await response.json();
+        if (!response.ok) throw new Error(saved.error || 'Não foi possível abrir o documento.');
+        if (!saved.fileData) throw new Error('Esse registro antigo não possui arquivo para editar.');
+        const blob = base64DocumentBlob(saved.fileData);
+        const editable = await editableContractParagraphs(blob);
+        if (cancelled) return;
+        setGeneratedBlob(blob);
+        setGeneratedSnapshot({
+          templateId: saved.templateId,
+          templateName: saved.templateName,
+          filledData: saved.filledData,
+          unit: saved.unit,
+        });
+        setParagraphs(editable);
+        setSelectedTemplate(saved.templateId);
+        setSavedDocumentId(saved.id);
+        setOpenedFromHistory(true);
+        setStep('preview');
+      } catch (error) {
+        if (!cancelled) toast(error instanceof Error ? error.message : 'Não foi possível abrir o documento.', 'error');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const currentTemplate = useMemo(() => {
     const tpl = templates.find(t => t.id === selectedTemplate);
@@ -207,6 +254,12 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
   const handleTemplateChange = useCallback((id: string) => {
     setSelectedTemplate(id);
     setFormData({});
+    setGeneratedBlob(null);
+    setGeneratedSnapshot(null);
+    setParagraphs([]);
+    setParagraphChanges({});
+    setSavedDocumentId(null);
+    setOpenedFromHistory(false);
     setStep('form');
   }, []);
 
@@ -262,6 +315,10 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       });
       setGeneratedBlob(blob);
       setGeneratedSnapshot({ templateId: currentTemplate.id, templateName: currentTemplate.name, filledData: filledValues, unit: globalUnit });
+      setParagraphs(await editableContractParagraphs(blob));
+      setParagraphChanges({});
+      setSavedDocumentId(null);
+      setOpenedFromHistory(false);
       setPreviewReady(false);
       setPreviewError('');
       setStep('preview');
@@ -269,6 +326,50 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       console.error(e);
       toast('Erro ao gerar documento', 'error');
     } finally { setGenerating(false); }
+  };
+
+  const handleApplyChanges = async () => {
+    if (!generatedBlob || applyingChanges) return;
+    setApplyingChanges(true);
+    try {
+      const updated = await updateContractParagraphs(generatedBlob, paragraphChanges);
+      setGeneratedBlob(updated);
+      setParagraphs(await editableContractParagraphs(updated));
+      if (Object.keys(paragraphChanges).length) setSavedDocumentId(null);
+      setParagraphChanges({});
+      setPreviewReady(false);
+      setStep('preview');
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Não foi possível aplicar as edições.', 'error');
+    } finally {
+      setApplyingChanges(false);
+    }
+  };
+
+  const saveDocument = async (): Promise<boolean> => {
+    if (savedDocumentId) return true;
+    if (saveLock.current || !generatedBlob || !generatedSnapshot) return false;
+    saveLock.current = true;
+    setSaving(true);
+    try {
+      const fileData = await documentBlobBase64(generatedBlob);
+      const response = await fetch('/api/docs/generated', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...generatedSnapshot, fileData }),
+      });
+      const saved = await response.json();
+      if (!response.ok) throw new Error(saved.error || 'Não foi possível salvar o contrato.');
+      setSavedDocumentId(saved.id);
+      toast('Contrato salvo no histórico. Você pode reabri-lo e baixar o arquivo.', 'success');
+      return true;
+    } catch (error) {
+      toast(`Não foi possível salvar no histórico: ${error instanceof Error ? error.message : 'tente novamente.'}`, 'error');
+      return false;
+    } finally {
+      saveLock.current = false;
+      setSaving(false);
+    }
   };
 
   const handleDownload = async (format: 'pdf' | 'docx') => {
@@ -281,19 +382,8 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '_');
       downloadDocumentBlob(blob, `${generatedSnapshot.templateName} - ${dateStr}.${format}`);
       toast(format === 'pdf' ? 'PDF baixado com sucesso!' : 'Documento baixado com sucesso!', 'success');
-      // A failed history request must not prevent the user receiving the generated file.
-      try {
-        const user = JSON.parse(localStorage.getItem('virtuosa_user') || '{}');
-        const response = await fetch('/api/docs/generated', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...generatedSnapshot, createdBy: user.id || 'unknown', createdByName: user.name || 'Desconhecido' }),
-          signal: AbortSignal.timeout(15000),
-        });
-        if (!response.ok) throw new Error(`Histórico indisponível (${response.status})`);
-      } catch (error) {
-        console.error('Erro ao registrar download no histórico', error);
-        toast('O arquivo foi baixado, mas não foi possível registrar no histórico.', 'warning');
-      }
+      // O arquivo ainda deve ser entregue quando o histórico estiver indisponível.
+      if (!savedDocumentId) void saveDocument();
     } catch (error) {
       console.error('Erro ao baixar documento', error);
       toast(format === 'pdf' ? 'Erro ao gerar PDF. Os dados foram mantidos; tente novamente ou baixe o DOCX.' : 'Erro ao baixar documento. Tente novamente.', 'error');
@@ -330,6 +420,13 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
           box-shadow: 0 2px 12px rgba(0,0,0,0.1) !important; 
           margin-bottom: 20px !important;
         }
+        .doc-editor-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+        .doc-editor-actions button { min-height:44px; }
+        .doc-editor-textarea { width:100%; min-height:76px; resize:vertical; padding:12px; border-radius:10px; border:1px solid var(--border); background:var(--bg); color:var(--text-main); font:inherit; line-height:1.5; }
+        @media (max-width: 600px) {
+          .doc-editor-actions, .doc-editor-actions button { width:100%; }
+          .doc-editor-toolbar { position:static !important; }
+        }
       `}</style>
       <main className="dashboard-container">
         <AppHeader activePage={'doc-gerar' as any} />
@@ -342,7 +439,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
             <div>
               <h1 style={{ fontSize: '1.3rem', fontWeight: 900, margin: 0 }}>Gerar Documento</h1>
               <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                {step === 'form' ? 'Preencha os campos e gere o documento' : 'Confira o preview antes de baixar'}
+                {step === 'form' ? 'Preencha os campos e gere o documento' : step === 'edit' ? 'Ajuste o texto do contrato antes de salvar' : 'Confira, salve e baixe o documento'}
               </p>
             </div>
           </div>
@@ -350,7 +447,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
           {/* Steps indicator */}
           {currentTemplate && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
-              {['form', 'preview'].map((s) => (
+              {['form', 'edit', 'preview'].map((s) => (
                 <div key={s} style={{ flex: 1, height: 4, borderRadius: 2, background: step === s || (step === 'preview' && s === 'form') ? 'var(--primary)' : 'var(--border)', transition: 'background 0.3s' }} />
               ))}
             </div>
@@ -572,21 +669,72 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                 </div>
               )}
             </>
+          ) : step === 'edit' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div className="doc-editor-toolbar" style={{ position: 'sticky', top: 70, zIndex: 10, padding: 18, borderRadius: 14, background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <strong>Editar texto do contrato</strong>
+                    <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Cada caixa representa um parágrafo do arquivo. Os trechos que você não alterar mantêm a formatação original.</p>
+                  </div>
+                  <div className="doc-editor-actions">
+                    <button onClick={() => { setParagraphChanges({}); setStep('preview'); }} disabled={applyingChanges} style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
+                    <button onClick={handleApplyChanges} disabled={applyingChanges} style={{ padding: '10px 18px', borderRadius: 10, border: 0, background: 'var(--primary)', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                      {applyingChanges ? 'Aplicando...' : `Aplicar e conferir${Object.keys(paragraphChanges).length ? ` (${Object.keys(paragraphChanges).length})` : ''}`}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px clamp(14px, 4vw, 24px)' }}>
+                <label htmlFor="contract-paragraph-search" style={{ display: 'block', fontWeight: 700, marginBottom: 8 }}>Localizar trecho</label>
+                <input id="contract-paragraph-search" type="search" value={paragraphSearch} onChange={event => setParagraphSearch(event.target.value)} placeholder="Buscar uma cláusula ou palavra" style={{ ...inputStyle, fontFamily: 'inherit' }} />
+                <p style={{ margin: '8px 0 0', color: 'var(--text-muted)', fontSize: '0.8rem' }}>{paragraphs.length} parágrafos com texto · {Object.keys(paragraphChanges).length} alterados</p>
+              </div>
+              {paragraphs.filter(paragraph => !paragraphSearch || (paragraphChanges[paragraph.index] ?? paragraph.text).toLocaleLowerCase('pt-BR').includes(paragraphSearch.toLocaleLowerCase('pt-BR'))).map((paragraph) => (
+                <div key={paragraph.index} style={{ background: 'var(--card-bg)', border: `1px solid ${paragraphChanges[paragraph.index] !== undefined ? 'var(--primary)' : 'var(--border)'}`, borderRadius: 14, padding: '16px clamp(14px, 4vw, 24px)' }}>
+                  <label htmlFor={`contract-paragraph-${paragraph.index}`} style={{ display: 'block', fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 8 }}>Trecho {paragraph.index + 1}</label>
+                  <textarea
+                    id={`contract-paragraph-${paragraph.index}`}
+                    className="doc-editor-textarea"
+                    rows={Math.min(8, Math.max(2, Math.ceil(paragraph.text.length / 85)))}
+                    value={paragraphChanges[paragraph.index] ?? paragraph.text}
+                    onChange={event => {
+                      const value = event.target.value.replace(/[\r\n]+/g, ' ');
+                      setParagraphChanges(current => {
+                        const next = { ...current };
+                        if (value === paragraph.text) delete next[paragraph.index];
+                        else next[paragraph.index] = value;
+                        return next;
+                      });
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
           ) : (
             /* ─── Preview Step ─── */
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
               {/* Action bar */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)', padding: '14px 20px', flexWrap: 'wrap', gap: 10, position: 'sticky', top: 70, zIndex: 10 }}>
-                <button disabled={!!downloading} onClick={() => { setPreviewReady(false); setStep('form'); }} style={{
+              <div className="doc-editor-toolbar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)', padding: '14px 20px', flexWrap: 'wrap', gap: 10, position: 'sticky', top: 70, zIndex: 10 }}>
+                <div className="doc-editor-actions">
+                {!openedFromHistory && <button disabled={!!downloading || saving} onClick={() => { setPreviewReady(false); setStep('form'); }} style={{
                   padding: '10px 20px', borderRadius: 10, border: '1px solid var(--border)',
                   background: 'transparent', color: 'var(--text-main)', fontWeight: 700,
                   cursor: 'pointer', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 6,
                 }}>
                   <span className="material-symbols-outlined" style={{ fontSize: 18 }}>arrow_back</span>
-                  Voltar e Editar
+                  Editar dados
+                </button>}
+                <button disabled={!!downloading || saving} onClick={() => setStep('edit')} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit_document</span>Editar texto
                 </button>
+                </div>
 
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                <div className="doc-editor-actions">
+                  <button disabled={!!downloading || saving || !!savedDocumentId} onClick={() => void saveDocument()} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: savedDocumentId ? 'rgba(16,185,129,0.12)' : 'var(--primary)', color: savedDocumentId ? '#10b981' : '#fff', fontWeight: 700, cursor: savedDocumentId ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{savedDocumentId ? 'check_circle' : 'save'}</span>
+                    {saving ? 'Salvando...' : savedDocumentId ? 'Salvo no histórico' : 'Salvar contrato'}
+                  </button>
                   <button disabled={!!downloading} onClick={() => handleDownload('docx')} style={{
                     padding: '10px 24px', borderRadius: 10, border: '1px solid var(--border)',
                     background: 'transparent',

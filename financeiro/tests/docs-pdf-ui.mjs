@@ -214,6 +214,13 @@ try {
         if (url.pathname === '/api/auth/me') data = { authenticated: true, user };
         if (url.pathname === '/api/docs/templates') data = [template];
         if (url.pathname === `/api/docs/templates/${template.id}`) data = template;
+        if (url.pathname === '/api/docs/generated' && request.method() === 'GET') {
+          const saved = writes.at(-1)?.body;
+          data = { documents: saved ? [{ ...saved, id: 'synthetic-record', createdAt: new Date().toISOString(), createdByName: user.name }] : [], total: saved ? 1 : 0 };
+        }
+        if (url.pathname === '/api/docs/generated/synthetic-record' && request.method() === 'GET') {
+          data = { ...writes.at(-1)?.body, id: 'synthetic-record', createdAt: new Date().toISOString(), createdByName: user.name };
+        }
         if (request.method() === 'POST') {
           const pdfReady = await page.evaluate(() => window.__docsUiEvents.some(event => event.type === 'pdf-ready'));
           writes.push({ path: url.pathname, body: JSON.parse(request.postData()), pdfReady });
@@ -236,6 +243,21 @@ try {
     await click(page, 'Gerar Preview');
     await page.waitForFunction(count => document.querySelectorAll('section.docx-preview-wrapper').length === count, {}, flowing ? 1 : 2);
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Baixar PDF') && !button.disabled));
+    if (width === 390 && theme === 'light' && !flowing) {
+      await click(page, 'Editar texto');
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'editor mobile sem overflow horizontal');
+      await page.screenshot({ path: join(output, `${key}-editor.png`) });
+      const clause = await page.evaluate(() => [...document.querySelectorAll('textarea')].find(field => field.value.includes('Cláusula de teste 1'))?.id);
+      assert.ok(clause, 'parágrafo do contrato disponível para edição');
+      await page.$eval(`#${clause}`, field => {
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, 'Cláusula revisada pelo usuário: conteúdo salvo e recuperável.');
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Aplicar e conferir (1)')));
+      await click(page, 'Aplicar e conferir');
+      await page.waitForFunction(() => [...document.querySelectorAll('section.docx-preview-wrapper')].some(section => section.textContent.includes('Cláusula revisada pelo usuário')));
+      await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Baixar PDF') && !button.disabled));
+    }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `sem overflow horizontal em ${key}`);
     await page.screenshot({ path: join(output, `${key}-preview.png`) });
     const previewBefore = await page.$$eval('section.docx-preview-wrapper', pages => pages.map(section => section.textContent));
@@ -293,7 +315,35 @@ try {
     assert.ok(writes[0].pdfReady, 'histórico só é registrado depois de disponibilizar o PDF');
     assert.equal(writes[0].body.filledData.cnpj_contratante, '63.246.385/0001-91');
     assert.equal(writes[0].body.unit, 'SCS');
+    assert.match(writes[0].body.fileData, /^UEsDB/);
     assert.deepEqual(await page.$$eval('section.docx-preview-wrapper', pages => pages.map(section => section.textContent)), previewBefore, 'download preserva preview para nova conferência');
+    if (width === 390 && theme === 'light' && !flowing) {
+      const savedDocx = new PizZip(Buffer.from(writes[0].body.fileData, 'base64'));
+      assert.match(savedDocx.file('word/document.xml').asText(), /Cláusula revisada pelo usuário/);
+      await page.goto(`${origin}/docs/historico`, { waitUntil: 'networkidle0', timeout: 60000 });
+      await page.waitForFunction(name => document.body.textContent.includes(name), {}, template.name);
+      await page.click('button[aria-label^="Baixar"]');
+      await page.waitForFunction(() => document.body.textContent.includes('Contrato baixado com sucesso'));
+      assert.ok((await readdir(downloadDir)).some(file => file.endsWith('.docx')), 'DOCX salvo pode ser baixado pelo histórico');
+      await page.click('.doc-history-row');
+      await page.waitForFunction(() => { const rect = document.querySelector('.doc-history-modal-actions a')?.getBoundingClientRect(); return rect && rect.height > 0 && rect.bottom <= innerHeight; });
+      await page.screenshot({ path: join(output, `${key}-history-modal.png`) });
+      await page.click('.doc-history-modal-actions a');
+      await page.waitForFunction(() => [...document.querySelectorAll('section.docx-preview-wrapper')].some(section => section.textContent.includes('Cláusula revisada pelo usuário')));
+      await click(page, 'Editar texto');
+      const editedClause = await page.evaluate(() => [...document.querySelectorAll('textarea')].find(field => field.value.includes('Cláusula revisada pelo usuário'))?.id);
+      assert.ok(editedClause, 'arquivo salvo reabre com texto editável');
+      await page.$eval(`#${editedClause}`, field => {
+        Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, 'Cláusula revisada novamente e salva como nova versão.');
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      await click(page, 'Aplicar e conferir');
+      await page.waitForFunction(() => [...document.querySelectorAll('section.docx-preview-wrapper')].some(section => section.textContent.includes('Cláusula revisada novamente')));
+      await click(page, 'Salvar contrato');
+      await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Salvo no histórico')));
+      assert.equal(writes.length, 2, 'nova edição cria versão salva');
+      assert.match(new PizZip(Buffer.from(writes[1].body.fileData, 'base64')).file('word/document.xml').asText(), /Cláusula revisada novamente/);
+    }
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `sem overflow após exportação ${key}`);
     if (failHistory) {
       assert.ok(await page.evaluate(() => /histórico/i.test(document.body.textContent)), 'falha do histórico é informada sem impedir o arquivo');

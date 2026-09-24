@@ -59,13 +59,28 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { templateId, templateName, filledData, fileData, unit, createdBy, createdByName } = body;
+    const { templateId, templateName, filledData, fileData, unit } = body;
+    const createdBy = req.headers.get('x-user-id');
+    const createdByName = req.headers.get('x-user-name') || 'Usuário';
 
-    if (!templateId || !templateName || !filledData || !createdBy || !createdByName) {
+    if (!createdBy) {
+      return NextResponse.json({ error: 'Usuário não identificado' }, { status: 401 });
+    }
+    if (typeof templateId !== 'string' || typeof templateName !== 'string' || !templateId || !templateName
+      || !filledData || typeof filledData !== 'object' || Array.isArray(filledData)) {
       return NextResponse.json(
-        { error: 'Campos obrigatórios: templateId, templateName, filledData, createdBy, createdByName' },
+        { error: 'Informe modelo e dados preenchidos válidos.' },
         { status: 400 }
       );
+    }
+    if (typeof fileData !== 'string' || !/^UEsDB[A-Za-z0-9+/]*={0,2}$/.test(fileData)) {
+      return NextResponse.json({ error: 'Arquivo DOCX inválido.' }, { status: 400 });
+    }
+    if (fileData.length > 4_000_000) {
+      return NextResponse.json({ error: 'O contrato ultrapassa o limite de 3 MB para salvar no histórico.' }, { status: 413 });
+    }
+    if (typeof unit !== 'string' || !unit.trim()) {
+      return NextResponse.json({ error: 'Selecione a unidade do contrato.' }, { status: 400 });
     }
 
     const doc = await prisma.docGenerated.create({
@@ -73,8 +88,8 @@ export async function POST(req: Request) {
         templateId,
         templateName,
         filledData,
-        fileData: fileData || null,
-        unit: unit || null,
+        fileData,
+        unit,
         createdBy,
         createdByName,
       },
