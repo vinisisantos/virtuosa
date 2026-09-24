@@ -34,6 +34,10 @@ import { useWhatsAppInstanceNotificationMutes } from "@/hooks/use-whatsapp-insta
 import { useCompatibleAudioSource } from "@/hooks/use-compatible-audio-source";
 import { audioPlaybackErrorMessage } from "@/lib/whatsapp/audio-compatibility";
 import {
+  INBOX_ACTIVE_POLL_INTERVAL_MS,
+  shouldRefreshActiveConversation,
+} from "@/lib/whatsapp/inbox-activity-polling";
+import {
   INBOX_INCREMENTAL_FULL_REFRESH_EVERY,
   INBOX_FULL_CONVERSATION_LIMIT,
   INBOX_INITIAL_CONVERSATION_LIMIT,
@@ -3236,6 +3240,7 @@ export default function InboxPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const composerSelectionRef = useRef({ start: 0, end: 0 });
+  const lastDraftChangeAtRef = useRef(0);
   const conversationsRequestSeqRef = useRef(0);
   const messagesRequestSeqRef = useRef(0);
   const internalNotesRequestSeqRef = useRef(0);
@@ -4623,6 +4628,27 @@ export default function InboxPage() {
   }, [fetchConversations, fetchMessages, isConversationInService]);
 
   useVisiblePolling(refreshVisibleInbox, INBOX_POLL_INTERVAL_MS, { runImmediately: false });
+
+  useEffect(() => {
+    if (newMessage.trim()) lastDraftChangeAtRef.current = Date.now();
+  }, [newMessage]);
+
+  const refreshActiveConversation = useCallback(() => {
+    const currentConversation = selectedConvRef.current;
+    if (!currentConversation || activeAudioMessageIdRef.current) return;
+    if (!shouldRefreshActiveConversation({
+      now: Date.now(),
+      lastDraftChangeAt: lastDraftChangeAtRef.current,
+      hasDraft: Boolean(newMessage.trim()),
+      messages,
+    })) return;
+    return fetchMessages(currentConversation.id, isConversationInService(currentConversation)).then(() => {});
+  }, [fetchMessages, isConversationInService, messages, newMessage]);
+
+  useVisiblePolling(refreshActiveConversation, INBOX_ACTIVE_POLL_INTERVAL_MS, {
+    runImmediately: false,
+    runOnFocus: false,
+  });
 
   const handleAudioPlaybackChange = useCallback((messageId: string, isPlaying: boolean) => {
     if (isPlaying) {
