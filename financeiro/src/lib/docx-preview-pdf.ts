@@ -1,5 +1,7 @@
+interface PdfSafeMargins { topTwips: number; bottomTwips: number }
+
 /** Export only DOCX styles, never the app theme (html2canvas cannot parse lab/oklch). */
-export async function generateDocxPreviewPdf(preview: HTMLElement): Promise<Blob> {
+export async function generateDocxPreviewPdf(preview: HTMLElement, minimumMargins?: PdfSafeMargins): Promise<Blob> {
   const wrapper = preview.querySelector<HTMLElement>('.docx-preview-wrapper-wrapper');
   if (!wrapper?.querySelector('section.docx-preview-wrapper')) {
     throw new Error('A prévia do documento ainda não está pronta. Gere a prévia novamente.');
@@ -46,20 +48,29 @@ export async function generateDocxPreviewPdf(preview: HTMLElement): Promise<Blob
     const pages = target.querySelectorAll<HTMLElement>('section.docx-preview-wrapper');
     const pdf = await PDFDocument.create();
     for (const page of pages) {
-      const { width, height } = page.getBoundingClientRect();
-      if (!width || !height) throw new Error('Uma página do contrato está vazia. Gere a prévia novamente.');
+      const initialBounds = page.getBoundingClientRect();
+      if (!initialBounds.width || !initialBounds.height) throw new Error('Uma página do contrato está vazia. Gere a prévia novamente.');
       const style = target.defaultView!.getComputedStyle(page);
       // docx-preview expands sections without explicit Word breaks; min-height retains the paper size.
-      const paperHeight = parseFloat(style.minHeight) || height;
+      const paperHeight = parseFloat(style.minHeight) || initialBounds.height;
+      // Record VML positions before increasing the body clearance: the original page artwork stays fixed.
+      const pageWatermarks = centeredWordWatermarks(page, paperHeight);
+      if (minimumMargins) {
+        const twipsToPixels = 96 / 1440;
+        page.style.paddingTop = `${Math.max(parseFloat(style.paddingTop) || 0, minimumMargins.topTwips * twipsToPixels)}px`;
+        page.style.paddingBottom = `${Math.max(parseFloat(style.paddingBottom) || 0, minimumMargins.bottomTwips * twipsToPixels)}px`;
+      }
+      const { width } = page.getBoundingClientRect();
+      const adjustedStyle = target.defaultView!.getComputedStyle(page);
       const watermarks = [];
-      for (const watermark of centeredWordWatermarks(page, paperHeight)) {
+      for (const watermark of pageWatermarks) {
         const image = watermark.href.startsWith('data:image/png')
           ? await pdf.embedPng(watermark.href) : await pdf.embedJpg(watermark.href);
         watermarks.push({ ...watermark, image });
         watermark.element.style.visibility = 'hidden';
       }
       if (watermarks.length) page.style.backgroundColor = 'transparent';
-      const slices = getPageSlices(page, paperHeight, parseFloat(style.paddingTop) || 0, parseFloat(style.paddingBottom) || 0);
+      const slices = getPageSlices(page, paperHeight, parseFloat(adjustedStyle.paddingTop) || 0, parseFloat(adjustedStyle.paddingBottom) || 0);
       for (const slice of slices) {
         const canvas = await html2canvas(page, {
           scale: 2, useCORS: true, backgroundColor: watermarks.length ? null : '#ffffff', logging: false,

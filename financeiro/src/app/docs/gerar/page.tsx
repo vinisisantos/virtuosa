@@ -14,6 +14,12 @@ import {
   updateContractParagraphs,
   type EditableContractParagraph,
 } from '@/lib/docx-contract-editor';
+import {
+  historicalTemplateChanged,
+  loadHistoricalTemplate,
+  renderContractDocx,
+  type ContractTemplateSource,
+} from '@/lib/docx-contract-render';
 import { prepararCamposContrato } from '@/lib/contratos/prepararCamposContrato';
 import {
   MODELO_CONTRATO_SBC_VALIDADO,
@@ -24,6 +30,7 @@ import {
 interface DocField { tag: string; label: string; type: string; required: boolean; }
 interface Template { id: string; name: string; category: string; fileType?: string; fields: DocField[]; }
 interface GeneratedSnapshot { templateId: string; templateName: string; filledData: Record<string, string>; unit: string; }
+interface HistoricalDocument extends GeneratedSnapshot { id: string; createdAt: string; fileData: string | null; error?: string; }
 
 const MASKS: Record<string, (v: string) => string> = {
   cpf: (v) => v.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2').slice(0, 14),
@@ -67,6 +74,9 @@ export default function DocGerarPage() {
   const [saving, setSaving] = useState(false);
   const [savedDocumentId, setSavedDocumentId] = useState<string | null>(null);
   const [openedFromHistory, setOpenedFromHistory] = useState(false);
+  const [reconstructedFromHistory, setReconstructedFromHistory] = useState(false);
+  const [legacySourceChanged, setLegacySourceChanged] = useState(false);
+  const [legacyPending, setLegacyPending] = useState<{ document: HistoricalDocument; template: ContractTemplateSource } | null>(null);
   const [paragraphSearch, setParagraphSearch] = useState('');
   const [previewReady, setPreviewReady] = useState(false);
   const [previewError, setPreviewError] = useState('');
@@ -75,6 +85,34 @@ export default function DocGerarPage() {
   const downloadLock = useRef(false);
   const saveLock = useRef(false);
   const previewRef = useRef<HTMLDivElement>(null);
+
+  const openHistoricalDocument = useCallback(async (
+    saved: HistoricalDocument,
+    blob: Blob,
+    reconstructed: boolean,
+    modelChanged: boolean,
+    isCancelled: () => boolean = () => false,
+  ) => {
+    const editable = await editableContractParagraphs(blob);
+    if (isCancelled()) return;
+    setGeneratedBlob(blob);
+    setGeneratedSnapshot({
+      templateId: saved.templateId,
+      templateName: saved.templateName,
+      filledData: saved.filledData,
+      unit: saved.unit,
+    });
+    setParagraphs(editable);
+    setParagraphChanges({});
+    setSelectedTemplate(saved.templateId);
+    setSavedDocumentId(reconstructed ? null : saved.id);
+    setOpenedFromHistory(true);
+    setReconstructedFromHistory(reconstructed);
+    setLegacySourceChanged(modelChanged);
+    setLegacyPending(null);
+    setPreviewReady(false);
+    setStep('preview');
+  }, []);
 
   useEffect(() => {
     if (step !== 'preview' || !generatedBlob || !previewRef.current) return;
@@ -122,30 +160,41 @@ export default function DocGerarPage() {
     void (async () => {
       try {
         const response = await fetch(`/api/docs/generated/${encodeURIComponent(documentId)}`, { cache: 'no-store' });
-        const saved = await response.json();
+        const saved = await response.json() as HistoricalDocument;
         if (!response.ok) throw new Error(saved.error || 'Não foi possível abrir o documento.');
-        if (!saved.fileData) throw new Error('Esse registro antigo não possui arquivo para editar.');
-        const blob = base64DocumentBlob(saved.fileData);
-        const editable = await editableContractParagraphs(blob);
+        if (saved.fileData) {
+          await openHistoricalDocument(saved, base64DocumentBlob(saved.fileData), false, false, () => cancelled);
+          return;
+        }
+        const template = await loadHistoricalTemplate(saved);
         if (cancelled) return;
-        setGeneratedBlob(blob);
-        setGeneratedSnapshot({
-          templateId: saved.templateId,
-          templateName: saved.templateName,
-          filledData: saved.filledData,
-          unit: saved.unit,
-        });
-        setParagraphs(editable);
-        setSelectedTemplate(saved.templateId);
-        setSavedDocumentId(saved.id);
-        setOpenedFromHistory(true);
-        setStep('preview');
+        if (historicalTemplateChanged(saved, template)) {
+          setLegacyPending({ document: saved, template });
+          return;
+        }
+        const blob = await renderContractDocx(template.fileData, saved.filledData, saved.templateId);
+        await openHistoricalDocument(saved, blob, true, false, () => cancelled);
       } catch (error) {
         if (!cancelled) toast(error instanceof Error ? error.message : 'Não foi possível abrir o documento.', 'error');
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [openHistoricalDocument]);
+
+  const confirmLegacyReconstruction = async () => {
+    if (!legacyPending || generating) return;
+    setGenerating(true);
+    try {
+      setLayoutError('');
+      const { document, template } = legacyPending;
+      const blob = await renderContractDocx(template.fileData, document.filledData, document.templateId);
+      await openHistoricalDocument(document, blob, true, true);
+    } catch (error) {
+      setLayoutError(error instanceof Error ? error.message : 'Não foi possível reconstruir o contrato.');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const currentTemplate = useMemo(() => {
     const tpl = templates.find(t => t.id === selectedTemplate);
@@ -267,6 +316,9 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     setParagraphChanges({});
     setSavedDocumentId(null);
     setOpenedFromHistory(false);
+    setReconstructedFromHistory(false);
+    setLegacySourceChanged(false);
+    setLegacyPending(null);
     setLayoutError('');
     setStep('form');
   }, []);
@@ -306,30 +358,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       if (!tplRes.ok) { toast('Erro ao carregar template', 'error'); return; }
       const tpl = await tplRes.json();
 
-      const PizZip = (await import('pizzip')).default;
-      const Docxtemplater = (await import('docxtemplater')).default;
-
-      const binaryStr = atob(tpl.fileData);
-      const bytes = new Uint8Array(binaryStr.length);
-      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
-
-      const zip = new PizZip(bytes);
-      const doc = new Docxtemplater(zip, {
-        delimiters: { start: '{{', end: '}}' },
-        paragraphLoop: true,
-        linebreaks: protectedModel ? false : true,
-      });
-
-      doc.render(filledValues);
-
-      const outputBuf = doc.getZip().generate({ type: 'arraybuffer' });
-      if (protectedModel) {
-        await validarLayoutContrato(outputBuf);
-        await validarPartesProtegidasContrato(bytes, outputBuf);
-      }
-      const blob = new Blob([outputBuf], {
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      });
+      const blob = await renderContractDocx(tpl.fileData, filledValues, currentTemplate.id);
       const editable = await editableContractParagraphs(blob);
       setGeneratedBlob(blob);
       setGeneratedSnapshot({ templateId: currentTemplate.id, templateName: currentTemplate.name, filledData: filledValues, unit: globalUnit });
@@ -337,6 +366,8 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       setParagraphChanges({});
       setSavedDocumentId(null);
       setOpenedFromHistory(false);
+      setReconstructedFromHistory(false);
+      setLegacySourceChanged(false);
       setPreviewReady(false);
       setPreviewError('');
       setStep('preview');
@@ -391,6 +422,8 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       const saved = await response.json();
       if (!response.ok) throw new Error(saved.error || 'Não foi possível salvar o contrato.');
       setSavedDocumentId(saved.id);
+      setReconstructedFromHistory(false);
+      setLegacySourceChanged(false);
       toast('Contrato salvo no histórico. Você pode reabri-lo e baixar o arquivo.', 'success');
       return saved.id;
     } catch (error) {
@@ -415,13 +448,15 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
         await validarLayoutContrato(await generatedBlob.arrayBuffer());
       }
       const blob = format === 'pdf'
-        ? await generateDocxPreviewPdf(previewRef.current!)
+        ? await generateDocxPreviewPdf(previewRef.current!, generatedSnapshot.unit === 'SBC'
+          ? { topTwips: 1418, bottomTwips: 1134 }
+          : undefined)
         : generatedBlob;
       const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '_');
       downloadDocumentBlob(blob, `${generatedSnapshot.templateName} - ${dateStr}.${format}`);
       toast(format === 'pdf' ? 'PDF baixado com sucesso!' : 'Documento baixado com sucesso!', 'success');
       // O arquivo ainda deve ser entregue quando o histórico estiver indisponível.
-      if (!savedDocumentId) void saveDocument();
+      if (!savedDocumentId && !reconstructedFromHistory) void saveDocument();
     } catch (error) {
       console.error('Erro ao baixar documento', error);
       setLayoutError(error instanceof Error ? error.message : 'Erro ao baixar documento.');
@@ -494,6 +529,14 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
             </div>
           )}
 
+          {reconstructedFromHistory && (
+            <div role="status" style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 12, border: '1px solid #eab308', background: 'rgba(234,179,8,0.1)', color: 'var(--text-main)', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+              Este registro antigo não guardou o arquivo DOCX. {legacySourceChanged
+                ? 'O modelo mudou depois da geração: esta é uma nova versão baseada no modelo atual, não uma cópia exata do contrato original.'
+                : 'O documento foi reconstruído com os dados salvos e o modelo disponível.'} Revise o conteúdo antes de usar. O registro original permanece inalterado; salve esta versão se quiser mantê-la no histórico.
+            </div>
+          )}
+
           {/* Steps indicator */}
           {currentTemplate && (
             <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
@@ -503,7 +546,18 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
             </div>
           )}
 
-          {step === 'form' ? (
+          {legacyPending ? (
+            <div role="alert" style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid #eab308', padding: 24, lineHeight: 1.6, overflowWrap: 'anywhere' }}>
+              <h2 style={{ fontSize: '1.1rem', margin: '0 0 8px' }}>Este contrato antigo precisa ser recriado</h2>
+              <p style={{ margin: '0 0 16px' }}>O arquivo DOCX original não foi salvo e o modelo foi alterado depois da geração. Recriar com o modelo atual pode mudar cláusulas e formatação. O registro original não será substituído. Revise o resultado e salve como uma nova versão somente se estiver correto.</p>
+              <div className="doc-editor-actions">
+                <button type="button" onClick={() => void confirmLegacyReconstruction()} disabled={generating} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, cursor: 'pointer' }}>
+                  {generating ? 'Recriando...' : 'Criar nova versão com o modelo atual'}
+                </button>
+                <a href="/docs/historico" style={{ display: 'inline-flex', alignItems: 'center', minHeight: 44, padding: '10px 18px', borderRadius: 10, border: '1px solid var(--border)', color: 'var(--text-main)', textDecoration: 'none', fontWeight: 700 }}>Voltar ao histórico</a>
+              </div>
+            </div>
+          ) : step === 'form' ? (
             <>
               {/* Template Selection */}
               <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', padding: 24, marginBottom: 20 }}>
@@ -783,7 +837,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                 <div className="doc-editor-actions">
                   <button disabled={!!downloading || saving || !!savedDocumentId} onClick={() => void saveDocument()} style={{ padding: '10px 18px', borderRadius: 10, border: 'none', background: savedDocumentId ? 'rgba(16,185,129,0.12)' : 'var(--primary)', color: savedDocumentId ? '#10b981' : '#fff', fontWeight: 700, cursor: savedDocumentId ? 'default' : 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{savedDocumentId ? 'check_circle' : 'save'}</span>
-                    {saving ? 'Salvando...' : savedDocumentId ? 'Salvo no histórico' : 'Salvar contrato'}
+                    {saving ? 'Salvando...' : savedDocumentId ? 'Salvo no histórico' : reconstructedFromHistory ? 'Salvar nova versão' : 'Salvar contrato'}
                   </button>
                   <button disabled={!!downloading} onClick={() => handleDownload('docx')} style={{
                     padding: '10px 24px', borderRadius: 10, border: '1px solid var(--border)',

@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import puppeteer from 'puppeteer';
 import PizZip from 'pizzip';
+import Docxtemplater from 'docxtemplater';
 import { PDFDocument } from 'pdf-lib';
 import sharp from 'sharp';
 
@@ -76,7 +77,7 @@ async function assertBodyOutsideDecoration(file, pageCount, directory) {
   }
 }
 
-async function syntheticTemplate(format, flowing = false, withImage = false, fullPageImage = false) {
+async function syntheticTemplate(format, flowing = false, withImage = false, fullPageImage = false, legacyMargins = false) {
   const zip = new PizZip();
   zip.file('[Content_Types].xml', `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>${withImage || fullPageImage ? '<Default Extension="png" ContentType="image/png"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}</Types>`);
   zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
@@ -91,7 +92,7 @@ async function syntheticTemplate(format, flowing = false, withImage = false, ful
   const contractBody = flowing
     ? Array.from({ length: 55 }, (_, i) => para(`Cláusula contínua ${String(i + 1).padStart(2, '0')}: não há quebra manual no arquivo. Todas as linhas, acentos e condições devem aparecer integralmente no PDF.`)).join('')
     : `${Array.from({ length: 8 }, (_, i) => para(`Cláusula de teste ${i + 1}: o conteúdo desta primeira página deve permanecer legível e completo.`)).join('')}<w:p><w:r><w:br w:type="page"/></w:r></w:p>${para('PÁGINA 2 - CONTEÚDO FINAL DO TESTE')}${Array.from({ length: 8 }, (_, i) => para(`Condição de teste ${i + 1}: verificar a segunda página, os acentos e a preservação da formatação.`)).join('')}`;
-  zip.file('word/document.xml', `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${para('CONTRATO ESTETICISTA - TESTE SEM VALIDADE')}${para('{{razao_social_contratante}}')}${para('CNPJ {{cnpj_contratante}}')}${para('Texto de demonstração para conferir o download. Nenhuma contratação real.')}${contractBody}${para('FIM DO CONTRATO DE TESTE')}<w:sectPr>${withImage || fullPageImage ? '<w:headerReference w:type="default" r:id="rIdHeader"/>' : ''}<w:pgSz w:w="${size.width}" w:h="${size.height}"/><w:pgMar w:top="${fullPageImage ? 1418 : 1440}" w:right="${fullPageImage ? 720 : 1440}" w:bottom="${fullPageImage ? 1134 : 1440}" w:left="${fullPageImage ? 720 : 1440}" w:header="${fullPageImage ? 708 : 360}"${fullPageImage ? ' w:footer="708"' : ''}/></w:sectPr></w:body></w:document>`);
+  zip.file('word/document.xml', `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${para('CONTRATO ESTETICISTA - TESTE SEM VALIDADE')}${para('{{razao_social_contratante}}')}${para('CNPJ {{cnpj_contratante}}')}${para('Texto de demonstração para conferir o download. Nenhuma contratação real.')}${contractBody}${para('FIM DO CONTRATO DE TESTE')}<w:sectPr>${withImage || fullPageImage ? '<w:headerReference w:type="default" r:id="rIdHeader"/>' : ''}<w:pgSz w:w="${size.width}" w:h="${size.height}"/><w:pgMar w:top="${legacyMargins ? 720 : fullPageImage ? 1418 : 1440}" w:right="${fullPageImage ? 720 : 1440}" w:bottom="${legacyMargins ? 720 : fullPageImage ? 1134 : 1440}" w:left="${fullPageImage ? 720 : 1440}" w:header="${fullPageImage ? 708 : 360}"${fullPageImage ? ' w:footer="708"' : ''}/></w:sectPr></w:body></w:document>`);
   return {
     id: fullPageImage ? '3873f67b-1d99-4876-a5ec-7057cbff1e24' : 'synthetic-contract', name: 'CONTRATO ESTETICISTA TESTE', category: 'contrato_trabalho',
     fields: [
@@ -216,7 +217,7 @@ try {
     ...[390, 430, 1440].map(width => ({ width, theme: 'light', format: 'A4', flowing: true, fullPageImage: true })),
     ];
 
-  for (const scenario of scenarios.filter(scenario => !process.env.DOCS_UI_FLOW_ONLY || scenario.flowing)) {
+  for (const scenario of scenarios.filter(scenario => !process.env.DOCS_UI_LEGACY_ONLY && (!process.env.DOCS_UI_FLOW_ONLY || scenario.flowing))) {
     const { width, theme, format, failHistory, failConversion, flowing, withImage, fullPageImage } = scenario;
     const key = `${width}-${theme}-${format}${flowing ? '-flowing' : ''}${fullPageImage ? '-full-page' : ''}`;
     const downloadDir = await mkdtemp(join(output, `${key}-`));
@@ -383,6 +384,94 @@ try {
     console.log(JSON.stringify({ key, file, pages: pdf.getPageCount(), writes: writes.length, failHistory: Boolean(failHistory), retryAfterConversionError: Boolean(failConversion) }));
     if (process.env.DOCS_UI_TRACE) console.log(JSON.stringify(await page.evaluate(() => window.__docsUiEvents.filter(event => event.type === 'canvas-trace'))));
     await page.close();
+  }
+  if (!process.env.DOCS_UI_REPRO && !process.env.DOCS_UI_FLOW_ONLY) {
+    for (const width of [390, 430, 1440]) {
+      for (const modelChanged of [false, true]) {
+        const key = `legacy-${width}-${modelChanged ? 'changed' : 'unchanged'}`;
+        const downloadDir = await mkdtemp(join(output, `${key}-`));
+        const template = { ...await syntheticTemplate('A4', true, false, true, true), id: 'old-sbc-model', fileType: 'docx', updatedAt: modelChanged ? '2026-09-03T12:00:00.000Z' : '2026-09-01T12:00:00.000Z' };
+        const storedFile = width === 1440 && !modelChanged;
+        const oldDocument = {
+          id: 'old-document', templateId: template.id, templateName: template.name, unit: 'SBC',
+          createdAt: '2026-09-02T12:00:00.000Z', createdByName: 'Teste local',
+          filledData: { razao_social_contratante: 'CLINICA TESTE', cnpj_contratante: '63.246.385/0001-91' },
+          fileData: storedFile
+            ? new Docxtemplater(new PizZip(Buffer.from(template.fileData, 'base64')), { delimiters: { start: '{{', end: '}}' }, paragraphLoop: true, linebreaks: true })
+              .render({ razao_social_contratante: 'CLINICA TESTE', cnpj_contratante: '63.246.385/0001-91' }).getZip().generate({ type: 'base64' })
+            : null,
+        };
+        const user = { id: 'docs-test', name: 'Teste local', role: 'ADMINISTRADOR', unit: 'SCS', permissions: { admin: true } };
+        const page = await browser.newPage();
+        await page.setViewport({ width, height: 1000, isMobile: width < 600, hasTouch: width < 600 });
+        const client = await page.createCDPSession();
+        await client.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloadDir });
+        const writes = [];
+        const errors = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.setRequestInterception(true);
+        page.on('request', async request => {
+          const url = new URL(request.url());
+          if (url.pathname.startsWith('/api/')) {
+            let data = {}, status = 200;
+            if (url.pathname === '/api/auth/me') data = { authenticated: true, user };
+            if (url.pathname === '/api/docs/templates') data = [template];
+            if (url.pathname === `/api/docs/templates/${template.id}`) data = template;
+            if (url.pathname === '/api/docs/generated' && request.method() === 'GET') data = { documents: [oldDocument], total: 1 };
+            if (url.pathname === `/api/docs/generated/${oldDocument.id}`) data = oldDocument;
+            if (url.pathname === '/api/docs/generated' && request.method() === 'POST') {
+              writes.push(JSON.parse(request.postData()));
+              status = 201;
+              data = { id: 'new-version' };
+            }
+            await request.respond({ status, contentType: 'application/json', body: JSON.stringify(data) });
+          } else if (url.origin === origin) await request.continue();
+          else await request.abort();
+        });
+        await page.evaluateOnNewDocument(setupBrowserStorage, user, 'light');
+        await page.goto(`${origin}/docs/gerar?documentId=${oldDocument.id}`, { waitUntil: 'networkidle0', timeout: 60000 });
+        if (modelChanged) {
+          await page.waitForFunction(() => document.body.textContent.includes('O arquivo DOCX original não foi salvo'));
+          assert.equal(await page.$$('section.docx-preview-wrapper').then(pages => pages.length), 0, 'modelo alterado exige confirmação antes da prévia');
+          await click(page, 'Criar nova versão com o modelo atual');
+        }
+        await page.waitForFunction(() => [...document.querySelectorAll('section.docx-preview-wrapper')].some(section => section.textContent.includes('CLINICA TESTE')), { timeout: 60000 });
+        await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Baixar PDF') && !button.disabled));
+        assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `histórico sem overflow em ${key}`);
+        assert.equal(writes.length, 0, 'abrir registro antigo não salva nem substitui original');
+        await page.screenshot({ path: join(output, `${key}-preview.png`) });
+        await click(page, 'Baixar PDF');
+        const { pdf } = await downloadedPdf(downloadDir);
+        assert.ok(pdf.getPageCount() >= 3 && pdf.getPageCount() <= 6, 'PDF do contrato antigo longo preserva todas as páginas');
+        const downloaded = (await pdfFiles(downloadDir))[0];
+        await assertPinkOnEveryPage(join(downloadDir, downloaded), pdf.getPageCount(), downloadDir, 150);
+        await assertBodyOutsideDecoration(join(downloadDir, downloaded), pdf.getPageCount(), downloadDir);
+        assert.equal(writes.length, 0, 'baixar PDF reconstruído não altera o histórico sem consentimento');
+        if (!storedFile) {
+          await click(page, 'Salvar nova versão');
+          await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Salvo no histórico')));
+          assert.equal(writes.length, 1, 'salvamento explícito cria nova versão');
+          assert.match(writes[0].fileData, /^UEsDB/);
+        } else {
+          assert.equal(writes.length, 0, 'arquivo original salvo apenas gera novo PDF, sem duplicar registro');
+        }
+        if (width === 390 && !modelChanged) {
+          await page.goto(`${origin}/docs/historico`, { waitUntil: 'networkidle0', timeout: 60000 });
+          await page.waitForFunction(() => document.querySelector('button[aria-label^="Baixar"]'));
+          await page.evaluate(() => document.querySelector('button[aria-label^="Baixar"]').click());
+          let names = [];
+          for (let attempt = 0; attempt < 100; attempt++) {
+            names = await readdir(downloadDir);
+            if (names.some(name => name.endsWith(' - reconstruido.docx'))) break;
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+          assert.ok(names.some(name => name.endsWith(' - reconstruido.docx')), 'histórico baixa DOCX reconstruído sem alterar o original');
+        }
+        assert.deepEqual(errors, [], `sem erros inesperados em ${key}`);
+        console.log(JSON.stringify({ key, pages: pdf.getPageCount(), writes: writes.length }));
+        await page.close();
+      }
+    }
   }
   console.log(output);
 } finally {

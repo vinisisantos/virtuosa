@@ -7,6 +7,7 @@ import { useGlobalUnit } from '@/contexts/UnitContext';
 import { toast } from '@/components/toast';
 import { base64DocumentBlob } from '@/lib/docx-contract-editor';
 import { downloadDocumentBlob } from '@/lib/docx-preview-pdf';
+import { historicalTemplateChanged, loadHistoricalTemplate, renderContractDocx } from '@/lib/docx-contract-render';
 
 interface DocGenerated {
   id: string;
@@ -59,10 +60,17 @@ export default function DocHistoricoPage() {
       const response = await fetch(`/api/docs/generated/${encodeURIComponent(doc.id)}`, { cache: 'no-store' });
       const saved = await response.json();
       if (!response.ok) throw new Error(saved.error || 'Não foi possível abrir o arquivo.');
-      if (!saved.fileData) throw new Error('Este registro antigo não contém o arquivo. Gere uma nova versão para poder baixá-la.');
+      let file = saved.fileData ? base64DocumentBlob(saved.fileData) : null;
+      if (!file) {
+        const template = await loadHistoricalTemplate(saved);
+        if (historicalTemplateChanged(saved, template)) {
+          throw new Error('O modelo mudou depois da geração deste contrato. Abra “Editar ou baixar PDF” para revisar e criar uma nova versão antes de baixar.');
+        }
+        file = await renderContractDocx(template.fileData, saved.filledData, saved.templateId);
+      }
       const date = new Date(doc.createdAt).toLocaleDateString('pt-BR').replace(/\//g, '_');
-      downloadDocumentBlob(base64DocumentBlob(saved.fileData), `${doc.templateName} - ${date}.docx`);
-      toast('Contrato baixado com sucesso.', 'success');
+      downloadDocumentBlob(file, `${doc.templateName} - ${date}${saved.fileData ? '' : ' - reconstruido'}.docx`);
+      toast(saved.fileData ? 'Contrato baixado com sucesso.' : 'DOCX reconstruído. Revise o conteúdo antes de usar.', 'success');
     } catch (error) {
       toast(error instanceof Error ? error.message : 'Não foi possível baixar o contrato.', 'error');
     } finally {
