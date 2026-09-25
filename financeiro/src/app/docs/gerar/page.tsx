@@ -14,6 +14,12 @@ import {
   updateContractParagraphs,
   type EditableContractParagraph,
 } from '@/lib/docx-contract-editor';
+import { prepararCamposContrato } from '@/lib/contratos/prepararCamposContrato';
+import {
+  MODELO_CONTRATO_SBC_VALIDADO,
+  validarLayoutContrato,
+  validarPartesProtegidasContrato,
+} from '@/lib/contratos/validarLayoutContrato';
 
 interface DocField { tag: string; label: string; type: string; required: boolean; }
 interface Template { id: string; name: string; category: string; fileType?: string; fields: DocField[]; }
@@ -64,6 +70,7 @@ export default function DocGerarPage() {
   const [paragraphSearch, setParagraphSearch] = useState('');
   const [previewReady, setPreviewReady] = useState(false);
   const [previewError, setPreviewError] = useState('');
+  const [layoutError, setLayoutError] = useState('');
   const [downloading, setDownloading] = useState<'pdf' | 'docx' | null>(null);
   const downloadLock = useRef(false);
   const saveLock = useRef(false);
@@ -260,6 +267,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     setParagraphChanges({});
     setSavedDocumentId(null);
     setOpenedFromHistory(false);
+    setLayoutError('');
     setStep('form');
   }, []);
 
@@ -287,7 +295,12 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     if (!currentTemplate) return;
     setGenerating(true);
     try {
-      const filledValues = buildFilledValues();
+      setLayoutError('');
+      const rawValues = buildFilledValues();
+      const protectedModel = currentTemplate.id === MODELO_CONTRATO_SBC_VALIDADO;
+      const filledValues = protectedModel
+        ? prepararCamposContrato(currentTemplate.fields, rawValues)
+        : rawValues;
 
       const tplRes = await fetch(`/api/docs/templates/${currentTemplate.id}`);
       if (!tplRes.ok) { toast('Erro ao carregar template', 'error'); return; }
@@ -304,18 +317,23 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       const doc = new Docxtemplater(zip, {
         delimiters: { start: '{{', end: '}}' },
         paragraphLoop: true,
-        linebreaks: true,
+        linebreaks: protectedModel ? false : true,
       });
 
       doc.render(filledValues);
 
       const outputBuf = doc.getZip().generate({ type: 'arraybuffer' });
+      if (protectedModel) {
+        await validarLayoutContrato(outputBuf);
+        await validarPartesProtegidasContrato(bytes, outputBuf);
+      }
       const blob = new Blob([outputBuf], {
         type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       });
+      const editable = await editableContractParagraphs(blob);
       setGeneratedBlob(blob);
       setGeneratedSnapshot({ templateId: currentTemplate.id, templateName: currentTemplate.name, filledData: filledValues, unit: globalUnit });
-      setParagraphs(await editableContractParagraphs(blob));
+      setParagraphs(editable);
       setParagraphChanges({});
       setSavedDocumentId(null);
       setOpenedFromHistory(false);
@@ -324,7 +342,8 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       setStep('preview');
     } catch (e) {
       console.error(e);
-      toast('Erro ao gerar documento', 'error');
+      setLayoutError(e instanceof Error ? e.message : 'Erro ao gerar documento.');
+      toast('Não foi possível gerar o contrato. Confira o motivo indicado na tela.', 'error');
     } finally { setGenerating(false); }
   };
 
@@ -332,7 +351,13 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     if (!generatedBlob || applyingChanges) return;
     setApplyingChanges(true);
     try {
+      setLayoutError('');
       const updated = await updateContractParagraphs(generatedBlob, paragraphChanges);
+      if (generatedSnapshot?.templateId === MODELO_CONTRATO_SBC_VALIDADO) {
+        const [before, after] = await Promise.all([generatedBlob.arrayBuffer(), updated.arrayBuffer()]);
+        await validarLayoutContrato(after);
+        await validarPartesProtegidasContrato(before, after);
+      }
       setGeneratedBlob(updated);
       setParagraphs(await editableContractParagraphs(updated));
       if (Object.keys(paragraphChanges).length) setSavedDocumentId(null);
@@ -340,18 +365,23 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       setPreviewReady(false);
       setStep('preview');
     } catch (error) {
-      toast(error instanceof Error ? error.message : 'Não foi possível aplicar as edições.', 'error');
+      setLayoutError(error instanceof Error ? error.message : 'Não foi possível aplicar as edições.');
+      toast('Edição bloqueada. Confira o motivo indicado na tela.', 'error');
     } finally {
       setApplyingChanges(false);
     }
   };
 
-  const saveDocument = async (): Promise<boolean> => {
-    if (savedDocumentId) return true;
-    if (saveLock.current || !generatedBlob || !generatedSnapshot) return false;
+  const saveDocument = async (): Promise<string | null> => {
+    if (savedDocumentId) return savedDocumentId;
+    if (saveLock.current || !generatedBlob || !generatedSnapshot) return null;
     saveLock.current = true;
     setSaving(true);
     try {
+      setLayoutError('');
+      if (generatedSnapshot.templateId === MODELO_CONTRATO_SBC_VALIDADO) {
+        await validarLayoutContrato(await generatedBlob.arrayBuffer());
+      }
       const fileData = await documentBlobBase64(generatedBlob);
       const response = await fetch('/api/docs/generated', {
         method: 'POST',
@@ -362,10 +392,11 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       if (!response.ok) throw new Error(saved.error || 'Não foi possível salvar o contrato.');
       setSavedDocumentId(saved.id);
       toast('Contrato salvo no histórico. Você pode reabri-lo e baixar o arquivo.', 'success');
-      return true;
+      return saved.id;
     } catch (error) {
+      setLayoutError(error instanceof Error ? error.message : 'Não foi possível salvar no histórico.');
       toast(`Não foi possível salvar no histórico: ${error instanceof Error ? error.message : 'tente novamente.'}`, 'error');
-      return false;
+      return null;
     } finally {
       saveLock.current = false;
       setSaving(false);
@@ -374,11 +405,18 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
 
   const handleDownload = async (format: 'pdf' | 'docx') => {
     if (downloadLock.current || !generatedBlob || !generatedSnapshot) return;
+    const protectedModel = generatedSnapshot.templateId === MODELO_CONTRATO_SBC_VALIDADO;
     if (format === 'pdf' && (!previewReady || !previewRef.current)) return;
     downloadLock.current = true;
     setDownloading(format);
     try {
-      const blob = format === 'pdf' ? await generateDocxPreviewPdf(previewRef.current!) : generatedBlob;
+      setLayoutError('');
+      if (protectedModel) {
+        await validarLayoutContrato(await generatedBlob.arrayBuffer());
+      }
+      const blob = format === 'pdf'
+        ? await generateDocxPreviewPdf(previewRef.current!)
+        : generatedBlob;
       const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '_');
       downloadDocumentBlob(blob, `${generatedSnapshot.templateName} - ${dateStr}.${format}`);
       toast(format === 'pdf' ? 'PDF baixado com sucesso!' : 'Documento baixado com sucesso!', 'success');
@@ -386,6 +424,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       if (!savedDocumentId) void saveDocument();
     } catch (error) {
       console.error('Erro ao baixar documento', error);
+      setLayoutError(error instanceof Error ? error.message : 'Erro ao baixar documento.');
       toast(format === 'pdf' ? 'Erro ao gerar PDF. Os dados foram mantidos; tente novamente ou baixe o DOCX.' : 'Erro ao baixar documento. Tente novamente.', 'error');
     } finally {
       downloadLock.current = false;
@@ -443,6 +482,17 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
               </p>
             </div>
           </div>
+
+          {layoutError && (
+            <div role="alert" style={{
+              marginBottom: 20, padding: '14px 16px', borderRadius: 12,
+              border: '1px solid #fca5a5', background: 'rgba(239,68,68,0.08)',
+              color: 'var(--text-main)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+              fontSize: '0.85rem', lineHeight: 1.5,
+            }}>
+              {layoutError}
+            </div>
+          )}
 
           {/* Steps indicator */}
           {currentTemplate && (

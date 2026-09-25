@@ -1,5 +1,12 @@
 import { NextResponse } from 'next/server';
 import { prisma } from "@/lib/db";
+import { prepararCamposContrato, type CampoContrato } from '@/lib/contratos/prepararCamposContrato';
+import {
+  ContratoLayoutError,
+  MODELO_CONTRATO_SBC_VALIDADO,
+  validarLayoutContrato,
+  validarPartesProtegidasContrato,
+} from '@/lib/contratos/validarLayoutContrato';
 
 export async function GET(req: Request) {
   try {
@@ -81,6 +88,28 @@ export async function POST(req: Request) {
     }
     if (typeof unit !== 'string' || !unit.trim()) {
       return NextResponse.json({ error: 'Selecione a unidade do contrato.' }, { status: 400 });
+    }
+
+    if (templateId === MODELO_CONTRATO_SBC_VALIDADO) {
+      try {
+        const template = await prisma.docTemplate.findUnique({
+          where: { id: templateId },
+          select: { fileData: true, fields: true, unit: true },
+        });
+        if (!template || template.unit !== 'SBC' || unit !== 'SBC') {
+          return NextResponse.json({ error: 'Modelo e unidade SBC incompatíveis.' }, { status: 400 });
+        }
+        prepararCamposContrato(template.fields as unknown as CampoContrato[], filledData);
+        const generated = Buffer.from(fileData, 'base64');
+        await validarLayoutContrato(generated);
+        await validarPartesProtegidasContrato(Buffer.from(template.fileData, 'base64'), generated);
+      } catch (error) {
+        console.error('Contrato SBC bloqueado antes do salvamento:', error);
+        return NextResponse.json({
+          error: error instanceof Error ? error.message : 'O layout do contrato não pôde ser validado.',
+          violations: error instanceof ContratoLayoutError ? error.violations : undefined,
+        }, { status: 422 });
+      }
     }
 
     const doc = await prisma.docGenerated.create({
