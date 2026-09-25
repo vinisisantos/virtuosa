@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AppHeader } from '@/components/app-header';
 import AuthGuard from '@/components/auth-guard';
 import { useGlobalUnit } from '@/contexts/UnitContext';
@@ -18,6 +19,7 @@ interface DocTemplate {
   name: string;
   category: string;
   description: string | null;
+  fileType: string;
   fields: DocField[];
   unit: string | null;
   createdBy: string;
@@ -31,6 +33,7 @@ const CATEGORIES: Record<string, { label: string; icon: string; color: string }>
 };
 
 export default function DocModelosPage() {
+  const router = useRouter();
   const { globalUnit } = useGlobalUnit();
   const [templates, setTemplates] = useState<DocTemplate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,7 +52,7 @@ export default function DocModelosPage() {
   const fetchTemplates = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/docs/templates?unit=${globalUnit}`);
+      const res = await fetch(`/api/docs/templates?unit=${globalUnit}`, { cache: 'no-store' });
       if (res.ok) setTemplates(await res.json());
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
@@ -213,7 +216,8 @@ export default function DocModelosPage() {
                       </button>
                     </div>
                     {t.description && <p style={{ color: 'var(--text-muted)', fontSize: '0.88rem', margin: '0 0 16px', lineHeight: 1.4 }}>{t.description}</p>}
-                    <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                         <span className="material-symbols-outlined" style={{ fontSize: 16 }}>input</span>
                         {(t.fields as DocField[]).length} campo(s)
@@ -222,6 +226,12 @@ export default function DocModelosPage() {
                         <span className="material-symbols-outlined" style={{ fontSize: 16 }}>calendar_today</span>
                         {new Date(t.createdAt).toLocaleDateString('pt-BR')}
                       </div>
+                      </div>
+                      {t.fileType === 'docx' && t.category === 'contrato_trabalho' && (
+                        <button onClick={() => router.push(`/docs/modelos/${encodeURIComponent(t.id)}`)} style={{ minHeight: 44, padding: '8px 12px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-main)', cursor: 'pointer', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit</span>Editar modelo
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

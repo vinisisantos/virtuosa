@@ -11,8 +11,12 @@ import {
   base64DocumentBlob,
   documentBlobBase64,
   editableContractParagraphs,
+  readContractMargins,
+  updateContractMarginGuides,
+  updateContractMargins,
   updateContractParagraphs,
   type EditableContractParagraph,
+  type ContractMargins,
 } from '@/lib/docx-contract-editor';
 import {
   historicalTemplateChanged,
@@ -70,6 +74,8 @@ export default function DocGerarPage() {
   const [generatedSnapshot, setGeneratedSnapshot] = useState<GeneratedSnapshot | null>(null);
   const [paragraphs, setParagraphs] = useState<EditableContractParagraph[]>([]);
   const [paragraphChanges, setParagraphChanges] = useState<Record<number, string>>({});
+  const [contractMargins, setContractMargins] = useState<ContractMargins | null>(null);
+  const [marginDraft, setMarginDraft] = useState<ContractMargins | null>(null);
   const [applyingChanges, setApplyingChanges] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedDocumentId, setSavedDocumentId] = useState<string | null>(null);
@@ -94,6 +100,7 @@ export default function DocGerarPage() {
     isCancelled: () => boolean = () => false,
   ) => {
     const editable = await editableContractParagraphs(blob);
+    const margins = await readContractMargins(blob);
     if (isCancelled()) return;
     setGeneratedBlob(blob);
     setGeneratedSnapshot({
@@ -104,6 +111,8 @@ export default function DocGerarPage() {
     });
     setParagraphs(editable);
     setParagraphChanges({});
+    setContractMargins(margins);
+    setMarginDraft(margins);
     setSelectedTemplate(saved.templateId);
     setSavedDocumentId(reconstructed ? null : saved.id);
     setOpenedFromHistory(true);
@@ -115,7 +124,7 @@ export default function DocGerarPage() {
   }, []);
 
   useEffect(() => {
-    if (step !== 'preview' || !generatedBlob || !previewRef.current) return;
+    if ((step !== 'preview' && step !== 'edit') || !generatedBlob || !previewRef.current) return;
     let cancelled = false;
     const container = previewRef.current;
     container.replaceChildren();
@@ -143,10 +152,14 @@ export default function DocGerarPage() {
   }, [generatedBlob, step]);
 
   useEffect(() => {
+    updateContractMarginGuides(previewRef.current, step === 'edit' ? marginDraft : null);
+  }, [step, marginDraft, previewReady]);
+
+  useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/docs/templates?unit=${globalUnit}`);
+        const res = await fetch(`/api/docs/templates?unit=${globalUnit}`, { cache: 'no-store' });
         if (res.ok) setTemplates(await res.json());
       } catch (e) { console.error(e); }
       finally { setLoading(false); }
@@ -354,16 +367,19 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
         ? prepararCamposContrato(currentTemplate.fields, rawValues)
         : rawValues;
 
-      const tplRes = await fetch(`/api/docs/templates/${currentTemplate.id}`);
+      const tplRes = await fetch(`/api/docs/templates/${currentTemplate.id}`, { cache: 'no-store' });
       if (!tplRes.ok) { toast('Erro ao carregar template', 'error'); return; }
       const tpl = await tplRes.json();
 
       const blob = await renderContractDocx(tpl.fileData, filledValues, currentTemplate.id);
       const editable = await editableContractParagraphs(blob);
+      const margins = await readContractMargins(blob);
       setGeneratedBlob(blob);
       setGeneratedSnapshot({ templateId: currentTemplate.id, templateName: currentTemplate.name, filledData: filledValues, unit: globalUnit });
       setParagraphs(editable);
       setParagraphChanges({});
+      setContractMargins(margins);
+      setMarginDraft(margins);
       setSavedDocumentId(null);
       setOpenedFromHistory(false);
       setReconstructedFromHistory(false);
@@ -383,7 +399,10 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     setApplyingChanges(true);
     try {
       setLayoutError('');
-      const updated = await updateContractParagraphs(generatedBlob, paragraphChanges);
+      const marginsChanged = !!marginDraft && !!contractMargins &&
+        (['top', 'bottom', 'left', 'right'] as const).some(key => marginDraft[key] !== contractMargins[key]);
+      let updated = await updateContractParagraphs(generatedBlob, paragraphChanges);
+      if (marginsChanged && marginDraft) updated = await updateContractMargins(updated, marginDraft);
       if (generatedSnapshot?.templateId === MODELO_CONTRATO_SBC_VALIDADO) {
         const [before, after] = await Promise.all([generatedBlob.arrayBuffer(), updated.arrayBuffer()]);
         await validarLayoutContrato(after);
@@ -391,7 +410,8 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
       }
       setGeneratedBlob(updated);
       setParagraphs(await editableContractParagraphs(updated));
-      if (Object.keys(paragraphChanges).length) setSavedDocumentId(null);
+      if (marginsChanged && marginDraft) setContractMargins(marginDraft);
+      if (Object.keys(paragraphChanges).length || marginsChanged) setSavedDocumentId(null);
       setParagraphChanges({});
       setPreviewReady(false);
       setStep('preview');
@@ -448,9 +468,7 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
         await validarLayoutContrato(await generatedBlob.arrayBuffer());
       }
       const blob = format === 'pdf'
-        ? await generateDocxPreviewPdf(previewRef.current!, generatedSnapshot.unit === 'SBC'
-          ? { topTwips: 1418, bottomTwips: 1134 }
-          : undefined)
+        ? await generateDocxPreviewPdf(previewRef.current!)
         : generatedBlob;
       const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '_');
       downloadDocumentBlob(blob, `${generatedSnapshot.templateName} - ${dateStr}.${format}`);
@@ -778,8 +796,8 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
               <div className="doc-editor-toolbar" style={{ position: 'sticky', top: 70, zIndex: 10, padding: 18, borderRadius: 14, background: 'var(--card-bg)', border: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                   <div>
-                    <strong>Editar texto do contrato</strong>
-                    <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Cada caixa representa um parágrafo do arquivo. Os trechos que você não alterar mantêm a formatação original.</p>
+                    <strong>Editar contrato e margens</strong>
+                    <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Edite os parágrafos e ajuste as margens. A linha magenta indica a área útil; um parágrafo alterado usa o estilo do primeiro trecho.</p>
                   </div>
                   <div className="doc-editor-actions">
                     <button onClick={() => { setParagraphChanges({}); setStep('preview'); }} disabled={applyingChanges} style={{ padding: '10px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer' }}>Cancelar</button>
@@ -788,6 +806,38 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                     </button>
                   </div>
                 </div>
+              </div>
+              {marginDraft && (
+                <section style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px clamp(14px, 4vw, 24px)' }}>
+                  <h2 style={{ fontSize: '1rem', margin: '0 0 12px' }}>Margens da página (mm)</h2>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
+                    {([
+                      ['top', 'Superior', 15, 80],
+                      ['bottom', 'Inferior', 15, 80],
+                      ['left', 'Esquerda', 10, 55],
+                      ['right', 'Direita', 10, 55],
+                    ] as const).map(([key, label, min, max]) => (
+                      <label key={key} style={{ display: 'grid', gap: 6, fontSize: '0.82rem', fontWeight: 700 }}>
+                        {label}
+                        <input
+                          type="number"
+                          min={min}
+                          max={max}
+                          step="0.5"
+                          value={marginDraft[key]}
+                          onChange={event => setMarginDraft(current => current ? { ...current, [key]: Number(event.target.value) } : current)}
+                          style={{ ...inputStyle, padding: '10px 12px' }}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <p style={{ margin: '10px 0 0', color: 'var(--text-muted)', fontSize: '0.78rem', lineHeight: 1.45 }}>
+                    Área mínima para o texto: 100 mm de largura e 120 mm de altura. Clique em “Aplicar e conferir” para atualizar a página.
+                  </p>
+                </section>
+              )}
+              <div style={{ background: '#e8e8e8', borderRadius: 14, border: '1px solid var(--border)', maxHeight: '75vh', overflow: 'auto', padding: '16px 0' }}>
+                <div ref={previewRef} style={{ maxWidth: '100%', overflow: 'auto' }} />
               </div>
               <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px clamp(14px, 4vw, 24px)' }}>
                 <label htmlFor="contract-paragraph-search" style={{ display: 'block', fontWeight: 700, marginBottom: 8 }}>Localizar trecho</label>
@@ -829,8 +879,8 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
                   <span className="material-symbols-outlined" style={{ fontSize: 18 }}>arrow_back</span>
                   Editar dados
                 </button>}
-                <button disabled={!!downloading || saving} onClick={() => setStep('edit')} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit_document</span>Editar texto
+                <button disabled={!!downloading || saving} onClick={() => { setMarginDraft(contractMargins); setStep('edit'); }} style={{ padding: '10px 18px', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-main)', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 18 }}>edit_document</span>Editar texto e margens
                 </button>
                 </div>
 

@@ -5,6 +5,7 @@ import {
   ContratoLayoutError,
   validarLayoutContrato,
   validarPartesProtegidasContrato,
+  validarTagsContrato,
 } from '../src/lib/contratos/validarLayoutContrato.ts';
 import {
   prepararCamposContrato,
@@ -30,13 +31,46 @@ test('modelo válido passa, inclusive partes protegidas iguais', async () => {
   await validarPartesProtegidasContrato(document, document);
 });
 
-test('margem alterada falha e informa o valor incorreto', async () => {
+test('margens editáveis dentro da faixa segura passam na validação', async () => {
+  const document = await fixture(undefined, SECTION
+    .replace('w:top="1418"', 'w:top="850"')
+    .replace('w:bottom="1134"', 'w:bottom="4535"')
+    .replace('w:left="720"', 'w:left="567"')
+    .replace('w:right="720"', 'w:right="3118"'));
+  await validarLayoutContrato(document);
+});
+
+test('margem fora da faixa segura falha e informa o intervalo permitido', async () => {
   const document = await fixture(undefined, SECTION.replace('w:top="1418"', 'w:top="720"'));
   await assert.rejects(validarLayoutContrato(document), (error) => {
     assert.ok(error instanceof ContratoLayoutError);
-    assert.match(error.message, /pgMar top=720; esperado 1418/);
+    assert.match(error.message, /pgMar top=720; permitido de 850 a 4535 twips/);
     return true;
   });
+});
+
+test('alterar apenas margens passa na comparação das partes protegidas', async () => {
+  const original = await fixture();
+  const changed = new JSZip();
+  await changed.loadAsync(original);
+  changed.file('word/document.xml', (await changed.file('word/document.xml').async('string'))
+    .replace('w:left="720"', 'w:left="1701"'));
+  await validarPartesProtegidasContrato(original, await changed.generateAsync({ type: 'uint8array' }));
+});
+
+test('comparação de tags recompõe marcadores separados em runs do Word', async () => {
+  const splitTag = '<w:p><w:r><w:t>Contrato {{nome_</w:t></w:r><w:r><w:t>contratada}}</w:t></w:r></w:p>';
+  const original = await fixture(splitTag);
+  await validarTagsContrato(original, original);
+
+  const changed = new JSZip();
+  await changed.loadAsync(original);
+  const xml = await changed.file('word/document.xml').async('string');
+  changed.file('word/document.xml', xml.replace('{{nome_', '{{cpf_'));
+  await assert.rejects(
+    validarTagsContrato(original, await changed.generateAsync({ type: 'uint8array' })),
+    /tags \{\{\.\.\.\}\} do contrato foram alteradas/,
+  );
 });
 
 test('recuo negativo e hanging maior que left falham', async () => {

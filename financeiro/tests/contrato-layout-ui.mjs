@@ -22,6 +22,7 @@ try {
     const page = await browser.newPage();
     await page.setViewport({ width, height: 900, isMobile: width < 600, hasTouch: width < 600 });
     await page.evaluateOnNewDocument(() => {
+      window.__marginGuidesInPdf = [];
       const originalAnchorClick = HTMLAnchorElement.prototype.click;
       HTMLAnchorElement.prototype.click = function () {
         if (this.href.startsWith('blob:')) return;
@@ -31,6 +32,14 @@ try {
       URL.createObjectURL = blob => {
         if (blob?.type === 'application/pdf') window.__contractPdf = blob;
         return originalCreateObjectURL(blob);
+      };
+      const originalCanvasToDataURL = HTMLCanvasElement.prototype.toDataURL;
+      HTMLCanvasElement.prototype.toDataURL = function (...args) {
+        if (args[0] === 'image/png') {
+          const frame = document.querySelector('iframe[title="Exportação temporária do contrato"]');
+          window.__marginGuidesInPdf.push(frame?.contentDocument?.querySelectorAll('[data-contract-margin-guide]').length ?? -1);
+        }
+        return originalCanvasToDataURL.apply(this, args);
       };
       localStorage.setItem('virtuosa_user', JSON.stringify({ id: 'test', name: 'Teste', role: 'ADMINISTRADOR', unit: 'SBC', permissions: { admin: true } }));
       localStorage.setItem('virtuosa_global_unit', 'SBC');
@@ -68,6 +77,19 @@ try {
     await page.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent.includes('Gerar Preview')).click());
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Editar texto')));
     await page.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent.includes('Editar texto')).click());
+    const marginInput = 'input[type="number"]';
+    await page.waitForFunction(() => document.querySelectorAll('input[type="number"]').length === 4);
+    await page.$$eval(marginInput, inputs => {
+      const node = inputs[2];
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      setter.call(node, '30');
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await page.waitForFunction(() => [...document.querySelectorAll('input[type="number"]')].some(input => input.value === '30'));
+    await page.waitForFunction(() => document.querySelector('[data-contract-margin-guide]'));
+    assert.equal(await page.$$eval('[data-contract-margin-guide]', guides => guides.length), 1, 'linha de margem visível durante edição');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `editor de margens sem overflow em ${width}px`);
     await page.waitForSelector('textarea.doc-editor-textarea');
     await page.$eval('textarea.doc-editor-textarea', node => { node.value = 'Contrato para Pessoa Teste revisado.'; node.dispatchEvent(new Event('input', { bubbles: true })); });
     await page.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent.includes('Aplicar e conferir')).click());
@@ -77,9 +99,12 @@ try {
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Salvo no histórico')));
     assert.equal(writes.length, 1);
     await validarLayoutContrato(Buffer.from(writes[0].fileData, 'base64'));
+    const savedXml = new PizZip(Buffer.from(writes[0].fileData, 'base64')).file('word/document.xml').asText();
+    assert.match(savedXml, /w:left="1701"/, 'margem escolhida foi gravada no DOCX');
     await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.includes('Baixar PDF') && !button.disabled));
     await page.evaluate(() => [...document.querySelectorAll('button')].find(button => button.textContent.includes('Baixar PDF')).click());
     await page.waitForFunction(() => window.__contractPdf?.size > 0);
+    assert.ok(await page.evaluate(() => window.__marginGuidesInPdf.length > 0 && window.__marginGuidesInPdf.every(count => count === 0)), 'linha magenta da edição não é incorporada ao PDF');
     assert.ok(await page.evaluate(async () => {
       const bytes = new Uint8Array(await window.__contractPdf.arrayBuffer());
       return new TextDecoder().decode(bytes.slice(0, 4)) === '%PDF';

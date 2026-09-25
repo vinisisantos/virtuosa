@@ -33,7 +33,7 @@ export async function GET(req: Request) {
       orderBy: { createdAt: 'desc' },
     });
 
-    return NextResponse.json(templates);
+    return NextResponse.json(templates, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (error) {
     console.error('Error fetching templates:', error);
     return NextResponse.json(

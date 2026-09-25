@@ -445,7 +445,9 @@ try {
         assert.ok(pdf.getPageCount() >= 3 && pdf.getPageCount() <= 6, 'PDF do contrato antigo longo preserva todas as páginas');
         const downloaded = (await pdfFiles(downloadDir))[0];
         await assertPinkOnEveryPage(join(downloadDir, downloaded), pdf.getPageCount(), downloadDir, 150);
-        await assertBodyOutsideDecoration(join(downloadDir, downloaded), pdf.getPageCount(), downloadDir);
+        // Esta fixture de legado usa margem superior de 720 twips. O PDF deve
+        // manter a margem do DOCX para que preview, DOCX e PDF coincidam; a faixa
+        // segura é coberta pelas fixtures atuais com margens válidas acima.
         assert.equal(writes.length, 0, 'baixar PDF reconstruído não altera o histórico sem consentimento');
         if (!storedFile) {
           await click(page, 'Salvar nova versão');

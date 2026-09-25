@@ -1,7 +1,5 @@
-interface PdfSafeMargins { topTwips: number; bottomTwips: number }
-
 /** Export only DOCX styles, never the app theme (html2canvas cannot parse lab/oklch). */
-export async function generateDocxPreviewPdf(preview: HTMLElement, minimumMargins?: PdfSafeMargins): Promise<Blob> {
+export async function generateDocxPreviewPdf(preview: HTMLElement): Promise<Blob> {
   const wrapper = preview.querySelector<HTMLElement>('.docx-preview-wrapper-wrapper');
   if (!wrapper?.querySelector('section.docx-preview-wrapper')) {
     throw new Error('A prévia do documento ainda não está pronta. Gere a prévia novamente.');
@@ -42,6 +40,7 @@ export async function generateDocxPreviewPdf(preview: HTMLElement, minimumMargin
     `;
     target.head.appendChild(cleanStyle);
     target.body.appendChild(wrapper.cloneNode(true));
+    target.body.querySelectorAll('[data-contract-margin-guide]').forEach(element => element.remove());
     await withTimeout(target.fonts.ready, 15000);
     await Promise.all(Array.from(target.images, image => withTimeout(image.decode(), 15000)));
 
@@ -55,11 +54,6 @@ export async function generateDocxPreviewPdf(preview: HTMLElement, minimumMargin
       const paperHeight = parseFloat(style.minHeight) || initialBounds.height;
       // Record VML positions before increasing the body clearance: the original page artwork stays fixed.
       const pageWatermarks = centeredWordWatermarks(page, paperHeight);
-      if (minimumMargins) {
-        const twipsToPixels = 96 / 1440;
-        page.style.paddingTop = `${Math.max(parseFloat(style.paddingTop) || 0, minimumMargins.topTwips * twipsToPixels)}px`;
-        page.style.paddingBottom = `${Math.max(parseFloat(style.paddingBottom) || 0, minimumMargins.bottomTwips * twipsToPixels)}px`;
-      }
       const { width } = page.getBoundingClientRect();
       const adjustedStyle = target.defaultView!.getComputedStyle(page);
       const watermarks = [];

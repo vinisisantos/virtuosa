@@ -1,5 +1,5 @@
 import JSZip from 'jszip';
-import { DOMParser } from '@xmldom/xmldom';
+import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 
 const WORD_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const DRAWING_NS = 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing';
@@ -8,11 +8,11 @@ export const MODELO_CONTRATO_SBC_VALIDADO = '3873f67b-1d99-4876-a5ec-7057cbff1e2
 const MAX_CONTENT_WIDTH = 10_466;
 const MAX_IMAGE_WIDTH_EMU = MAX_CONTENT_WIDTH * 635;
 const EXPECTED_PAGE = { w: 11_906, h: 16_838 };
-const EXPECTED_MARGINS = {
-  top: 1_418,
-  bottom: 1_134,
-  left: 720,
-  right: 720,
+const SAFE_MARGINS = {
+  top: { min: 850, max: 4_535 },
+  bottom: { min: 850, max: 4_535 },
+  left: { min: 567, max: 3_118 },
+  right: { min: 567, max: 3_118 },
   header: 708,
   footer: 708,
 };
@@ -78,8 +78,32 @@ function checkSections(xml: Document, part: string, violations: string[]) {
   sections.forEach((section, index) => {
     const label = `seção ${index + 1}`;
     checkExpectedAttributes(child(section, 'pgSz'), EXPECTED_PAGE, `${label} pgSz`, part, violations);
-    checkExpectedAttributes(child(section, 'pgMar'), EXPECTED_MARGINS, `${label} pgMar`, part, violations);
+    checkPageMargins(child(section, 'pgMar'), `${label} pgMar`, part, violations);
   });
+}
+
+function checkPageMargins(
+  margins: Element | undefined,
+  label: string,
+  part: string,
+  violations: string[],
+) {
+  if (!margins) {
+    violations.push(`${part}: ${label} ausente.`);
+    return;
+  }
+  for (const name of ['top', 'bottom', 'left', 'right'] as const) {
+    const range = SAFE_MARGINS[name];
+    const value = numericAttribute(margins, name);
+    if (value === null || value < range.min || value > range.max) {
+      violations.push(`${part}: ${label} ${name}=${value ?? 'ausente/inválido'}; permitido de ${range.min} a ${range.max} twips.`);
+    }
+  }
+  for (const name of ['header', 'footer'] as const) {
+    const value = numericAttribute(margins, name);
+    const expected = SAFE_MARGINS[name];
+    if (value !== expected) violations.push(`${part}: ${label} ${name}=${value ?? 'ausente/inválido'}; esperado ${expected}.`);
+  }
 }
 
 function checkIndents(xml: Document, part: string, violations: string[]) {
@@ -172,6 +196,29 @@ export async function validarLayoutContrato(input: DocxInput): Promise<void> {
   if (violations.length) throw new ContratoLayoutError(violations);
 }
 
+async function mergeTags(input: DocxInput): Promise<string[]> {
+  const zip = await JSZip.loadAsync(input);
+  const document = zip.file('word/document.xml');
+  if (!document) throw new ContratoLayoutError(['word/document.xml ausente; não foi possível conferir as tags.']);
+  const violations: string[] = [];
+  const xml = parseXml(await document.async('string'), 'word/document.xml', violations);
+  if (!xml) throw new ContratoLayoutError(violations);
+
+  return elements(xml, 'p').flatMap((paragraph) => {
+    const text = Array.from(paragraph.getElementsByTagNameNS(WORD_NS, 't'))
+      .map((node) => node.textContent ?? '')
+      .join('');
+    return Array.from(text.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g), (match) => match[1].trim());
+  }).sort();
+}
+
+export async function validarTagsContrato(template: DocxInput, updated: DocxInput): Promise<void> {
+  const [before, after] = await Promise.all([mergeTags(template), mergeTags(updated)]);
+  if (JSON.stringify(before) !== JSON.stringify(after)) {
+    throw new ContratoLayoutError(['As tags {{...}} do contrato foram alteradas. Preserve todas as tags originais para manter as próximas gerações funcionando.']);
+  }
+}
+
 function protectedNames(zip: JSZip): string[] {
   return Object.keys(zip.files).filter((name) =>
     /^word\/(?:header[^/]*\.xml|footer[^/]*\.xml|media\/[^/]+)$/.test(name),
@@ -179,7 +226,12 @@ function protectedNames(zip: JSZip): string[] {
 }
 
 function sectionMarkup(documentXml: string): string[] {
-  return [...documentXml.matchAll(/<w:sectPr\b[\s\S]*?<\/w:sectPr>/g)].map((match) => match[0]);
+  const xml = new DOMParser().parseFromString(documentXml, 'application/xml');
+  return elements(xml, 'sectPr').map((section) => {
+    const clone = section.cloneNode(true) as Element;
+    elements(clone, 'pgMar').forEach((margins) => margins.parentNode?.removeChild(margins));
+    return new XMLSerializer().serializeToString(clone);
+  });
 }
 
 export async function validarPartesProtegidasContrato(template: DocxInput, generated: DocxInput): Promise<void> {
