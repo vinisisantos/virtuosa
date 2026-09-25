@@ -37,7 +37,7 @@ function solidPinkPng() {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', header), chunk('IDAT', deflateSync(Buffer.from([0, 255, 0, 128]))), chunk('IEND', Buffer.alloc(0))]);
 }
 
-async function assertPinkOnEveryPage(file, pageCount, directory) {
+async function assertPinkOnEveryPage(file, pageCount, directory, minPixels = 500) {
   const prefix = join(directory, 'watermark-render');
   await promisify(execFile)('pdftoppm', ['-scale-to', '600', '-png', file, prefix]);
   for (let page = 1; page <= pageCount; page++) {
@@ -46,28 +46,54 @@ async function assertPinkOnEveryPage(file, pageCount, directory) {
     for (let offset = 0; offset + 2 < rgb.length; offset += 3) {
       if (rgb[offset] > 230 && rgb[offset + 1] < 30 && rgb[offset + 2] > 100 && rgb[offset + 2] < 160) pixels++;
     }
-    assert.ok(pixels > 500, `folha ${page} contém a marca VML rosa visível, não ícone quebrado ou imagem coberta`);
+    assert.ok(pixels > minPixels, `folha ${page} contém a marca VML rosa visível, não ícone quebrado ou imagem coberta`);
   }
 }
 
-function syntheticTemplate(format, flowing = false, withImage = false) {
+async function fullPageDecorationPng() {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="794" height="1123">
+    <text x="35" y="61" fill="#ff0080" font-family="Arial" font-size="43">Virtuosa</text>
+    <path d="M250 70H760M35 1082H760" stroke="#ff0080" stroke-width="2"/>
+    <text x="300" y="1103" fill="#999" font-family="Arial" font-size="15">Unidade de teste</text>
+  </svg>`;
+  return sharp(Buffer.from(svg)).png().toBuffer();
+}
+
+async function assertBodyOutsideDecoration(file, pageCount, directory) {
+  const prefix = join(directory, 'layout-render');
+  await promisify(execFile)('pdftoppm', ['-scale-to', '900', '-png', file, prefix]);
+  for (let page = 1; page <= pageCount; page++) {
+    const { data, info } = await sharp(`${prefix}-${page}.png`).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    for (const [start, end] of [[0, 78], [845, info.height]]) {
+      for (let y = start; y < end; y++) {
+        for (let x = 0; x < info.width; x++) {
+          const offset = (y * info.width + x) * 3;
+          const [red, green, blue] = data.subarray(offset, offset + 3);
+          assert.ok(red > 95 || green > 95 || blue > 95, `texto escuro invadiu cabeçalho/rodapé na folha ${page}, posição ${x},${y}`);
+        }
+      }
+    }
+  }
+}
+
+async function syntheticTemplate(format, flowing = false, withImage = false, fullPageImage = false) {
   const zip = new PizZip();
-  zip.file('[Content_Types].xml', `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>${withImage ? '<Default Extension="png" ContentType="image/png"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}</Types>`);
+  zip.file('[Content_Types].xml', `<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>${withImage || fullPageImage ? '<Default Extension="png" ContentType="image/png"/><Override PartName="/word/header1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml"/>' : ''}</Types>`);
   zip.file('_rels/.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>');
   const para = text => `<w:p><w:r><w:rPr><w:rFonts w:ascii="Courier New"/><w:sz w:val="23"/></w:rPr><w:t xml:space="preserve">${text}</w:t></w:r></w:p>`;
   const size = formats[format];
-  if (withImage) {
-    zip.file('word/media/mark.png', solidPinkPng());
+  if (withImage || fullPageImage) {
+    zip.file('word/media/mark.png', fullPageImage ? await fullPageDecorationPng() : solidPinkPng());
     zip.file('word/_rels/document.xml.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdHeader" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/header" Target="header1.xml"/></Relationships>');
     zip.file('word/_rels/header1.xml.rels', '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdMark" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/mark.png"/></Relationships>');
-    zip.file('word/header1.xml', '<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:p><w:r><w:pict><v:shape id="SyntheticPinkMark" style="position:absolute;width:90pt;height:30pt;z-index:-1;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin"><v:imagedata r:id="rIdMark"/></v:shape></w:pict></w:r></w:p></w:hdr>');
+    zip.file('word/header1.xml', `<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:p><w:r><w:pict><v:shape id="SyntheticPinkMark" style="position:absolute;width:${fullPageImage ? '600.95pt;height:850pt' : '90pt;height:30pt'};z-index:-1;mso-position-horizontal:center;mso-position-horizontal-relative:margin;mso-position-vertical:center;mso-position-vertical-relative:margin"><v:imagedata r:id="rIdMark"/></v:shape></w:pict></w:r></w:p></w:hdr>`);
   }
   const contractBody = flowing
     ? Array.from({ length: 55 }, (_, i) => para(`Cláusula contínua ${String(i + 1).padStart(2, '0')}: não há quebra manual no arquivo. Todas as linhas, acentos e condições devem aparecer integralmente no PDF.`)).join('')
     : `${Array.from({ length: 8 }, (_, i) => para(`Cláusula de teste ${i + 1}: o conteúdo desta primeira página deve permanecer legível e completo.`)).join('')}<w:p><w:r><w:br w:type="page"/></w:r></w:p>${para('PÁGINA 2 - CONTEÚDO FINAL DO TESTE')}${Array.from({ length: 8 }, (_, i) => para(`Condição de teste ${i + 1}: verificar a segunda página, os acentos e a preservação da formatação.`)).join('')}`;
-  zip.file('word/document.xml', `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${para('CONTRATO ESTETICISTA - TESTE SEM VALIDADE')}${para('{{razao_social_contratante}}')}${para('CNPJ {{cnpj_contratante}}')}${para('Texto de demonstração para conferir o download. Nenhuma contratação real.')}${contractBody}${para('FIM DO CONTRATO DE TESTE')}<w:sectPr>${withImage ? '<w:headerReference w:type="default" r:id="rIdHeader"/>' : ''}<w:pgSz w:w="${size.width}" w:h="${size.height}"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440" w:header="360"/></w:sectPr></w:body></w:document>`);
+  zip.file('word/document.xml', `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body>${para('CONTRATO ESTETICISTA - TESTE SEM VALIDADE')}${para('{{razao_social_contratante}}')}${para('CNPJ {{cnpj_contratante}}')}${para('Texto de demonstração para conferir o download. Nenhuma contratação real.')}${contractBody}${para('FIM DO CONTRATO DE TESTE')}<w:sectPr>${withImage || fullPageImage ? '<w:headerReference w:type="default" r:id="rIdHeader"/>' : ''}<w:pgSz w:w="${size.width}" w:h="${size.height}"/><w:pgMar w:top="${fullPageImage ? 1418 : 1440}" w:right="${fullPageImage ? 720 : 1440}" w:bottom="${fullPageImage ? 1134 : 1440}" w:left="${fullPageImage ? 720 : 1440}" w:header="${fullPageImage ? 708 : 360}"${fullPageImage ? ' w:footer="708"' : ''}/></w:sectPr></w:body></w:document>`);
   return {
-    id: 'synthetic-contract', name: 'CONTRATO ESTETICISTA TESTE', category: 'contrato_trabalho',
+    id: fullPageImage ? '3873f67b-1d99-4876-a5ec-7057cbff1e24' : 'synthetic-contract', name: 'CONTRATO ESTETICISTA TESTE', category: 'contrato_trabalho',
     fields: [
       { tag: 'razao_social_contratante', label: 'Razão social contratante', type: 'text', required: true },
       { tag: 'cnpj_contratante', label: 'CNPJ contratante', type: 'cnpj', required: true },
@@ -187,13 +213,14 @@ try {
     }))),
     { width: 390, theme: 'dark', format: 'A4', flowing: true },
     { width: 1440, theme: 'light', format: 'A4', flowing: true },
+    ...[390, 430, 1440].map(width => ({ width, theme: 'light', format: 'A4', flowing: true, fullPageImage: true })),
     ];
 
   for (const scenario of scenarios.filter(scenario => !process.env.DOCS_UI_FLOW_ONLY || scenario.flowing)) {
-    const { width, theme, format, failHistory, failConversion, flowing, withImage } = scenario;
-    const key = `${width}-${theme}-${format}${flowing ? '-flowing' : ''}`;
+    const { width, theme, format, failHistory, failConversion, flowing, withImage, fullPageImage } = scenario;
+    const key = `${width}-${theme}-${format}${flowing ? '-flowing' : ''}${fullPageImage ? '-full-page' : ''}`;
     const downloadDir = await mkdtemp(join(output, `${key}-`));
-    const template = syntheticTemplate(format, flowing, withImage);
+    const template = await syntheticTemplate(format, flowing, withImage, fullPageImage);
     const page = await browser.newPage();
     await page.setViewport({ width, height: 1000, isMobile: width < 600, hasTouch: width < 600 });
     const client = await page.createCDPSession();
@@ -309,7 +336,8 @@ try {
         assert.ok(visibleMarkers.includes(String(clause).padStart(2, '0')), `cláusula ${clause} foi desenhada dentro de alguma folha`);
       }
     }
-    if (withImage) await assertPinkOnEveryPage(file, pdf.getPageCount(), downloadDir);
+    if (withImage || fullPageImage) await assertPinkOnEveryPage(file, pdf.getPageCount(), downloadDir, fullPageImage ? 150 : 500);
+    if (fullPageImage) await assertBodyOutsideDecoration(file, pdf.getPageCount(), downloadDir);
     assert.equal(writes.length, 1, 'cliques repetidos não duplicam registros');
     assert.equal(writes[0].path, '/api/docs/generated');
     assert.ok(writes[0].pdfReady, 'histórico só é registrado depois de disponibilizar o PDF');

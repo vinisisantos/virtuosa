@@ -117,8 +117,9 @@ function centeredWordWatermarks(page: HTMLElement, paperHeight: number) {
 function getPageSlices(page: HTMLElement, paperHeight: number, top: number, bottom: number) {
   const bounds = page.getBoundingClientRect();
   if (bounds.height <= paperHeight + 1) return [{ start: 0, height: Math.min(bounds.height, paperHeight), top: 0 }];
+  const body = page.querySelector<HTMLElement>(':scope > article') || page;
   const protectedLines: { top: number; bottom: number }[] = [];
-  const walker = page.ownerDocument.createTreeWalker(page, NodeFilter.SHOW_TEXT);
+  const walker = page.ownerDocument.createTreeWalker(body, NodeFilter.SHOW_TEXT);
   let node: Node | null;
   while ((node = walker.nextNode())) {
     if (!node.textContent?.trim()) continue;
@@ -128,7 +129,7 @@ function getPageSlices(page: HTMLElement, paperHeight: number, top: number, bott
       if (rect.height && rect.width) protectedLines.push({ top: rect.top - bounds.top, bottom: rect.bottom - bounds.top });
     }
   }
-  for (const image of page.querySelectorAll('img,svg,canvas')) {
+  for (const image of body.querySelectorAll('img,svg,canvas')) {
     const rect = image.getBoundingClientRect();
     // Word can render full-sheet decorations as oversized SVGs, which must be allowed to span pages.
     if (rect.height && rect.height <= paperHeight - top - bottom) {
@@ -136,7 +137,9 @@ function getPageSlices(page: HTMLElement, paperHeight: number, top: number, bott
     }
   }
   const slices: { start: number; height: number; top: number }[] = [];
-  const end = bounds.height - bottom;
+  // Fractional CSS pixels can put the last glyph a few thousandths beyond the
+  // nominal bottom margin. Round outward so the final line is never cut away.
+  const end = Math.ceil(Math.max(bounds.height - bottom, body.getBoundingClientRect().bottom - bounds.top));
   let start = 0;
   while (start < end) {
     const outputTop = slices.length ? top : 0;
