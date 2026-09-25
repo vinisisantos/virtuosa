@@ -63,6 +63,8 @@ function CandidateEditor({
   const [confirmed, setConfirmed] = useState(false);
   const [clinicalConfirmed, setClinicalConfirmed] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
+  const answerParagraphCount = content.answer.split(/\n\s*\n/).filter((paragraph) => paragraph.trim()).length;
+  const answerParagraphsMisaligned = content.questions.length > 1 && answerParagraphCount !== content.questions.length;
 
   const update = (field: keyof CandidateContent, value: string | boolean | string[]) => {
     setContent((current) => ({ ...current, [field]: value }));
@@ -124,14 +126,24 @@ function CandidateEditor({
           />
         </label>
         <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
-          Resposta aprendida
+          Resposta aprendida — um parágrafo por pergunta
           <textarea
             value={content.answer}
             onChange={(event) => update("answer", event.target.value)}
             disabled={candidate.status !== "pending"}
-            rows={3}
+            rows={Math.max(3, Math.min(content.questions.length * 2, 6))}
             className="min-h-24 resize-y rounded-xl border border-border bg-background px-3 py-2 text-sm font-normal text-foreground outline-none focus:border-primary disabled:opacity-100"
           />
+          <span className="font-normal leading-relaxed">
+            {content.questions.length > 1
+              ? `Escreva ${content.questions.length} parágrafos na mesma ordem das perguntas e deixe uma linha em branco entre eles.`
+              : "Se houver mais de uma forma de perguntar, mantenha uma resposta por parágrafo, na mesma ordem."}
+          </span>
+          {answerParagraphsMisaligned && (
+            <span role="status" className="font-normal leading-relaxed text-amber-700 dark:text-amber-300">
+              Esta resposta tem {answerParagraphCount} {answerParagraphCount === 1 ? "parágrafo" : "parágrafos"} para {content.questions.length} perguntas. Revise a separação antes de aprovar.
+            </span>
+          )}
         </label>
         <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
           Procedimento

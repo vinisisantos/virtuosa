@@ -62,6 +62,7 @@ Não responda ao cliente. Não invente, complete ou corrija com conhecimento pr�
 Não extraia nomes, telefones, documentos, links, datas, horários, preços individuais, vagas de agenda, diagnóstico, sintomas, medicamentos, prescrição, contraindicação individual ou orientação referente a uma pessoa específica.
 Não transforme cortesia, saudação, confirmação curta ou mensagem automática em conhecimento.
 Extraia a forma geral de conduzir: intenção/pergunta equivalente, resposta humana, procedimento e condições necessárias. Toda explicação sobre procedimento, indicação, pós-procedimento ou resultado é clinical=true e deve identificar o procedimento. Se houver dúvida, não extraia.
+Quando houver mais de uma pergunta em questions, organize answer em exatamente um parágrafo por pergunta, na mesma ordem, separando os parágrafos com uma linha em branco. Cada parágrafo deve responder à pergunta correspondente, sem títulos ou listas. Com uma única pergunta, use um único parágrafo.
 Datas e disponibilidade são dinâmicas: nunca as transforme em aprendizado. Conteúdo sem informação geral reutilizável deve retornar candidates vazio.
 Cada candidato deve citar somente sourceIds exatos das mensagens humanas que comprovam sua resposta.`;
 
