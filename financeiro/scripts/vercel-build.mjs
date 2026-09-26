@@ -44,6 +44,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260909120100_whatsapp_dispatch_index/migration.sql",
     "prisma/migrations/20260920180000_ai_learning_sbc/migration.sql",
     "prisma/migrations/20260920230000_ai_assistant_suggestions_sbc/migration.sql",
+    "prisma/migrations/20260925160000_ai_readiness_feedback/migration.sql",
     "prisma/migrations/20260922153000_whatsapp_inbound_postprocess_queue/migration.sql",
   ];
   for (const migration of requiredMigrations) {

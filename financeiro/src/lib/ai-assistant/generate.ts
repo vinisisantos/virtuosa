@@ -121,7 +121,17 @@ export async function generateConversationSuggestion(params: {
         history: history as Prisma.InputJsonValue,
       },
     });
-    await finishAiAssistantOperation(operation.id, usage);
+    await prisma.aiAssistantOperation.updateMany({
+      where: {
+        unit: "SBC",
+        kind: "suggestion",
+        draftId: draft.id,
+        draftVersion: { lt: draft.version },
+        draftOutcome: { in: ["pending", "inserted"] },
+      },
+      data: { draftOutcome: "superseded" },
+    });
+    await finishAiAssistantOperation(operation.id, usage, { id: draft.id, version: draft.version });
     return { draft, cached: false };
   } catch (error) {
     await failAiAssistantOperation(operation.id).catch(() => {});

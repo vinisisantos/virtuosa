@@ -1449,6 +1449,10 @@ model AiAssistantOperation {
   unit             String    @default("SBC")
   kind             String
   conversationId   String?
+  draftId          String?
+  draftVersion     Int?
+  draftOutcome     String?
+  draftWasEdited   Boolean?
   status           String    @default("running")
   reservedMicroUsd Int
   actualMicroUsd   Int?
@@ -1458,6 +1462,7 @@ model AiAssistantOperation {
   completedAt      DateTime?
 
   @@index([unit, createdAt, kind])
+  @@index([draftId, draftVersion], map: "AiAssistantOperation_draft_version_idx")
 }
 
 model WhatsAppCallbackAttempt {

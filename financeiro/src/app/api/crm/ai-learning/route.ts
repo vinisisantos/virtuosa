@@ -8,6 +8,8 @@ import {
   aiLearningDayKey,
   parseAiLearningConfig,
 } from "@/lib/ai-learning/policy";
+import { calculateAiReadiness } from "@/lib/ai-learning/readiness";
+import { AI_ASSISTANT_UNIT } from "@/lib/ai-assistant/policy";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +23,8 @@ export async function GET(req: NextRequest) {
     }
     const cursor = params.get("cursor") || undefined;
     const today = new Date(`${aiLearningDayKey()}T00:00:00-03:00`);
-    const [items, pending, approved, rejected, queued, failed, operations, setting] = await Promise.all([
+    const evaluatedSince = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+    const [items, pending, approved, rejected, queued, failed, operations, setting, suggestionOutcomes] = await Promise.all([
       prisma.aiLearningCandidate.findMany({
         where: { unit: AI_LEARNING_UNIT, status },
         select: {
@@ -59,9 +62,15 @@ export async function GET(req: NextRequest) {
         _count: { _all: true },
       }),
       prisma.appSetting.findUnique({ where: { key: AI_LEARNING_CONFIG_KEY }, select: { value: true } }),
+      prisma.aiAssistantOperation.groupBy({
+        by: ["status", "draftOutcome", "draftWasEdited"],
+        where: { unit: AI_ASSISTANT_UNIT, kind: "suggestion", createdAt: { gte: evaluatedSince } },
+        _count: { _all: true },
+      }),
     ]);
     const hasMore = items.length > 30;
     const visibleItems = hasMore ? items.slice(0, 30) : items;
+    const readiness = calculateAiReadiness({ approved, rejected, pending, operations: suggestionOutcomes, evaluatedSince });
     return NextResponse.json({
       items: visibleItems,
       nextCursor: hasMore ? visibleItems.at(-1)?.id || null : null,
@@ -76,6 +85,7 @@ export async function GET(req: NextRequest) {
         actualMicroUsdToday: operations._sum.actualMicroUsd || 0,
       },
       config: parseAiLearningConfig(setting?.value),
+      readiness,
     });
   } catch (error) {
     return aiLearningErrorResponse(error);

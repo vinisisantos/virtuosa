@@ -50,7 +50,11 @@ export async function reserveAiAssistantOperation(params: {
     });
   }, { timeout: 10_000 });
 }
-export async function finishAiAssistantOperation(id: string, usage: AiAssistantUsage) {
+export async function finishAiAssistantOperation(
+  id: string,
+  usage: AiAssistantUsage,
+  draft?: { id: string; version: number },
+) {
   await prisma.aiAssistantOperation.updateMany({
     where: { id, status: "running" },
     data: {
@@ -58,6 +62,11 @@ export async function finishAiAssistantOperation(id: string, usage: AiAssistantU
       actualMicroUsd: aiAssistantActualCost(usage.input, usage.output),
       usage,
       completedAt: new Date(),
+      ...(draft ? {
+        draftId: draft.id,
+        draftVersion: draft.version,
+        draftOutcome: "pending",
+      } : {}),
     },
   });
 }

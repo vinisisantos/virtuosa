@@ -40,7 +40,7 @@ type Props = {
   generationRequest?: { requestId: number; conversationId: string; targetMessageId: string } | null;
   onGenerationRequestHandled?: (requestId: number) => void;
   onModeChange: (mode: "manual" | "suggestions") => void;
-  onUseSuggestion: (content: string, draftId: string) => void;
+  onUseSuggestion: (content: string, draftId: string, draftVersion: number) => void;
 };
 
 function endpoint(scopeQuery: string, conversationId: string) {
@@ -234,11 +234,11 @@ export function AiAssistantComposer({
       const response = await fetch(apiUrl, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, action: "use", draftId: draft.id }),
+        body: JSON.stringify({ conversationId, action: "use", draftId: draft.id, draftVersion: draft.version }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "A sugestão não está mais disponível.");
-      onUseSuggestion(draft.content, draft.id);
+      onUseSuggestion(draft.content, draft.id, draft.version);
       setDraft((current) => current ? { ...current, status: "inserted" } : current);
       setMenuOpen(false);
     } catch (error) {
@@ -251,7 +251,7 @@ export function AiAssistantComposer({
     const response = await fetch(apiUrl, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conversationId, action: "discard", draftId: draft.id }),
+        body: JSON.stringify({ conversationId, action: "discard", draftId: draft.id, draftVersion: draft.version }),
     });
     if (response.ok) setDraft(null);
   }, [apiUrl, conversationId, draft]);

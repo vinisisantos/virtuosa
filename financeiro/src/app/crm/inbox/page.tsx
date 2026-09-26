@@ -3102,7 +3102,7 @@ export default function InboxPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [dispatchTarget, setDispatchTarget] = useState<DispatchSnapshot | null>(null);
   const [messageDrafts, setMessageDrafts] = useState<Record<string, string>>({});
-  const [aiAssistantDraftIds, setAiAssistantDraftIds] = useState<Record<string, string>>({});
+  const [aiAssistantDraftIds, setAiAssistantDraftIds] = useState<Record<string, { id: string; version: number }>>({});
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const selectedConversationId = selectedConv?.id || null;
   const newMessage = selectedConversationId ? messageDrafts[selectedConversationId] || "" : "";
@@ -5061,7 +5061,10 @@ export default function InboxPage() {
         type,
       };
       const aiAssistantDraftId = aiAssistantDraftIds[sendConversation.id];
-      if (aiAssistantDraftId && messageBody.trim()) payload.aiAssistantDraftId = aiAssistantDraftId;
+      if (aiAssistantDraftId && messageBody.trim()) {
+        payload.aiAssistantDraftId = aiAssistantDraftId.id;
+        payload.aiAssistantDraftVersion = aiAssistantDraftId.version;
+      }
       if (sendConversation.instanceId || targetInstanceId) {
         payload.instanceId = sendConversation.instanceId || targetInstanceId;
       } else if (targetUserId) {
@@ -8040,9 +8043,12 @@ export default function InboxPage() {
                   )));
                   setSelectedConv((current) => current?.id === selectedConv.id ? { ...current, aiMode: mode } : current);
                 }}
-                onUseSuggestion={(content, draftId) => {
+                onUseSuggestion={(content, draftId, draftVersion) => {
                   setNewMessage(content);
-                  setAiAssistantDraftIds((current) => ({ ...current, [selectedConv.id]: draftId }));
+                  setAiAssistantDraftIds((current) => ({
+                    ...current,
+                    [selectedConv.id]: { id: draftId, version: draftVersion },
+                  }));
                   window.requestAnimationFrame(() => textareaRef.current?.focus());
                 }}
               />

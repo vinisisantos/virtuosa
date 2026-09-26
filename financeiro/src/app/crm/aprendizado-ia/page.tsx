@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Check, Clock3, Loader2, ShieldCheck, X } from "lucide-react";
+import { BrainCircuit, Check, Clock3, Info, Loader2, ShieldCheck, X } from "lucide-react";
 import AuthGuard from "@/components/auth-guard";
 import { toast } from "@/components/toast";
+import type { AiReadinessSummary } from "@/lib/ai-learning/readiness";
 
 type CandidateContent = {
   topic: string;
@@ -39,6 +40,7 @@ type LearningResponse = {
     actualMicroUsdToday: number;
   };
   config: { enabled: boolean; activatedAt: string; dailyBudgetMicroUsd: number };
+  readiness: AiReadinessSummary;
 };
 
 const EMPTY_SUMMARY: LearningResponse["summary"] = {
@@ -194,10 +196,105 @@ function CandidateEditor({
   );
 }
 
+function ReadinessCard({ readiness }: { readiness: AiReadinessSummary }) {
+  const [hovered, setHovered] = useState(false);
+  const [opened, setOpened] = useState(false);
+  const tooltipVisible = hovered || opened;
+
+  return (
+    <section
+      className="relative z-20 mt-4 rounded-2xl border border-primary/25 bg-card p-4 shadow-sm sm:p-5"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-foreground">Prontidão estimada da IA</p>
+            <div
+              className="inline-flex"
+              onFocusCapture={() => setHovered(true)}
+              onBlurCapture={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHovered(false);
+              }}
+            >
+              <button
+                type="button"
+                aria-label="Ver condições usadas para calcular a prontidão"
+                aria-describedby="ai-readiness-conditions"
+                aria-expanded={tooltipVisible}
+                onClick={() => {
+                  setHovered(false);
+                  setOpened((current) => !current);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setHovered(false);
+                    setOpened(false);
+                  }
+                }}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                <Info className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">Sinais do aprendizado e das decisões humanas em SBC; a nota não libera atendimento autônomo.</p>
+          <div
+            className="mt-3 h-2.5 overflow-hidden rounded-full bg-muted"
+            role="progressbar"
+            aria-label="Prontidão estimada da IA"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={readiness.score}
+          >
+            <div className="h-full rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 transition-[width]" style={{ width: `${readiness.score}%` }} />
+          </div>
+          <p className="mt-2 text-xs font-semibold text-muted-foreground">{readiness.stage}</p>
+        </div>
+        <div className="flex items-center gap-3 sm:justify-end">
+          <p className="text-4xl font-bold tabular-nums text-foreground sm:text-5xl">{readiness.score}<span className="text-lg text-muted-foreground">/100</span></p>
+          <span className="max-w-36 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold leading-4 text-amber-800 dark:text-amber-300">
+            Agente autônomo bloqueado
+          </span>
+        </div>
+      </div>
+      <div
+        id="ai-readiness-conditions"
+        role="tooltip"
+        aria-hidden={!tooltipVisible}
+        className={`absolute left-3 top-12 z-30 max-h-[70vh] w-[min(420px,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border bg-card p-4 text-left shadow-2xl transition-opacity ${tooltipVisible ? "visible opacity-100" : "pointer-events-none invisible opacity-0"}`}
+      >
+        <p className="text-sm font-bold text-foreground">Como a nota é calculada</p>
+        <ul className="mt-3 grid gap-2.5">
+          {readiness.components.map((component) => (
+            <li key={component.key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 text-xs leading-5">
+              <span className="font-semibold text-foreground">{component.label}</span>
+              <span className="font-bold tabular-nums text-primary">{component.score}/{component.maximum} pontos</span>
+              <span className="col-span-2 text-muted-foreground">{component.formula}.</span>
+              <span className="col-span-2 text-muted-foreground">{component.evidence}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+          Faixas: até 9 decisões humanas, amostra insuficiente; 0–39, evidência inicial; 40–69, evidência em formação; 70–84, histórico consistente; 85–100, sinal forte para avaliação humana.
+        </p>
+        <p className="mt-3 border-t border-border pt-3 text-xs leading-5 text-muted-foreground">
+          Envio, descarte e edição são sinais de uso da equipe, não prova de que a resposta estava correta. O agente autônomo continua bloqueado: esta nota não o habilita.
+        </p>
+        <p className="mt-2 text-[11px] leading-4 text-muted-foreground">
+          As decisões de sugestões consideram os últimos 90 dias e só contam a partir da implantação deste indicador; aprendizados aprovados e revisados refletem a base atual.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export default function AiLearningPage() {
   const [status, setStatus] = useState<"pending" | "approved" | "rejected">("pending");
   const [items, setItems] = useState<Candidate[]>([]);
   const [summary, setSummary] = useState(EMPTY_SUMMARY);
+  const [readiness, setReadiness] = useState<AiReadinessSummary | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [dailyBudget, setDailyBudget] = useState(500_000);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -214,6 +311,7 @@ export default function AiLearningPage() {
       setItems((current) => append ? [...current, ...result.items] : result.items);
       setNextCursor(result.nextCursor);
       setSummary(result.summary);
+      setReadiness(result.readiness);
       setEnabled(result.config.enabled);
       setDailyBudget(result.config.dailyBudgetMicroUsd);
     } catch (error) {
@@ -248,6 +346,8 @@ export default function AiLearningPage() {
             </span>
           </div>
         </section>
+
+        {readiness && <ReadinessCard readiness={readiness} />}
 
         <section className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
           {[

@@ -210,6 +210,10 @@ export async function POST(req: Request) {
     const aiAssistantDraftId = typeof body.aiAssistantDraftId === "string"
       ? body.aiAssistantDraftId.trim().slice(0, 100)
       : "";
+    const aiAssistantDraftVersion = Number.isSafeInteger(body.aiAssistantDraftVersion)
+      && body.aiAssistantDraftVersion > 0
+      ? body.aiAssistantDraftVersion as number
+      : null;
     const claimConversation = body.claimConversation === true;
     const requireCallbackDue = body.requireCallbackDue === true;
     if (body.dispatch !== undefined && (!parseDispatchRequest(body.dispatch) || !conversationId || !claimConversation
@@ -840,11 +844,24 @@ export async function POST(req: Request) {
         if (receipt.count) savedMessage = { ...savedMessage, status: reportedStatus };
       }
       if (aiAssistantDraftId && messageData.body.trim()) {
-        await tx.aiAssistantDraft.updateMany({
+        const trackedDraft = aiAssistantDraftVersion
+          ? await tx.aiAssistantDraft.findFirst({
+            where: {
+              id: aiAssistantDraftId,
+              conversationId: conversation.id,
+              unit: "SBC",
+              version: aiAssistantDraftVersion,
+              status: { in: ["active", "inserted"] },
+            },
+            select: { id: true, version: true, content: true },
+          })
+          : null;
+        const updatedDraft = await tx.aiAssistantDraft.updateMany({
           where: {
             id: aiAssistantDraftId,
             conversationId: conversation.id,
             unit: "SBC",
+            ...(aiAssistantDraftVersion ? { version: aiAssistantDraftVersion } : {}),
             status: { in: ["active", "inserted"] },
           },
           data: {
@@ -855,6 +872,22 @@ export async function POST(req: Request) {
             editedContent: messageData.body,
           },
         });
+        if (trackedDraft && updatedDraft.count) {
+          const normalizeText = (value: string) => value.normalize("NFKC").trim().replace(/\s+/g, " ");
+          await tx.aiAssistantOperation.updateMany({
+            where: {
+              unit: "SBC",
+              kind: "suggestion",
+              draftId: trackedDraft.id,
+              draftVersion: trackedDraft.version,
+              draftOutcome: { in: ["pending", "inserted"] },
+            },
+            data: {
+              draftOutcome: "sent",
+              draftWasEdited: normalizeText(trackedDraft.content) !== normalizeText(messageData.body),
+            },
+          });
+        }
       }
       const attemptCounted = await recordOutboundForCallbackTracking(tx, conversation.id, sentAt, {
         messageId: savedMessage.id,

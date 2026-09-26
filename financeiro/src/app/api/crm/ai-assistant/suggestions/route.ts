@@ -128,18 +128,59 @@ export async function PATCH(req: NextRequest) {
       if (!draft || latestMessage?.id !== draft.sourceMessageId) {
         throw new AiAssistantError("A conversa mudou; gere uma nova sugestão", 409);
       }
-      const updated = await prisma.aiAssistantDraft.updateMany({
-        where: { id: draftId, conversationId, status: { in: ["active", "inserted"] } },
-        data: { status: "inserted", usedBy: user.userId, usedAt: new Date() },
+      if (Number.isSafeInteger(input.draftVersion) && input.draftVersion !== draft.version) {
+        throw new AiAssistantError("A sugestão mudou; gere outra", 409);
+      }
+      await prisma.$transaction(async (tx) => {
+        const updated = await tx.aiAssistantDraft.updateMany({
+          where: { id: draftId, conversationId, version: draft.version, status: { in: ["active", "inserted"] } },
+          data: { status: "inserted", usedBy: user.userId, usedAt: new Date() },
+        });
+        if (!updated.count) throw new AiAssistantError("A sugestão mudou; gere outra", 409);
+        await tx.aiAssistantOperation.updateMany({
+          where: {
+            unit: "SBC",
+            kind: "suggestion",
+            draftId,
+            draftVersion: draft.version,
+            draftOutcome: { in: ["pending", "inserted"] },
+          },
+          data: { draftOutcome: "inserted" },
+        });
       });
-      if (!updated.count) throw new AiAssistantError("A sugestão mudou; gere outra", 409);
       return NextResponse.json({ success: true });
     }
     if (input.action === "discard") {
-      await prisma.aiAssistantDraft.updateMany({
-        where: { id: draftId, conversationId, status: { in: ["active", "inserted"] } },
-        data: { status: "discarded", usedBy: user.userId, usedAt: new Date() },
+      const requestedVersion = Number.isSafeInteger(input.draftVersion) ? input.draftVersion as number : undefined;
+      const draft = await prisma.aiAssistantDraft.findFirst({
+        where: {
+          id: draftId,
+          conversationId,
+          status: { in: ["active", "inserted"] },
+          ...(requestedVersion !== undefined ? { version: requestedVersion } : {}),
+        },
+        select: { version: true },
       });
+      if (draft) {
+        await prisma.$transaction(async (tx) => {
+          const updated = await tx.aiAssistantDraft.updateMany({
+            where: { id: draftId, conversationId, version: draft.version, status: { in: ["active", "inserted"] } },
+            data: { status: "discarded", usedBy: user.userId, usedAt: new Date() },
+          });
+          if (updated.count) {
+            await tx.aiAssistantOperation.updateMany({
+              where: {
+                unit: "SBC",
+                kind: "suggestion",
+                draftId,
+                draftVersion: draft.version,
+                draftOutcome: { in: ["pending", "inserted"] },
+              },
+              data: { draftOutcome: "discarded", draftWasEdited: false },
+            });
+          }
+        });
+      }
       return NextResponse.json({ success: true });
     }
     throw new AiAssistantError("Ação inválida");
