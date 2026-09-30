@@ -35,6 +35,8 @@ const exactAdCases = [
   ["Osasco", "120252124600900494", "Glúteo Perfeito"],
   ["Osasco", "120247984330170494", "Barriga Trincada"],
   ["Osasco", "120253010502850494", GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME],
+  ["Osasco", "120253025931420494", "Emagreça 2 KG"],
+  ["Osasco", "120253026004450494", "Gordura Localizada"],
   ["SBC", "120249304650490006", "Glúteo Perfeito"],
   ["SBC", "120247237450560077", "Glúteo Perfeito"],
   ["SBC", "120247237187760077", "Harmonização de Glúteos"],
@@ -100,6 +102,21 @@ test("reconhece o ID 120ml de Osasco nos dois links dos leads sem classificaçã
   for (const sourceUrl of ["https://www.instagram.com/p/Dd2nYsMgN2q/", "https://fb.me/6s7CAkJL8"]) {
     assert.equal(campaignNameFromMetaSignals("120253010502850494", sourceUrl, "Osasco"), GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME);
   }
+});
+
+test("novos anúncios corporais de Osasco prevalecem sobre nome genérico da campanha pai", () => {
+  for (const [id, name] of [
+    ["120253025931420494", "Emagreça 2 KG"],
+    ["120253026004450494", "Gordura Localizada"],
+  ]) {
+    assert.equal(campaignNameFromMetaAdAndTrackSignals(id, "120250320730490006", null, "Osasco"), name);
+    assert.equal(campaignNameFromMetaAdAndTrackSignals(null, id, null, "Osasco"), name);
+    assert.equal(campaignNameFromMetaSignals(id, null, " osasco "), name);
+    for (const unit of ["SBC", "SCS", "Todas", null]) {
+      assert.equal(campaignNameFromMetaSignals(id, null, unit), null);
+    }
+  }
+  assert.equal(campaignNameFromMetaSignals("120250320730490006", null, "Osasco"), null);
 });
 
 test("IDs novos não são inventados quando a entrada contém somente texto", () => {
