@@ -33,6 +33,8 @@ const exactAdCases = [
   ["Osasco", "120251954010740494", "Harmonização de Glúteos"],
   ["Osasco", "120249321848920006", "Harmonização de Glúteos"],
   ["Osasco", "120252124600900494", "Glúteo Perfeito"],
+  ["Osasco", "120247984330170494", "Barriga Trincada"],
+  ["Osasco", "120253010502850494", GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME],
   ["SBC", "120249304650490006", "Glúteo Perfeito"],
   ["SBC", "120247237450560077", "Glúteo Perfeito"],
   ["SBC", "120247237187760077", "Harmonização de Glúteos"],
@@ -76,6 +78,27 @@ test("novos IDs de SBC permanecem isolados e funcionam como anúncio ou sinal de
     for (const unit of ["Osasco", "SCS", "Barueri", null]) {
       assert.equal(campaignNameFromMetaSignals(id, null, unit), null, `${unit}: ${id}`);
     }
+  }
+});
+
+test("IDs confirmados de Osasco funcionam como anúncio ou campanha sem propagar para outras unidades", () => {
+  for (const [id, name] of [
+    ["120247984330170494", "Barriga Trincada"],
+    ["120252124600900494", "Glúteo Perfeito"],
+    ["120253010502850494", GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME],
+  ]) {
+    assert.equal(campaignNameFromMetaAdAndTrackSignals(id, "campanha-generica", null, "Osasco"), name);
+    assert.equal(campaignNameFromMetaAdAndTrackSignals(null, id, null, "Osasco"), name);
+    assert.equal(campaignNameFromMetaSignals(id, null, " osasco "), name);
+    for (const unit of ["SBC", "SCS", "Barueri", null]) {
+      assert.equal(campaignNameFromMetaSignals(id, null, unit), null, `${unit}: ${id}`);
+    }
+  }
+});
+
+test("reconhece o ID 120ml de Osasco nos dois links dos leads sem classificação", () => {
+  for (const sourceUrl of ["https://www.instagram.com/p/Dd2nYsMgN2q/", "https://fb.me/6s7CAkJL8"]) {
+    assert.equal(campaignNameFromMetaSignals("120253010502850494", sourceUrl, "Osasco"), GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME);
   }
 });
 

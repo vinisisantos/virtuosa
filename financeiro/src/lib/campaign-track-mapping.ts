@@ -184,6 +184,8 @@ const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
   { adId: "120251954010740494", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
   { adId: "120249321848920006", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
   { adId: "120252124600900494", campaignName: "Glúteo Perfeito", unit: "Osasco" },
+  { adId: "120247984330170494", campaignName: "Barriga Trincada", unit: "Osasco" },
+  { adId: "120253010502850494", campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME, unit: "Osasco" },
   { adId: "120249304650490006", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120247237450560077", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120247237187760077", campaignName: "Harmonização de Glúteos", unit: "SBC" },
