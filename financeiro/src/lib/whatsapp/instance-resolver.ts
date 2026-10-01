@@ -6,6 +6,10 @@ import {
   isAdminRole,
   permittedUnitsForAccess,
 } from "@/lib/role-access";
+import {
+  filterInstancesToOwner,
+  selectSingleDefaultInboxInstance,
+} from "@/lib/whatsapp/instance-scope";
 
 export type WhatsAppInstanceAccessRole = "OWNER" | "MANAGER" | "AGENT" | "VIEWER" | "ADMIN";
 
@@ -136,9 +140,12 @@ export async function getInstanceAccessForUser(instanceId: string, userId: strin
 // continuam usando o proxy explícito (?targetUserId/?targetInstanceId), com as
 // capacidades do papel validadas no servidor.
 //
-// O seletor de unidade (?unit) apenas FILTRA entre as próprias instâncias do
-// usuário (quem tem WhatsApp em Osasco e em SCS vê um ou outro conforme a
-// unidade escolhida). Uma instância marcada como "Todas" aparece em qualquer
+// O seletor de unidade (?unit) apenas FILTRA entre as instâncias acessíveis do
+// usuário. No Inbox, ownerOnly=1 restringe "Meu número" a uma única instância
+// de propriedade direta e prioriza o telefone configurado para a caixa pessoal;
+// caixas compartilhadas continuam acessíveis pela seleção explícita de
+// targetInstanceId. Duplicidades ou ambiguidades ficam vazias em vez de misturar
+// caixas. Uma instância "Todas" aparece em qualquer
 // unidade, mas só para o proprietário ou membros explicitamente associados.
 // Quando o admin escolhe explicitamente uma instância (?targetInstanceId),
 // essa seleção tem prioridade total para evitar ambiguidades entre números
@@ -319,7 +326,14 @@ export async function getInstancesForRequest(req: Request): Promise<{
         canManageCollaboratorWhatsApp(readAuth(req).role) ? "ADMIN" : "VIEWER",
       ))
     : await getAccessibleInstances(whoseId);
-  let instances = filterByUnit(own, requestedUnitOf(req));
+  const ownerOnly = new URL(req.url).searchParams.get("ownerOnly") === "1";
+  const unitScopedInstances = filterByUnit(own, requestedUnitOf(req));
+  let instances = ownerOnly
+    ? selectSingleDefaultInboxInstance(
+        filterInstancesToOwner(unitScopedInstances, whoseId, true),
+        "11952750497",
+      )
+    : unitScopedInstances;
   if (isProxy && !isAdmin) {
     instances = instances.filter((instance) => instanceUnitAllowedForProxy(instance.unit, permittedUnits));
   }

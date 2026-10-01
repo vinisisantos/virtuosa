@@ -611,7 +611,7 @@ const WhatsAppFormattedText = React.memo(function WhatsAppFormattedText({ text, 
 });
 
 function getInstanceDisplayLabel(instance: CollaboratorInstance | null) {
-  if (!instance) return "Meu Inbox";
+  if (!instance) return "Meu número";
   return instance.displayName?.trim() || instance.userName || "Instância";
 }
 
@@ -4029,6 +4029,8 @@ export default function InboxPage() {
       p.set("targetInstanceId", targetInstanceId);
     } else if (targetUserId) {
       p.set("targetUserId", targetUserId);
+    } else {
+      p.set("ownerOnly", "1");
     }
     if (effectiveUnit) p.set("unit", effectiveUnit);
     if (extra) for (const [k, v] of Object.entries(extra)) p.set(k, v);
@@ -6672,9 +6674,7 @@ export default function InboxPage() {
                   <span className="text-[11px] text-muted-foreground truncate w-full text-left">
                     {selectedCollaborator
                       ? `${activeInstanceChannel === "instagram" ? "Instagram" : "WhatsApp"} · ${selectedCollaborator.unit} · ${selectedInstanceConnection.label}`
-                      : !canViewCollaborators && ownInstances.length > 1
-                        ? `${ownInstances.length} instâncias · ${effectiveUnit || currentUser?.unit || "Todas"}`
-                        : "WhatsApp · Principal"}
+                      : "WhatsApp · 11 95275-0497"}
                   </span>
                 </div>
                 <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -6704,9 +6704,7 @@ export default function InboxPage() {
                         <MessageSquare className="h-3.5 w-3.5" />
                       </div>
                       <ChannelMark channel="whatsapp" />
-                      <span className="truncate">
-                        {canViewCollaborators ? "Meu Inbox" : "Todas as minhas contas"}
-                      </span>
+                      <span className="truncate">Meu número</span>
                       {!selectedCollaborator && <Check className="ml-auto h-3.5 w-3.5 text-primary" />}
                     </button>
                     {inboxInstanceOptions.length > 0 && <div className="my-1 border-t border-border" />}
@@ -6952,7 +6950,7 @@ export default function InboxPage() {
                 onClick={() => router.push(buildUrl("/crm/inbox/follow-up", {
                   scopeLabel: selectedCollaborator
                     ? getInstanceDisplayLabel(selectedCollaborator)
-                    : "Meu Inbox",
+                    : "Meu número",
                 }))}
                 className="mb-3 flex min-h-11 w-full items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/8 px-3 text-left transition-colors hover:border-emerald-500/35 hover:bg-emerald-500/12"
               >
