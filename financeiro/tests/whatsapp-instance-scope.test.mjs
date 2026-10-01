@@ -48,6 +48,14 @@ test("Meu número não escolhe arbitrariamente quando o telefone coincide com ca
   assert.deepEqual(selectSingleDefaultInboxInstance(duplicateNumber, "11952750497"), []);
 });
 
+test("Meu número usa a instância-base do dono quando o telefone ainda não foi cadastrado", () => {
+  const own = [
+    { id: "main", name: "virt-ownerid", phoneNumber: null, status: "connected" },
+    { id: "reception", name: "virt-ownerid-1790866690", phoneNumber: null, status: "connected" },
+  ];
+  assert.deepEqual(selectSingleDefaultInboxInstance(own, "11952750497", "virt-ownerid"), [own[0]]);
+});
+
 test("Meu Inbox não escolhe arbitrariamente nem agrega múltiplas instâncias próprias", () => {
   assert.deepEqual(selectSingleDefaultInboxInstance([
     { id: "one", status: "connected" },

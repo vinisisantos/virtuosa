@@ -143,6 +143,8 @@ export async function getInstanceAccessForUser(instanceId: string, userId: strin
 // O seletor de unidade (?unit) apenas FILTRA entre as instâncias acessíveis do
 // usuário. No Inbox, ownerOnly=1 restringe "Meu número" a uma única instância
 // de propriedade direta e prioriza o telefone configurado para a caixa pessoal;
+// em cadastros antigos sem phoneNumber, usa o nome-base gerado para o próprio
+// usuário, sem selecionar instâncias adicionais criadas depois;
 // caixas compartilhadas continuam acessíveis pela seleção explícita de
 // targetInstanceId. Duplicidades ou ambiguidades ficam vazias em vez de misturar
 // caixas. Uma instância "Todas" aparece em qualquer
@@ -332,6 +334,7 @@ export async function getInstancesForRequest(req: Request): Promise<{
     ? selectSingleDefaultInboxInstance(
         filterInstancesToOwner(unitScopedInstances, whoseId, true),
         "11952750497",
+        generateInstanceName(whoseId),
       )
     : unitScopedInstances;
   if (isProxy && !isAdmin) {

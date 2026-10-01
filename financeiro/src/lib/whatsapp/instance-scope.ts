@@ -11,11 +11,24 @@ export function selectSingleDefaultInboxInstance<T extends {
   status?: string | null;
   phoneNumber?: string | null;
   phone?: string | null;
-}>(instances: T[], preferredPhone?: string | null) {
+  name?: string | null;
+  instanceName?: string | null;
+}>(
+  instances: T[],
+  preferredPhone?: string | null,
+  preferredInstanceName?: string | null,
+) {
   const preferredDigits = normalizeInboxPhone(preferredPhone);
   if (preferredDigits) {
     const preferredMatches = instances.filter((instance) => (
       normalizeInboxPhone(instance.phoneNumber || instance.phone) === preferredDigits
+    ));
+    if (preferredMatches.length > 0) return preferredMatches.length === 1 ? preferredMatches : [];
+  }
+
+  if (preferredInstanceName) {
+    const preferredMatches = instances.filter((instance) => (
+      (instance.name || instance.instanceName) === preferredInstanceName
     ));
     if (preferredMatches.length > 0) return preferredMatches.length === 1 ? preferredMatches : [];
   }
