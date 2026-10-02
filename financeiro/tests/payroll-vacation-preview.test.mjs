@@ -37,6 +37,23 @@ test('sem valor antecipado, o período não supõe que férias já foram pagas',
   assert.equal(preview.net, 2414.62);
 });
 
+test('férias entre setembro e outubro preservam premiação própria de cada competência', () => {
+  const septemberWithCurrentBonus = previewVacationPayroll(
+    { ...leticiaExample, bonus: 51.99 }, 9, 2026, '2026-09-16', '2026-10-05', 1878.07,
+  );
+  const septemberWithPayslipBonus = previewVacationPayroll(
+    leticiaExample, 9, 2026, '2026-09-16', '2026-10-05', 1878.07,
+  );
+  const october = previewVacationPayroll(
+    { ...leticiaExample, bonus: 51.99 }, 10, 2026, '2026-09-16', '2026-10-05', 1878.07,
+  );
+  assert.equal(septemberWithCurrentBonus?.days, 15);
+  assert.equal(septemberWithCurrentBonus?.net, 1032.06);
+  assert.equal(septemberWithPayslipBonus?.net, 1006.07);
+  assert.equal(october?.days, 5);
+  assert.equal(october?.net, 1693.54);
+});
+
 test('prévia recusa intervalo inválido, sobreposição e PJ', () => {
   assert.equal(previewVacationPayroll(leticiaExample, 9, 2026, '2026-09-31', '2026-10-01', 0), null);
   assert.equal(previewVacationPayroll(leticiaExample, 9, 2026, '2026-08-01', '2026-08-15', 0), null);

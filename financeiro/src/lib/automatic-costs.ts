@@ -132,6 +132,12 @@ export function previousCompetence({ month, year }: Competence): Competence {
     : { month: month - 1, year };
 }
 
+export function nextCompetence({ month, year }: Competence): Competence {
+  return month === 12
+    ? { month: 1, year: year + 1 }
+    : { month: month + 1, year };
+}
+
 export function utcMonthRange({ month, year }: Competence): { start: Date; end: Date } {
   return {
     start: new Date(Date.UTC(year, month - 1, 1)),

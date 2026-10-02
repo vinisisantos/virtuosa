@@ -4,8 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from '@/components/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { formatCurrency } from '@/lib/currency';
+import { nextCompetence, type Competence } from '@/lib/automatic-costs';
 import { normalizePayrollSyncUnit, publishPayrollSync } from '@/lib/payroll-client-sync';
 import { previewVacationPayroll } from '@/lib/payroll-vacation-preview';
+import { vacationCompetences, vacationDaysInCompetence } from '@/lib/payroll-vacations';
 import {
   AUTOMATIC_TRANSPORT_LABEL,
   CURRENT_MINIMUM_WAGE,
@@ -138,6 +140,10 @@ function formatDateOnly(value: string | Date) {
   return `${day}/${month}/${year}`;
 }
 
+function formatCompetence({ month, year }: Competence) {
+  return `${String(month).padStart(2, '0')}/${year}`;
+}
+
 function parseCurrencyInput(value: string) {
   const normalized = value.replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
   const parsed = Number(normalized);
@@ -179,6 +185,7 @@ export function PayrollControl({
   const [adjustmentDraft, setAdjustmentDraft] = useState<AdjustmentDraft | null>(null);
   const [vacationDraft, setVacationDraft] = useState<VacationDraft | null>(null);
   const [busyKey, setBusyKey] = useState('');
+  const costsCompetence = nextCompetence({ month: competenceMonth, year: competenceYear });
   const mountedRef = useRef(true);
   const activeScopeRef = useRef<PayrollMutationScope>({ competenceMonth, competenceYear, unit: selectedUnit });
   const modalScopeKeyRef = useRef(`${competenceYear}-${competenceMonth}:${normalizePayrollSyncUnit(selectedUnit)}`);
@@ -657,6 +664,7 @@ export function PayrollControl({
           <div>
             <h2>Colaboradores</h2>
             <span className={styles.liveStatus}><i /> Cálculo atualizado em tempo real</span>
+            <span className={styles.costsCompetence}>Folha {formatCompetence({ month: competenceMonth, year: competenceYear })} → Custos {formatCompetence(costsCompetence)}</span>
           </div>
           <button className={styles.compactAddButton} onClick={openNewEmployee}>
             <span className="material-symbols-outlined">person_add</span>
@@ -727,6 +735,13 @@ export function PayrollControl({
                     parseCurrencyInput(vacationDraft.advanceAmount),
                   )
                 : null;
+              const vacationDistribution = vacationPreview && vacationDraft
+                ? vacationCompetences(vacationDraft).map(competence => ({
+                    ...competence,
+                    days: vacationDaysInCompetence(vacationDraft, competence.month, competence.year),
+                    costsCompetence: nextCompetence(competence),
+                  }))
+                : [];
 
               return (
                 <article className={`${styles.entry} ${expanded ? styles.entryExpanded : ''}`} key={entry.id}>
@@ -1094,12 +1109,24 @@ export function PayrollControl({
                               )}
                               {vacationPreview && (
                                 <div className={styles.vacationPreview} role="status" aria-live="polite">
-                                  <strong>Prévia da competência · {String(competenceMonth).padStart(2, '0')}/{competenceYear}</strong>
+                                  <strong>Prévia da Folha · competência {formatCompetence({ month: competenceMonth, year: competenceYear })}</strong>
+                                  <small>Depois de salvar, este líquido aparece como salário em Custos de {formatCompetence(costsCompetence)}. O FGTS aparece separado.</small>
+                                  {vacationDistribution.length > 1 && (
+                                    <div className={styles.vacationDistribution}>
+                                      <strong>Novo período distribuído por competência</strong>
+                                      {vacationDistribution.map(competence => (
+                                        <span key={`${competence.year}-${competence.month}`}>
+                                          Folha {formatCompetence(competence)}: {competence.days} {competence.days === 1 ? 'dia' : 'dias'} de férias → Custos {formatCompetence(competence.costsCompetence)}
+                                        </span>
+                                      ))}
+                                      <small>O líquido acima é apenas desta competência. Premiação e ajustes podem ser diferentes na Folha do outro mês.</small>
+                                    </div>
+                                  )}
                                   <div className={styles.vacationPreviewGrid}>
                                     <span>Salário trabalhado</span><b>{formatCurrency(vacationPreview.workedSalary)}</b>
                                     <span>Férias · {vacationPreview.days} dias</span><b>{formatCurrency(vacationPreview.vacationSalary)}</b>
                                     <span>1/3 de férias</span><b>{formatCurrency(vacationPreview.vacationThird)}</b>
-                                    {vacationPreview.bonus > 0 && <><span>Premiação</span><b>{formatCurrency(vacationPreview.bonus)}</b></>}
+                                    {vacationPreview.bonus > 0 && <><span>Premiação desta competência</span><b>{formatCurrency(vacationPreview.bonus)}</b></>}
                                     <span>INSS estimado</span><b>−{formatCurrency(vacationPreview.inss)}</b>
                                     {vacationPreview.transportDiscount > 0 && <><span>Vale-transporte</span><b>−{formatCurrency(vacationPreview.transportDiscount)}</b></>}
                                     {vacationPreview.otherAdjustments !== 0 && <><span>Outros ajustes</span><b>{formatCurrency(vacationPreview.otherAdjustments)}</b></>}

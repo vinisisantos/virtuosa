@@ -208,13 +208,17 @@ try {
     await page.evaluate(() => {
       const dates = [...document.querySelectorAll('section[aria-label^="Férias de "] input[type="date"]')];
       const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
-      for (const [input, value] of [[dates[0], '2026-09-20'], [dates[1], '2026-09-24']]) {
+      for (const [input, value] of [[dates[0], '2026-09-16'], [dates[1], '2026-10-05']]) {
         setValue.call(input, value);
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.dispatchEvent(new Event('change', { bubbles: true }));
       }
     });
-    await page.waitForFunction(() => document.body.textContent?.includes('Prévia da competência · 09/2026'));
+    await page.waitForFunction(() => document.body.textContent?.includes('Prévia da Folha · competência 09/2026'));
+    const visibleCompetences = await page.evaluate(() => document.body.textContent || '');
+    assert.match(visibleCompetences, /Folha 09\/2026 → Custos 10\/2026/);
+    assert.match(visibleCompetences, /Folha 09\/2026: 15 dias de férias → Custos 10\/2026/);
+    assert.match(visibleCompetences, /Folha 10\/2026: 5 dias de férias → Custos 11\/2026/);
     await page.type('section[aria-label^="Férias de "] input[placeholder="R$ 0,00"]', '120000');
     await page.waitForSelector('section[aria-label^="Férias de "] input[type="checkbox"]');
     const advanceLayout = await page.evaluate(() => {

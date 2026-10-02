@@ -10,6 +10,7 @@ import {
   canManageOrderCostRecognition,
   canViewOrderHistory,
   costRecognitionDateKey,
+  nextCompetence,
   parseCostRecognitionDate,
   parseCostsPeriod,
   previousCompetence,
@@ -76,6 +77,9 @@ test('valida período e resolve dezembro no ano anterior para custos de janeiro'
   assert.equal(parseCostsPeriod('1.5', '2027'), null);
   assert.deepEqual(previousCompetence({ month: 1, year: 2027 }), { month: 12, year: 2026 });
   assert.deepEqual(previousCompetence({ month: 9, year: 2026 }), { month: 8, year: 2026 });
+  assert.deepEqual(nextCompetence({ month: 9, year: 2026 }), { month: 10, year: 2026 });
+  assert.deepEqual(nextCompetence({ month: 12, year: 2026 }), { month: 1, year: 2027 });
+  assert.deepEqual(previousCompetence(nextCompetence({ month: 9, year: 2026 })), { month: 9, year: 2026 });
 });
 
 test('gera intervalo mensal exclusivo no limite superior', () => {
