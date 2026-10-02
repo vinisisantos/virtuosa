@@ -181,7 +181,7 @@ const BULK_FOLLOW_UP_MEDIA_SEND_INTERVAL_MS = 2000;
 const CALLBACK_MAX_TEAM_ATTEMPTS = 6;
 const MESSAGE_LOAD_RETRY_DELAYS_MS = [350, 1000] as const;
 
-type InboxTab = "all" | "open" | "unread" | "closed" | "archived" | "callback" | "followup" | "lost";
+type InboxTab = "all" | "open" | "unread" | "otherDdd" | "closed" | "archived" | "callback" | "followup" | "lost";
 
 function inboxTabFromSearchParams(searchParams: { get(name: string): string | null }): InboxTab {
   if (searchParams.get("archived") === "1") return "archived";
@@ -191,7 +191,9 @@ function inboxTabFromSearchParams(searchParams: { get(name: string): string | nu
     : "all";
 }
 
-function serverConversationStatusForTab(tab: InboxTab) {
+function serverConversationStatusForTab(tab: InboxTab, splitOsascoLeadDdds = false) {
+  if (splitOsascoLeadDdds && tab === "unread") return "unreadDdd11";
+  if (splitOsascoLeadDdds && tab === "otherDdd") return "unreadOtherDdd";
   return ["open", "unread", "callback", "followup", "lost"].includes(tab) ? tab : "all";
 }
 
@@ -3174,6 +3176,8 @@ export default function InboxPage() {
   const [conversationQueueCounts, setConversationQueueCounts] = useState({
     open: 0,
     unread: 0,
+    unreadDdd11: 0,
+    unreadOtherDdd: 0,
     callback: 0,
     followup: 0,
     lost: 0,
@@ -4020,8 +4024,14 @@ export default function InboxPage() {
   const inboxScopeKey = `${targetInstanceId || `user:${targetUserId || "self"}`}|${effectiveUnit || "all"}`;
   const conversationSearch = debouncedSearch.trim();
   const archivedView = tab === "archived";
-  const serverConversationStatus = serverConversationStatusForTab(tab);
-  const conversationListScopeKey = `${inboxScopeKey}|archived:${archivedView ? "1" : "0"}|status:${serverConversationStatus}|search:${conversationSearch}`;
+  const isLeadsOsascoInbox = selectedCollaborator?.displayName?.trim().toLocaleLowerCase("pt-BR") === "leads osasco"
+    && selectedCollaborator.unit === "Osasco"
+    && getInstanceChannel(selectedCollaborator) === "whatsapp";
+  useEffect(() => {
+    if (!isLeadsOsascoInbox && tab === "otherDdd") setTab("all");
+  }, [isLeadsOsascoInbox, tab]);
+  const serverConversationStatus = serverConversationStatusForTab(tab, isLeadsOsascoInbox);
+  const conversationListScopeKey = `${inboxScopeKey}|dddSplit:${isLeadsOsascoInbox ? "leads-osasco" : "off"}|archived:${archivedView ? "1" : "0"}|status:${serverConversationStatus}|search:${conversationSearch}`;
 
   const waParams = useCallback((extra?: Record<string, string>) => {
     const p = new URLSearchParams();
@@ -4149,7 +4159,7 @@ export default function InboxPage() {
     const phase = options?.phase || "refresh";
     const isPage = phase === "page" && !incremental;
     const replacesFilteredQueue = (
-      Boolean(conversationSearch) || ["callback", "followup", "lost"].includes(serverConversationStatus)
+      Boolean(conversationSearch) || ["callback", "followup", "lost", "unreadDdd11", "unreadOtherDdd"].includes(serverConversationStatus)
     ) && !isPage;
     const requestKind = incremental ? "delta" : isPage ? `page:${options?.cursor || "none"}` : phase;
     const requestKey = `${conversationListScopeKey}:${requestKind}`;
@@ -4167,6 +4177,7 @@ export default function InboxPage() {
         archived: archivedView ? "1" : "0",
         status: serverConversationStatus,
         ...(conversationSearch ? { search: conversationSearch } : {}),
+        ...(isLeadsOsascoInbox ? { dddSplit: "leads-osasco" } : {}),
         ...(isPage && options?.cursor ? { cursor: options.cursor } : {}),
         ...(!incremental && deepLinkConversationId ? { conversationId: deepLinkConversationId } : {}),
         ...(incremental && lastSync ? { updatedSince: lastSync } : {}),
@@ -4209,7 +4220,7 @@ export default function InboxPage() {
               if (!previous) return previous;
               if (removedIds.has(previous.id)) {
                 if (selectedConversationIdRef.current !== previous.id) return null;
-                return serverConversationStatus === "unread" && previous.unreadCount !== 0
+                return ["unread", "unreadDdd11", "unreadOtherDdd"].includes(serverConversationStatus) && previous.unreadCount !== 0
                   ? { ...previous, unreadCount: 0 }
                   : previous;
               }
@@ -4264,6 +4275,8 @@ export default function InboxPage() {
           setConversationQueueCounts({
             open: Number(data.queueCounts.open || 0),
             unread: Number(data.queueCounts.unread || 0),
+            unreadDdd11: Number(data.queueCounts.unreadDdd11 || 0),
+            unreadOtherDdd: Number(data.queueCounts.unreadOtherDdd || 0),
             callback: Number(data.queueCounts.callback || 0),
             followup: Number(data.queueCounts.followup || 0),
             lost: Number(data.queueCounts.lost || 0),
@@ -4296,7 +4309,7 @@ export default function InboxPage() {
         conversationsInFlightScopeRef.current = null;
       }
     }
-  }, [archivedView, conversationListScopeKey, conversationSearch, deepLinkConversationId, serverConversationStatus, waParams]);
+  }, [archivedView, conversationListScopeKey, conversationSearch, deepLinkConversationId, isLeadsOsascoInbox, serverConversationStatus, waParams]);
 
   const applyCallbackTrackingSnapshot = useCallback((
     conversationId: string,
@@ -4548,7 +4561,7 @@ export default function InboxPage() {
     setBulkFollowUpComposerOpen(false);
     setBulkFollowUpImage(null);
     setBulkFollowUpProgress(null);
-    setConversationQueueCounts({ open: 0, unread: 0, callback: 0, followup: 0, lost: 0 });
+    setConversationQueueCounts({ open: 0, unread: 0, unreadDdd11: 0, unreadOtherDdd: 0, callback: 0, followup: 0, lost: 0 });
     conversationListAnchorRef.current = null;
   }, [inboxScopeKey]);
 
@@ -6360,6 +6373,7 @@ export default function InboxPage() {
   // ─── Filtered conversations ───────────────────────────────
   const openCount = conversationQueueCounts.open;
   const unreadCount = conversationQueueCounts.unread;
+  const visibleUnreadCount = isLeadsOsascoInbox ? conversationQueueCounts.unreadDdd11 : unreadCount;
 
   // Etiquetas (campanhas) presentes nas conversas — alimentam o filtro.
   const availableTags = [...new Set(
@@ -6369,7 +6383,8 @@ export default function InboxPage() {
   const filtered = conversations.filter((c) => {
     // Tab filter
     if (tab === "open" && !["open", "waiting_customer", "waiting_response"].includes(c.status)) return false;
-    if (tab === "unread" && c.unreadCount === 0) return false;
+    if ((tab === "unread" || tab === "otherDdd") && c.unreadCount === 0) return false;
+    if (tab === "otherDdd" && !isLeadsOsascoInbox) return false;
     if (tab === "closed" && c.status !== "closed") return false;
     if (tab === "archived" && !c.archivedAt) return false;
     if (tab === "callback" && !isConversationCallbackDue(c)) return false;
@@ -6981,7 +6996,10 @@ export default function InboxPage() {
             {([
               { key: "all" as const, label: "Todas", count: undefined },
               { key: "open" as const, label: "Em Aberto", count: openCount },
-              { key: "unread" as const, label: "Não Lidos", count: unreadCount },
+              { key: "unread" as const, label: "Não Lidos", count: visibleUnreadCount },
+              ...(isLeadsOsascoInbox
+                ? [{ key: "otherDdd" as const, label: "Outros DDDs", count: conversationQueueCounts.unreadOtherDdd }]
+                : []),
               { key: "followup" as const, label: "Retornos", count: conversationQueueCounts.followup },
               { key: "callback" as const, label: "Rechamada", count: conversationQueueCounts.callback },
               { key: "lost" as const, label: "Perdidos", count: conversationQueueCounts.lost },
@@ -6992,8 +7010,8 @@ export default function InboxPage() {
                 <button
                   key={key}
                   onClick={() => {
-                    const currentServerStatus = serverConversationStatusForTab(tab);
-                    const nextServerStatus = serverConversationStatusForTab(key);
+                    const currentServerStatus = serverConversationStatusForTab(tab, isLeadsOsascoInbox);
+                    const nextServerStatus = serverConversationStatusForTab(key, isLeadsOsascoInbox);
                     if ((tab === "archived") !== (key === "archived") || currentServerStatus !== nextServerStatus) {
                       leaveConversation(key === "archived" ? { archived: "1" } : undefined);
                     }

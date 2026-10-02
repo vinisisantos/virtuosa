@@ -3,6 +3,8 @@ import { getUserFromHeaders } from "@/lib/auth";
 import { permittedUnitsForAccess } from "@/lib/role-access";
 import { Prisma } from "@prisma/client";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
+import { getInstancePresentationSettings } from "@/lib/whatsapp/instance-presentation";
+import { matchesBrazilianDddBucket, type BrazilianDddBucket } from "@/lib/whatsapp/phone-ddd";
 
 import { campaignUrlFromClient, pickBestCampaignClient } from "@/lib/campaign-client-selection";
 import { campaignClientKey } from "@/lib/whatsapp/lead-client-selection";
@@ -56,7 +58,7 @@ function getStatusFilter(status: string) {
     return { status: { in: ["open", "waiting_customer", "waiting_response"] } };
   }
 
-  if (status === "unread") {
+  if (["unread", "unreadDdd11", "unreadOtherDdd"].includes(status)) {
     return {
       unreadCount: { gt: 0 },
       status: { notIn: ["closed", WHATSAPP_CALLBACK_LOST_STATUS] },
@@ -125,6 +127,7 @@ function isConversationVisibleForRequest(
     callbackStreakCount?: number | null;
     commercialPaused?: boolean;
     followUps?: Array<{ status?: string | null; scheduledAt?: Date | string | null }>;
+    contact?: { phone?: string | null } | null;
   },
   requestedStatus: string,
   showArchived: boolean,
@@ -138,10 +141,15 @@ function isConversationVisibleForRequest(
   if (requestedStatus === "open") {
     return ["open", "waiting_customer", "waiting_response"].includes(conversationStatus || "");
   }
-  if (requestedStatus === "unread") {
+  if (["unread", "unreadDdd11", "unreadOtherDdd"].includes(requestedStatus)) {
     return Boolean(
       (conversation.unreadCount || 0) > 0
-      && !["closed", WHATSAPP_CALLBACK_LOST_STATUS].includes(conversationStatus || ""),
+      && !["closed", WHATSAPP_CALLBACK_LOST_STATUS].includes(conversationStatus || "")
+      && (requestedStatus === "unread"
+        || matchesBrazilianDddBucket(
+          conversation.contact?.phone,
+          requestedStatus === "unreadDdd11" ? "ddd11" : "other",
+        )),
     );
   }
   if (requestedStatus === "closed") {
@@ -176,6 +184,93 @@ function normalizePhoneSuffix(value?: string | null) {
 
 const EMPTY_SQL = Prisma.sql``;
 
+function brazilianDdd11Sql() {
+  const digits = Prisma.sql`regexp_replace(contact."phone", '[^0-9]', '', 'g')`;
+  const nationalNumber = Prisma.sql`
+    CASE
+      WHEN ${digits} LIKE '55%' AND LENGTH(${digits}) IN (12, 13)
+        THEN SUBSTRING(${digits} FROM 3)
+      ELSE ${digits}
+    END
+  `;
+  return Prisma.sql`(
+    ${nationalNumber} ~ '^[0-9]{10,11}$'
+    AND SUBSTRING(${nationalNumber} FROM 1 FOR 2) = '11'
+  )`;
+}
+
+function brazilianDddBucketSql(bucket: BrazilianDddBucket) {
+  const ddd11 = brazilianDdd11Sql();
+  return bucket === "ddd11" ? ddd11 : Prisma.sql`NOT (${ddd11})`;
+}
+
+async function findUnreadDddConversationIds(params: {
+  bucket: BrazilianDddBucket;
+  instanceIds: string[];
+  cursor: string | null;
+  limit: number;
+}) {
+  const { bucket, instanceIds, cursor, limit } = params;
+  const cursorJoinSql = cursor
+    ? Prisma.sql`
+        INNER JOIN "WhatsAppConversation" cursor_conversation
+          ON cursor_conversation."id" = ${cursor}
+          AND cursor_conversation."instanceId" IN (${Prisma.join(instanceIds)})
+      `
+    : EMPTY_SQL;
+  const cursorSql = cursor
+    ? Prisma.sql`
+        AND (
+          COALESCE(conversation."lastMessageAt", 'infinity'::timestamptz),
+          conversation."id"
+        ) < (
+          COALESCE(cursor_conversation."lastMessageAt", 'infinity'::timestamptz),
+          cursor_conversation."id"
+        )
+      `
+    : EMPTY_SQL;
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT conversation."id"
+    FROM "WhatsAppConversation" conversation
+    INNER JOIN "WhatsAppContact" contact ON contact."id" = conversation."contactId"
+    ${cursorJoinSql}
+    WHERE conversation."instanceId" IN (${Prisma.join(instanceIds)})
+      AND conversation."archivedAt" IS NULL
+      AND conversation."unreadCount" > 0
+      AND conversation."status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})
+      AND ${brazilianDddBucketSql(bucket)}
+      ${cursorSql}
+    ORDER BY conversation."lastMessageAt" DESC, conversation."id" DESC
+    LIMIT ${limit + 1}
+  `);
+
+  return rows.map((row) => row.id);
+}
+
+async function findUpdatedDddConversationIds(params: {
+  bucket: BrazilianDddBucket;
+  instanceIds: string[];
+  updatedSince: Date;
+  limit: number;
+}) {
+  const { bucket, instanceIds, updatedSince, limit } = params;
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT conversation."id"
+    FROM "WhatsAppConversation" conversation
+    INNER JOIN "WhatsAppContact" contact ON contact."id" = conversation."contactId"
+    WHERE conversation."instanceId" IN (${Prisma.join(instanceIds)})
+      AND (
+        conversation."updatedAt" >= ${updatedSince}
+        OR conversation."lastMessageAt" >= ${updatedSince}
+      )
+      AND ${brazilianDddBucketSql(bucket)}
+    ORDER BY conversation."updatedAt" DESC, conversation."id" DESC
+    LIMIT ${limit}
+  `);
+
+  return rows.map((row) => row.id);
+}
+
 function fullSearchStatusSql(status: string, showArchived: boolean, requesterUserId: string) {
   if ((status === "all" || !status) && showArchived) return EMPTY_SQL;
   if (status === "all" || !status) {
@@ -184,7 +279,7 @@ function fullSearchStatusSql(status: string, showArchived: boolean, requesterUse
   if (status === "open") {
     return Prisma.sql`AND conversation."status" IN ('open', 'waiting_customer', 'waiting_response')`;
   }
-  if (status === "unread") {
+  if (["unread", "unreadDdd11", "unreadOtherDdd"].includes(status)) {
     return Prisma.sql`
       AND conversation."unreadCount" > 0
       AND conversation."status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})
@@ -276,6 +371,7 @@ function fullSearchMatchSql(search: InboxSearchQuery) {
 async function findFullSearchConversationIds(params: {
   search: InboxSearchQuery;
   instanceIds: string[];
+  dddBucket?: BrazilianDddBucket | null;
   status: string;
   showArchived: boolean;
   requesterUserId: string;
@@ -286,6 +382,7 @@ async function findFullSearchConversationIds(params: {
   const {
     search,
     instanceIds,
+    dddBucket,
     status,
     showArchived,
     requesterUserId,
@@ -303,6 +400,9 @@ async function findFullSearchConversationIds(params: {
           OR conversation."lastMessageAt" >= ${updatedSince}
         )
       `
+    : EMPTY_SQL;
+  const dddBucketSql = dddBucket
+    ? Prisma.sql`AND ${brazilianDddBucketSql(dddBucket)}`
     : EMPTY_SQL;
   const cursorJoinSql = cursor
     ? Prisma.sql`
@@ -342,6 +442,7 @@ async function findFullSearchConversationIds(params: {
     WHERE conversation."instanceId" IN (${Prisma.join(instanceIds)})
       ${archiveSql}
       ${fullSearchStatusSql(status, showArchived, requesterUserId)}
+      ${dddBucketSql}
       ${updatedSinceSql}
       ${cursorSql}
       ${fullSearchMatchSql(search)}
@@ -413,11 +514,36 @@ export async function GET(req: NextRequest) {
         serverTime,
         searchTooShort,
         appointmentSnapshot: {},
-        queueCounts: { open: 0, unread: 0, callback: 0, followup: 0, lost: 0 },
+        queueCounts: { open: 0, unread: 0, unreadDdd11: 0, unreadOtherDdd: 0, callback: 0, followup: 0, lost: 0 },
       });
     }
 
     const instanceIds = dbInstances.map(i => i.id);
+    const requestsLeadsOsascoSplit = searchParams.get("dddSplit") === "leads-osasco";
+    let dddSplitEnabled = false;
+    if (requestsLeadsOsascoSplit && dbInstances.length === 1) {
+      const instance = dbInstances[0];
+      const presentation = await getInstancePresentationSettings();
+      dddSplitEnabled = instance.unit === "Osasco"
+        && presentation.displayNames[instance.id]?.trim().toLocaleLowerCase("pt-BR") === "leads osasco"
+        && presentation.channels[instance.id] !== "instagram";
+    }
+    if (["unreadDdd11", "unreadOtherDdd"].includes(status) && !dddSplitEnabled) {
+      return NextResponse.json({
+        conversations: [],
+        hasMore: false,
+        nextCursor: null,
+        serverTime,
+        searchTooShort,
+        appointmentSnapshot: {},
+        queueCounts: { open: 0, unread: 0, unreadDdd11: 0, unreadOtherDdd: 0, callback: 0, followup: 0, lost: 0 },
+      });
+    }
+    const dddBucket: BrazilianDddBucket | null = dddSplitEnabled && status === "unreadDdd11"
+      ? "ddd11"
+      : dddSplitEnabled && status === "unreadOtherDdd"
+        ? "other"
+        : null;
     const instanceUnitById = new Map(
       dbInstances.map((instance) => [instance.id, instance.unit || null]),
     );
@@ -587,6 +713,7 @@ export async function GET(req: NextRequest) {
       const matchedIds = await findFullSearchConversationIds({
         search: fullSearch,
         instanceIds,
+        dddBucket,
         status,
         showArchived,
         requesterUserId,
@@ -604,6 +731,44 @@ export async function GET(req: NextRequest) {
         : [];
       const conversationById = new Map(hydratedConversations.map((conversation) => [conversation.id, conversation]));
       conversations = pageIds.flatMap((id) => {
+        const conversation = conversationById.get(id);
+        return conversation ? [conversation] : [];
+      });
+    } else if (dddBucket && !updatedSince) {
+      const matchedIds = await findUnreadDddConversationIds({
+        bucket: dddBucket,
+        instanceIds,
+        cursor,
+        limit,
+      });
+      hasMore = matchedIds.length > limit;
+      const pageIds = hasMore ? matchedIds.slice(0, limit) : matchedIds;
+      const hydratedConversations = pageIds.length
+        ? await prisma.whatsAppConversation.findMany({
+            where: { id: { in: pageIds }, instanceId: { in: instanceIds } },
+            select: conversationSelect,
+          })
+        : [];
+      const conversationById = new Map(hydratedConversations.map((conversation) => [conversation.id, conversation]));
+      conversations = pageIds.flatMap((id) => {
+        const conversation = conversationById.get(id);
+        return conversation ? [conversation] : [];
+      });
+    } else if (dddBucket && updatedSince) {
+      const updatedIds = await findUpdatedDddConversationIds({
+        bucket: dddBucket,
+        instanceIds,
+        updatedSince,
+        limit,
+      });
+      const hydratedConversations = updatedIds.length
+        ? await prisma.whatsAppConversation.findMany({
+            where: { id: { in: updatedIds }, instanceId: { in: instanceIds } },
+            select: conversationSelect,
+          })
+        : [];
+      const conversationById = new Map(hydratedConversations.map((conversation) => [conversation.id, conversation]));
+      conversations = updatedIds.flatMap((id) => {
         const conversation = conversationById.get(id);
         return conversation ? [conversation] : [];
       });
@@ -637,6 +802,7 @@ export async function GET(req: NextRequest) {
       && !fullSearch
       && !searchTooShort
       && !updatedSince
+      && !dddBucket
       && !cursor
       && !conversations.some((c) => c.id === requestedConversationId)
     ) {
@@ -779,9 +945,28 @@ export async function GET(req: NextRequest) {
         - new Date(b.activeFollowUp?.scheduledAt || 0).getTime();
     });
 
+    const dddContactJoinSql = dddSplitEnabled
+      ? Prisma.sql`INNER JOIN "WhatsAppContact" contact ON contact."id" = "WhatsAppConversation"."contactId"`
+      : EMPTY_SQL;
+    const dddQueueCountsSql = dddSplitEnabled
+      ? Prisma.sql`
+          COUNT(*) FILTER (
+            WHERE "unreadCount" > 0
+              AND "status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})
+              AND ${brazilianDddBucketSql("ddd11")}
+          ) AS "unreadDdd11Count",
+          COUNT(*) FILTER (
+            WHERE "unreadCount" > 0
+              AND "status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})
+              AND ${brazilianDddBucketSql("other")}
+          ) AS "unreadOtherDddCount",
+        `
+      : Prisma.sql`0::bigint AS "unreadDdd11Count", 0::bigint AS "unreadOtherDddCount",`;
     const [queueCountRow] = await prisma.$queryRaw<Array<{
       openCount: bigint;
       unreadCount: bigint;
+      unreadDdd11Count: bigint;
+      unreadOtherDddCount: bigint;
       callbackCount: bigint;
       followupCount: bigint;
       lostCount: bigint;
@@ -794,6 +979,7 @@ export async function GET(req: NextRequest) {
           WHERE "unreadCount" > 0
             AND "status" NOT IN ('closed', ${WHATSAPP_CALLBACK_LOST_STATUS})
         ) AS "unreadCount",
+        ${dddQueueCountsSql}
         COUNT(*) FILTER (
           WHERE "callbackTrackingStartedAt" IS NOT NULL
             AND "commercialPaused" = false
@@ -814,11 +1000,14 @@ export async function GET(req: NextRequest) {
         ) AS "followupCount",
         COUNT(*) FILTER (WHERE "status" = ${WHATSAPP_CALLBACK_LOST_STATUS}) AS "lostCount"
       FROM "WhatsAppConversation"
+      ${dddContactJoinSql}
       WHERE "instanceId" IN (${Prisma.join(instanceIds)})
         AND "archivedAt" IS NULL
     `);
     const openCount = Number(queueCountRow?.openCount || 0);
     const unreadCount = Number(queueCountRow?.unreadCount || 0);
+    const unreadDdd11Count = Number(queueCountRow?.unreadDdd11Count || 0);
+    const unreadOtherDddCount = Number(queueCountRow?.unreadOtherDddCount || 0);
     const callbackCount = Number(queueCountRow?.callbackCount || 0);
     const followupCount = Number(queueCountRow?.followupCount || 0);
     const lostCount = Number(queueCountRow?.lostCount || 0);
@@ -833,7 +1022,15 @@ export async function GET(req: NextRequest) {
       removedConversationIds,
       serverTime,
       searchTooShort,
-      queueCounts: { open: openCount, unread: unreadCount, callback: callbackCount, followup: followupCount, lost: lostCount },
+      queueCounts: {
+        open: openCount,
+        unread: unreadCount,
+        unreadDdd11: unreadDdd11Count,
+        unreadOtherDdd: unreadOtherDddCount,
+        callback: callbackCount,
+        followup: followupCount,
+        lost: lostCount,
+      },
     });
   } catch (error: any) {
     console.error("[WhatsApp Conversations API Error]:", error);
