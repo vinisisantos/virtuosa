@@ -35,6 +35,7 @@ export function previewVacationPayroll(
   endDate: string,
   advanceAmount: number,
   taxConfig?: { inssBrackets: InssBracket[]; irrfTable: IrrfTable } | null,
+  advanceAlreadyPaid = false,
 ): VacationPayrollPreview | null {
   if (entry.employmentType !== 'CLT') return null;
   const start = validDate(startDate);
@@ -52,7 +53,7 @@ export function previewVacationPayroll(
     const receipt = calculateVacationReceipt({ startDate: start, endDate: end, baseSalary: baseGross, inssBrackets: taxConfig.inssBrackets });
     const periods = [
       ...(entry.vacationPeriods || []).map(period => ({ receipt: period.receipt!, advancePaid: period.advanceAmount > 0 })),
-      { receipt, advancePaid: false },
+      { receipt, advancePaid: advanceAlreadyPaid },
     ];
     const payroll = calculateCombinedVacationPayroll({
       periods, competenceMonth: month, competenceYear: year,

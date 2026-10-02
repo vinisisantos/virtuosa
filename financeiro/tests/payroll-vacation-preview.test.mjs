@@ -19,6 +19,22 @@ const leticiaExample = {
   vacationPeriods: [],
 };
 
+const taxConfig = {
+  inssBrackets: [
+    { limit: 1621, rate: 0.075 },
+    { limit: 2902.84, rate: 0.09 },
+    { limit: 4354.27, rate: 0.12 },
+    { limit: 8475.55, rate: 0.14 },
+  ],
+  irrfTable: {
+    brackets: [
+      { limit: 2428.8, rate: 0, deduction: 0 },
+      { limit: null, rate: 0.275, deduction: 908.73 },
+    ],
+    simplifiedDeduction: 607.2,
+  },
+};
+
 test('prévia reproduz o líquido do recibo de setembro após 15 dias e adiantamento informado', () => {
   const preview = previewVacationPayroll(leticiaExample, 9, 2026, '2026-09-01', '2026-09-15', 1408.55);
   assert.ok(preview);
@@ -52,6 +68,24 @@ test('férias entre setembro e outubro preservam premiação própria de cada co
   assert.equal(septemberWithPayslipBonus?.net, 1006.07);
   assert.equal(october?.days, 5);
   assert.equal(october?.net, 1693.54);
+});
+
+test('adiantamento confirmado é abatido proporcionalmente nas competências do período', () => {
+  const entry = { ...leticiaExample, bonus: 51.99 };
+  const septemberPaid = previewVacationPayroll(
+    entry, 9, 2026, '2026-09-16', '2026-10-05', 0, taxConfig, true,
+  );
+  const octoberPaid = previewVacationPayroll(
+    { ...entry, bonus: 0 }, 10, 2026, '2026-09-16', '2026-10-05', 0, taxConfig, true,
+  );
+  const septemberPending = previewVacationPayroll(
+    entry, 9, 2026, '2026-09-16', '2026-10-05', 0, taxConfig, false,
+  );
+
+  assert.equal(septemberPaid?.advanceDeduction, 1408.55);
+  assert.equal(octoberPaid?.advanceDeduction, 469.52);
+  assert.equal((septemberPaid?.advanceDeduction || 0) + (octoberPaid?.advanceDeduction || 0), 1878.07);
+  assert.equal(septemberPending?.advanceDeduction, 0);
 });
 
 test('prévia recusa intervalo inválido, sobreposição e PJ', () => {

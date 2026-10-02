@@ -118,6 +118,9 @@ export async function POST(request: NextRequest) {
     if (body.advanceAmount !== undefined || body.advancePaidAt !== undefined) {
       throw new VacationError('O valor das férias é calculado automaticamente pelas datas e salário.', 400);
     }
+    if (body.advanceAlreadyPaid !== undefined && typeof body.advanceAlreadyPaid !== 'boolean') {
+      throw new VacationError('Informe se o adiantamento de férias já foi pago.', 400);
+    }
     const taxConfig = await getPayrollTaxConfig(startDate.getUTCFullYear());
 
     const vacation = await prisma.$transaction(async transaction => {
@@ -202,6 +205,11 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      const advancePaid = matched ? matched.paid : body.advanceAlreadyPaid === true;
+      const advancePaidAt = advancePaid
+        ? new Date(`${matched?.date || receipt.paymentDueDate}T00:00:00.000Z`)
+        : null;
+
       await refreshAffectedPayroll(transaction, {
         unit: entry.payrollImport.unit, employeeKey, startDate, endDate,
       });
@@ -212,8 +220,8 @@ export async function POST(request: NextRequest) {
           employeeName: entry.employeeName,
           startDate,
           endDate,
-          advanceAmount: matched?.paid ? receipt.net : 0,
-          advancePaidAt: matched?.paid ? new Date(`${matched.date}T00:00:00.000Z`) : null,
+          advanceAmount: advancePaid ? receipt.net : 0,
+          advancePaidAt,
           receipt,
           advanceCostMode: matched ? 'manual' : 'automatic',
           linkedBackupId: matched?.backupId || null,

@@ -132,6 +132,20 @@ test('recibo e custo exigem confirmação e não aceitam valor manual', async ()
   assert.equal(manual.status, 400);
 });
 
+test('adiantamento informado como pago no cadastro é salvo para abatimento da folha', async () => {
+  const payload = {
+    payrollEntryId: 'entry-1', expectedEntryUpdatedAt: entry.updatedAt.toISOString(),
+    startDate: '2026-08-20', endDate: '2026-08-30', advanceAlreadyPaid: true,
+  };
+  const preview = await POST(request('POST', payload));
+  const receipt = (await preview.json()).receipt;
+  const saved = await POST(request('POST', { ...payload, confirmCost: true }));
+  assert.equal(saved.status, 201);
+  const period = calls.find(([operation]) => operation === 'vacation.create')[1].data;
+  assert.equal(period.advanceAmount, receipt.net);
+  assert.equal(period.advancePaidAt.toISOString().slice(0, 10), '2026-08-18');
+});
+
 test('despesa manual de férias existente é vinculada sem criar custo automático duplicado', async () => {
   const payload = {
     payrollEntryId: 'entry-1', expectedEntryUpdatedAt: entry.updatedAt.toISOString(),
