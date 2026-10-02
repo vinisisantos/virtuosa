@@ -19,9 +19,11 @@ let writeDelayMs = 0;
 let delayedMonth = null;
 let failRevision = null;
 let activeEntryUpdatedAt = '2026-09-12T12:00:00.000Z';
+let activePaymentStatus = 'unpaid';
 let revisionRequests = 0;
 const entryRequests = [];
 const entryWrites = [];
+const paymentWrites = [];
 
 function payrollResponse(month, revision) {
   const employeeName = `Colaboradora ${month}/${revision}`;
@@ -36,8 +38,8 @@ function payrollResponse(month, revision) {
       baseSalary: 3250,
       cargo: 'Especialista',
       bonus: 0,
-      paymentStatus: 'unpaid',
-      paymentDate: null,
+      paymentStatus: activePaymentStatus,
+      paymentDate: activePaymentStatus === 'paid' ? '2026-12-02T12:00:00.000Z' : null,
       updatedAt: activeEntryUpdatedAt,
       confidenceScore: 1,
       extractionSource: 'manual',
@@ -54,11 +56,11 @@ function payrollResponse(month, revision) {
     }],
     summary: {
       totalPayroll: 3250,
-      totalPaid: 0,
-      totalPending: 3250,
+      totalPaid: activePaymentStatus === 'paid' ? 3250 : 0,
+      totalPending: activePaymentStatus === 'paid' ? 0 : 3250,
       totalEmployees: 1,
-      paidCount: 0,
-      pendingCount: 1,
+      paidCount: activePaymentStatus === 'paid' ? 1 : 0,
+      pendingCount: activePaymentStatus === 'paid' ? 0 : 1,
       reviewCount: 0,
       totalBaseSalary: 3250,
       totalBonus: 0,
@@ -184,6 +186,19 @@ try {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify(payrollResponse(month, revision)),
+        });
+        return;
+      }
+      if (url.pathname === '/api/payroll/payment' && request.method() === 'PATCH') {
+        const body = JSON.parse(request.postData() || '{}');
+        paymentWrites.push(body);
+        activePaymentStatus = body.paymentStatus;
+        activeEntryUpdatedAt = '2026-12-02T12:00:00.000Z';
+        activeRevision = 'revision-payment-updated';
+        await respond(request, {
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ id: body.id, paymentStatus: activePaymentStatus, changed: true }),
         });
         return;
       }
@@ -398,8 +413,39 @@ try {
     'troca de competência conclui o loading mesmo com mutação antiga em andamento',
   );
 
+  const pendingTotal = () => page.evaluate(() => {
+    const label = [...document.querySelectorAll('span')]
+      .find(element => element.textContent?.trim() === 'Total pendente');
+    return label?.parentElement?.querySelector('strong')?.textContent?.trim().replace(/\s+/g, ' ') || null;
+  });
+  assert.equal(await pendingTotal(), 'R$ 3.250,00', 'folha não paga aparece no total pendente');
+  await page.click('button[aria-label="Confirmar pagamento de Colaboradora 12/revision-7"]');
+  await page.waitForFunction(() => [...document.querySelectorAll('h3')]
+    .some(element => element.textContent?.trim() === 'Confirmar pagamento'));
+  await page.evaluate(() => {
+    const confirmButton = [...document.querySelectorAll('button')]
+      .filter(button => button.textContent?.trim() === 'Confirmar pagamento')
+      .at(-1);
+    if (!(confirmButton instanceof HTMLButtonElement)) throw new Error('Botão confirmar não encontrado');
+    confirmButton.click();
+  });
+  await page.waitForFunction(() => document.body.textContent?.includes('Desfazer pagamento'));
+  await page.waitForFunction(() => {
+    const label = [...document.querySelectorAll('span')]
+      .find(element => element.textContent?.trim() === 'Total pendente');
+    return label?.parentElement?.querySelector('strong')?.textContent?.trim().replace(/\s+/g, ' ') === 'R$ 0,00';
+  });
+  assert.equal(paymentWrites.at(-1)?.paymentStatus, 'paid', 'confirmação de pagamento é enviada');
+  const paidSummary = await page.evaluate(() => {
+    const label = [...document.querySelectorAll('span')]
+      .find(element => element.textContent?.trim() === 'Total pendente');
+    return label?.parentElement?.textContent || '';
+  });
+  assert.match(paidSummary, /R\$\s*3\.250,00 pagos/, 'cartão mantém o total já pago como referência');
+  assert.match(paidSummary, /folha total\s*R\$\s*3\.250,00/, 'cartão mantém o valor integral da competência');
+
   assert.deepEqual(browserErrors, []);
-  console.log(JSON.stringify({ revisionRequests, entryRequests }));
+  console.log(JSON.stringify({ revisionRequests, entryRequests, paymentWrites }));
   await page.close();
 } finally {
   await browser.close();

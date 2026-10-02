@@ -194,7 +194,7 @@ try {
     await page.waitForSelector('section[aria-label^="Férias de "] input[type="date"]');
     const vacationLayout = await page.evaluate(() => {
       const panel = document.querySelector('section[aria-label^="Férias de "]');
-      const inputs = [...(panel?.querySelectorAll('input') || [])];
+      const inputs = [...(panel?.querySelectorAll('input[type="date"]') || [])];
       return {
         count: inputs.length,
         minHeight: Math.min(...inputs.map(input => input.getBoundingClientRect().height)),

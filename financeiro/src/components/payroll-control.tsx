@@ -273,6 +273,7 @@ export function PayrollControl({
       })
     : 0;
 
+  const displayedPendingPayrollTotal = summary.totalPending + draftDelta;
   const displayedPayrollTotal = summary.totalPayroll + draftDelta;
   const hasUndefinedRegime = summary.undefinedRegimeCount > 0;
 
@@ -701,9 +702,11 @@ export function PayrollControl({
       <div className={styles.summaryGrid}>
         <article className={styles.summaryCard}>
           <div className={styles.summaryIcon}><span className="material-symbols-outlined">payments</span></div>
-          <span className={styles.summaryLabel}>Total da folha</span>
-          <strong className={styles.summaryValue}>{formatCurrency(displayedPayrollTotal)}</strong>
-          <span className={styles.summaryMeta}>Líquido estimado após INSS e ajustes</span>
+          <span className={styles.summaryLabel}>Total pendente</span>
+          <strong className={styles.summaryValue}>{formatCurrency(displayedPendingPayrollTotal)}</strong>
+          <span className={styles.summaryMeta}>
+            {formatCurrency(summary.totalPaid)} pagos · folha total {formatCurrency(displayedPayrollTotal)}
+          </span>
         </article>
         <article className={styles.summaryCard}>
           <div className={styles.summaryIcon}><span className="material-symbols-outlined">group</span></div>
