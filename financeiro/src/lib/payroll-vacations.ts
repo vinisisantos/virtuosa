@@ -60,7 +60,7 @@ export function vacationCompetences(period: Pick<PayrollVacationPeriod, 'startDa
 }
 
 export function calculateVacationImpact(
-  periods: PayrollVacationPeriod[],
+  periods: Array<Pick<PayrollVacationPeriod, 'startDate' | 'endDate' | 'advanceAmount'>>,
   month: number,
   year: number,
   monthlyGrossSalary: number,

@@ -268,6 +268,14 @@
 .vacationEditor .vacationConfirm { grid-column: 1 / -1; min-height: 44px; display: flex; align-items: center; gap: 10px; line-height: 1.4; cursor: pointer; }
 .vacationConfirm input { flex: 0 0 20px; width: 20px; height: 20px; accent-color: var(--payroll-accent); }
 .vacationNote { grid-column: 1 / -1; }
+.vacationPreview { grid-column: 1 / -1; min-width: 0; display: grid; gap: 10px; padding: 13px; border: 1px solid rgba(139,92,246,.35); border-radius: 11px; background: var(--payroll-accent-soft); color: var(--text-main); }
+.vacationPreview > strong { font-size: .78rem; }
+.vacationPreviewGrid { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; font-size: .72rem; }
+.vacationPreviewGrid span { min-width: 0; overflow-wrap: anywhere; color: var(--text-muted); }
+.vacationPreviewGrid b { white-space: nowrap; font-weight: 700; }
+.vacationPreviewNet { display: flex; justify-content: space-between; align-items: center; gap: 8px; border-top: 1px solid var(--border); padding-top: 9px; font-size: .75rem; font-weight: 700; }
+.vacationPreviewNet strong { font-size: .93rem; color: var(--payroll-green); white-space: nowrap; }
+.vacationPreview small { color: var(--text-muted); font-size: .69rem; line-height: 1.45; }
 .vacationActions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
 
 .valueInput { display: flex; align-items: center; height: 44px; border: 1px solid var(--border); background: var(--bg); border-radius: 10px; overflow: hidden; }

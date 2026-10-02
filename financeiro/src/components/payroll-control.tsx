@@ -5,6 +5,7 @@ import { toast } from '@/components/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { formatCurrency } from '@/lib/currency';
 import { normalizePayrollSyncUnit, publishPayrollSync } from '@/lib/payroll-client-sync';
+import { previewVacationPayroll } from '@/lib/payroll-vacation-preview';
 import {
   AUTOMATIC_TRANSPORT_LABEL,
   CURRENT_MINIMUM_WAGE,
@@ -716,6 +717,16 @@ export function PayrollControl({
               const absenceDays = entry.adjustments
                 .filter(adjustment => adjustment.kind === 'absence')
                 .reduce((sum, adjustment) => sum + (adjustment.quantity || 0), 0);
+              const vacationPreview = vacationDraft?.payrollEntryId === entry.id
+                ? previewVacationPayroll(
+                    entry,
+                    competenceMonth,
+                    competenceYear,
+                    vacationDraft.startDate,
+                    vacationDraft.endDate,
+                    parseCurrencyInput(vacationDraft.advanceAmount),
+                  )
+                : null;
 
               return (
                 <article className={`${styles.entry} ${expanded ? styles.entryExpanded : ''}`} key={entry.id}>
@@ -1080,6 +1091,26 @@ export function PayrollControl({
                                     <span>Confirmo que esse adiantamento já está lançado como despesa em Custos.</span>
                                   </label>
                                 </>
+                              )}
+                              {vacationPreview && (
+                                <div className={styles.vacationPreview} role="status" aria-live="polite">
+                                  <strong>Prévia da competência · {String(competenceMonth).padStart(2, '0')}/{competenceYear}</strong>
+                                  <div className={styles.vacationPreviewGrid}>
+                                    <span>Salário trabalhado</span><b>{formatCurrency(vacationPreview.workedSalary)}</b>
+                                    <span>Férias · {vacationPreview.days} dias</span><b>{formatCurrency(vacationPreview.vacationSalary)}</b>
+                                    <span>1/3 de férias</span><b>{formatCurrency(vacationPreview.vacationThird)}</b>
+                                    {vacationPreview.bonus > 0 && <><span>Premiação</span><b>{formatCurrency(vacationPreview.bonus)}</b></>}
+                                    <span>INSS estimado</span><b>−{formatCurrency(vacationPreview.inss)}</b>
+                                    {vacationPreview.transportDiscount > 0 && <><span>Vale-transporte</span><b>−{formatCurrency(vacationPreview.transportDiscount)}</b></>}
+                                    {vacationPreview.otherAdjustments !== 0 && <><span>Outros ajustes</span><b>{formatCurrency(vacationPreview.otherAdjustments)}</b></>}
+                                    {vacationPreview.advanceDeduction > 0 && <><span>Férias já antecipadas</span><b>−{formatCurrency(vacationPreview.advanceDeduction)}</b></>}
+                                  </div>
+                                  <div className={styles.vacationPreviewNet}><span>Líquido estimado a pagar na folha</span><strong>{formatCurrency(vacationPreview.net)}</strong></div>
+                                  {vacationPreview.advanceDeduction === 0 && <small>Se as férias já foram pagas antes da folha, informe acima o valor líquido efetivamente antecipado. Só o período não determina esse pagamento.</small>}
+                                </div>
+                              )}
+                              {vacationDraft.startDate && vacationDraft.endDate && !vacationPreview && (
+                                <small className={styles.vacationNote}>Confira as datas: o período deve ter de 1 a 30 dias, incluir esta competência e não se sobrepor a férias já cadastradas.</small>
                               )}
                               <small className={styles.vacationNote}>Este valor apenas abate o líquido da folha. Se ainda não consta em Custos, registre uma despesa na data do pagamento antes de salvar as férias.</small>
                               <div className={styles.vacationActions}>

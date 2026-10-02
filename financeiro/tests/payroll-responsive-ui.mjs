@@ -205,6 +205,16 @@ try {
     assert.ok(vacationLayout.count >= 3, 'período e valor de férias disponíveis');
     assert.ok(vacationLayout.minHeight >= 44, 'campos de férias com alvo de toque');
     assert.ok(vacationLayout.documentWidth <= vacationLayout.viewportWidth + 1, 'editor de férias sem overflow horizontal');
+    await page.evaluate(() => {
+      const dates = [...document.querySelectorAll('section[aria-label^="Férias de "] input[type="date"]')];
+      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+      for (const [input, value] of [[dates[0], '2026-09-20'], [dates[1], '2026-09-24']]) {
+        setValue.call(input, value);
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+    await page.waitForFunction(() => document.body.textContent?.includes('Prévia da competência · 09/2026'));
     await page.type('section[aria-label^="Férias de "] input[placeholder="R$ 0,00"]', '120000');
     await page.waitForSelector('section[aria-label^="Férias de "] input[type="checkbox"]');
     const advanceLayout = await page.evaluate(() => {
@@ -218,9 +228,20 @@ try {
     });
     assert.ok(advanceLayout.confirmationHeight >= 44, 'confirmação do adiantamento com alvo de toque');
     assert.ok(advanceLayout.documentWidth <= advanceLayout.viewportWidth + 1, 'adiantamento sem overflow horizontal');
+    assert.ok(advanceLayout.documentWidth <= advanceLayout.viewportWidth + 1, 'prévia de férias sem overflow horizontal');
     const vacationHandle = await page.$('section[aria-label^="Férias de "]');
     await vacationHandle.screenshot({ path: join(output, `payroll-vacation-${viewport.width}x${viewport.height}.png`) });
     await vacationHandle.dispose();
+    const previewNetReachable = await page.evaluate(() => {
+      const net = document.querySelector('section[aria-label^="Férias de "] [class*="vacationPreviewNet"]');
+      net?.scrollIntoView({ block: 'center' });
+      if (!net) return false;
+      const bounds = net.getBoundingClientRect();
+      const x = bounds.left + bounds.width / 2;
+      const y = bounds.top + bounds.height / 2;
+      return y > 0 && y < innerHeight && net.contains(document.elementFromPoint(x, y));
+    });
+    assert.ok(previewNetReachable, 'líquido estimado acessível sem ficar encoberto pela navegação');
     await page.evaluate(() => {
       const panel = document.querySelector('section[aria-label^="Férias de "]');
       [...(panel?.querySelectorAll('button') || [])]
