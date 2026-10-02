@@ -7,6 +7,12 @@ export function isPayrollPaymentStatus(value: unknown): value is PayrollPaymentS
     && PAYROLL_PAYMENT_STATUSES.includes(value as PayrollPaymentStatus);
 }
 
+export function reviewPaidPayrollAfterAmountChange(currentStatus: string, amountChanged: boolean) {
+  return currentStatus === 'paid' && amountChanged
+    ? { paymentStatus: 'review' as const, paymentDate: null }
+    : {};
+}
+
 export function resolvePayrollPaymentMutation(params: {
   currentStatus: string;
   currentPaymentDate: Date | null;

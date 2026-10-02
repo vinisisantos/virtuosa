@@ -92,6 +92,8 @@ beforeEach(() => {
     id: 'entry-1',
     updatedAt: new Date('2026-09-12T11:00:00.000Z'),
     employmentType: 'CLT',
+    paymentStatus: 'unpaid',
+    paymentDate: null,
     payrollImportId: 'import-1',
     payrollImport: { unit: 'Osasco' },
   };
@@ -107,6 +109,8 @@ beforeEach(() => {
     updatedAt: new Date('2026-09-12T11:00:00.000Z'),
     payrollEntry: {
       employmentType: 'CLT',
+      paymentStatus: 'unpaid',
+      paymentDate: null,
       updatedAt: new Date('2026-09-12T11:00:00.000Z'),
       payrollImportId: 'import-1',
       payrollImport: { unit: 'Osasco' },
@@ -130,6 +134,22 @@ test('cria ajuste somente após validar entrada, unidade e versão, tocando a re
   assert.equal(calls.filter(([operation]) => operation === 'adjustment.create').length, 1);
   assert.equal(calls.filter(([operation]) => operation === 'entry.update').length, 1);
   assert.equal(calls.filter(([operation]) => operation === 'executeRaw').length, 1);
+});
+
+test('prêmio lançado após pagamento devolve a entrada para revisão', async () => {
+  currentEntry.paymentStatus = 'paid';
+  currentEntry.paymentDate = new Date('2026-09-12T10:00:00.000Z');
+  const response = await POST(request('POST', {
+    payrollEntryId: 'entry-1',
+    expectedEntryUpdatedAt: '2026-09-12T11:00:00.000Z',
+    kind: 'award',
+    amount: 200,
+  }));
+
+  assert.equal(response.status, 201);
+  const write = calls.find(([operation]) => operation === 'entry.update')[1];
+  assert.equal(write.data.paymentStatus, 'review');
+  assert.equal(write.data.paymentDate, null);
 });
 
 test('bloqueia criação de ajuste por ID de colaborador de outra unidade', async () => {
@@ -233,6 +253,34 @@ test('atualização e exclusão válidas preservam o vínculo e tocam a revisão
       < calls.findIndex(([operation]) => operation === 'adjustment.deleteMany'),
     'a entrada deve ser bloqueada antes de remover o ajuste',
   );
+});
+
+test('alterar ou remover desconto de entrada paga exige nova conferência', async () => {
+  currentAdjustment.payrollEntry.paymentStatus = 'paid';
+  currentAdjustment.payrollEntry.paymentDate = new Date('2026-09-12T10:00:00.000Z');
+  const updateResponse = await PUT(request('PUT', {
+    id: 'adjustment-1',
+    payrollEntryId: 'entry-1',
+    expectedUpdatedAt: '2026-09-12T11:00:00.000Z',
+    kind: 'discount',
+    amount: 75,
+  }));
+
+  assert.equal(updateResponse.status, 200);
+  const update = calls.find(([operation]) => operation === 'entry.updateMany')[1];
+  assert.equal(update.data.paymentStatus, 'review');
+  assert.equal(update.data.paymentDate, null);
+
+  calls = [];
+  const deleteResponse = await DELETE(request(
+    'DELETE',
+    undefined,
+    '?id=adjustment-1&expectedUpdatedAt=2026-09-12T11%3A00%3A00.000Z',
+  ));
+  assert.equal(deleteResponse.status, 200);
+  const deletion = calls.find(([operation]) => operation === 'entry.updateMany')[1];
+  assert.equal(deletion.data.paymentStatus, 'review');
+  assert.equal(deletion.data.paymentDate, null);
 });
 
 test('versão antiga do ajuste retorna 409 sem atualizar ou remover', async () => {

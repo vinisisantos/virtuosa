@@ -123,6 +123,11 @@ beforeEach(() => {
     netSalary: 2000,
     baseSalary: 2000,
     employmentType: 'CLT',
+    bonus: 0,
+    paymentStatus: 'unpaid',
+    paymentDate: null,
+    hazardPayRate: 0,
+    hazardPayBase: null,
     updatedAt: new Date('2026-09-12T11:00:00.000Z'),
     payrollImport: {
       unit: 'Osasco',
@@ -145,6 +150,34 @@ test('edição filtra por unidade e versão e toca a revisão na mesma transaç�
   assert.equal(write.where.payrollImport.unit, 'Osasco');
   assert.equal(write.where.updatedAt.toISOString(), '2026-09-12T11:00:00.000Z');
   assert.equal(calls.filter(([operation]) => operation === 'executeRaw').length, 1);
+});
+
+test('premiação editada após pagamento muda o status para revisão', async () => {
+  currentEntry.paymentStatus = 'paid';
+  currentEntry.paymentDate = new Date('2026-09-12T10:00:00.000Z');
+  const response = await PUT(request('PUT', {
+    id: 'entry-1',
+    bonus: 150,
+    expectedUpdatedAt: '2026-09-12T11:00:00.000Z',
+  }));
+
+  assert.equal(response.status, 200);
+  const write = calls.find(([operation]) => operation === 'entry.updateMany')[1];
+  assert.equal(write.data.paymentStatus, 'review');
+  assert.equal(write.data.paymentDate, null);
+});
+
+test('edição apenas do nome preserva confirmação do pagamento', async () => {
+  currentEntry.paymentStatus = 'paid';
+  const response = await PUT(request('PUT', {
+    id: 'entry-1',
+    employeeName: 'Nome corrigido',
+    expectedUpdatedAt: '2026-09-12T11:00:00.000Z',
+  }));
+
+  assert.equal(response.status, 200);
+  const write = calls.find(([operation]) => operation === 'entry.updateMany')[1];
+  assert.equal(write.data.paymentStatus, undefined);
 });
 
 test('edição com versão antiga retorna 409 sem escrever', async () => {

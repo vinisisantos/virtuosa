@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { materializeRecurringPayrollEntries } from '@/lib/payroll-recurrence-materialization';
 import { normalizePayrollEmployeeKey } from '@/lib/payroll-recurrence';
+import { reviewPaidPayrollAfterAmountChange } from '@/lib/payroll-payment';
 import {
     PayrollWriteConflictError,
     buildPayrollRevision,
@@ -300,11 +301,15 @@ export async function PUT(request: NextRequest) {
                     updatedAt: true,
                     baseSalary: true,
                     netSalary: true,
+                    bonus: true,
+                    paymentStatus: true,
                     employmentType: true,
+                    hazardPayRate: true,
+                    hazardPayBase: true,
                     payrollImport: { select: { unit: true } },
                     adjustments: {
                         where: { kind: 'transport', label: AUTOMATIC_TRANSPORT_LABEL },
-                        select: { id: true },
+                        select: { id: true, amount: true },
                         take: 1,
                     },
                 },
@@ -342,6 +347,17 @@ export async function PUT(request: NextRequest) {
                 ? Boolean(transportDiscountEnabled)
                 : Boolean(automaticTransport);
             const shouldApplyTransportDiscount = nextEmploymentType === 'CLT' && transportEnabled;
+            const nextTransportDiscount = shouldApplyTransportDiscount
+                ? calculateAutomaticTransportDiscount(nextBaseSalary)
+                : 0;
+            const financialChanged = (netSalary != null && Number(netSalary) !== currentEntry.netSalary)
+                || nextBaseSalary !== (currentEntry.baseSalary ?? currentEntry.netSalary)
+                || (bonus !== undefined && Math.max(0, Number(bonus) || 0) !== (currentEntry.bonus || 0))
+                || nextEmploymentType !== normalizeEmploymentType(currentEntry.employmentType)
+                || (normalizedHazardPayRate !== undefined && normalizedHazardPayRate !== currentEntry.hazardPayRate)
+                || (normalizedHazardPayBase !== undefined && normalizedHazardPayBase !== currentEntry.hazardPayBase)
+                || Boolean(automaticTransport) !== shouldApplyTransportDiscount
+                || (shouldApplyTransportDiscount && automaticTransport?.amount !== nextTransportDiscount);
             const mutationTime = nextPayrollUpdatedAt(currentEntry.updatedAt);
 
             const updated = await transaction.payrollEntry.updateMany({
@@ -362,6 +378,7 @@ export async function PUT(request: NextRequest) {
                     ...(normalizedEmploymentType !== undefined && { employmentType: normalizedEmploymentType }),
                     ...(normalizedHazardPayRate !== undefined && { hazardPayRate: normalizedHazardPayRate }),
                     ...(normalizedHazardPayBase !== undefined && { hazardPayBase: normalizedHazardPayBase }),
+                    ...reviewPaidPayrollAfterAmountChange(currentEntry.paymentStatus, financialChanged),
                     updatedAt: mutationTime,
                 },
             });
@@ -374,7 +391,7 @@ export async function PUT(request: NextRequest) {
                             id: automaticTransport.id,
                             payrollEntryId: currentEntry.id,
                         },
-                        data: { amount: calculateAutomaticTransportDiscount(nextBaseSalary) },
+                        data: { amount: nextTransportDiscount },
                     });
                     if (transportUpdated.count !== 1) throw new PayrollWriteConflictError();
                 } else {
@@ -384,7 +401,7 @@ export async function PUT(request: NextRequest) {
                             kind: 'transport',
                             direction: 'debit',
                             label: AUTOMATIC_TRANSPORT_LABEL,
-                            amount: calculateAutomaticTransportDiscount(nextBaseSalary),
+                            amount: nextTransportDiscount,
                         },
                     });
                 }

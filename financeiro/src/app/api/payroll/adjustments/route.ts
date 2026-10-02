@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { PAYROLL_ADJUSTMENT_KINDS, normalizeEmploymentType } from '@/lib/payroll-adjustments';
+import { reviewPaidPayrollAfterAmountChange } from '@/lib/payroll-payment';
 import {
     PayrollWriteConflictError,
     matchesExpectedUpdatedAt,
@@ -124,6 +125,7 @@ export async function POST(request: NextRequest) {
                 select: {
                     id: true,
                     updatedAt: true,
+                    paymentStatus: true,
                     employmentType: true,
                     payrollImportId: true,
                     payrollImport: { select: { unit: true } },
@@ -146,7 +148,10 @@ export async function POST(request: NextRequest) {
             });
             await transaction.payrollEntry.update({
                 where: { id: entry.id },
-                data: { updatedAt: nextPayrollUpdatedAt(entry.updatedAt) },
+                data: {
+                    ...reviewPaidPayrollAfterAmountChange(entry.paymentStatus, true),
+                    updatedAt: nextPayrollUpdatedAt(entry.updatedAt),
+                },
             });
             await touchPayrollImportRevisions(transaction, [entry.payrollImportId]);
             return created;
@@ -183,6 +188,7 @@ export async function PUT(request: NextRequest) {
                     payrollEntry: {
                         select: {
                             employmentType: true,
+                            paymentStatus: true,
                             updatedAt: true,
                             payrollImportId: true,
                             payrollImport: { select: { unit: true } },
@@ -204,6 +210,10 @@ export async function PUT(request: NextRequest) {
             }
 
             const data = buildAdjustmentData(body, current.payrollEntry.employmentType);
+            const amountChanged = current.kind !== data.kind
+                || current.direction !== data.direction
+                || current.quantity !== data.quantity
+                || current.amount !== data.amount;
             const updated = await transaction.payrollAdjustment.updateMany({
                 where: {
                     id: adjustmentId,
@@ -220,7 +230,10 @@ export async function PUT(request: NextRequest) {
                     updatedAt: current.payrollEntry.updatedAt,
                     payrollImport: { unit: current.payrollEntry.payrollImport.unit },
                 },
-                data: { updatedAt: nextPayrollUpdatedAt(current.payrollEntry.updatedAt) },
+                data: {
+                    ...reviewPaidPayrollAfterAmountChange(current.payrollEntry.paymentStatus, amountChanged),
+                    updatedAt: nextPayrollUpdatedAt(current.payrollEntry.updatedAt),
+                },
             });
             if (entryUpdated.count !== 1) throw new PayrollWriteConflictError();
 
@@ -264,6 +277,7 @@ export async function DELETE(request: NextRequest) {
                     payrollEntry: {
                         select: {
                             updatedAt: true,
+                            paymentStatus: true,
                             payrollImportId: true,
                             payrollImport: { select: { unit: true } },
                         },
@@ -295,7 +309,10 @@ export async function DELETE(request: NextRequest) {
                     updatedAt: current.payrollEntry.updatedAt,
                     payrollImport: { unit: current.payrollEntry.payrollImport.unit },
                 },
-                data: { updatedAt: nextPayrollUpdatedAt(current.payrollEntry.updatedAt) },
+                data: {
+                    ...reviewPaidPayrollAfterAmountChange(current.payrollEntry.paymentStatus, true),
+                    updatedAt: nextPayrollUpdatedAt(current.payrollEntry.updatedAt),
+                },
             });
             if (entryUpdated.count !== 1) throw new PayrollWriteConflictError();
             await touchPayrollImportRevisions(transaction, [current.payrollEntry.payrollImportId]);
