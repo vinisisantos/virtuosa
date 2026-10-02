@@ -14,6 +14,7 @@ registerHooks({
 
 let payrollImports;
 let vacations;
+let advances;
 let calls;
 
 globalThis.prisma = {
@@ -26,7 +27,7 @@ globalThis.prisma = {
   payrollVacation: {
     findMany: async args => {
       calls.push(['payrollVacation.findMany', args]);
-      return vacations;
+      return args.where.advanceCostMode === 'automatic' ? advances : vacations;
     },
   },
   order: {
@@ -75,6 +76,7 @@ function request(unit, permissions, role = 'GERENTE') {
 beforeEach(() => {
   calls = [];
   vacations = [];
+  advances = [];
   payrollImports = [{
     id: 'import-osasco',
     unit: 'Osasco',
@@ -123,6 +125,27 @@ test('custos de setembro consulta e identifica a folha de agosto', async () => {
   assert.equal(payrollCall.where.competenceMonth, 8);
   assert.equal(payrollCall.where.competenceYear, 2026);
   assert.equal(payrollCall.where.unit, 'Osasco');
+});
+
+test('adiantamento de férias aparece uma vez em Custos no mês do pagamento', async () => {
+  advances = [{
+    id: 'vacation-sep', unit: 'Osasco', employeeName: 'Letícia Máximo',
+    startDate: new Date('2026-09-16T00:00:00.000Z'),
+    endDate: new Date('2026-10-05T00:00:00.000Z'),
+    advancePaidAt: new Date('2026-09-14T00:00:00.000Z'),
+    advanceAmount: 1878.07,
+    receipt: { net: 1878.07, paymentDueDate: '2026-09-14' },
+    updatedAt: new Date('2026-09-14T12:00:00.000Z'),
+  }];
+  const response = await GET(request('Osasco', { finCustos: true }));
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.vacationAdvances, [{
+    id: 'vacation-sep', employeeName: 'Letícia Máximo', unit: 'Osasco',
+    startDate: '2026-09-16', endDate: '2026-10-05', amount: 1878.07,
+    date: '2026-09-14', isPaid: true, updatedAt: '2026-09-14T12:00:00.000Z',
+  }]);
+  assert.match(body.automaticCostsRevision.revision, /vacation-advance:vacation-sep/);
 });
 
 test('análise financeira recebe agregados sem nomes nem ações de pagamento', async () => {

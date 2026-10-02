@@ -37,6 +37,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260901120000_order_cost_recognition/migration.sql",
     "prisma/migrations/20260901183000_payroll_entry_exclusions/migration.sql",
     "prisma/migrations/20261002120000_payroll_vacations/migration.sql",
+    "prisma/migrations/20261002160000_payroll_vacation_receipt_tax_tables/migration.sql",
     "prisma/migrations/20260901195000_saved_reply_location_by_unit/migration.sql",
     "prisma/migrations/20260903143000_payment_method_fee_configs/migration.sql",
     "prisma/migrations/20260904010000_saved_reply_category_campaign_binding/migration.sql",

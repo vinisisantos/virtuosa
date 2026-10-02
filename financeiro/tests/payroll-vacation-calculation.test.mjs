@@ -103,6 +103,18 @@ test('não abate férias sem adiantamento efetivamente pago', () => {
   assert.equal(unpaid.net, 2414.62);
 });
 
+test('desconto de VT respeita o gasto real informado e não muda a base de INSS/FGTS', () => {
+  const capped = calculateVacationPayroll({
+    receipt, competenceMonth: 9, competenceYear: 2026, baseSalary: 2291.73,
+    bonus: 26, transportEnabled: true, actualTransportCost: 40, advancePaid: true,
+    inssBrackets: inss2026, irrfTable: irrf2026,
+  });
+  assert.equal(capped.deductions.transport, 40);
+  assert.equal(capped.net, 1034.82);
+  assert.equal(capped.inssBase, 2673.69);
+  assert.equal(capped.fgts, 213.90);
+});
+
 test('tabelas tributárias são entradas da função, sem taxas fixas por ano ou pessoa', () => {
   const alternative = calculateVacationReceipt({
     startDate: '2026-09-16', endDate: '2026-10-05', baseSalary: 2291.73,

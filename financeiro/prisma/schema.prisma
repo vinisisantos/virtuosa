@@ -46,6 +46,7 @@ model PayrollEntry {
   employmentType   String?
   hazardPayRate    Float               @default(0)
   hazardPayBase    Float?
+  transportActualCost Float?
   payrollImport    PayrollImport       @relation(fields: [payrollImportId], references: [id], onDelete: Cascade)
   adjustments      PayrollAdjustment[]
 }
@@ -86,11 +87,23 @@ model PayrollVacation {
   endDate         DateTime @db.Date
   advanceAmount   Float    @default(0)
   advancePaidAt   DateTime? @db.Date
+  receipt         Json?
+  advanceCostMode String    @default("none")
+  linkedBackupId  String?
+  linkedBillId    Int?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   @@index([unit, employeeKey, startDate, endDate])
   @@index([unit, advancePaidAt])
+}
+
+model PayrollTaxTable {
+  year          Int      @id
+  inssBrackets  Json
+  irrfTable     Json
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model Order {

@@ -8,9 +8,13 @@ import {
   previousCompetence,
   utcMonthRange,
 } from '@/lib/automatic-costs';
-import { calculatePayrollLegalFigures, calculatePayrollTotal } from '@/lib/payroll-adjustments';
+import { AUTOMATIC_TRANSPORT_LABEL, calculatePayrollLegalFigures, calculatePayrollTotal } from '@/lib/payroll-adjustments';
+import { calculateCombinedVacationPayroll } from '@/lib/payroll-vacation-calculation';
+import { linkedVacationPaymentState, storedVacationReceipt, vacationAdvancePaid } from '@/lib/payroll-vacation-server';
+import { getPayrollTaxConfig } from '@/lib/payroll-tax-config';
 import { buildPayrollRevision } from '@/lib/payroll-sync';
 import { calculateVacationImpact, payrollVacationScopeKey } from '@/lib/payroll-vacations';
+import type { VacationReceipt } from '@/lib/payroll-vacation-calculation';
 import { ACTIVE_UNITS } from '@/lib/role-access';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
@@ -72,7 +76,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const payrollRange = utcMonthRange(payrollCompetence);
-    const [payrollImports, productOrders, vacations] = await Promise.all([
+    const [payrollImports, productOrders, vacations, advancePeriods] = await Promise.all([
       prisma.payrollImport.findMany({
         where: {
           competenceMonth: payrollCompetence.month,
@@ -97,11 +101,13 @@ export async function GET(request: NextRequest) {
               hasFgts: true,
               hazardPayRate: true,
               hazardPayBase: true,
+              transportActualCost: true,
               hasPenalty: true,
               adjustments: {
                 select: {
                   kind: true,
                   direction: true,
+                  label: true,
                   quantity: true,
                   amount: true,
                 },
@@ -143,11 +149,45 @@ export async function GET(request: NextRequest) {
         select: {
           id: true, unit: true, employeeKey: true, employeeName: true,
           startDate: true, endDate: true, advanceAmount: true,
-          advancePaidAt: true, updatedAt: true,
+          advancePaidAt: true, receipt: true, advanceCostMode: true,
+          linkedBackupId: true, linkedBillId: true, updatedAt: true,
+        },
+      }),
+      prisma.payrollVacation.findMany({
+        where: {
+          ...unitWhere,
+          advanceCostMode: 'automatic',
+          OR: [
+            { startDate: { gte: new Date(recognitionRange.start.getTime() + 2 * 86_400_000), lt: new Date(recognitionRange.end.getTime() + 2 * 86_400_000) } },
+            { advancePaidAt: { gte: recognitionRange.start, lt: recognitionRange.end } },
+          ],
+        },
+        select: {
+          id: true, employeeName: true, unit: true, startDate: true, endDate: true, receipt: true,
+          advanceAmount: true, advancePaidAt: true, updatedAt: true,
         },
       }),
     ]);
 
+    const vacationAdvances = advancePeriods.flatMap(period => {
+      const receipt = period.receipt as VacationReceipt | null;
+      if (!receipt || typeof receipt.net !== 'number' || !receipt.paymentDueDate) return [];
+      const date = period.advancePaidAt?.toISOString().slice(0, 10) || receipt.paymentDueDate;
+      if (date < recognitionRange.start.toISOString().slice(0, 10)
+        || date >= recognitionRange.end.toISOString().slice(0, 10)) return [];
+      return [{
+        id: period.id, employeeName: period.employeeName, unit: period.unit,
+        startDate: period.startDate.toISOString().slice(0, 10),
+        endDate: period.endDate.toISOString().slice(0, 10),
+        amount: receipt.net, date, isPaid: Boolean(period.advancePaidAt), updatedAt: period.updatedAt,
+      }];
+    });
+
+    const hasReceipts = vacations.some(vacation => storedVacationReceipt(vacation.receipt) !== null);
+    const [taxConfig, linkedPayments] = await Promise.all([
+      hasReceipts ? getPayrollTaxConfig(payrollCompetence.year) : Promise.resolve(null),
+      linkedVacationPaymentState(vacations),
+    ]);
     const vacationsByEmployee = new Map<string, typeof vacations>();
     for (const vacation of vacations) {
       const key = payrollVacationScopeKey(vacation.unit, vacation.employeeKey);
@@ -181,13 +221,35 @@ export async function GET(request: NextRequest) {
         const periods = entry.employmentType === 'CLT'
           ? vacationsByEmployee.get(payrollVacationScopeKey(payrollImport.unit, entry.employeeName)) || []
           : [];
+        const normalizedPeriods = periods.map(period => ({
+          ...period,
+          advanceAmount: storedVacationReceipt(period.receipt) && vacationAdvancePaid(period, linkedPayments)
+            ? storedVacationReceipt(period.receipt)!.net : period.advanceAmount,
+        }));
         const vacation = calculateVacationImpact(
-          periods,
+          normalizedPeriods,
           payrollCompetence.month,
           payrollCompetence.year,
           calculatePayrollLegalFigures(entry).grossSalary,
         );
-        const valuedEntry = { ...entry, vacation };
+        const receipts = periods.map(period => ({
+          receipt: storedVacationReceipt(period.receipt),
+          advancePaid: vacationAdvancePaid(period, linkedPayments),
+        }));
+        const vacationPayroll = taxConfig && receipts.length > 0 && receipts.every(period => period.receipt)
+          ? calculateCombinedVacationPayroll({
+              periods: receipts as Array<{ receipt: NonNullable<(typeof receipts)[number]['receipt']>; advancePaid: boolean }>,
+              competenceMonth: payrollCompetence.month,
+              competenceYear: payrollCompetence.year,
+              baseSalary: calculatePayrollLegalFigures(entry).grossSalary,
+              bonus: entry.bonus || 0,
+              transportEnabled: entry.adjustments.some(adjustment => adjustment.kind === 'transport'
+                && adjustment.label === AUTOMATIC_TRANSPORT_LABEL),
+              actualTransportCost: entry.transportActualCost,
+              inssBrackets: taxConfig.inssBrackets,
+              irrfTable: taxConfig.irrfTable,
+            }) : null;
+        const valuedEntry = { ...entry, vacation, vacationPayroll };
         const salary = calculatePayrollTotal(valuedEntry);
         const fgts = calculatePayrollLegalFigures(valuedEntry).fgts;
 
@@ -267,6 +329,11 @@ export async function GET(request: NextRequest) {
           unit: order.unit || '(sem unidade)',
           updatedAt: order.updatedAt,
         })),
+        ...vacationAdvances.map(advance => ({
+          id: `vacation-advance:${advance.id}`,
+          unit: advance.unit,
+          updatedAt: advance.updatedAt,
+        })),
       ]),
       payroll,
       payrollCompetence,
@@ -274,6 +341,7 @@ export async function GET(request: NextRequest) {
       canManagePayrollPayments,
       productOrders,
       productOrdersTotal: productOrders.reduce((total, order) => total + (order.totalPrice || 0), 0),
+      vacationAdvances,
     });
   } catch (error) {
     console.error('GET automatic costs error:', error);

@@ -9,6 +9,10 @@ export type PayrollVacationPeriod = {
   endDate: Date | string;
   advanceAmount: number;
   advancePaidAt: Date | string | null;
+  receipt?: import('@/lib/payroll-vacation-calculation').VacationReceipt | null;
+  advanceCostMode?: string;
+  linkedBackupId?: string | null;
+  linkedBillId?: number | null;
   updatedAt: Date | string;
 };
 

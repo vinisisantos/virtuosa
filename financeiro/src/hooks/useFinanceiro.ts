@@ -9,6 +9,7 @@ import {
 import type { PayrollSyncSignal } from '@/lib/payroll-client-sync';
 import { getInitialPayrollCompetence } from '@/lib/payroll-competence';
 import type { PayrollEntryData, PayrollSummary } from '@/lib/types';
+import type { InssBracket, IrrfTable } from '@/lib/payroll-vacation-calculation';
 
 type FinanceiroTab = 'folha' | 'adiantamento' | 'premiacao' | 'reembolso' | 'custos' | 'analise' | 'vt' | 'vr';
 type PayrollLoadMode = 'initial' | 'manual' | 'silent';
@@ -16,6 +17,7 @@ type PayrollLoadMode = 'initial' | 'manual' | 'silent';
 interface PayrollEntriesResponse {
   entries?: PayrollEntryData[];
   summary?: Partial<PayrollSummary>;
+  taxConfig?: { inssBrackets: InssBracket[]; irrfTable: IrrfTable } | null;
   revision?: string;
   error?: string;
 }
@@ -96,6 +98,7 @@ export function useFinanceiro() {
   const [competenceYearState, setCompetenceYearState] = useState(initialPayrollCompetence.year);
   const [entries, setEntries] = useState<PayrollEntryData[]>([]);
   const [summary, setSummary] = useState<PayrollSummary>(EMPTY_SUMMARY);
+  const [taxConfig, setTaxConfig] = useState<PayrollEntriesResponse['taxConfig']>(null);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [selectedUnitState, setSelectedUnitState] = useState(() => {
@@ -239,6 +242,7 @@ export function useFinanceiro() {
       const nextRevision = typeof data.revision === 'string' ? data.revision : null;
       setEntries(data.entries || []);
       setSummary({ ...EMPTY_SUMMARY, ...(data.summary || {}) });
+      setTaxConfig(data.taxConfig || null);
       setLoadError('');
       revisionRef.current = nextRevision;
       loadedScopeRef.current = requestScope;
@@ -449,6 +453,7 @@ export function useFinanceiro() {
     setCompetenceYear,
     entries,
     summary,
+    taxConfig,
     loading,
     loadError,
     selectedUnit: selectedUnitState,

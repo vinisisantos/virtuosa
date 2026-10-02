@@ -1,4 +1,5 @@
 import type { PayrollVacationImpact, PayrollVacationPeriod } from '@/lib/payroll-vacations';
+import type { VacationPayroll } from '@/lib/payroll-vacation-calculation';
 
 export type PaymentStatus = 'paid' | 'unpaid' | 'review';
 
@@ -42,8 +43,11 @@ export interface PayrollEntryData {
     employmentType: EmploymentType;
     hazardPayRate: HazardPayRate;
     hazardPayBase: number | null;
+    transportActualCost: number | null;
     adjustments: PayrollAdjustmentData[];
     vacation?: PayrollVacationImpact;
+    vacationPayroll?: VacationPayroll | null;
+    vacationAdvanceWarning?: boolean;
     vacationPeriods?: PayrollVacationPeriod[];
     notes: string | null;
     updatedAt: string;

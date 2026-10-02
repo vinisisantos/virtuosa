@@ -5,6 +5,7 @@ import type {
     PayrollAdjustmentKind,
 } from '@/lib/types';
 import type { PayrollVacationImpact } from '@/lib/payroll-vacations';
+import type { VacationPayroll } from '@/lib/payroll-vacation-calculation';
 
 export const CURRENT_MINIMUM_WAGE = 1621;
 export const HAZARD_PAY_RATES: HazardPayRate[] = [0, 10, 20, 40];
@@ -26,6 +27,7 @@ type PayrollLegalInput = {
     hazardPayRate?: number | null;
     hazardPayBase?: number | null;
     vacation?: PayrollVacationImpact | null;
+    vacationPayroll?: VacationPayroll | null;
 };
 
 export function normalizeHazardPayRate(value: unknown): HazardPayRate {
@@ -65,6 +67,23 @@ export function calculatePayrollLegalFigures(entry: PayrollLegalInput) {
         : 0;
     const hazardPay = hazardPayBase * hazardPayRate / 100;
     const vacation = isClt ? entry.vacation : null;
+    const detailedVacation = isClt ? entry.vacationPayroll : null;
+    if (detailedVacation) {
+        const grossSalary = detailedVacation.inssBase;
+        return {
+            baseSalary, hazardPayRate, hazardPayBase, hazardPay,
+            vacationDays: detailedVacation.vacationDays,
+            vacationSalary: detailedVacation.earnings.vacation,
+            workedSalary: detailedVacation.earnings.salary,
+            vacationThird: detailedVacation.earnings.third,
+            vacationAdvanceDeduction: detailedVacation.deductions.vacationAdvance,
+            grossSalary,
+            inss: detailedVacation.inssTotal,
+            irrf: detailedVacation.deductions.irrf,
+            fgts: entry.hasFgts !== false ? detailedVacation.fgts : 0,
+            netBeforeAdjustments: detailedVacation.net - detailedVacation.earnings.bonus,
+        };
+    }
     const grossSalary = baseSalary + hazardPay + (vacation?.third || 0);
     const inss = isClt ? calculateProgressiveInss(grossSalary) : 0;
     const fgts = isClt && entry.hasFgts !== false ? grossSalary * 0.08 : 0;
@@ -81,6 +100,7 @@ export function calculatePayrollLegalFigures(entry: PayrollLegalInput) {
         vacationAdvanceDeduction: vacation?.advanceDeduction || 0,
         grossSalary,
         inss,
+        irrf: 0,
         fgts,
         netBeforeAdjustments: Math.max(0, grossSalary - inss - (vacation?.advanceDeduction || 0)),
     };
@@ -147,13 +167,17 @@ export function calculatePayrollTotal(entry: {
     hazardPayBase?: number | null;
     hasPenalty?: boolean;
     vacation?: PayrollVacationImpact | null;
+    vacationPayroll?: VacationPayroll | null;
     adjustments?: PayrollAdjustmentInput[];
 }): number {
     const legalFigures = calculatePayrollLegalFigures(entry);
     const salary = legalFigures.baseSalary;
     const legacyPenalty = entry.hasPenalty ? salary * 0.1 : 0;
     const adjustments = entry.adjustments || [];
-    const adjustmentTotal = adjustments.reduce(
+    const effectiveAdjustments = entry.vacationPayroll
+        ? adjustments.filter(adjustment => !(adjustment.kind === 'transport' && adjustment.label === AUTOMATIC_TRANSPORT_LABEL))
+        : adjustments;
+    const adjustmentTotal = effectiveAdjustments.reduce(
         (sum, adjustment) => sum + calculateAdjustmentDelta(salary, entry.employmentType || null, adjustment, legalFigures.vacationDays),
         0,
     );
@@ -168,6 +192,7 @@ export function summarizePayrollAdjustments(entries: Array<{
     employmentType?: EmploymentType | string;
     hasPenalty?: boolean;
     vacation?: PayrollVacationImpact | null;
+    vacationPayroll?: VacationPayroll | null;
     adjustments?: PayrollAdjustmentInput[];
 }>) {
     let totalCredits = 0;
@@ -175,8 +200,8 @@ export function summarizePayrollAdjustments(entries: Array<{
 
     for (const entry of entries) {
         totalCredits += Math.max(0, entry.bonus || 0);
-        totalCredits += entry.vacation?.third || 0;
-        totalDebits += entry.vacation?.advanceDeduction || 0;
+        totalCredits += entry.vacationPayroll?.earnings.third ?? entry.vacation?.third ?? 0;
+        totalDebits += entry.vacationPayroll?.deductions.vacationAdvance ?? entry.vacation?.advanceDeduction ?? 0;
         for (const adjustment of entry.adjustments || []) {
             const value = calculateAdjustmentValue(getPayrollBaseSalary(entry), entry.employmentType || null, adjustment, entry.vacation?.days);
             if (adjustment.direction === 'credit') totalCredits += value;

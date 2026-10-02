@@ -4,6 +4,9 @@ import { materializeRecurringPayrollEntries } from '@/lib/payroll-recurrence-mat
 import { normalizePayrollEmployeeKey } from '@/lib/payroll-recurrence';
 import { reviewPaidPayrollAfterAmountChange } from '@/lib/payroll-payment';
 import { calculateVacationImpact, payrollVacationScopeKey } from '@/lib/payroll-vacations';
+import { calculateCombinedVacationPayroll } from '@/lib/payroll-vacation-calculation';
+import { linkedVacationPaymentState, storedVacationReceipt, vacationAdvancePaid } from '@/lib/payroll-vacation-server';
+import { parsePayrollTaxConfig } from '@/lib/payroll-tax-config';
 import {
     PayrollWriteConflictError,
     buildPayrollRevision,
@@ -101,7 +104,7 @@ export async function GET(request: NextRequest) {
         // --- Fetch all entries for this month ---
         const periodStart = new Date(Date.UTC(year, month - 1, 1));
         const periodEnd = new Date(Date.UTC(year, month, 1));
-        const [payrollImports, vacations] = await Promise.all([prisma.payrollImport.findMany({
+        const [payrollImports, vacations, taxRow] = await Promise.all([prisma.payrollImport.findMany({
             where: whereClause,
             select: {
                 id: true,
@@ -129,10 +132,17 @@ export async function GET(request: NextRequest) {
             select: {
                 id: true, unit: true, employeeKey: true, employeeName: true,
                 startDate: true, endDate: true, advanceAmount: true,
-                advancePaidAt: true, updatedAt: true,
+                advancePaidAt: true, receipt: true, advanceCostMode: true,
+                linkedBackupId: true, linkedBillId: true, updatedAt: true,
             },
+        }), prisma.payrollTaxTable.findUnique({
+            where: { year }, select: { inssBrackets: true, irrfTable: true },
         })]);
 
+        const hasReceipts = vacations.some(vacation => storedVacationReceipt(vacation.receipt) !== null);
+        const taxConfig = taxRow ? parsePayrollTaxConfig(taxRow) : null;
+        if (hasReceipts && !taxConfig) throw new Error(`Tabela tributária de ${year} não configurada.`);
+        const linkedPayments = await linkedVacationPaymentState(vacations);
         const vacationsByEmployee = new Map<string, typeof vacations>();
         for (const vacation of vacations) {
             const key = payrollVacationScopeKey(vacation.unit, vacation.employeeKey);
@@ -146,12 +156,37 @@ export async function GET(request: NextRequest) {
                 const periods = entry.employmentType === 'CLT'
                     ? vacationsByEmployee.get(payrollVacationScopeKey(payrollImport.unit, entry.employeeName)) || []
                     : [];
+                const normalizedPeriods = periods.map(period => ({
+                    ...period,
+                    advanceAmount: storedVacationReceipt(period.receipt) && vacationAdvancePaid(period, linkedPayments)
+                        ? storedVacationReceipt(period.receipt)!.net : period.advanceAmount,
+                }));
+                const receipts = periods.map(period => ({
+                    receipt: storedVacationReceipt(period.receipt),
+                    advancePaid: vacationAdvancePaid(period, linkedPayments),
+                }));
+                const vacationPayroll = taxConfig && receipts.length > 0 && receipts.every(period => period.receipt)
+                    ? calculateCombinedVacationPayroll({
+                        periods: receipts as Array<{ receipt: NonNullable<(typeof receipts)[number]['receipt']>; advancePaid: boolean }>,
+                        competenceMonth: month,
+                        competenceYear: year,
+                        baseSalary: calculatePayrollLegalFigures(entry).grossSalary,
+                        bonus: entry.bonus || 0,
+                        transportEnabled: entry.adjustments.some(adjustment => adjustment.kind === 'transport'
+                            && adjustment.label === AUTOMATIC_TRANSPORT_LABEL),
+                        actualTransportCost: entry.transportActualCost,
+                        inssBrackets: taxConfig.inssBrackets,
+                        irrfTable: taxConfig.irrfTable,
+                    }) : null;
                 return {
                     ...entry,
-                    vacationPeriods: periods,
+                    vacationPeriods: normalizedPeriods,
                     vacation: calculateVacationImpact(
-                        periods, month, year, calculatePayrollLegalFigures(entry).grossSalary,
+                        normalizedPeriods, month, year, calculatePayrollLegalFigures(entry).grossSalary,
                     ),
+                    vacationPayroll,
+                    vacationAdvanceWarning: periods.some(period => storedVacationReceipt(period.receipt)
+                        && !vacationAdvancePaid(period, linkedPayments)),
                 };
             }),
         }));
@@ -196,6 +231,7 @@ export async function GET(request: NextRequest) {
             imports,
             entries: allEntries,
             summary,
+            taxConfig,
             ...buildPayrollRevision(imports),
         }, {
             headers: { 'Cache-Control': 'private, no-store, max-age=0' },
@@ -210,7 +246,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
     try {
         const body = await request.json();
-        const { employeeName, netSalary, baseSalary, cargo, bonus, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts, employmentType, hazardPayRate, hazardPayBase, transportDiscountEnabled } = body;
+        const { employeeName, netSalary, baseSalary, cargo, bonus, competenceMonth, competenceYear, notes, hasAdiantamento, isRecurring, hasFgts, employmentType, hazardPayRate, hazardPayBase, transportDiscountEnabled, transportActualCost } = body;
         const requestedUnit = typeof body.unit === 'string' ? body.unit.trim() : '';
 
         if (!ACTIVE_UNITS.includes(requestedUnit as (typeof ACTIVE_UNITS)[number])) {
@@ -253,6 +289,10 @@ export async function POST(request: NextRequest) {
             : null;
         const normalizedBaseSalary = Math.max(0, baseSalary != null ? Number(baseSalary) : normalizedNetSalary);
         const shouldApplyTransportDiscount = normalizedEmploymentType === 'CLT' && Boolean(transportDiscountEnabled);
+        const normalizedTransportActualCost = transportActualCost == null ? null : Number(transportActualCost);
+        if (normalizedTransportActualCost !== null && (!Number.isFinite(normalizedTransportActualCost) || normalizedTransportActualCost < 0)) {
+            return NextResponse.json({ error: 'Custo real de vale-transporte inválido' }, { status: 400 });
+        }
 
         const entry = await prisma.$transaction(async transaction => {
             const importRecord = await transaction.payrollImport.upsert({
@@ -289,6 +329,7 @@ export async function POST(request: NextRequest) {
                     employmentType: normalizedEmploymentType,
                     hazardPayRate: normalizedHazardPayRate,
                     hazardPayBase: normalizedHazardPayBase,
+                    transportActualCost: shouldApplyTransportDiscount ? normalizedTransportActualCost : null,
                     notes: notes || null,
                     adjustments: shouldApplyTransportDiscount ? {
                         create: {
@@ -322,7 +363,7 @@ export async function PUT(request: NextRequest) {
 
     try {
         const body = await request.json();
-        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring, employmentType, hazardPayRate, hazardPayBase, transportDiscountEnabled } = body;
+        const { id, employeeName, netSalary, baseSalary, cargo, bonus, notes, hasAdiantamento, isRecurring, employmentType, hazardPayRate, hazardPayBase, transportDiscountEnabled, transportActualCost } = body;
         const expectedUpdatedAt = parseOptionalExpectedUpdatedAt(body.expectedUpdatedAt);
 
         if (!id) {
@@ -343,6 +384,7 @@ export async function PUT(request: NextRequest) {
                     employmentType: true,
                     hazardPayRate: true,
                     hazardPayBase: true,
+                    transportActualCost: true,
                     payrollImport: { select: { unit: true } },
                     adjustments: {
                         where: { kind: 'transport', label: AUTOMATIC_TRANSPORT_LABEL },
@@ -384,6 +426,12 @@ export async function PUT(request: NextRequest) {
                 ? Boolean(transportDiscountEnabled)
                 : Boolean(automaticTransport);
             const shouldApplyTransportDiscount = nextEmploymentType === 'CLT' && transportEnabled;
+            const nextTransportActualCost = !shouldApplyTransportDiscount ? null
+                : transportActualCost === undefined ? currentEntry.transportActualCost ?? null
+                    : transportActualCost === null ? null : Number(transportActualCost);
+            if (nextTransportActualCost !== null && (!Number.isFinite(nextTransportActualCost) || nextTransportActualCost < 0)) {
+                throw new RangeError('Custo real de vale-transporte inválido.');
+            }
             const nextTransportDiscount = shouldApplyTransportDiscount
                 ? calculateAutomaticTransportDiscount(nextBaseSalary)
                 : 0;
@@ -394,6 +442,7 @@ export async function PUT(request: NextRequest) {
                 || (normalizedHazardPayRate !== undefined && normalizedHazardPayRate !== currentEntry.hazardPayRate)
                 || (normalizedHazardPayBase !== undefined && normalizedHazardPayBase !== currentEntry.hazardPayBase)
                 || Boolean(automaticTransport) !== shouldApplyTransportDiscount
+                || nextTransportActualCost !== (currentEntry.transportActualCost ?? null)
                 || (shouldApplyTransportDiscount && automaticTransport?.amount !== nextTransportDiscount);
             const mutationTime = nextPayrollUpdatedAt(currentEntry.updatedAt);
 
@@ -415,6 +464,7 @@ export async function PUT(request: NextRequest) {
                     ...(normalizedEmploymentType !== undefined && { employmentType: normalizedEmploymentType }),
                     ...(normalizedHazardPayRate !== undefined && { hazardPayRate: normalizedHazardPayRate }),
                     ...(normalizedHazardPayBase !== undefined && { hazardPayBase: normalizedHazardPayBase }),
+                    transportActualCost: nextTransportActualCost,
                     ...reviewPaidPayrollAfterAmountChange(currentEntry.paymentStatus, financialChanged),
                     updatedAt: mutationTime,
                 },
@@ -464,6 +514,7 @@ export async function PUT(request: NextRequest) {
         if (err instanceof PayrollVersionInvalidError) {
             return NextResponse.json({ error: 'Versão da folha inválida' }, { status: 400 });
         }
+        if (err instanceof RangeError) return NextResponse.json({ error: err.message }, { status: 400 });
         if (err instanceof PayrollWriteConflictError) return writeConflictResponse();
         if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse(err);
         console.error('PUT entry error:', err);

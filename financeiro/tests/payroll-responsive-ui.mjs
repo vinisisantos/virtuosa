@@ -202,7 +202,7 @@ try {
         viewportWidth: document.documentElement.clientWidth,
       };
     });
-    assert.ok(vacationLayout.count >= 3, 'período e valor de férias disponíveis');
+    assert.equal(vacationLayout.count, 2, 'apenas as datas das férias são informadas; recibo é automático');
     assert.ok(vacationLayout.minHeight >= 44, 'campos de férias com alvo de toque');
     assert.ok(vacationLayout.documentWidth <= vacationLayout.viewportWidth + 1, 'editor de férias sem overflow horizontal');
     await page.evaluate(() => {
@@ -219,19 +219,10 @@ try {
     assert.match(visibleCompetences, /Folha 09\/2026 → Custos 10\/2026/);
     assert.match(visibleCompetences, /Folha 09\/2026: 15 dias de férias → Custos 10\/2026/);
     assert.match(visibleCompetences, /Folha 10\/2026: 5 dias de férias → Custos 11\/2026/);
-    await page.type('section[aria-label^="Férias de "] input[placeholder="R$ 0,00"]', '120000');
-    await page.waitForSelector('section[aria-label^="Férias de "] input[type="checkbox"]');
-    const advanceLayout = await page.evaluate(() => {
-      const panel = document.querySelector('section[aria-label^="Férias de "]');
-      const confirmation = panel?.querySelector('input[type="checkbox"]')?.closest('label');
-      return {
-        confirmationHeight: confirmation?.getBoundingClientRect().height || 0,
-        documentWidth: document.documentElement.scrollWidth,
-        viewportWidth: document.documentElement.clientWidth,
-      };
-    });
-    assert.ok(advanceLayout.confirmationHeight >= 44, 'confirmação do adiantamento com alvo de toque');
-    assert.ok(advanceLayout.documentWidth <= advanceLayout.viewportWidth + 1, 'adiantamento sem overflow horizontal');
+    const advanceLayout = await page.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
     assert.ok(advanceLayout.documentWidth <= advanceLayout.viewportWidth + 1, 'prévia de férias sem overflow horizontal');
     const vacationHandle = await page.$('section[aria-label^="Férias de "]');
     await vacationHandle.screenshot({ path: join(output, `payroll-vacation-${viewport.width}x${viewport.height}.png`) });
@@ -280,6 +271,20 @@ try {
     if (viewport.landscape) {
       assert.ok(modal.fieldsScrollHeight > modal.fieldsClientHeight, 'campos do modal rolam em paisagem');
     }
+
+    await page.evaluate(() => {
+      const toggle = [...document.querySelectorAll('[role="dialog"] label')]
+        .find(label => label.textContent?.includes('Descontar vale-transporte'))?.querySelector('input[type="checkbox"]');
+      if (toggle && !toggle.checked) toggle.click();
+    });
+    const transportLayout = await page.evaluate(() => ({
+      hasActualCost: Boolean([...document.querySelectorAll('[role="dialog"] label')]
+        .find(label => label.textContent?.includes('Custo real do VT neste mês'))?.querySelector('input')),
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    assert.equal(transportLayout.hasActualCost, true, 'teto real do VT acessível na edição');
+    assert.ok(transportLayout.documentWidth <= transportLayout.viewportWidth + 1, 'campo do VT sem overflow horizontal');
 
     await page.screenshot({
       path: join(output, `payroll-modal-${viewport.width}x${viewport.height}.png`),

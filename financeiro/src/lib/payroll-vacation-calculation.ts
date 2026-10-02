@@ -176,8 +176,7 @@ function calculateIrrf(
   return { base, value: tax, deduction };
 }
 
-export function calculateVacationPayroll(input: {
-  receipt: VacationReceipt;
+type PayrollCompetenceInput = {
   competenceMonth: number;
   competenceYear: number;
   baseSalary: number;
@@ -188,38 +187,45 @@ export function calculateVacationPayroll(input: {
   inssBrackets: readonly InssBracket[];
   irrfTable: IrrfTable;
   otherLegalDeductions?: number;
-}): VacationPayroll {
-  const { receipt, competenceMonth: month, competenceYear: year } = input;
+};
+
+type VacationComponents = {
+  days: number;
+  vacation: number;
+  third: number;
+  retainedInss: number;
+  advance: number;
+};
+
+function calculatePayrollFromComponents(input: PayrollCompetenceInput, components: VacationComponents): VacationPayroll {
+  const { competenceMonth: month, competenceYear: year } = input;
   if (!Number.isInteger(month) || month < 1 || month > 12 || !Number.isInteger(year)) {
     throw new RangeError('Competência inválida.');
   }
-  const period = vacationMonths(receipt).find(item => item.month === month && item.year === year);
-  if (!period) throw new RangeError('A competência não possui dias deste período de férias.');
-  const workedDays = 30 - period.days;
+  if (components.days < 1 || components.days > 30) throw new RangeError('Dias de férias inválidos na competência.');
+  const workedDays = 30 - components.days;
   const salary = Math.round(cents(input.baseSalary, 'salário-base') * workedDays / 30);
-  const vacation = allocate(receipt, month, year, cents(receipt.vacation, 'férias'), true);
-  const third = allocate(receipt, month, year, cents(receipt.third, 'terço de férias'));
+  const vacation = components.vacation;
+  const third = components.third;
   const bonus = cents(input.bonus ?? 0, 'prêmio');
   const earningsTotal = salary + vacation + third + bonus;
   const inssBase = salary + vacation + third;
   const inssTotal = cents(calculateInss(money(inssBase), input.inssBrackets), 'INSS mensal');
   const inssSalary = inssBase === 0 ? 0 : Math.round(inssTotal * salary / inssBase);
-  const inssVacationRetained = input.advancePaid
-    ? allocate(receipt, month, year, cents(receipt.inss, 'INSS das férias')) : 0;
+  const inssVacationRetained = components.retainedInss;
   // O complemento pode ser negativo: nesse caso a rubrica devolve retenção excessiva.
   const inssComplement = inssTotal - inssSalary - inssVacationRetained;
   const transportLimit = input.actualTransportCost == null
     ? Number.POSITIVE_INFINITY : cents(input.actualTransportCost, 'custo real de VT');
   const transport = input.transportEnabled ? Math.min(Math.round(salary * 0.06), transportLimit) : 0;
-  const vacationAdvance = input.advancePaid
-    ? allocate(receipt, month, year, cents(receipt.net, 'líquido das férias')) : 0;
+  const vacationAdvance = components.advance;
   const irrf = calculateIrrf(
     salary, bonus, inssSalary, cents(input.otherLegalDeductions ?? 0, 'deduções legais IRRF'), input.irrfTable,
   );
   const deductionsTotal = transport + inssSalary + inssVacationRetained
     + inssComplement + vacationAdvance + irrf.value;
   return {
-    competence: { month, year }, vacationDays: period.days, workedDays,
+    competence: { month, year }, vacationDays: components.days, workedDays,
     earnings: {
       salary: money(salary), vacation: money(vacation), third: money(third),
       bonus: money(bonus), total: money(earningsTotal),
@@ -233,4 +239,40 @@ export function calculateVacationPayroll(input: {
     irrfDeduction: irrf.deduction, fgts: money(Math.round(inssBase * 0.08)),
     net: money(earningsTotal - deductionsTotal),
   };
+}
+
+export function calculateVacationPayroll(input: PayrollCompetenceInput & {
+  receipt: VacationReceipt;
+}): VacationPayroll {
+  const { receipt, competenceMonth: month, competenceYear: year } = input;
+  const period = vacationMonths(receipt).find(item => item.month === month && item.year === year);
+  if (!period) throw new RangeError('A competência não possui dias deste período de férias.');
+  return calculatePayrollFromComponents(input, {
+    days: period.days,
+    vacation: allocate(receipt, month, year, cents(receipt.vacation, 'férias'), true),
+    third: allocate(receipt, month, year, cents(receipt.third, 'terço de férias')),
+    retainedInss: input.advancePaid ? allocate(receipt, month, year, cents(receipt.inss, 'INSS das férias')) : 0,
+    advance: input.advancePaid ? allocate(receipt, month, year, cents(receipt.net, 'líquido das férias')) : 0,
+  });
+}
+
+export function calculateCombinedVacationPayroll(input: Omit<PayrollCompetenceInput, 'advancePaid'> & {
+  periods: readonly { receipt: VacationReceipt; advancePaid: boolean }[];
+}): VacationPayroll {
+  const components = input.periods.reduce<VacationComponents>((sum, period) => {
+    const month = vacationMonths(period.receipt).find(item =>
+      item.month === input.competenceMonth && item.year === input.competenceYear,
+    );
+    if (!month) return sum;
+    return {
+      days: sum.days + month.days,
+      vacation: sum.vacation + allocate(period.receipt, month.month, month.year, cents(period.receipt.vacation, 'férias'), true),
+      third: sum.third + allocate(period.receipt, month.month, month.year, cents(period.receipt.third, 'terço de férias')),
+      retainedInss: sum.retainedInss + (period.advancePaid
+        ? allocate(period.receipt, month.month, month.year, cents(period.receipt.inss, 'INSS das férias')) : 0),
+      advance: sum.advance + (period.advancePaid
+        ? allocate(period.receipt, month.month, month.year, cents(period.receipt.net, 'líquido das férias')) : 0),
+    };
+  }, { days: 0, vacation: 0, third: 0, retainedInss: 0, advance: 0 });
+  return calculatePayrollFromComponents({ ...input, advancePaid: false }, components);
 }

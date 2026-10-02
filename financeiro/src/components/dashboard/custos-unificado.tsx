@@ -47,7 +47,7 @@ interface CostRow {
   pendingPortion: number;
   recognizedPortion: number;
   isHistorical: boolean;
-  source: 'fixed' | 'bill' | 'automatic-payroll' | 'automatic-products';
+  source: 'fixed' | 'bill' | 'automatic-payroll' | 'automatic-products' | 'automatic-vacation';
   raw: any;
 }
 
@@ -97,6 +97,18 @@ interface AutomaticProductOrder {
   unit: string | null;
 }
 
+interface AutomaticVacationAdvance {
+  id: string;
+  employeeName: string;
+  unit: string;
+  startDate: string;
+  endDate: string;
+  amount: number;
+  date: string;
+  isPaid: boolean;
+  updatedAt: string;
+}
+
 interface AutomaticCostsResponse {
   payrollRevision?: { revision: string; lastModifiedAt: string | null };
   automaticCostsRevision?: { revision: string; lastModifiedAt: string | null };
@@ -106,6 +118,7 @@ interface AutomaticCostsResponse {
   canManagePayrollPayments: boolean;
   productOrders: AutomaticProductOrder[];
   productOrdersTotal: number;
+  vacationAdvances: AutomaticVacationAdvance[];
 }
 
 interface ProductCostEntry {
@@ -199,13 +212,43 @@ function AutomaticCostDetails({
   canManagePayrollPayments,
   payrollPaymentBusyId,
   onTogglePayrollPayment,
+  onToggleVacationAdvance,
 }: {
   row: CostRow;
   canOpenOrders: boolean;
   canManagePayrollPayments: boolean;
   payrollPaymentBusyId: string;
   onTogglePayrollPayment: (entry: AutomaticPayrollEntry) => void;
+  onToggleVacationAdvance: (advance: AutomaticVacationAdvance, paymentDate: string) => void;
 }) {
+  if (row.source === 'automatic-vacation') {
+    const advance = row.raw as AutomaticVacationAdvance;
+    return (
+      <div style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)', display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'end', justifyContent: 'space-between' }}>
+        <div style={{ minWidth: 0 }}>
+          <strong>Recibo de férias · {advance.employeeName}</strong>
+          <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: 4 }}>
+            {advance.unit} · {fmt(advance.amount)} · {advance.isPaid ? 'adiantamento pago' : 'adiantamento pendente'}
+          </div>
+        </div>
+        {canManagePayrollPayments && (
+          <form onSubmit={event => {
+            event.preventDefault();
+            const input = event.currentTarget.elements.namedItem('paymentDate') as HTMLInputElement | null;
+            onToggleVacationAdvance(advance, input?.value || advance.date);
+          }} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'end', gap: 8 }}>
+            {!advance.isPaid && <label style={{ display: 'grid', gap: 4, fontSize: '0.75rem' }}>
+              Data efetiva do pagamento
+              <input key={advance.updatedAt} name="paymentDate" type="date" defaultValue={advance.date} required style={{ minHeight: 44, borderRadius: 8, padding: '7px 10px', border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-main)' }} />
+            </label>}
+            <button type="submit" disabled={payrollPaymentBusyId === advance.id} style={{ minHeight: 44, padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--primary)', fontWeight: 800, cursor: 'pointer' }}>
+              {advance.isPaid ? 'Desfazer pagamento' : 'Confirmar pagamento'}
+            </button>
+          </form>
+        )}
+      </div>
+    );
+  }
   if (row.source === 'automatic-payroll') {
     const payroll = row.raw as AutomaticPayrollCost;
     const competenceLabel = `${String(payroll.competenceMonth).padStart(2, '0')}/${payroll.competenceYear}`;
@@ -725,6 +768,50 @@ export function CustosUnificado({
     }
   };
 
+  const toggleVacationAdvance = async (advance: AutomaticVacationAdvance, paymentDate: string) => {
+    const scope = visibleAutomaticCostsScopeRef.current;
+    const confirmed = await confirmDialog({
+      title: advance.isPaid ? 'Desfazer adiantamento' : 'Confirmar adiantamento',
+      message: advance.isPaid
+        ? `Desfazer o pagamento das férias de ${advance.employeeName}? O abatimento será removido da folha ainda não paga.`
+        : `Confirma que ${fmt(advance.amount)} foi pago a ${advance.employeeName} em ${paymentDate.split('-').reverse().join('/')}? O valor será abatido da folha das competências correspondentes.`,
+      confirmText: advance.isPaid ? 'Desfazer' : 'Confirmar pagamento',
+      variant: advance.isPaid ? 'warning' : 'info',
+    });
+    if (!confirmed) return;
+    if (scope !== visibleAutomaticCostsScopeRef.current) {
+      toast('A unidade ou o mês mudou. Abra o custo novamente.', 'warning');
+      return;
+    }
+    setPayrollPaymentBusyId(advance.id);
+    try {
+      const response = await fetch('/api/payroll/vacations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: advance.id, paymentStatus: advance.isPaid ? 'unpaid' : 'paid',
+          paymentDate, expectedUpdatedAt: advance.updatedAt,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || 'Não foi possível atualizar o adiantamento.');
+      toast('Adiantamento atualizado na Folha e em Custos.', 'success');
+      setAutomaticCostsRefreshVersion(version => version + 1);
+      const first = new Date(`${advance.startDate}T00:00:00.000Z`);
+      const last = new Date(`${advance.endDate}T00:00:00.000Z`);
+      for (let year = first.getUTCFullYear(), month = first.getUTCMonth() + 1;
+        year < last.getUTCFullYear() || (year === last.getUTCFullYear() && month <= last.getUTCMonth() + 1);
+        month += 1) {
+        if (month > 12) { year += 1; month = 1; }
+        publishPayrollSync({ competenceMonth: month, competenceYear: year, unit: advance.unit, revision: null });
+      }
+    } catch (error) {
+      toast(error instanceof Error ? error.message : 'Erro ao atualizar adiantamento', 'error');
+    } finally {
+      setPayrollPaymentBusyId('');
+    }
+  };
+
   /* ─── Derived Data ─── */
   const filteredFixed = d.fixedExpenses.filter((e: FixedExpense) => e.value > 0 && (d.selectedUnit === 'all' || !e.unit || e.unit === d.selectedUnit));
   const selectedMonthKey = `${d.selectedYear}-${String(d.selectedMonth + 1).padStart(2, '0')}`;
@@ -768,6 +855,27 @@ export function CustosUnificado({
         raw: payroll,
       });
     }
+
+    (automaticCosts?.vacationAdvances || []).forEach(advance => {
+      rows.push({
+        id: `automatic-vacation-${advance.id}`,
+        name: `Férias – adiantamento ${advance.employeeName}`,
+        value: advance.amount,
+        periodTotal: advance.amount,
+        occurrenceCount: 1,
+        recurrence: 'once',
+        type: 'fixo',
+        category: 'Salários',
+        dueInfo: advance.date.split('-').reverse().join('/'),
+        isPaid: advance.isPaid,
+        paidPortion: advance.isPaid ? advance.amount : 0,
+        pendingPortion: advance.isPaid ? 0 : advance.amount,
+        recognizedPortion: 0,
+        isHistorical: false,
+        source: 'automatic-vacation',
+        raw: advance,
+      });
+    });
 
     const productOrders = automaticCosts?.productOrders || [];
     const productOrdersTotal = automaticCosts?.productOrdersTotal
@@ -907,6 +1015,14 @@ export function CustosUnificado({
         });
       }
     }
+    (automaticCosts?.vacationAdvances || []).forEach(advance => expenses.push({
+      key: `automatic-vacation-${advance.id}`,
+      name: `Férias – adiantamento ${advance.employeeName}`,
+      value: advance.amount,
+      category: 'Salários',
+      date: advance.date,
+      isPaid: advance.isPaid,
+    }));
     automaticCosts?.productOrders.forEach(order => {
       expenses.push({
         key: `automatic-order-${order.id}`,
@@ -1360,7 +1476,8 @@ export function CustosUnificado({
       ) : viewMode === 'lucratividade' ? (
         <LucratividadeView
           d={d}
-          automaticFixedCosts={automaticCosts?.payroll?.total || 0}
+          automaticFixedCosts={(automaticCosts?.payroll?.total || 0)
+            + (automaticCosts?.vacationAdvances || []).reduce((sum, advance) => sum + advance.amount, 0)}
           automaticVariableCosts={automaticCosts?.productOrdersTotal || 0}
         />
       ) : viewMode === 'produtos' ? (
@@ -1484,6 +1601,8 @@ export function CustosUnificado({
                   const manualProductFreight = isManualProduct ? normalizeProductExpenseFreight(row.raw.freight) : 0;
                   const sourceLabel = row.source === 'automatic-payroll'
                     ? 'Automático · Folha'
+                    : row.source === 'automatic-vacation'
+                      ? 'Automático · Férias'
                     : row.source === 'automatic-products'
                       ? 'Automático · Pedidos'
                       : row.recurrence === 'weekly'
@@ -1582,6 +1701,7 @@ export function CustosUnificado({
                               canManagePayrollPayments={automaticCosts?.canManagePayrollPayments === true}
                               payrollPaymentBusyId={payrollPaymentBusyId}
                               onTogglePayrollPayment={entry => void togglePayrollPayment(entry)}
+                              onToggleVacationAdvance={(advance, paymentDate) => void toggleVacationAdvance(advance, paymentDate)}
                             />
                           </td>
                         </tr>

@@ -7,6 +7,7 @@ import { formatCurrency } from '@/lib/currency';
 import { nextCompetence, type Competence } from '@/lib/automatic-costs';
 import { normalizePayrollSyncUnit, publishPayrollSync } from '@/lib/payroll-client-sync';
 import { previewVacationPayroll } from '@/lib/payroll-vacation-preview';
+import type { InssBracket, IrrfTable } from '@/lib/payroll-vacation-calculation';
 import { vacationCompetences, vacationDaysInCompetence } from '@/lib/payroll-vacations';
 import {
   AUTOMATIC_TRANSPORT_LABEL,
@@ -34,6 +35,7 @@ import styles from './payroll-control.module.css';
 interface PayrollControlProps {
   entries: PayrollEntryData[];
   summary: PayrollSummary;
+  taxConfig?: { inssBrackets: InssBracket[]; irrfTable: IrrfTable } | null;
   loading: boolean;
   loadError: string;
   competenceMonth: number;
@@ -52,6 +54,7 @@ interface EmployeeFormState {
   hazardPayRate: HazardPayRate;
   hazardPayBase: string;
   transportDiscountEnabled: boolean;
+  transportActualCost: string;
   unit: string;
   expectedUpdatedAt?: string;
   scope: PayrollMutationScope;
@@ -71,9 +74,6 @@ interface VacationDraft {
   payrollEntryId: string;
   startDate: string;
   endDate: string;
-  advanceAmount: string;
-  advancePaidAt: string;
-  advanceRegisteredInCosts: boolean;
   expectedEntryUpdatedAt: string;
   scope: PayrollMutationScope;
 }
@@ -172,6 +172,7 @@ function adjustmentDisplay(entry: PayrollEntryData, adjustment: PayrollAdjustmen
 export function PayrollControl({
   entries,
   summary,
+  taxConfig,
   loading,
   loadError,
   competenceMonth,
@@ -285,6 +286,7 @@ export function PayrollControl({
       hazardPayRate: 0,
       hazardPayBase: formatCurrencyInput(CURRENT_MINIMUM_WAGE),
       transportDiscountEnabled: false,
+      transportActualCost: '',
       unit: selectedUnit === 'all' ? 'Osasco' : selectedUnit,
       scope,
     });
@@ -304,6 +306,7 @@ export function PayrollControl({
       transportDiscountEnabled: entry.adjustments.some(
         adjustment => adjustment.kind === 'transport' && adjustment.label === AUTOMATIC_TRANSPORT_LABEL,
       ),
+      transportActualCost: entry.transportActualCost == null ? '' : formatCurrencyInput(entry.transportActualCost),
       unit: selectedUnit === 'all' ? 'Osasco' : selectedUnit,
       expectedUpdatedAt: entry.updatedAt,
       scope,
@@ -349,6 +352,8 @@ export function PayrollControl({
             ? hazardPayBase
             : null,
           transportDiscountEnabled: employeeForm.employmentType === 'CLT' && employeeForm.transportDiscountEnabled,
+          transportActualCost: employeeForm.employmentType === 'CLT' && employeeForm.transportDiscountEnabled
+            && employeeForm.transportActualCost.trim() ? parseCurrencyInput(employeeForm.transportActualCost) : null,
           ...(!isEditing ? {
             unit: employeeForm.unit,
             competenceMonth: mutationScope.competenceMonth,
@@ -541,9 +546,6 @@ export function PayrollControl({
       payrollEntryId: entry.id,
       startDate: '',
       endDate: '',
-      advanceAmount: '',
-      advancePaidAt: '',
-      advanceRegisteredInCosts: false,
       expectedEntryUpdatedAt: entry.updatedAt,
       scope: { competenceMonth, competenceYear, unit: selectedUnit },
     });
@@ -559,32 +561,39 @@ export function PayrollControl({
     if (!vacationDraft.startDate || !vacationDraft.endDate) {
       return toast('Informe o início e o fim das férias.', 'warning');
     }
-    const advanceAmount = parseCurrencyInput(vacationDraft.advanceAmount);
-    if (advanceAmount > 0 && !vacationDraft.advancePaidAt) {
-      return toast('Informe a data do adiantamento já pago.', 'warning');
-    }
-    if (advanceAmount > 0 && !vacationDraft.advanceRegisteredInCosts) {
-      return toast('Confirme que o adiantamento já foi lançado em Custos.', 'warning');
-    }
     setBusyKey(`vacation:${vacationDraft.payrollEntryId}`);
     try {
-      const response = await fetch('/api/payroll/vacations', {
+      const body = {
+        payrollEntryId: vacationDraft.payrollEntryId,
+        expectedEntryUpdatedAt: vacationDraft.expectedEntryUpdatedAt,
+        startDate: vacationDraft.startDate,
+        endDate: vacationDraft.endDate,
+      };
+      let response = await fetch('/api/payroll/vacations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          payrollEntryId: vacationDraft.payrollEntryId,
-          expectedEntryUpdatedAt: vacationDraft.expectedEntryUpdatedAt,
-          startDate: vacationDraft.startDate,
-          endDate: vacationDraft.endDate,
-          advanceAmount,
-          advancePaidAt: advanceAmount > 0 ? vacationDraft.advancePaidAt : null,
-          advanceRegisteredInCosts: vacationDraft.advanceRegisteredInCosts,
-        }),
+        body: JSON.stringify(body),
       });
+      if (response.status === 428) {
+        const preview = await response.json();
+        if (!preview.confirmationRequired || !preview.receipt) throw new Error(preview.error || 'Não foi possível conferir o recibo.');
+        const receipt = preview.receipt as { vacation: number; third: number; inss: number; net: number; paymentDueDate: string };
+        const confirmed = await confirmDialog({
+          title: 'Recibo e custo das férias',
+          message: `${preview.error}\nFérias: ${formatCurrency(receipt.vacation)} · 1/3: ${formatCurrency(receipt.third)} · INSS: ${formatCurrency(receipt.inss)} · líquido: ${formatCurrency(receipt.net)}. Data prevista: ${formatDateOnly(receipt.paymentDueDate)}.${preview.matchedCost ? ' O pagamento segue o status do custo já existente.' : ' O custo ficará pendente até a confirmação do pagamento.'}`,
+          confirmText: preview.matchedCost ? 'Vincular custo' : 'Criar custo',
+        });
+        if (!confirmed) return;
+        response = await fetch('/api/payroll/vacations', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...body, confirmCost: true }),
+        });
+      }
       await parseResponse(response);
       await refreshAfterMutation(mutationScope);
       if (isActiveScope(mutationScope)) setVacationDraft(null);
-      toast('Férias incluídas na folha e nos custos.', 'success');
+      toast('Férias e recibo cadastrados. Confira o pagamento do custo.', 'success');
     } catch (error) {
       await handleMutationError(error, 'Erro ao salvar férias', mutationScope);
     } finally {
@@ -596,7 +605,7 @@ export function PayrollControl({
     const mutationScope = { competenceMonth, competenceYear, unit: selectedUnit };
     const confirmed = await confirmDialog({
       title: 'Remover férias',
-      message: 'Remover este período? As competências afetadas serão recalculadas e pagamentos confirmados voltarão para revisão.',
+      message: 'Remover este período? As competências ainda não pagas serão recalculadas. Folhas ou adiantamentos já pagos bloqueiam a remoção.',
       confirmText: 'Remover período',
       variant: 'danger',
     });
@@ -719,9 +728,8 @@ export function PayrollControl({
               const creditAdjustments = entry.adjustments.filter(adjustment => adjustment.direction === 'credit');
               const debitAdjustments = entry.adjustments.filter(adjustment => adjustment.direction === 'debit');
               const draftCredit = isDraftEntry && draftDelta > 0 ? draftDelta : 0;
-              const draftDebit = isDraftEntry && draftDelta < 0 ? Math.abs(draftDelta) : 0;
               const totalEarnings = legalFigures.grossSalary + totalCredits - legalFigures.vacationThird + draftCredit;
-              const totalDeductions = legalFigures.inss + totalDebits + draftDebit;
+              const totalDeductions = Math.max(0, totalEarnings - total);
               const absenceDays = entry.adjustments
                 .filter(adjustment => adjustment.kind === 'absence')
                 .reduce((sum, adjustment) => sum + (adjustment.quantity || 0), 0);
@@ -732,7 +740,8 @@ export function PayrollControl({
                     competenceYear,
                     vacationDraft.startDate,
                     vacationDraft.endDate,
-                    parseCurrencyInput(vacationDraft.advanceAmount),
+                    0,
+                    taxConfig,
                   )
                 : null;
               const vacationDistribution = vacationPreview && vacationDraft
@@ -1000,7 +1009,14 @@ export function PayrollControl({
                             <span className="material-symbols-outlined">trending_down</span>
                             Descontos
                           </header>
-                          {entry.employmentType === 'CLT' && (
+                          {entry.vacationPayroll ? (
+                            <>
+                              <div className={styles.breakdownRow}><span><strong>0201 · INSS sobre salários</strong></span><strong>{formatCurrency(entry.vacationPayroll.deductions.inssSalary)}</strong></div>
+                              <div className={styles.breakdownRow}><span><strong>0289 · INSS sobre férias</strong><small>Retido no recibo</small></span><strong>{formatCurrency(entry.vacationPayroll.deductions.inssVacationRetained)}</strong></div>
+                              <div className={styles.breakdownRow}><span><strong>0202 · INSS complementar</strong></span><strong>{formatCurrency(entry.vacationPayroll.deductions.inssComplement)}</strong></div>
+                              {entry.vacationPayroll.deductions.irrf > 0 && <div className={styles.breakdownRow}><span><strong>IRRF</strong></span><strong>{formatCurrency(entry.vacationPayroll.deductions.irrf)}</strong></div>}
+                            </>
+                          ) : entry.employmentType === 'CLT' && (
                             <div className={styles.breakdownRow}>
                               <span><strong>INSS sobre salários</strong><small>Base {formatCurrency(legalFigures.grossSalary)}</small></span>
                               <strong>{formatCurrency(legalFigures.inss)}</strong>
@@ -1051,14 +1067,21 @@ export function PayrollControl({
                               </button>
                             )}
                           </div>
-                          <p>Informe os dias corridos. Salário, 1/3 e vale-transporte automático são proporcionais ao período; descontos manuais só mudam se você os editar. O adiantamento já pago é abatido para não pagar duas vezes. Esta é uma estimativa gerencial; confira a folha oficial com a contabilidade.</p>
+                          <p>Informe somente o período. O recibo e o custo de férias serão calculados automaticamente. Confirme o lançamento do custo antes de salvar e confira os valores com a contabilidade.</p>
+                          {entry.vacationAdvanceWarning && (
+                            <div role="alert" className={styles.vacationNote}>
+                              O adiantamento ainda não consta como pago no custo vinculado. A folha não fará o abatimento até a confirmação do pagamento.
+                            </div>
+                          )}
                           {(entry.vacationPeriods || []).map(period => (
                             <div className={styles.vacationPeriod} key={period.id}>
                               <span>
                                 <strong>{formatDateOnly(period.startDate)} a {formatDateOnly(period.endDate)}</strong>
-                                <small>{period.advanceAmount > 0
-                                  ? `Adiantado ${formatCurrency(period.advanceAmount)} em ${formatDateOnly(period.advancePaidAt || period.startDate)}`
-                                  : 'Sem adiantamento registrado'}</small>
+                                <small>{period.receipt
+                                  ? `Recibo líquido ${formatCurrency(period.receipt.net)} · ${period.advanceAmount > 0 ? 'adiantamento pago' : 'pagamento do adiantamento pendente'}`
+                                  : period.advanceAmount > 0
+                                    ? `Adiantado ${formatCurrency(period.advanceAmount)} em ${formatDateOnly(period.advancePaidAt || period.startDate)}`
+                                    : 'Sem adiantamento registrado'}</small>
                               </span>
                               <button
                                 aria-label={`Remover férias de ${formatDateOnly(period.startDate)} a ${formatDateOnly(period.endDate)}`}
@@ -1079,34 +1102,6 @@ export function PayrollControl({
                                 <span>Fim das férias</span>
                                 <input type="date" value={vacationDraft.endDate} onChange={event => setVacationDraft({ ...vacationDraft, endDate: event.target.value })} />
                               </label>
-                              <label>
-                                <span>Adiantamento já pago e lançado em Custos (opcional)</span>
-                                <input
-                                  inputMode="numeric"
-                                  placeholder="R$ 0,00"
-                                  value={vacationDraft.advanceAmount}
-                                  onChange={event => setVacationDraft({
-                                    ...vacationDraft,
-                                    advanceAmount: formatCurrencyInputFromTyping(event.target.value),
-                                  })}
-                                />
-                              </label>
-                              {parseCurrencyInput(vacationDraft.advanceAmount) > 0 && (
-                                <>
-                                  <label>
-                                    <span>Data do adiantamento</span>
-                                    <input type="date" value={vacationDraft.advancePaidAt} onChange={event => setVacationDraft({ ...vacationDraft, advancePaidAt: event.target.value })} />
-                                  </label>
-                                  <label className={styles.vacationConfirm}>
-                                    <input
-                                      type="checkbox"
-                                      checked={vacationDraft.advanceRegisteredInCosts}
-                                      onChange={event => setVacationDraft({ ...vacationDraft, advanceRegisteredInCosts: event.target.checked })}
-                                    />
-                                    <span>Confirmo que esse adiantamento já está lançado como despesa em Custos.</span>
-                                  </label>
-                                </>
-                              )}
                               {vacationPreview && (
                                 <div className={styles.vacationPreview} role="status" aria-live="polite">
                                   <strong>Prévia da Folha · competência {formatCompetence({ month: competenceMonth, year: competenceYear })}</strong>
@@ -1133,13 +1128,13 @@ export function PayrollControl({
                                     {vacationPreview.advanceDeduction > 0 && <><span>Férias já antecipadas</span><b>−{formatCurrency(vacationPreview.advanceDeduction)}</b></>}
                                   </div>
                                   <div className={styles.vacationPreviewNet}><span>Líquido estimado a pagar na folha</span><strong>{formatCurrency(vacationPreview.net)}</strong></div>
-                                  {vacationPreview.advanceDeduction === 0 && <small>Se as férias já foram pagas antes da folha, informe acima o valor líquido efetivamente antecipado. Só o período não determina esse pagamento.</small>}
+                                  {vacationPreview.advanceDeduction === 0 && <small>O abatimento será aplicado após a confirmação do pagamento do adiantamento em Custos.</small>}
                                 </div>
                               )}
                               {vacationDraft.startDate && vacationDraft.endDate && !vacationPreview && (
                                 <small className={styles.vacationNote}>Confira as datas: o período deve ter de 1 a 30 dias, incluir esta competência e não se sobrepor a férias já cadastradas.</small>
                               )}
-                              <small className={styles.vacationNote}>Este valor apenas abate o líquido da folha. Se ainda não consta em Custos, registre uma despesa na data do pagamento antes de salvar as férias.</small>
+                              <small className={styles.vacationNote}>O custo é criado pendente ou vinculado a um lançamento existente; nenhum pagamento será presumido.</small>
                               <div className={styles.vacationActions}>
                                 <button className={styles.cancelButton} onClick={() => setVacationDraft(null)}>Cancelar</button>
                                 <button
@@ -1357,6 +1352,22 @@ export function PayrollControl({
                     </small>
                   </span>
                 </label>
+                {employeeForm.employmentType === 'CLT' && employeeForm.transportDiscountEnabled && (
+                  <label>
+                    <span>Custo real do VT neste mês (teto do desconto)</span>
+                    <div className={styles.valueInput}>
+                      <span>R$</span>
+                      <input
+                        inputMode="numeric"
+                        type="text"
+                        value={employeeForm.transportActualCost}
+                        onChange={event => setEmployeeForm({ ...employeeForm, transportActualCost: formatCurrencyInputFromTyping(event.target.value) })}
+                        placeholder="Informe se conhecido"
+                      />
+                    </div>
+                    <small>Se ficar vazio, a folha usa a estimativa de 6% sem limitar pelo gasto real.</small>
+                  </label>
+                )}
               </div>
               {!employeeForm.id && selectedUnit === 'all' && (
                 <label>

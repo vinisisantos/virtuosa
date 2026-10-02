@@ -62,6 +62,7 @@ export default function Home() {
               <PayrollControl
                 entries={f.entries}
                 summary={f.summary}
+                taxConfig={f.taxConfig}
                 loading={f.loading}
                 loadError={f.loadError}
                 competenceMonth={f.competenceMonth}

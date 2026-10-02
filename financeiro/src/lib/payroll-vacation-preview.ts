@@ -5,6 +5,8 @@ import {
   calculatePayrollTotal,
 } from '@/lib/payroll-adjustments';
 import { calculateVacationImpact, vacationDaysInCompetence } from '@/lib/payroll-vacations';
+import { calculateCombinedVacationPayroll, calculateVacationReceipt, type InssBracket, type IrrfTable } from '@/lib/payroll-vacation-calculation';
+import { AUTOMATIC_TRANSPORT_LABEL } from '@/lib/payroll-adjustments';
 
 export type VacationPayrollPreview = {
   days: number;
@@ -32,6 +34,7 @@ export function previewVacationPayroll(
   startDate: string,
   endDate: string,
   advanceAmount: number,
+  taxConfig?: { inssBrackets: InssBracket[]; irrfTable: IrrfTable } | null,
 ): VacationPayrollPreview | null {
   if (entry.employmentType !== 'CLT') return null;
   const start = validDate(startDate);
@@ -43,6 +46,40 @@ export function previewVacationPayroll(
     new Date(period.startDate).getTime() <= end.getTime()
     && new Date(period.endDate).getTime() >= start.getTime()
   )) return null;
+
+  if (taxConfig && (entry.vacationPeriods || []).every(period => period.receipt)) {
+    const baseGross = calculatePayrollLegalFigures({ ...entry, vacation: null, vacationPayroll: null }).grossSalary;
+    const receipt = calculateVacationReceipt({ startDate: start, endDate: end, baseSalary: baseGross, inssBrackets: taxConfig.inssBrackets });
+    const periods = [
+      ...(entry.vacationPeriods || []).map(period => ({ receipt: period.receipt!, advancePaid: period.advanceAmount > 0 })),
+      { receipt, advancePaid: false },
+    ];
+    const payroll = calculateCombinedVacationPayroll({
+      periods, competenceMonth: month, competenceYear: year,
+      baseSalary: baseGross, bonus: entry.bonus || 0,
+      transportEnabled: (entry.adjustments || []).some(adjustment => adjustment.kind === 'transport'
+        && adjustment.label === AUTOMATIC_TRANSPORT_LABEL),
+      actualTransportCost: entry.transportActualCost,
+      inssBrackets: taxConfig.inssBrackets,
+      irrfTable: taxConfig.irrfTable,
+    });
+    const otherAdjustments = (entry.adjustments || []).filter(adjustment =>
+      !(adjustment.kind === 'transport' && adjustment.label === AUTOMATIC_TRANSPORT_LABEL),
+    ).reduce((sum, adjustment) => sum + (adjustment.direction === 'credit' ? 1 : -1)
+      * calculateAdjustmentValue(baseGross, entry.employmentType, adjustment, payroll.vacationDays), 0);
+    return {
+      days: payroll.vacationDays,
+      workedSalary: payroll.earnings.salary,
+      vacationSalary: payroll.earnings.vacation,
+      vacationThird: payroll.earnings.third,
+      bonus: payroll.earnings.bonus,
+      inss: payroll.inssTotal,
+      transportDiscount: payroll.deductions.transport,
+      otherAdjustments,
+      advanceDeduction: payroll.deductions.vacationAdvance,
+      net: Math.round(calculatePayrollTotal({ ...entry, vacationPayroll: payroll }) * 100) / 100,
+    };
+  }
 
   const baseGross = calculatePayrollLegalFigures({ ...entry, vacation: null }).grossSalary;
   const vacation = calculateVacationImpact(

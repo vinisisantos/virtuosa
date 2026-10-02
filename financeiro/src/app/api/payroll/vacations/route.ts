@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { normalizePayrollEmployeeKey } from '@/lib/payroll-recurrence';
+import { calculatePayrollLegalFigures } from '@/lib/payroll-adjustments';
+import { calculateVacationReceipt } from '@/lib/payroll-vacation-calculation';
+import { findManualVacationCostMatches } from '@/lib/payroll-vacation-cost-link';
+import { getPayrollTaxConfig } from '@/lib/payroll-tax-config';
 import {
   matchesExpectedUpdatedAt,
   parseOptionalExpectedUpdatedAt,
@@ -12,9 +16,11 @@ import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } fro
 
 class VacationError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) {
+  readonly details?: Record<string, unknown>;
+  constructor(message: string, status: number, details?: Record<string, unknown>) {
     super(message);
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -33,6 +39,7 @@ function errorResponse(error: unknown) {
   if (error instanceof UnitAccessDeniedError) return unitAccessDeniedResponse(error);
   if (error instanceof VacationError) return NextResponse.json({
     error: error.message,
+    ...error.details,
     ...(error.status === 409 && error.message.includes('Recarregue') ? { reloadRequired: true } : {}),
   }, { status: error.status });
   console.error('Payroll vacation error:', error);
@@ -56,7 +63,7 @@ async function refreshAffectedPayroll(
     },
     select: {
       id: true,
-      entries: { select: { id: true, employeeName: true } },
+      entries: { select: { id: true, employeeName: true, paymentStatus: true } },
     },
   });
   const affectedIds: string[] = [];
@@ -66,6 +73,9 @@ async function refreshAffectedPayroll(
       .filter(entry => normalizePayrollEmployeeKey(entry.employeeName) === scope.employeeKey)
       .map(entry => entry.id);
     if (ids.length === 0) continue;
+    if (payrollImport.entries.some(entry => ids.includes(entry.id) && entry.paymentStatus === 'paid')) {
+      throw new VacationError('Esta competência já tem pagamento confirmado. Não altere férias de folha paga; confira com a contabilidade.', 409);
+    }
     affectedIds.push(...ids);
     importIds.push(payrollImport.id);
   }
@@ -105,18 +115,15 @@ export async function POST(request: NextRequest) {
     if (totalDays < 1 || totalDays > 30) {
       throw new VacationError('O período deve ter entre 1 e 30 dias corridos.', 400);
     }
-    const advanceAmount = body.advanceAmount == null ? 0 : Number(body.advanceAmount);
-    if (!Number.isFinite(advanceAmount) || advanceAmount < 0) {
-      throw new VacationError('Informe um adiantamento válido.', 400);
+    if (body.advanceAmount !== undefined || body.advancePaidAt !== undefined) {
+      throw new VacationError('O valor das férias é calculado automaticamente pelas datas e salário.', 400);
     }
-    const advancePaidAt = advanceAmount > 0 ? parseDate(body.advancePaidAt) : null;
-    if (advanceAmount > 0 && body.advanceRegisteredInCosts !== true) {
-      throw new VacationError('Registre o adiantamento em Custos antes de abatê-lo da folha.', 400);
-    }
+    const taxConfig = await getPayrollTaxConfig(startDate.getUTCFullYear());
 
     const vacation = await prisma.$transaction(async transaction => {
       const entrySelect = {
         employeeName: true, employmentType: true, updatedAt: true,
+        netSalary: true, baseSalary: true, hazardPayRate: true, hazardPayBase: true,
         payrollImport: { select: { unit: true, competenceMonth: true, competenceYear: true } },
       } as const;
       const initialEntry = await transaction.payrollEntry.findUnique({
@@ -157,6 +164,47 @@ export async function POST(request: NextRequest) {
       });
       if (overlapping) throw new VacationError('Já existe um período de férias para essas datas.', 409);
 
+      const receipt = calculateVacationReceipt({
+        startDate, endDate,
+        baseSalary: calculatePayrollLegalFigures(entry).grossSalary,
+        inssBrackets: taxConfig.inssBrackets,
+      });
+      const backupUnits = [...new Set([guard.createUnit(), entry.payrollImport.unit])];
+      const snapshots = await Promise.all(backupUnits.map(unit => transaction.financialBackup.findFirst({
+        where: { unit, isAuto: true }, orderBy: { updatedAt: 'desc' }, select: { id: true, bills: true },
+      })));
+      const matches = findManualVacationCostMatches(snapshots.filter(snapshot => snapshot !== null), {
+        unit: entry.payrollImport.unit,
+        employeeName: entry.employeeName,
+        netAmount: receipt.net,
+        paymentMonth: receipt.paymentDueDate.slice(0, 7),
+      });
+      if (matches.length > 1) {
+        throw new VacationError('Há mais de uma despesa de férias compatível. Concilie os lançamentos antes de continuar.', 409);
+      }
+      const matched = matches[0] || null;
+      if (matched) {
+        const alreadyLinked = await transaction.payrollVacation.findFirst({
+          where: { linkedBackupId: matched.backupId, linkedBillId: matched.billId },
+          select: { id: true },
+        });
+        if (alreadyLinked) {
+          throw new VacationError('Esta despesa de férias já está vinculada a outro período. Concilie antes de continuar.', 409);
+        }
+      }
+      if (body.confirmCost !== true) {
+        throw new VacationError(
+          matched
+            ? `Vincular ao custo já existente “${matched.name}” sem duplicá-lo?`
+            : 'Criar o custo automático do adiantamento de férias?',
+          428,
+          { confirmationRequired: true, receipt, matchedCost: matched },
+        );
+      }
+
+      await refreshAffectedPayroll(transaction, {
+        unit: entry.payrollImport.unit, employeeKey, startDate, endDate,
+      });
       const saved = await transaction.payrollVacation.create({
         data: {
           unit: entry.payrollImport.unit,
@@ -164,16 +212,61 @@ export async function POST(request: NextRequest) {
           employeeName: entry.employeeName,
           startDate,
           endDate,
-          advanceAmount,
-          advancePaidAt,
+          advanceAmount: matched?.paid ? receipt.net : 0,
+          advancePaidAt: matched?.paid ? new Date(`${matched.date}T00:00:00.000Z`) : null,
+          receipt,
+          advanceCostMode: matched ? 'manual' : 'automatic',
+          linkedBackupId: matched?.backupId || null,
+          linkedBillId: matched?.billId || null,
         },
-      });
-      await refreshAffectedPayroll(transaction, {
-        unit: saved.unit, employeeKey: saved.employeeKey, startDate, endDate,
       });
       return saved;
     });
     return NextResponse.json(vacation, { status: 201 });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const guard = authorize(request);
+  if (guard instanceof NextResponse) return guard;
+  try {
+    const body = await request.json() as Record<string, unknown>;
+    const id = typeof body.id === 'string' ? body.id : '';
+    const expectedUpdatedAt = parseOptionalExpectedUpdatedAt(body.expectedUpdatedAt);
+    if (!id || !expectedUpdatedAt) throw new VacationError('Recarregue o custo antes de confirmar o pagamento.', 428);
+    if (body.paymentStatus !== 'paid' && body.paymentStatus !== 'unpaid') {
+      throw new VacationError('Status de pagamento inválido.', 400);
+    }
+    const paymentDate = body.paymentStatus === 'paid' ? parseDate(body.paymentDate) : null;
+    const updated = await prisma.$transaction(async transaction => {
+      const current = await transaction.payrollVacation.findUnique({ where: { id } });
+      if (!current) throw new VacationError('Período de férias não encontrado.', 404);
+      guard.enforceUnit(current.unit);
+      if (current.advanceCostMode !== 'automatic' || !current.receipt) {
+        throw new VacationError('Este adiantamento não é um custo automático.', 400);
+      }
+      if (!matchesExpectedUpdatedAt(current.updatedAt, expectedUpdatedAt)) {
+        throw new VacationError('O custo mudou. Recarregue antes de salvar.', 409);
+      }
+      const receipt = current.receipt as { net?: unknown };
+      if (typeof receipt.net !== 'number' || receipt.net <= 0) {
+        throw new VacationError('Recibo de férias inválido.', 400);
+      }
+      const amount = paymentDate ? receipt.net : 0;
+      if (current.advanceAmount === amount
+        && current.advancePaidAt?.toISOString().slice(0, 10) === paymentDate?.toISOString().slice(0, 10)) return current;
+      await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${current.unit}), hashtext(${current.employeeKey}))::text`;
+      await refreshAffectedPayroll(transaction, current);
+      const result = await transaction.payrollVacation.updateMany({
+        where: { id, updatedAt: expectedUpdatedAt, unit: current.unit },
+        data: { advanceAmount: amount, advancePaidAt: paymentDate },
+      });
+      if (result.count !== 1) throw new VacationError('O custo mudou. Recarregue antes de salvar.', 409);
+      return transaction.payrollVacation.findUniqueOrThrow({ where: { id } });
+    });
+    return NextResponse.json(updated);
   } catch (error) {
     return errorResponse(error);
   }
@@ -193,6 +286,9 @@ export async function DELETE(request: NextRequest) {
       guard.enforceUnit(current.unit);
       if (!matchesExpectedUpdatedAt(current.updatedAt, expectedUpdatedAt)) {
         throw new VacationError('O período mudou. Recarregue a folha.', 409);
+      }
+      if (current.advanceCostMode === 'automatic' && current.advancePaidAt) {
+        throw new VacationError('O adiantamento já foi pago. Concilie ou estorne o pagamento antes de remover as férias.', 409);
       }
       const deleted = await transaction.payrollVacation.deleteMany({
         where: { id, unit: current.unit, updatedAt: expectedUpdatedAt },
