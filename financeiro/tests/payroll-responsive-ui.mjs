@@ -51,6 +51,13 @@ const entry = {
       updatedAt: '2026-09-01T12:00:00.000Z',
     },
   ],
+  vacation: { days: 5, salaryPortion: 595.7, workedSalary: 2978.5, third: 198.57, advanceDeduction: 0 },
+  vacationPeriods: [{
+    id: 'vacation-responsive-1', unit: 'Osasco', employeeKey: 'colaboradora com nome completo bastante extenso para validar o cartão',
+    employeeName: 'Colaboradora com nome completo bastante extenso para validar o cartão',
+    startDate: '2026-09-10T00:00:00.000Z', endDate: '2026-09-14T00:00:00.000Z',
+    advanceAmount: 0, advancePaidAt: null, updatedAt: '2026-09-01T12:00:00.000Z',
+  }],
 };
 
 const payrollResponse = {
@@ -178,7 +185,49 @@ try {
     assert.ok(cardHandle, 'cartão do colaborador disponível para captura');
     await cardHandle.screenshot({ path: join(output, `payroll-card-${viewport.width}x${viewport.height}.png`) });
     await cardHandle.dispose();
-    await page.click(`button[aria-label="Editar ${entry.employeeName}"]`);
+    await page.evaluate(() => {
+      const panel = document.querySelector('section[aria-label^="Férias de "]');
+      const add = [...(panel?.querySelectorAll('button') || [])]
+        .find(button => button.textContent?.includes('Adicionar período'));
+      add?.click();
+    });
+    await page.waitForSelector('section[aria-label^="Férias de "] input[type="date"]');
+    const vacationLayout = await page.evaluate(() => {
+      const panel = document.querySelector('section[aria-label^="Férias de "]');
+      const inputs = [...(panel?.querySelectorAll('input') || [])];
+      return {
+        count: inputs.length,
+        minHeight: Math.min(...inputs.map(input => input.getBoundingClientRect().height)),
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+      };
+    });
+    assert.ok(vacationLayout.count >= 3, 'período e valor de férias disponíveis');
+    assert.ok(vacationLayout.minHeight >= 44, 'campos de férias com alvo de toque');
+    assert.ok(vacationLayout.documentWidth <= vacationLayout.viewportWidth + 1, 'editor de férias sem overflow horizontal');
+    await page.type('section[aria-label^="Férias de "] input[placeholder="R$ 0,00"]', '120000');
+    await page.waitForSelector('section[aria-label^="Férias de "] input[type="checkbox"]');
+    const advanceLayout = await page.evaluate(() => {
+      const panel = document.querySelector('section[aria-label^="Férias de "]');
+      const confirmation = panel?.querySelector('input[type="checkbox"]')?.closest('label');
+      return {
+        confirmationHeight: confirmation?.getBoundingClientRect().height || 0,
+        documentWidth: document.documentElement.scrollWidth,
+        viewportWidth: document.documentElement.clientWidth,
+      };
+    });
+    assert.ok(advanceLayout.confirmationHeight >= 44, 'confirmação do adiantamento com alvo de toque');
+    assert.ok(advanceLayout.documentWidth <= advanceLayout.viewportWidth + 1, 'adiantamento sem overflow horizontal');
+    const vacationHandle = await page.$('section[aria-label^="Férias de "]');
+    await vacationHandle.screenshot({ path: join(output, `payroll-vacation-${viewport.width}x${viewport.height}.png`) });
+    await vacationHandle.dispose();
+    await page.evaluate(() => {
+      const panel = document.querySelector('section[aria-label^="Férias de "]');
+      [...(panel?.querySelectorAll('button') || [])]
+        .find(button => button.textContent?.trim() === 'Cancelar')?.click();
+    });
+    await page.waitForFunction(() => !document.querySelector('section[aria-label^="Férias de "] input[type="date"]'));
+    await page.evaluate(name => document.querySelector(`button[aria-label="Editar ${name}"]`)?.click(), entry.employeeName);
     await page.waitForSelector('[role="dialog"]');
     const modal = await page.evaluate(() => {
       const dialog = document.querySelector('[role="dialog"]');

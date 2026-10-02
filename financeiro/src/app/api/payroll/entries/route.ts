@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { materializeRecurringPayrollEntries } from '@/lib/payroll-recurrence-materialization';
 import { normalizePayrollEmployeeKey } from '@/lib/payroll-recurrence';
 import { reviewPaidPayrollAfterAmountChange } from '@/lib/payroll-payment';
+import { calculateVacationImpact, payrollVacationScopeKey } from '@/lib/payroll-vacations';
 import {
     PayrollWriteConflictError,
     buildPayrollRevision,
@@ -98,7 +99,9 @@ export async function GET(request: NextRequest) {
         }
 
         // --- Fetch all entries for this month ---
-        const imports = await prisma.payrollImport.findMany({
+        const periodStart = new Date(Date.UTC(year, month - 1, 1));
+        const periodEnd = new Date(Date.UTC(year, month, 1));
+        const [payrollImports, vacations] = await Promise.all([prisma.payrollImport.findMany({
             where: whereClause,
             select: {
                 id: true,
@@ -117,7 +120,41 @@ export async function GET(request: NextRequest) {
                 },
             },
             orderBy: { uploadDate: 'desc' },
-        });
+        }), prisma.payrollVacation.findMany({
+            where: {
+                ...(unit ? { unit } : {}),
+                startDate: { lt: periodEnd },
+                endDate: { gte: periodStart },
+            },
+            select: {
+                id: true, unit: true, employeeKey: true, employeeName: true,
+                startDate: true, endDate: true, advanceAmount: true,
+                advancePaidAt: true, updatedAt: true,
+            },
+        })]);
+
+        const vacationsByEmployee = new Map<string, typeof vacations>();
+        for (const vacation of vacations) {
+            const key = payrollVacationScopeKey(vacation.unit, vacation.employeeKey);
+            const existing = vacationsByEmployee.get(key) || [];
+            existing.push(vacation);
+            vacationsByEmployee.set(key, existing);
+        }
+        const imports = payrollImports.map(payrollImport => ({
+            ...payrollImport,
+            entries: payrollImport.entries.map(entry => {
+                const periods = entry.employmentType === 'CLT'
+                    ? vacationsByEmployee.get(payrollVacationScopeKey(payrollImport.unit, entry.employeeName)) || []
+                    : [];
+                return {
+                    ...entry,
+                    vacationPeriods: periods,
+                    vacation: calculateVacationImpact(
+                        periods, month, year, calculatePayrollLegalFigures(entry).grossSalary,
+                    ),
+                };
+            }),
+        }));
 
         // Flatten entries from all imports of this competence
         const allEntries = imports.flatMap(imp => imp.entries);

@@ -13,6 +13,7 @@ registerHooks({
 });
 
 let payrollImports;
+let vacations;
 let calls;
 
 globalThis.prisma = {
@@ -20,6 +21,12 @@ globalThis.prisma = {
     findMany: async args => {
       calls.push(['payrollImport.findMany', args]);
       return payrollImports;
+    },
+  },
+  payrollVacation: {
+    findMany: async args => {
+      calls.push(['payrollVacation.findMany', args]);
+      return vacations;
     },
   },
   order: {
@@ -67,12 +74,33 @@ function request(unit, permissions, role = 'GERENTE') {
 
 beforeEach(() => {
   calls = [];
+  vacations = [];
   payrollImports = [{
     id: 'import-osasco',
     unit: 'Osasco',
     updatedAt: new Date('2026-09-12T12:05:00.000Z'),
     entries: [payrollEntry()],
   }];
+});
+
+test('Custos usa a mesma parcela de férias e o mesmo líquido da Folha', async () => {
+  payrollImports[0].entries = [payrollEntry({ employmentType: 'CLT', hasFgts: true })];
+  vacations = [{
+    id: 'vacation-1', unit: 'Osasco', employeeKey: 'colaborador teste',
+    employeeName: 'Colaborador teste',
+    startDate: new Date('2026-08-15T00:00:00.000Z'),
+    endDate: new Date('2026-08-24T00:00:00.000Z'),
+    advanceAmount: 0, advancePaidAt: null,
+    updatedAt: new Date('2026-08-01T00:00:00.000Z'),
+  }];
+
+  const response = await GET(request('Osasco', { finCustos: true }));
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.payroll.entries[0].salary, 1027.78);
+  assert.ok(Math.abs(body.payroll.entries[0].fgts - 88.8888) < 0.001);
+  const vacationCall = calls.find(([operation]) => operation === 'payrollVacation.findMany')[1];
+  assert.equal(vacationCall.where.unit, 'Osasco');
 });
 
 test('custos de setembro consulta e identifica a folha de agosto', async () => {

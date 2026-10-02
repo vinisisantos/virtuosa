@@ -77,6 +77,22 @@ model PayrollEntryExclusion {
   @@unique([competenceMonth, competenceYear, unit, employeeKey])
 }
 
+model PayrollVacation {
+  id              String   @id @default(uuid())
+  unit            String
+  employeeKey     String
+  employeeName    String
+  startDate       DateTime @db.Date
+  endDate         DateTime @db.Date
+  advanceAmount   Float    @default(0)
+  advancePaidAt   DateTime? @db.Date
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([unit, employeeKey, startDate, endDate])
+  @@index([unit, advancePaidAt])
+}
+
 model Order {
   id               String    @id @default(uuid())
   productName      String

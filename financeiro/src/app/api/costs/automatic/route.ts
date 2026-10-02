@@ -10,6 +10,7 @@ import {
 } from '@/lib/automatic-costs';
 import { calculatePayrollLegalFigures, calculatePayrollTotal } from '@/lib/payroll-adjustments';
 import { buildPayrollRevision } from '@/lib/payroll-sync';
+import { calculateVacationImpact, payrollVacationScopeKey } from '@/lib/payroll-vacations';
 import { ACTIVE_UNITS } from '@/lib/role-access';
 import { requireUnitGuard } from '@/lib/unit-guard';
 
@@ -70,7 +71,8 @@ export async function GET(request: NextRequest) {
   const unitWhere = effectiveUnitFilter ? { unit: effectiveUnitFilter } : {};
 
   try {
-    const [payrollImports, productOrders] = await Promise.all([
+    const payrollRange = utcMonthRange(payrollCompetence);
+    const [payrollImports, productOrders, vacations] = await Promise.all([
       prisma.payrollImport.findMany({
         where: {
           competenceMonth: payrollCompetence.month,
@@ -132,7 +134,27 @@ export async function GET(request: NextRequest) {
           { productName: 'asc' },
         ],
       }),
+      prisma.payrollVacation.findMany({
+        where: {
+          ...unitWhere,
+          startDate: { lt: payrollRange.end },
+          endDate: { gte: payrollRange.start },
+        },
+        select: {
+          id: true, unit: true, employeeKey: true, employeeName: true,
+          startDate: true, endDate: true, advanceAmount: true,
+          advancePaidAt: true, updatedAt: true,
+        },
+      }),
     ]);
+
+    const vacationsByEmployee = new Map<string, typeof vacations>();
+    for (const vacation of vacations) {
+      const key = payrollVacationScopeKey(vacation.unit, vacation.employeeKey);
+      const current = vacationsByEmployee.get(key) || [];
+      current.push(vacation);
+      vacationsByEmployee.set(key, current);
+    }
 
     const payrollUnits = new Map<string, PayrollUnitSummary>();
     let salaryTotal = 0;
@@ -156,8 +178,18 @@ export async function GET(request: NextRequest) {
       };
 
       for (const entry of payrollImport.entries) {
-        const salary = calculatePayrollTotal(entry);
-        const fgts = calculatePayrollLegalFigures(entry).fgts;
+        const periods = entry.employmentType === 'CLT'
+          ? vacationsByEmployee.get(payrollVacationScopeKey(payrollImport.unit, entry.employeeName)) || []
+          : [];
+        const vacation = calculateVacationImpact(
+          periods,
+          payrollCompetence.month,
+          payrollCompetence.year,
+          calculatePayrollLegalFigures(entry).grossSalary,
+        );
+        const valuedEntry = { ...entry, vacation };
+        const salary = calculatePayrollTotal(valuedEntry);
+        const fgts = calculatePayrollLegalFigures(valuedEntry).fgts;
 
         salaryTotal += salary;
         fgtsTotal += fgts;

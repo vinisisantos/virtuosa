@@ -64,6 +64,17 @@ interface AdjustmentDraft {
   scope: PayrollMutationScope;
 }
 
+interface VacationDraft {
+  payrollEntryId: string;
+  startDate: string;
+  endDate: string;
+  advanceAmount: string;
+  advancePaidAt: string;
+  advanceRegisteredInCosts: boolean;
+  expectedEntryUpdatedAt: string;
+  scope: PayrollMutationScope;
+}
+
 interface PayrollMutationScope {
   competenceMonth: number;
   competenceYear: number;
@@ -120,6 +131,12 @@ function formatPaymentDate(value: string, includeTime = false) {
   }).format(date);
 }
 
+function formatDateOnly(value: string | Date) {
+  const isoDate = (value instanceof Date ? value.toISOString() : value).slice(0, 10);
+  const [year, month, day] = isoDate.split('-');
+  return `${day}/${month}/${year}`;
+}
+
 function parseCurrencyInput(value: string) {
   const normalized = value.replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
   const parsed = Number(normalized);
@@ -139,7 +156,7 @@ async function parseResponse(response: Response) {
 }
 
 function adjustmentDisplay(entry: PayrollEntryData, adjustment: PayrollAdjustmentData) {
-  const value = calculateAdjustmentValue(getPayrollBaseSalary(entry), entry.employmentType, adjustment);
+  const value = calculateAdjustmentValue(getPayrollBaseSalary(entry), entry.employmentType, adjustment, entry.vacation?.days);
   return adjustment.kind === 'absence'
     ? `${adjustment.quantity || 0} ${(adjustment.quantity || 0) === 1 ? 'dia' : 'dias'}`
     : formatCurrency(value);
@@ -159,6 +176,7 @@ export function PayrollControl({
   const expansionScopeRef = useRef('');
   const [employeeForm, setEmployeeForm] = useState<EmployeeFormState | null>(null);
   const [adjustmentDraft, setAdjustmentDraft] = useState<AdjustmentDraft | null>(null);
+  const [vacationDraft, setVacationDraft] = useState<VacationDraft | null>(null);
   const [busyKey, setBusyKey] = useState('');
   const mountedRef = useRef(true);
   const activeScopeRef = useRef<PayrollMutationScope>({ competenceMonth, competenceYear, unit: selectedUnit });
@@ -175,6 +193,7 @@ export function PayrollControl({
       if (isActiveScope(scope)) {
         setEmployeeForm(null);
         setAdjustmentDraft(null);
+        setVacationDraft(null);
         await onRefresh();
       }
     }
@@ -204,6 +223,7 @@ export function PayrollControl({
     modalScopeKeyRef.current = scopeKey;
     setEmployeeForm(null);
     setAdjustmentDraft(null);
+    setVacationDraft(null);
   }, [competenceMonth, competenceYear, selectedUnit]);
 
   useEffect(() => {
@@ -430,6 +450,7 @@ export function PayrollControl({
   const startAdjustment = (entry: PayrollEntryData) => {
     const kind: PayrollAdjustmentKind = entry.employmentType === 'CLT' ? 'absence' : 'award';
     setExpandedId(entry.id);
+    setVacationDraft(null);
     setAdjustmentDraft({
       payrollEntryId: entry.id,
       kind,
@@ -500,6 +521,90 @@ export function PayrollControl({
       toast('Ajuste removido', 'success');
     } catch (error) {
       await handleMutationError(error, 'Erro ao remover ajuste', mutationScope);
+    } finally {
+      setBusyKey('');
+    }
+  };
+
+  const startVacation = (entry: PayrollEntryData) => {
+    setExpandedId(entry.id);
+    setAdjustmentDraft(null);
+    setVacationDraft({
+      payrollEntryId: entry.id,
+      startDate: '',
+      endDate: '',
+      advanceAmount: '',
+      advancePaidAt: '',
+      advanceRegisteredInCosts: false,
+      expectedEntryUpdatedAt: entry.updatedAt,
+      scope: { competenceMonth, competenceYear, unit: selectedUnit },
+    });
+  };
+
+  const saveVacation = async () => {
+    if (!vacationDraft) return;
+    const mutationScope = vacationDraft.scope;
+    if (!isActiveScope(mutationScope)) {
+      setVacationDraft(null);
+      return toast('A competência ou a unidade mudou. Abra férias novamente.', 'warning');
+    }
+    if (!vacationDraft.startDate || !vacationDraft.endDate) {
+      return toast('Informe o início e o fim das férias.', 'warning');
+    }
+    const advanceAmount = parseCurrencyInput(vacationDraft.advanceAmount);
+    if (advanceAmount > 0 && !vacationDraft.advancePaidAt) {
+      return toast('Informe a data do adiantamento já pago.', 'warning');
+    }
+    if (advanceAmount > 0 && !vacationDraft.advanceRegisteredInCosts) {
+      return toast('Confirme que o adiantamento já foi lançado em Custos.', 'warning');
+    }
+    setBusyKey(`vacation:${vacationDraft.payrollEntryId}`);
+    try {
+      const response = await fetch('/api/payroll/vacations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          payrollEntryId: vacationDraft.payrollEntryId,
+          expectedEntryUpdatedAt: vacationDraft.expectedEntryUpdatedAt,
+          startDate: vacationDraft.startDate,
+          endDate: vacationDraft.endDate,
+          advanceAmount,
+          advancePaidAt: advanceAmount > 0 ? vacationDraft.advancePaidAt : null,
+          advanceRegisteredInCosts: vacationDraft.advanceRegisteredInCosts,
+        }),
+      });
+      await parseResponse(response);
+      await refreshAfterMutation(mutationScope);
+      if (isActiveScope(mutationScope)) setVacationDraft(null);
+      toast('Férias incluídas na folha e nos custos.', 'success');
+    } catch (error) {
+      await handleMutationError(error, 'Erro ao salvar férias', mutationScope);
+    } finally {
+      setBusyKey('');
+    }
+  };
+
+  const deleteVacation = async (id: string, updatedAt: string) => {
+    const mutationScope = { competenceMonth, competenceYear, unit: selectedUnit };
+    const confirmed = await confirmDialog({
+      title: 'Remover férias',
+      message: 'Remover este período? As competências afetadas serão recalculadas e pagamentos confirmados voltarão para revisão.',
+      confirmText: 'Remover período',
+      variant: 'danger',
+    });
+    if (!confirmed) return;
+    if (!isActiveScope(mutationScope)) return toast('A competência ou a unidade mudou.', 'warning');
+    setBusyKey(`vacation-delete:${id}`);
+    try {
+      const response = await fetch(
+        `/api/payroll/vacations?id=${encodeURIComponent(id)}&expectedUpdatedAt=${encodeURIComponent(updatedAt)}`,
+        { method: 'DELETE' },
+      );
+      await parseResponse(response);
+      await refreshAfterMutation(mutationScope);
+      toast('Período de férias removido.', 'success');
+    } catch (error) {
+      await handleMutationError(error, 'Erro ao remover férias', mutationScope);
     } finally {
       setBusyKey('');
     }
@@ -596,15 +701,17 @@ export function PayrollControl({
               const total = persistedTotal + (isDraftEntry ? draftDelta : 0);
               const totalCredits = Math.max(0, entry.bonus || 0) + entry.adjustments
                 .filter(adjustment => adjustment.direction === 'credit')
-                .reduce((sum, adjustment) => sum + calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment), 0);
+                .reduce((sum, adjustment) => sum + calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment, legalFigures.vacationDays), 0)
+                + legalFigures.vacationThird;
               const totalDebits = entry.adjustments
                 .filter(adjustment => adjustment.direction === 'debit')
-                .reduce((sum, adjustment) => sum + calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment), 0);
+                .reduce((sum, adjustment) => sum + calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment, legalFigures.vacationDays), 0)
+                + legalFigures.vacationAdvanceDeduction;
               const creditAdjustments = entry.adjustments.filter(adjustment => adjustment.direction === 'credit');
               const debitAdjustments = entry.adjustments.filter(adjustment => adjustment.direction === 'debit');
               const draftCredit = isDraftEntry && draftDelta > 0 ? draftDelta : 0;
               const draftDebit = isDraftEntry && draftDelta < 0 ? Math.abs(draftDelta) : 0;
-              const totalEarnings = legalFigures.grossSalary + totalCredits + draftCredit;
+              const totalEarnings = legalFigures.grossSalary + totalCredits - legalFigures.vacationThird + draftCredit;
               const totalDeductions = legalFigures.inss + totalDebits + draftDebit;
               const absenceDays = entry.adjustments
                 .filter(adjustment => adjustment.kind === 'absence')
@@ -621,6 +728,7 @@ export function PayrollControl({
                       onClick={() => {
                         setExpandedId(expanded ? null : entry.id);
                         if (isDraftEntry) setAdjustmentDraft(null);
+                        if (vacationDraft?.payrollEntryId === entry.id) setVacationDraft(null);
                       }}
                     >
                       <span className="material-symbols-outlined">{expanded ? 'expand_more' : 'chevron_right'}</span>
@@ -782,12 +890,12 @@ export function PayrollControl({
                         <div>
                           <span>Total rendimentos</span>
                           <strong className={styles.credit}>{formatCurrency(totalEarnings)}</strong>
-                          <small>Salário, adicional e créditos</small>
+                          <small>Salário, férias e créditos</small>
                         </div>
                         <div>
                           <span>Total descontos</span>
                           <strong className={styles.debit}>{formatCurrency(totalDeductions)}</strong>
-                          <small>INSS e demais débitos</small>
+                          <small>INSS, adiantamentos e demais débitos</small>
                         </div>
                         <div className={styles.netOverview}>
                           <span>Líquido estimado</span>
@@ -807,11 +915,28 @@ export function PayrollControl({
                             <span className="material-symbols-outlined">trending_up</span>
                             Rendimentos
                           </header>
-                          <div className={styles.breakdownRow}>
-                            <span><strong>Salário-base</strong><small>30 dias</small></span>
-                            <strong>{formatCurrency(legalFigures.baseSalary)}</strong>
-                          </div>
-                          {legalFigures.hazardPay > 0 && (
+                          {legalFigures.vacationDays > 0 ? (
+                            <>
+                              <div className={styles.breakdownRow}>
+                                <span><strong>Salário fora das férias</strong><small>Proporção da competência</small></span>
+                                <strong>{formatCurrency(legalFigures.workedSalary)}</strong>
+                              </div>
+                              <div className={styles.breakdownRow}>
+                                <span><strong>Férias remuneradas</strong><small>{legalFigures.vacationDays} dias nesta competência</small></span>
+                                <strong>{formatCurrency(legalFigures.vacationSalary)}</strong>
+                              </div>
+                              <div className={styles.breakdownRow}>
+                                <span><strong>1/3 constitucional de férias</strong><small>Proporcional aos dias nesta competência</small></span>
+                                <strong>{formatCurrency(legalFigures.vacationThird)}</strong>
+                              </div>
+                            </>
+                          ) : (
+                            <div className={styles.breakdownRow}>
+                              <span><strong>Salário-base</strong><small>30 dias</small></span>
+                              <strong>{formatCurrency(legalFigures.baseSalary)}</strong>
+                            </div>
+                          )}
+                          {legalFigures.hazardPay > 0 && legalFigures.vacationDays === 0 && (
                             <div className={styles.breakdownRow}>
                               <span>
                                 <strong>Insalubridade · {legalFigures.hazardPayRate}%</strong>
@@ -832,7 +957,7 @@ export function PayrollControl({
                                 <strong>{adjustment.label || PAYROLL_ADJUSTMENT_KINDS[adjustment.kind]?.label || 'Acréscimo'}</strong>
                                 <small>{adjustment.kind === 'absence' ? adjustmentDisplay(entry, adjustment) : 'Crédito do mês'}</small>
                               </span>
-                              <strong>{formatCurrency(calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment))}</strong>
+                              <strong>{formatCurrency(calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment, legalFigures.vacationDays))}</strong>
                               <button
                                 aria-label={`Remover ${adjustment.label || 'acréscimo'}`}
                                 disabled={busyKey === `adjustment:${adjustment.id}`}
@@ -855,13 +980,19 @@ export function PayrollControl({
                               <strong>{formatCurrency(legalFigures.inss)}</strong>
                             </div>
                           )}
+                          {legalFigures.vacationAdvanceDeduction > 0 && (
+                            <div className={styles.breakdownRow}>
+                              <span><strong>Adiantamento de férias já pago</strong><small>Abatido desta competência</small></span>
+                              <strong>{formatCurrency(legalFigures.vacationAdvanceDeduction)}</strong>
+                            </div>
+                          )}
                           {debitAdjustments.map(adjustment => (
                             <div className={styles.breakdownRow} key={adjustment.id}>
                               <span>
                                 <strong>{adjustment.label || PAYROLL_ADJUSTMENT_KINDS[adjustment.kind]?.label || 'Desconto'}</strong>
                                 <small>{adjustment.kind === 'absence' ? adjustmentDisplay(entry, adjustment) : 'Desconto do mês'}</small>
                               </span>
-                              <strong>{formatCurrency(calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment))}</strong>
+                              <strong>{formatCurrency(calculateAdjustmentValue(legalFigures.baseSalary, entry.employmentType, adjustment, legalFigures.vacationDays))}</strong>
                               <button
                                 aria-label={`Remover ${adjustment.label || 'desconto'}`}
                                 disabled={busyKey === `adjustment:${adjustment.id}`}
@@ -876,6 +1007,95 @@ export function PayrollControl({
                           )}
                         </section>
                       </div>
+
+                      {entry.employmentType === 'CLT' && (
+                        <section className={styles.vacationPanel} aria-label={`Férias de ${entry.employeeName}`}>
+                          <div className={styles.vacationHeader}>
+                            <span>
+                              <span className="material-symbols-outlined">beach_access</span>
+                              <strong>Férias</strong>
+                            </span>
+                            {!vacationDraft && (
+                              <button
+                                className={styles.secondaryButton}
+                                onClick={() => startVacation(entry)}
+                              >
+                                <span className="material-symbols-outlined">add</span>
+                                Adicionar período
+                              </button>
+                            )}
+                          </div>
+                          <p>Informe os dias corridos. Salário, 1/3 e vale-transporte automático são proporcionais ao período; descontos manuais só mudam se você os editar. O adiantamento já pago é abatido para não pagar duas vezes. Esta é uma estimativa gerencial; confira a folha oficial com a contabilidade.</p>
+                          {(entry.vacationPeriods || []).map(period => (
+                            <div className={styles.vacationPeriod} key={period.id}>
+                              <span>
+                                <strong>{formatDateOnly(period.startDate)} a {formatDateOnly(period.endDate)}</strong>
+                                <small>{period.advanceAmount > 0
+                                  ? `Adiantado ${formatCurrency(period.advanceAmount)} em ${formatDateOnly(period.advancePaidAt || period.startDate)}`
+                                  : 'Sem adiantamento registrado'}</small>
+                              </span>
+                              <button
+                                aria-label={`Remover férias de ${formatDateOnly(period.startDate)} a ${formatDateOnly(period.endDate)}`}
+                                disabled={busyKey === `vacation-delete:${period.id}`}
+                                onClick={() => void deleteVacation(period.id, new Date(period.updatedAt).toISOString())}
+                              >
+                                <span className="material-symbols-outlined">delete</span>
+                              </button>
+                            </div>
+                          ))}
+                          {vacationDraft?.payrollEntryId === entry.id && (
+                            <div className={styles.vacationEditor}>
+                              <label>
+                                <span>Início das férias</span>
+                                <input type="date" value={vacationDraft.startDate} onChange={event => setVacationDraft({ ...vacationDraft, startDate: event.target.value })} />
+                              </label>
+                              <label>
+                                <span>Fim das férias</span>
+                                <input type="date" value={vacationDraft.endDate} onChange={event => setVacationDraft({ ...vacationDraft, endDate: event.target.value })} />
+                              </label>
+                              <label>
+                                <span>Adiantamento já pago e lançado em Custos (opcional)</span>
+                                <input
+                                  inputMode="numeric"
+                                  placeholder="R$ 0,00"
+                                  value={vacationDraft.advanceAmount}
+                                  onChange={event => setVacationDraft({
+                                    ...vacationDraft,
+                                    advanceAmount: formatCurrencyInputFromTyping(event.target.value),
+                                  })}
+                                />
+                              </label>
+                              {parseCurrencyInput(vacationDraft.advanceAmount) > 0 && (
+                                <>
+                                  <label>
+                                    <span>Data do adiantamento</span>
+                                    <input type="date" value={vacationDraft.advancePaidAt} onChange={event => setVacationDraft({ ...vacationDraft, advancePaidAt: event.target.value })} />
+                                  </label>
+                                  <label className={styles.vacationConfirm}>
+                                    <input
+                                      type="checkbox"
+                                      checked={vacationDraft.advanceRegisteredInCosts}
+                                      onChange={event => setVacationDraft({ ...vacationDraft, advanceRegisteredInCosts: event.target.checked })}
+                                    />
+                                    <span>Confirmo que esse adiantamento já está lançado como despesa em Custos.</span>
+                                  </label>
+                                </>
+                              )}
+                              <small className={styles.vacationNote}>Este valor apenas abate o líquido da folha. Se ainda não consta em Custos, registre uma despesa na data do pagamento antes de salvar as férias.</small>
+                              <div className={styles.vacationActions}>
+                                <button className={styles.cancelButton} onClick={() => setVacationDraft(null)}>Cancelar</button>
+                                <button
+                                  className={styles.primaryButton}
+                                  disabled={busyKey === `vacation:${entry.id}`}
+                                  onClick={() => void saveVacation()}
+                                >
+                                  {busyKey === `vacation:${entry.id}` ? 'Salvando...' : 'Salvar férias'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </section>
+                      )}
 
                       {isDraftEntry && adjustmentDraft ? (
                         <div className={styles.adjustmentEditor}>

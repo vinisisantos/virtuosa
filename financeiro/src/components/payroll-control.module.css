@@ -249,6 +249,27 @@
 .editorActions { display: flex; gap: 8px; }
 .editorActions .cancelButton, .editorActions .primaryButton { padding: 0 14px; }
 
+.vacationPanel { min-width: 0; margin: 0 0 12px; padding: 12px; border: 1px solid var(--border); border-radius: 11px; }
+.vacationHeader { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.vacationHeader > span { display: inline-flex; align-items: center; gap: 7px; color: var(--text-main); font-size: .82rem; }
+.vacationHeader > span > span { color: var(--payroll-accent); font-size: 19px; }
+.vacationHeader button { min-height: 44px; padding: 0 12px; }
+.vacationPanel > p, .vacationNote { color: var(--text-muted); font-size: .7rem; line-height: 1.45; }
+.vacationPanel > p { margin: 8px 0 12px; }
+.vacationPeriod { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; margin-top: 7px; }
+.vacationPeriod > span { min-width: 0; display: grid; gap: 3px; color: var(--text-main); font-size: .75rem; }
+.vacationPeriod small { color: var(--text-muted); font-size: .67rem; overflow-wrap: anywhere; }
+.vacationPeriod button { flex: 0 0 44px; height: 44px; border: 0; border-radius: 9px; color: var(--text-muted); background: transparent; cursor: pointer; }
+.vacationPeriod button:hover { color: var(--payroll-red); background: rgba(240,82,82,.08); }
+.vacationEditor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.vacationEditor label { min-width: 0; display: grid; gap: 7px; color: var(--text-muted); font-size: .69rem; font-weight: 700; }
+.vacationEditor input { width: 100%; min-width: 0; height: 44px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text-main); padding: 0 12px; font: inherit; font-size: .8rem; }
+.vacationEditor input:focus { outline: 0; border-color: var(--payroll-accent); box-shadow: 0 0 0 3px rgba(139,92,246,.1); }
+.vacationEditor .vacationConfirm { grid-column: 1 / -1; min-height: 44px; display: flex; align-items: center; gap: 10px; line-height: 1.4; cursor: pointer; }
+.vacationConfirm input { flex: 0 0 20px; width: 20px; height: 20px; accent-color: var(--payroll-accent); }
+.vacationNote { grid-column: 1 / -1; }
+.vacationActions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 8px; }
+
 .valueInput { display: flex; align-items: center; height: 44px; border: 1px solid var(--border); background: var(--bg); border-radius: 10px; overflow: hidden; }
 .valueInput > span { color: var(--text-muted); font-size: .72rem; padding-left: 12px; }
 .valueInput input { border: 0 !important; box-shadow: none !important; background: transparent !important; }
@@ -415,6 +436,11 @@
   .adjustmentEditor { grid-template-columns: 1fr; }
   .editorActions { grid-column: auto; display: grid; grid-template-columns: 1fr 1fr; }
   .editorActions button { width: 100%; }
+  .vacationHeader { align-items: stretch; flex-direction: column; }
+  .vacationHeader button { width: 100%; }
+  .vacationEditor { grid-template-columns: 1fr; }
+  .vacationActions { display: grid; grid-template-columns: 1fr 1fr; }
+  .vacationActions button { width: 100%; padding: 0 10px; }
   .footerActions { grid-template-columns: 1fr; gap: 9px; }
   .footerActions button { min-height: 48px; }
   .twoColumns, .hazardPayFields, .compensationFields { grid-template-columns: 1fr; }
