@@ -42,17 +42,17 @@ function automaticCosts(paymentStatus, paymentDate) {
     payroll: {
       competenceMonth: 8,
       competenceYear: 2026,
-      salaryTotal: 2500,
-      fgtsTotal: 200,
-      total: 2700,
-      employeeCount: 1,
+      salaryTotal: 3500,
+      fgtsTotal: 280,
+      total: 3780,
+      employeeCount: 2,
       paidTotal: paid ? 2700 : 0,
-      pendingTotal: paid ? 0 : 2700,
+      pendingTotal: paid ? 1080 : 3780,
       paidSalaryTotal: paid ? 2500 : 0,
-      pendingSalaryTotal: paid ? 0 : 2500,
+      pendingSalaryTotal: paid ? 1000 : 3500,
       paidFgtsTotal: paid ? 200 : 0,
-      pendingFgtsTotal: paid ? 0 : 200,
-      units: [{ unit: 'Osasco', salaryTotal: 2500, fgtsTotal: 200, total: 2700, employeeCount: 1 }],
+      pendingFgtsTotal: paid ? 80 : 280,
+      units: [{ unit: 'Osasco', salaryTotal: 3500, fgtsTotal: 280, total: 3780, employeeCount: 2 }],
       entries: [{
         id: 'entry-1',
         employeeName: 'Colaborador de teste com nome longo',
@@ -62,6 +62,16 @@ function automaticCosts(paymentStatus, paymentDate) {
         total: 2700,
         paymentStatus,
         paymentDate,
+        updatedAt: '2026-09-12T14:00:00.000Z',
+      }, {
+        id: 'entry-2',
+        employeeName: 'Segunda colaboradora de teste',
+        unit: 'Osasco',
+        salary: 1000,
+        fgts: 80,
+        total: 1080,
+        paymentStatus: 'unpaid',
+        paymentDate: null,
         updatedAt: '2026-09-12T14:00:00.000Z',
       }],
     },
@@ -80,6 +90,17 @@ async function clickLastExactText(page, selector, label) {
   }, selector, label);
   const element = handle.asElement();
   assert.ok(element, `controle disponível: ${label}`);
+  await element.evaluate(node => node.scrollIntoView({ block: 'center' }));
+  await element.click();
+  await handle.dispose();
+}
+
+async function clickPayrollPayment(page, employeeName) {
+  const handle = await page.evaluateHandle(employeeName => [...document.querySelectorAll('button')]
+    .find(button => button.textContent?.trim() === 'Confirmar pagamento'
+      && button.parentElement?.textContent?.includes(employeeName)) || null, employeeName);
+  const element = handle.asElement();
+  assert.ok(element, `confirmação disponível para ${employeeName}`);
   await element.evaluate(node => node.scrollIntoView({ block: 'center' }));
   await element.click();
   await handle.dispose();
@@ -153,6 +174,13 @@ try {
     }
     await page.click('button[aria-label^="Exibir detalhes de Folha de pagamento"]');
     await page.waitForFunction(() => document.body.textContent?.includes('Pagamentos por colaborador'));
+    const payrollRowValue = () => page.evaluate(() => {
+      const row = [...document.querySelectorAll('tr.cost-main-row')]
+        .find(element => element.textContent?.includes('Folha de pagamento · competência 08/2026'));
+      return row?.querySelector('.cost-value-cell')?.textContent?.trim().replace(/\s+/g, ' ') || null;
+    });
+    const initialPayrollRowValue = await payrollRowValue();
+    assert.ok(initialPayrollRowValue?.startsWith('R$ 3.780,00'), 'com todos pendentes, a linha mostra o saldo pendente');
 
     const layout = await page.evaluate(() => {
       const button = [...document.querySelectorAll('button')]
@@ -173,10 +201,23 @@ try {
     assert.ok(layout.buttonHeight >= 44, 'alvo de toque da confirmação tem pelo menos 44px');
     assert.ok(layout.detailLeft >= 0 && layout.detailRight <= layout.viewport + 1, 'detalhamento permanece dentro do viewport');
 
-    await clickLastExactText(page, 'button', 'Confirmar pagamento');
+    await clickPayrollPayment(page, 'Colaborador de teste com nome longo');
     await page.waitForFunction(() => [...document.querySelectorAll('h3')].some(element => element.textContent === 'Confirmar pagamento'));
     await clickLastExactText(page, 'button', 'Confirmar');
     await page.waitForFunction(() => document.body.textContent?.includes('Desfazer pagamento'));
+    await page.waitForFunction(() => {
+      const row = [...document.querySelectorAll('tr.cost-main-row')]
+        .find(element => element.textContent?.includes('Folha de pagamento · competência 08/2026'));
+      return row?.querySelector('.cost-value-cell')?.textContent?.trim().replace(/\s+/g, ' ').startsWith('R$ 1.080,00')
+        && row.textContent?.includes('Parcial');
+    });
+    const payrollSummary = await page.evaluate(() => {
+      const paymentsLabel = [...document.querySelectorAll('div')]
+        .find(element => element.textContent?.trim() === 'Pagamentos por colaborador');
+      return paymentsLabel?.parentElement?.parentElement?.textContent || '';
+    });
+    assert.match(payrollSummary, /TOTAL PENDENTE\s*R\$\s*1\.080,00/);
+    assert.match(payrollSummary, /Pago\s*R\$\s*2\.700,00\s*·\s*Total somado aos custos\s*R\$\s*3\.780,00/);
     assert.deepEqual(mutations.at(-1), {
       id: 'entry-1',
       unit: 'Osasco',

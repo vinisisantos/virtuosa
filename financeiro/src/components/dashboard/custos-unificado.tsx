@@ -280,10 +280,10 @@ function AutomaticCostDetails({
             <div style={{ marginTop: 4, color: '#b45309', fontSize: '1rem', fontWeight: 900 }}>{fmt(payroll.fgtsTotal)}</div>
           </div>
           <div style={{ padding: 12, borderRadius: 10, border: '1px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.08)' }}>
-            <div style={{ color: 'var(--primary)', fontSize: '0.7rem', fontWeight: 800 }}>TOTAL SOMADO AOS CUSTOS</div>
-            <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1rem', fontWeight: 900 }}>{fmt(payroll.total)}</div>
+            <div style={{ color: 'var(--primary)', fontSize: '0.7rem', fontWeight: 800 }}>TOTAL PENDENTE</div>
+            <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1rem', fontWeight: 900 }}>{fmt(payroll.pendingTotal)}</div>
             <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700 }}>
-              Pago {fmt(payroll.paidTotal)} · Pendente {fmt(payroll.pendingTotal)}
+              Pago {fmt(payroll.paidTotal)} · Total somado aos custos {fmt(payroll.total)}
             </div>
           </div>
         </div>
@@ -1595,6 +1595,9 @@ export function CustosUnificado({
                 displayedExpenseRows.map(row => {
                   const rowId = String(row.id);
                   const isAutomatic = row.source.startsWith('automatic-');
+                  const displayedValue = row.source === 'automatic-payroll' && filterStatus === 'all'
+                    ? row.pendingPortion
+                    : row.value;
                   const isExpanded = isAutomatic && expandedAutomaticRows.has(rowId);
                   const isManualProduct = !isAutomatic && normalizeCategoryLabel(row.category) === 'produtos';
                   const manualProductItems = isManualProduct ? normalizeProductExpenseItems(row.raw.items) : [];
@@ -1633,7 +1636,12 @@ export function CustosUnificado({
                         </td>
                         <td className="cost-due-cell" style={{ padding: '16px 20px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{row.dueInfo}</td>
                         <td className="cost-value-cell" style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>
-                          {fmt(row.value)}
+                          {fmt(displayedValue)}
+                          {row.source === 'automatic-payroll' && filterStatus === 'all' && (
+                            <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600 }}>
+                              Pago {fmt(row.paidPortion)} · Total da folha {fmt(row.periodTotal)}
+                            </div>
+                          )}
                           {row.occurrenceCount > 1 && (
                             <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600 }}>
                               {row.occurrenceCount}x no mês · {fmt(row.periodTotal)}
