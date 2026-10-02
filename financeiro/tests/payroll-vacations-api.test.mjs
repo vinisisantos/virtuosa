@@ -44,7 +44,11 @@ globalThis.prisma = {
       irrfTable: { brackets: [{ limit: 2428.8, rate: 0, deduction: 0 }, { limit: null, rate: 0.275, deduction: 908.73 }], simplifiedDeduction: 607.2 },
     }),
   },
-  financialBackup: { findFirst: async () => backupSnapshot },
+  financialBackup: {
+    findFirst: async () => backupSnapshot,
+    findUnique: async args => { calls.push(['backup.findUnique', args]); return backupSnapshot; },
+    updateMany: async args => { calls.push(['backup.updateMany', args]); return { count: 1 }; },
+  },
 };
 
 const { NextRequest } = await import('next/server.js');
@@ -199,6 +203,35 @@ test('baixa do adiantamento usa o líquido do recibo, nunca valor digitado', asy
   assert.equal(update.data.advancePaidAt.toISOString().slice(0, 10), '2026-08-18');
 });
 
+test('Folha confirma e desfaz pagamento de custo manual no próprio lançamento de Custos', async () => {
+  periods = [{
+    id: 'vacation-manual', unit: 'Osasco', employeeKey: 'ana teste', employeeName: 'Ana Teste',
+    startDate: new Date('2026-08-20T00:00:00.000Z'), endDate: new Date('2026-08-30T00:00:00.000Z'),
+    updatedAt: new Date('2026-08-01T11:00:00.000Z'), receipt: { net: 775.5 },
+    advanceAmount: 0, advancePaidAt: null, advanceCostMode: 'manual',
+    linkedBackupId: 'backup-1', linkedBillId: 10,
+  }];
+  backupSnapshot = {
+    id: 'backup-1', unit: 'Osasco', updatedAt: new Date('2026-08-18T12:00:00.000Z'),
+    bills: JSON.stringify([{
+      id: 10, name: 'Férias – adiantamento Ana Teste', value: 775.5,
+      type: 'variavel', unit: 'Osasco', dueDateManual: '2026-08-18', payments: {},
+    }]),
+  };
+  globalThis.prisma.payrollVacation.findUnique = async args => { calls.push(['vacation.findUnique', args]); return periods[0]; };
+  globalThis.prisma.payrollVacation.findUniqueOrThrow = async () => periods[0];
+  const response = await PATCH(request('PATCH', {
+    id: 'vacation-manual', expectedUpdatedAt: periods[0].updatedAt.toISOString(),
+    expectedBackupUpdatedAt: backupSnapshot.updatedAt.toISOString(), paymentStatus: 'paid',
+  }));
+  assert.equal(response.status, 200);
+  const update = calls.find(([operation]) => operation === 'backup.updateMany')[1];
+  assert.equal(update.where.id, 'backup-1');
+  assert.equal(JSON.parse(update.data.bills)[0].payments['2026-08-18'], true);
+  assert.equal(calls.some(([operation]) => operation === 'vacation.updateMany'), true);
+  assert.equal(calls.filter(([operation]) => operation === 'executeRaw').length, 2);
+});
+
 test('remoção exige versão da própria férias e recalcula os meses afetados', async () => {
   periods = [{
     id: 'vacation-1', unit: 'Osasco', employeeKey: 'ana teste',
@@ -226,6 +259,26 @@ test('não remove custo automático de adiantamento já pago', async () => {
   const response = await DELETE(request(
     'DELETE', null,
     '?id=vacation-1&expectedUpdatedAt=2026-08-01T11%3A00%3A00.000Z',
+  ));
+  assert.equal(response.status, 409);
+  assert.equal(calls.some(([operation]) => operation === 'vacation.deleteMany'), false);
+});
+
+test('não remove período com adiantamento manual confirmado em Custos', async () => {
+  periods = [{
+    id: 'vacation-manual', unit: 'Osasco', employeeKey: 'ana teste',
+    startDate: new Date('2026-08-20T00:00:00.000Z'),
+    endDate: new Date('2026-09-08T00:00:00.000Z'),
+    updatedAt: new Date('2026-08-01T11:00:00.000Z'),
+    advanceCostMode: 'manual', linkedBackupId: 'backup-1', linkedBillId: 10,
+  }];
+  backupSnapshot = {
+    id: 'backup-1', unit: 'Osasco',
+    bills: JSON.stringify([{ id: 10, dueDateManual: '2026-08-18', payments: { '2026-08-18': true } }]),
+  };
+  const response = await DELETE(request(
+    'DELETE', null,
+    '?id=vacation-manual&expectedUpdatedAt=2026-08-01T11%3A00%3A00.000Z',
   ));
   assert.equal(response.status, 409);
   assert.equal(calls.some(([operation]) => operation === 'vacation.deleteMany'), false);

@@ -6,8 +6,10 @@ import { calculatePayrollLegalFigures } from '@/lib/payroll-adjustments';
 import { calculateVacationReceipt } from '@/lib/payroll-vacation-calculation';
 import { findManualVacationCostMatches } from '@/lib/payroll-vacation-cost-link';
 import { getPayrollTaxConfig } from '@/lib/payroll-tax-config';
+import { manualVacationBillPaid } from '@/lib/payroll-vacation-server';
 import {
   matchesExpectedUpdatedAt,
+  nextPayrollUpdatedAt,
   parseOptionalExpectedUpdatedAt,
   touchPayrollImportRevisions,
 } from '@/lib/payroll-sync';
@@ -247,13 +249,14 @@ export async function PATCH(request: NextRequest) {
     if (body.paymentStatus !== 'paid' && body.paymentStatus !== 'unpaid') {
       throw new VacationError('Status de pagamento inválido.', 400);
     }
-    const paymentDate = body.paymentStatus === 'paid' ? parseDate(body.paymentDate) : null;
+    const paymentDate = body.paymentStatus === 'paid' && body.paymentDate !== undefined
+      ? parseDate(body.paymentDate) : null;
     const updated = await prisma.$transaction(async transaction => {
       const current = await transaction.payrollVacation.findUnique({ where: { id } });
       if (!current) throw new VacationError('Período de férias não encontrado.', 404);
       guard.enforceUnit(current.unit);
-      if (current.advanceCostMode !== 'automatic' || !current.receipt) {
-        throw new VacationError('Este adiantamento não é um custo automático.', 400);
+      if ((current.advanceCostMode !== 'automatic' && current.advanceCostMode !== 'manual') || !current.receipt) {
+        throw new VacationError('Este período não possui um custo de adiantamento vinculado.', 400);
       }
       if (!matchesExpectedUpdatedAt(current.updatedAt, expectedUpdatedAt)) {
         throw new VacationError('O custo mudou. Recarregue antes de salvar.', 409);
@@ -262,6 +265,57 @@ export async function PATCH(request: NextRequest) {
       if (typeof receipt.net !== 'number' || receipt.net <= 0) {
         throw new VacationError('Recibo de férias inválido.', 400);
       }
+
+      if (current.advanceCostMode === 'manual') {
+        const expectedBackupUpdatedAt = parseOptionalExpectedUpdatedAt(body.expectedBackupUpdatedAt);
+        if (!current.linkedBackupId || current.linkedBillId == null || !expectedBackupUpdatedAt) {
+          throw new VacationError('Recarregue a Folha para confirmar o custo manual vinculado.', 428);
+        }
+        const backup = await transaction.financialBackup.findUnique({
+          where: { id: current.linkedBackupId },
+          select: { id: true, unit: true, bills: true, updatedAt: true },
+        });
+        if (!backup || backup.unit !== current.unit) {
+          throw new VacationError('O custo vinculado não está mais disponível. Confira em Custos.', 409);
+        }
+        if (!matchesExpectedUpdatedAt(backup.updatedAt, expectedBackupUpdatedAt)) {
+          throw new VacationError('O custo mudou. Recarregue a Folha antes de salvar.', 409);
+        }
+        let bills: unknown;
+        try { bills = JSON.parse(backup.bills); } catch { bills = null; }
+        if (!Array.isArray(bills)) throw new VacationError('O custo vinculado está inválido.', 409);
+        const billIndex = bills.findIndex(item => item && typeof item === 'object'
+          && (item as Record<string, unknown>).id === current.linkedBillId);
+        if (billIndex < 0) throw new VacationError('O custo vinculado foi removido. Confira em Custos.', 409);
+        const bill = bills[billIndex] as Record<string, unknown>;
+        const paymentKey = typeof bill.dueDateManual === 'string' ? bill.dueDateManual : '';
+        if (bill.type !== 'variavel' || bill.unit !== current.unit || !paymentKey
+          || Math.round(Number(bill.value) * 100) !== Math.round(receipt.net * 100)) {
+          throw new VacationError('O custo vinculado foi alterado e precisa ser conciliado em Custos.', 409);
+        }
+        const payments = bill.payments && typeof bill.payments === 'object' && !Array.isArray(bill.payments)
+          ? { ...(bill.payments as Record<string, unknown>) } : {};
+        const currentlyPaid = payments[paymentKey] === true;
+        const shouldBePaid = body.paymentStatus === 'paid';
+        if (currentlyPaid === shouldBePaid) return current;
+
+        await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${current.unit}), hashtext(${current.employeeKey}))::text`;
+        await refreshAffectedPayroll(transaction, current);
+        payments[paymentKey] = shouldBePaid;
+        const nextBills = bills.map((item, index) => index === billIndex ? { ...bill, payments } : item);
+        const backupUpdate = await transaction.financialBackup.updateMany({
+          where: { id: backup.id, updatedAt: expectedBackupUpdatedAt },
+          data: { bills: JSON.stringify(nextBills), updatedAt: nextPayrollUpdatedAt(backup.updatedAt) },
+        });
+        if (backupUpdate.count !== 1) throw new VacationError('O custo mudou. Recarregue a Folha antes de salvar.', 409);
+        const periodUpdate = await transaction.payrollVacation.updateMany({
+          where: { id, updatedAt: expectedUpdatedAt, unit: current.unit },
+          data: { updatedAt: nextPayrollUpdatedAt(current.updatedAt) },
+        });
+        if (periodUpdate.count !== 1) throw new VacationError('O período mudou. Recarregue a Folha.', 409);
+        return transaction.payrollVacation.findUniqueOrThrow({ where: { id } });
+      }
+
       const amount = paymentDate ? receipt.net : 0;
       if (current.advanceAmount === amount
         && current.advancePaidAt?.toISOString().slice(0, 10) === paymentDate?.toISOString().slice(0, 10)) return current;
@@ -297,6 +351,15 @@ export async function DELETE(request: NextRequest) {
       }
       if (current.advanceCostMode === 'automatic' && current.advancePaidAt) {
         throw new VacationError('O adiantamento já foi pago. Concilie ou estorne o pagamento antes de remover as férias.', 409);
+      }
+      if (current.advanceCostMode === 'manual' && current.linkedBackupId && current.linkedBillId != null) {
+        const backup = await transaction.financialBackup.findUnique({
+          where: { id: current.linkedBackupId },
+          select: { unit: true, bills: true },
+        });
+        if (backup?.unit === current.unit && manualVacationBillPaid(backup.bills, current.linkedBillId)) {
+          throw new VacationError('O adiantamento já foi pago em Custos. Concilie ou estorne o pagamento antes de remover as férias.', 409);
+        }
       }
       const deleted = await transaction.payrollVacation.deleteMany({
         where: { id, unit: current.unit, updatedAt: expectedUpdatedAt },

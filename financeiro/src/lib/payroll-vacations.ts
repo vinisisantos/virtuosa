@@ -13,6 +13,7 @@ export type PayrollVacationPeriod = {
   advanceCostMode?: string;
   linkedBackupId?: string | null;
   linkedBillId?: number | null;
+  linkedBackupUpdatedAt?: string | null;
   updatedAt: Date | string;
 };
 

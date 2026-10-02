@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getUserUnit, isUserAdmin } from '@/components/unit-selector';
 import { useVisiblePolling } from '@/hooks/use-visible-polling';
+import { subscribeFinancialBackupSync } from '@/lib/financial-backup-client-sync';
 import {
   normalizePayrollSyncUnit,
   payrollSyncSignalAffectsScope,
@@ -443,6 +444,13 @@ export function useFinanceiro() {
       void refreshForRevision(signal.revision);
     });
   }, [activeTab, checkPayrollRevision, refreshForRevision]);
+
+  useEffect(() => {
+    if (activeTab !== 'folha') return;
+    return subscribeFinancialBackupSync(() => {
+      if (document.visibilityState !== 'hidden') void checkPayrollRevision();
+    });
+  }, [activeTab, checkPayrollRevision]);
 
   return {
     activeTab,

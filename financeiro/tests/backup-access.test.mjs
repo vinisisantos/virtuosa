@@ -13,8 +13,20 @@ registerHooks({
 });
 
 let calls;
+let existingBills;
+let requestBills;
+let linkedPeriods;
+let payrollImports;
 
 globalThis.prisma = {
+  $transaction: async callback => callback(globalThis.prisma),
+  $executeRaw: async (...args) => { calls.push(['executeRaw', args]); return 1; },
+  payrollVacation: {
+    findMany: async args => { calls.push(['vacation.findMany', args]); return linkedPeriods; },
+  },
+  payrollImport: {
+    findMany: async args => { calls.push(['payrollImport.findMany', args]); return payrollImports; },
+  },
   financialBackup: {
     findFirst: async args => {
       calls.push(['findFirst', args]);
@@ -24,7 +36,7 @@ globalThis.prisma = {
         logs: '[]',
         goals: '{}',
         fixed: '[]',
-        bills: '[]',
+        bills: existingBills,
         isAuto: true,
         updatedAt: new Date('2026-09-12T12:00:00.000Z'),
       };
@@ -68,13 +80,19 @@ function request(
     },
     ...(method === 'POST' ? {
       body: JSON.stringify({
-        logs: [], goals: {}, fixed: [], bills: [], isAuto: true, expectedUpdatedAt,
+        logs: [], goals: {}, fixed: [], bills: requestBills, isAuto: true, expectedUpdatedAt,
       }),
     } : {}),
   });
 }
 
-beforeEach(() => { calls = []; });
+beforeEach(() => {
+  calls = [];
+  existingBills = '[]';
+  requestBills = [];
+  linkedPeriods = [];
+  payrollImports = [];
+});
 
 test('backup exige autenticação e permissão financeira antes de consultar', async () => {
   assert.equal((await GET(request('GET', {}, false))).status, 401);
@@ -137,5 +155,55 @@ test('backup existente exige a versão que originou a edição', async () => {
 
   assert.equal(response.status, 428);
   assert.equal(body.code, 'FINANCIAL_BACKUP_VERSION_REQUIRED');
+  assert.equal(calls.some(([operation]) => operation === 'updateMany'), false);
+});
+
+test('pagar um custo manual de férias invalida a revisão da folha vinculada', async () => {
+  const bill = {
+    id: 10, name: 'Férias – adiantamento Ana Teste', value: 775.5,
+    type: 'variavel', unit: 'Osasco', dueDateManual: '2026-08-18', payments: {},
+  };
+  existingBills = JSON.stringify([bill]);
+  requestBills = [{ ...bill, payments: { '2026-08-18': true } }];
+  linkedPeriods = [{
+    id: 'vacation-1', unit: 'Osasco', employeeKey: 'ana teste', employeeName: 'Ana Teste',
+    startDate: new Date('2026-08-20T00:00:00.000Z'), endDate: new Date('2026-09-08T00:00:00.000Z'),
+    advanceAmount: 0, advancePaidAt: null, advanceCostMode: 'manual',
+    linkedBackupId: 'backup-1', linkedBillId: 10,
+  }];
+  payrollImports = [
+    { id: 'import-august', competenceMonth: 8, competenceYear: 2026, entries: [{ employeeName: 'Ana Teste', paymentStatus: 'unpaid' }] },
+    { id: 'import-september', competenceMonth: 9, competenceYear: 2026, entries: [{ employeeName: 'Ana Teste', paymentStatus: 'unpaid' }] },
+  ];
+
+  const response = await POST(request('POST', { finCustos: true }));
+  assert.equal(response.status, 200);
+  assert.equal(calls.some(([operation]) => operation === 'vacation.findMany'), true);
+  assert.equal(calls.some(([operation]) => operation === 'payrollImport.findMany'), true);
+  assert.equal(calls.some(([operation]) => operation === 'executeRaw'), true);
+});
+
+test('não recalcula folha paga ao tentar alterar pagamento manual de férias em Custos', async () => {
+  const bill = {
+    id: 10, name: 'Férias – adiantamento Ana Teste', value: 775.5,
+    type: 'variavel', unit: 'Osasco', dueDateManual: '2026-08-18', payments: {},
+  };
+  existingBills = JSON.stringify([bill]);
+  requestBills = [{ ...bill, payments: { '2026-08-18': true } }];
+  linkedPeriods = [{
+    id: 'vacation-1', unit: 'Osasco', employeeKey: 'ana teste', employeeName: 'Ana Teste',
+    startDate: new Date('2026-08-20T00:00:00.000Z'), endDate: new Date('2026-09-08T00:00:00.000Z'),
+    advanceAmount: 0, advancePaidAt: null, advanceCostMode: 'manual',
+    linkedBackupId: 'backup-1', linkedBillId: 10,
+  }];
+  payrollImports = [{
+    id: 'import-august', competenceMonth: 8, competenceYear: 2026,
+    entries: [{ employeeName: 'Ana Teste', paymentStatus: 'paid' }],
+  }];
+
+  const response = await POST(request('POST', { finCustos: true }));
+  const body = await response.json();
+  assert.equal(response.status, 409);
+  assert.equal(body.code, 'VACATION_PAYROLL_ALREADY_PAID');
   assert.equal(calls.some(([operation]) => operation === 'updateMany'), false);
 });

@@ -2,6 +2,23 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { canAccessAutomaticCosts, canManageAutomaticCosts } from '@/lib/automatic-costs';
 import { requireUnitGuard } from '@/lib/unit-guard';
+import { nextPayrollUpdatedAt } from '@/lib/payroll-sync';
+import {
+  changedManualVacationPaymentPeriods,
+  refreshManualVacationPayrollRevisions,
+  VacationPayrollAlreadyPaidError,
+} from '@/lib/payroll-vacation-server';
+
+class BackupWriteError extends Error {
+  readonly status: number;
+  readonly code?: string;
+
+  constructor(message: string, status: number, code?: string) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
 
 /* GET — Retrieve the latest backup for user's unit */
 export async function GET(req: NextRequest) {
@@ -57,55 +74,87 @@ export async function POST(req: NextRequest) {
     const unitValue = guard.createUnit();
 
     // UNIT GUARD: Upsert per unit — each unit gets its own backup
-    const existing = await prisma.financialBackup.findFirst({
-      where: { isAuto: true, unit: unitValue },
-      orderBy: { updatedAt: 'desc' },
-    });
-
-    let backup;
-    if (existing && isAuto) {
-      if (typeof expectedUpdatedAt !== 'string') {
-        return NextResponse.json({
-          error: 'A versão atual do financeiro é obrigatória para sincronizar.',
-          code: 'FINANCIAL_BACKUP_VERSION_REQUIRED',
-          reloadRequired: true,
-        }, { status: 428 });
-      }
-
-      const expectedRevision = new Date(expectedUpdatedAt);
-      if (Number.isNaN(expectedRevision.getTime())) {
-        return NextResponse.json({ error: 'Versão do financeiro inválida.' }, { status: 400 });
-      }
-
-      const nextUpdatedAt = new Date();
-      const updated = await prisma.financialBackup.updateMany({
-        where: { id: existing.id, updatedAt: expectedRevision },
-        data: {
-          logs: JSON.stringify(logs), goals: JSON.stringify(goals),
-          fixed: JSON.stringify(fixed), bills: JSON.stringify(bills),
-          updatedAt: nextUpdatedAt,
-        },
+    const backup = await prisma.$transaction(async transaction => {
+      const existing = await transaction.financialBackup.findFirst({
+        where: { isAuto: true, unit: unitValue },
+        orderBy: { updatedAt: 'desc' },
+        select: { id: true, bills: true, updatedAt: true },
       });
-      if (updated.count !== 1) {
-        return NextResponse.json({
-          error: 'Os dados financeiros foram atualizados em outro dispositivo.',
-          code: 'FINANCIAL_BACKUP_VERSION_CONFLICT',
-          reloadRequired: true,
-        }, { status: 409 });
+
+      if (existing && isAuto) {
+        if (typeof expectedUpdatedAt !== 'string') {
+          throw new BackupWriteError(
+            'A versão atual do financeiro é obrigatória para sincronizar.',
+            428,
+            'FINANCIAL_BACKUP_VERSION_REQUIRED',
+          );
+        }
+
+        const expectedRevision = new Date(expectedUpdatedAt);
+        if (Number.isNaN(expectedRevision.getTime())) {
+          throw new BackupWriteError('Versão do financeiro inválida.', 400);
+        }
+
+        const nextUpdatedAt = nextPayrollUpdatedAt(existing.updatedAt);
+        const billsJson = JSON.stringify(bills);
+        const linkedManualPeriods = existing.bills === billsJson ? [] : await transaction.payrollVacation.findMany({
+          where: {
+            unit: unitValue,
+            advanceCostMode: 'manual',
+            linkedBackupId: existing.id,
+          },
+          select: {
+            id: true, unit: true, employeeKey: true, employeeName: true,
+            startDate: true, endDate: true, advanceCostMode: true,
+            advanceAmount: true, advancePaidAt: true, linkedBackupId: true, linkedBillId: true,
+          },
+        });
+        const changedPeriods = changedManualVacationPaymentPeriods(linkedManualPeriods, existing.bills, bills);
+        if (changedPeriods.length > 0) {
+          await refreshManualVacationPayrollRevisions(transaction, changedPeriods);
+        }
+
+        const updated = await transaction.financialBackup.updateMany({
+          where: { id: existing.id, updatedAt: expectedRevision },
+          data: {
+            logs: JSON.stringify(logs), goals: JSON.stringify(goals),
+            fixed: JSON.stringify(fixed), bills: billsJson, updatedAt: nextUpdatedAt,
+          },
+        });
+        if (updated.count !== 1) {
+          throw new BackupWriteError(
+            'Os dados financeiros foram atualizados em outro dispositivo.',
+            409,
+            'FINANCIAL_BACKUP_VERSION_CONFLICT',
+          );
+        }
+        return { id: existing.id, updatedAt: nextUpdatedAt };
       }
-      backup = { id: existing.id, updatedAt: nextUpdatedAt };
-    } else {
-      backup = await prisma.financialBackup.create({
+
+      return transaction.financialBackup.create({
         data: {
           logs: JSON.stringify(logs), goals: JSON.stringify(goals),
           fixed: JSON.stringify(fixed), bills: JSON.stringify(bills),
           isAuto, unit: unitValue,
         },
       });
-    }
+    });
 
     return NextResponse.json({ success: true, id: backup.id, updatedAt: backup.updatedAt.toISOString() });
   } catch (err) {
+    if (err instanceof BackupWriteError) {
+      return NextResponse.json({
+        error: err.message,
+        ...(err.code ? { code: err.code } : {}),
+        ...(err.status === 409 ? { reloadRequired: true } : {}),
+      }, { status: err.status });
+    }
+    if (err instanceof VacationPayrollAlreadyPaidError) {
+      return NextResponse.json({
+        error: err.message,
+        code: 'VACATION_PAYROLL_ALREADY_PAID',
+      }, { status: 409 });
+    }
     console.error('Backup POST error:', err);
     return NextResponse.json({ error: 'Falha ao salvar backup' }, { status: 500 });
   }

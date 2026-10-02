@@ -435,8 +435,16 @@ export function useDashboard({
           success?: boolean;
           updatedAt?: string;
           error?: string;
+          code?: string;
           reloadRequired?: boolean;
         };
+        if (response.status === 409 && result.code === 'VACATION_PAYROLL_ALREADY_PAID') {
+          backupMutationVersionRef.current = 0;
+          setBackupMutationVersion(0);
+          await refreshFinancialBackup(true);
+          toast(result.error || 'A folha já foi paga. Confira com a contabilidade antes de alterar o adiantamento.', 'warning');
+          return;
+        }
         if (response.status === 409 || response.status === 428 || result.reloadRequired) {
           backupMutationVersionRef.current = 0;
           setBackupMutationVersion(0);

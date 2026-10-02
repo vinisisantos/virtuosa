@@ -611,13 +611,21 @@ export function PayrollControl({
 
   const confirmVacationAdvance = async (period: PayrollVacationPeriod) => {
     const mutationScope = { competenceMonth, competenceYear, unit: selectedUnit };
-    if (!period.receipt || period.advanceCostMode !== 'automatic' || period.advancePaidAt) return;
-    const paymentDate = period.receipt.paymentDueDate;
+    if (!period.receipt || (period.advanceCostMode !== 'automatic' && period.advanceCostMode !== 'manual')) return;
+    const isPaid = period.advanceAmount > 0;
+    const paymentDate = period.advancePaidAt
+      ? new Date(period.advancePaidAt).toISOString().slice(0, 10)
+      : period.receipt.paymentDueDate;
+    if (period.advanceCostMode === 'manual' && (!period.linkedBackupId || !period.linkedBackupUpdatedAt)) {
+      return toast('Recarregue a Folha para conferir o custo manual vinculado.', 'warning');
+    }
     const confirmed = await confirmDialog({
-      title: 'Confirmar adiantamento de férias',
-      message: `Confirma que ${formatCurrency(period.receipt.net)} foi pago em ${formatDateOnly(paymentDate)}? O valor será lançado como pago em Custos e abatido proporcionalmente nas folhas das competências deste período.`,
-      confirmText: 'Confirmar pagamento',
-      variant: 'info',
+      title: isPaid ? 'Desfazer pagamento do adiantamento' : 'Confirmar adiantamento de férias',
+      message: isPaid
+        ? `Desfazer a confirmação de ${formatCurrency(period.receipt.net)}? O abatimento será removido das folhas ainda não pagas e o status do custo será atualizado.`
+        : `Confirma que ${formatCurrency(period.receipt.net)} foi pago${period.advanceCostMode === 'automatic' ? ` em ${formatDateOnly(paymentDate)}` : ''}? O status será atualizado em Custos e o valor será abatido proporcionalmente nas folhas das competências deste período.`,
+      confirmText: isPaid ? 'Desfazer pagamento' : 'Confirmar pagamento',
+      variant: isPaid ? 'warning' : 'info',
     });
     if (!confirmed) return;
     if (!isActiveScope(mutationScope)) return toast('A competência ou a unidade mudou. Abra o período novamente.', 'warning');
@@ -628,8 +636,11 @@ export function PayrollControl({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: period.id,
-          paymentStatus: 'paid',
-          paymentDate,
+          paymentStatus: isPaid ? 'unpaid' : 'paid',
+          ...(period.advanceCostMode === 'automatic' && !isPaid ? { paymentDate } : {}),
+          ...(period.advanceCostMode === 'manual'
+            ? { expectedBackupUpdatedAt: period.linkedBackupUpdatedAt }
+            : {}),
           expectedUpdatedAt: new Date(period.updatedAt).toISOString(),
         }),
       });
@@ -644,7 +655,9 @@ export function PayrollControl({
           revision: null,
         });
       }
-      toast('Adiantamento confirmado. O abatimento foi recalculado na Folha e em Custos.', 'success');
+      toast(isPaid
+        ? 'Pagamento desfeito. A Folha e Custos foram atualizados.'
+        : 'Adiantamento confirmado. O abatimento foi recalculado na Folha e em Custos.', 'success');
     } catch (error) {
       await handleMutationError(error, 'Erro ao confirmar o adiantamento', mutationScope);
     } finally {
@@ -1136,13 +1149,13 @@ export function PayrollControl({
                                     : 'Sem adiantamento registrado'}</small>
                              </span>
                               <div className={styles.vacationPeriodActions}>
-                                {period.receipt && period.advanceCostMode === 'automatic' && !period.advancePaidAt && (
+                                {period.receipt && (period.advanceCostMode === 'automatic' || period.advanceCostMode === 'manual') && (
                                   <button
                                     className={styles.vacationPaidButton}
                                     disabled={busyKey === `vacation-payment:${period.id}`}
                                     onClick={() => void confirmVacationAdvance(period)}
                                   >
-                                    {busyKey === `vacation-payment:${period.id}` ? 'Atualizando...' : 'Confirmar pagamento'}
+                                    {busyKey === `vacation-payment:${period.id}` ? 'Atualizando...' : period.advanceAmount > 0 ? 'Desfazer pagamento' : 'Confirmar pagamento'}
                                   </button>
                                 )}
                                 <button

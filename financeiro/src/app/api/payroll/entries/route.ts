@@ -160,6 +160,7 @@ export async function GET(request: NextRequest) {
                     ...period,
                     advanceAmount: storedVacationReceipt(period.receipt) && vacationAdvancePaid(period, linkedPayments)
                         ? storedVacationReceipt(period.receipt)!.net : period.advanceAmount,
+                    linkedBackupUpdatedAt: linkedPayments.get(period.id)?.backupUpdatedAt?.toISOString() || null,
                 }));
                 const receipts = periods.map(period => ({
                     receipt: storedVacationReceipt(period.receipt),
