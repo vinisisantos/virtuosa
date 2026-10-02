@@ -1185,6 +1185,19 @@ export function CustosUnificado({
     }
 
     if (!saved) return;
+    if (!editingRow) {
+      const targetMonthKey = recurrence === 'once'
+        ? referenceMonth || addDueDate.slice(0, 7)
+        : addDueDate.slice(0, 7);
+      const shouldFollowMonth = recurrence === 'once' || targetMonthKey > selectedMonthKey;
+      if (shouldFollowMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(targetMonthKey) && targetMonthKey !== selectedMonthKey) {
+        const [year, month] = targetMonthKey.split('-').map(Number);
+        d.setSelectedYear(year);
+        d.setSelectedMonth(month - 1);
+      }
+    }
+    if (isProductExpense) setViewMode('produtos');
+    toast(isProductExpense ? 'Pedido adicionado na aba Produtos.' : 'Despesa adicionada.', 'success');
     resetForm();
     setShowAddForm(false);
   };
@@ -1586,7 +1599,7 @@ export function CustosUnificado({
 
       {/* ─── ADD MODAL ─── */}
       {showAddForm && (
-        <div style={{ position: 'fixed', inset: 0, padding: 16, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeSlide 0.2s ease-out', overflowY: 'auto' }}>
+        <div style={{ position: 'fixed', inset: 0, padding: 16, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeSlide 0.2s ease-out', overflowY: 'auto' }}>
           <div style={{ background: 'var(--card-bg)', width: '100%', maxWidth: 600, maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', borderRadius: 20, padding: 'clamp(20px, 5vw, 32px)', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
             <h2 style={{ margin: '0 0 24px', fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>{editingRow ? 'edit' : 'add_circle'}</span>
@@ -1640,6 +1653,12 @@ export function CustosUnificado({
                   total={productExpenseTotal}
                   onFreightChange={setProductFreight}
                 />
+              )}
+
+              {isProductExpense && (
+                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.76rem', lineHeight: 1.5 }}>
+                  Após salvar, este lançamento aparecerá na aba Produtos do mês de referência.
+                </p>
               )}
 
               <div className="product-expense-value-date" style={{ display: 'grid', gridTemplateColumns: isProductExpense ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
