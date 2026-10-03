@@ -164,6 +164,22 @@ try {
 
     assert.ok(layout, 'cartão e cabeçalho da folha renderizados');
     assert.ok(layout.documentWidth <= layout.viewportWidth + 1, `sem overflow horizontal em ${viewport.width}x${viewport.height}`);
+    assert.ok(await page.$('button[aria-label^="Confirmar pagamento de"]'), 'confirmação individual disponível na lista');
+    await page.evaluate(() => [...document.querySelectorAll('[aria-label="Filtrar pagamentos"] button')]
+      .find(button => button.textContent?.includes('Pagos'))?.click());
+    await page.waitForFunction(() => document.body.textContent?.includes('Nenhum colaborador corresponde à busca ou ao filtro.'));
+    await page.evaluate(() => [...document.querySelectorAll('[aria-label="Filtrar pagamentos"] button')]
+      .find(button => button.textContent?.includes('Todos'))?.click());
+    await page.waitForFunction(name => document.body.textContent?.includes(name), {}, entry.employeeName);
+    await page.type('input[aria-label="Buscar colaborador"]', 'sem correspondência');
+    await page.waitForFunction(() => document.body.textContent?.includes('Nenhum colaborador corresponde à busca ou ao filtro.'));
+    await page.evaluate(() => document.querySelector('button') && [...document.querySelectorAll('button')]
+      .find(button => button.textContent?.trim() === 'Limpar filtros')?.click());
+    await page.waitForFunction(name => document.body.textContent?.includes(name), {}, entry.employeeName);
+    await page.evaluate(() => document.querySelector('button[aria-label="Fechar detalhes"]')?.click());
+    await page.waitForFunction(() => !document.querySelector('[id^="payroll-details-"]'));
+    await page.evaluate(() => document.querySelector('button[aria-controls^="payroll-details-"]')?.click());
+    await page.waitForSelector('[id^="payroll-details-"]');
     if (viewport.width <= 1024) {
       assert.match(layout.detailsText, /Detalhes e ajustes/, 'ação textual de ajustes visível');
       assert.ok(layout.detailsWidth > 44, 'ação textual ocupa largura confortável');
@@ -185,6 +201,11 @@ try {
     assert.ok(cardHandle, 'cartão do colaborador disponível para captura');
     await cardHandle.screenshot({ path: join(output, `payroll-card-${viewport.width}x${viewport.height}.png`) });
     await cardHandle.dispose();
+    await page.evaluate(() => {
+      [...document.querySelectorAll('[aria-label^="Informações de "] button')]
+        .find(button => button.textContent?.trim() === 'Férias')?.click();
+    });
+    await page.waitForSelector('section[aria-label^="Férias de "]');
     await page.evaluate(() => {
       const panel = document.querySelector('section[aria-label^="Férias de "]');
       const add = [...(panel?.querySelectorAll('button') || [])]

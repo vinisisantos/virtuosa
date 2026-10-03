@@ -87,6 +87,8 @@ interface PayrollMutationScope {
 
 const UNITS = ['Osasco', 'SBC', 'SCS'];
 const ADJUSTMENT_ORDER: PayrollAdjustmentKind[] = ['absence', 'award', 'transport', 'advance', 'discount', 'addition', 'other'];
+type PayrollStatusFilter = 'all' | 'pending' | 'paid';
+type PayrollDetailTab = 'summary' | 'adjustments' | 'vacation';
 
 function samePayrollScope(left: PayrollMutationScope, right: PayrollMutationScope) {
   return left.competenceMonth === right.competenceMonth
@@ -182,6 +184,10 @@ export function PayrollControl({
   onRefresh,
 }: PayrollControlProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<PayrollStatusFilter>('all');
+  const [detailTab, setDetailTab] = useState<PayrollDetailTab>('summary');
+  const filterKeyRef = useRef('all:');
   const expansionScopeRef = useRef('');
   const [employeeForm, setEmployeeForm] = useState<EmployeeFormState | null>(null);
   const [adjustmentDraft, setAdjustmentDraft] = useState<AdjustmentDraft | null>(null);
@@ -234,6 +240,9 @@ export function PayrollControl({
     setEmployeeForm(null);
     setAdjustmentDraft(null);
     setVacationDraft(null);
+    setSearch('');
+    setStatusFilter('all');
+    setDetailTab('summary');
   }, [competenceMonth, competenceYear, selectedUnit]);
 
   useEffect(() => {
@@ -276,6 +285,26 @@ export function PayrollControl({
   const displayedPendingPayrollTotal = summary.totalPending + draftDelta;
   const displayedPayrollTotal = summary.totalPayroll + draftDelta;
   const hasUndefinedRegime = summary.undefinedRegimeCount > 0;
+  const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR');
+  const visibleEntries = entries.filter(entry => {
+    if (statusFilter === 'paid' && entry.paymentStatus !== 'paid') return false;
+    if (statusFilter === 'pending' && entry.paymentStatus === 'paid') return false;
+    return !normalizedSearch || `${entry.employeeName} ${entry.cargo || ''} ${entry.employmentType || ''}`
+      .toLocaleLowerCase('pt-BR').includes(normalizedSearch);
+  });
+  const visibleExpandedEntry = visibleEntries.some(entry => entry.id === expandedId);
+
+  useEffect(() => {
+    const filterKey = `${statusFilter}:${normalizedSearch}`;
+    const filtersChanged = filterKeyRef.current !== filterKey;
+    filterKeyRef.current = filterKey;
+    if (loading || entries.length === 0 || visibleEntries.length === 0 || visibleExpandedEntry) return;
+    if (!filtersChanged && expandedId === null) return;
+    setExpandedId(visibleEntries[0].id);
+    setAdjustmentDraft(null);
+    setVacationDraft(null);
+    setDetailTab('summary');
+  }, [entries, expandedId, loading, normalizedSearch, statusFilter, visibleExpandedEntry]);
 
   const openNewEmployee = () => {
     const scope = { competenceMonth, competenceYear, unit: selectedUnit };
@@ -699,31 +728,31 @@ export function PayrollControl({
 
   return (
     <section className={styles.root}>
+      <div className={styles.introBar}>
+        <div>
+          <span className={styles.eyebrow}>GESTÃO DE PESSOAS</span>
+          <p>Competência {formatCompetence({ month: competenceMonth, year: competenceYear })} · pagamento em {formatCompetence(costsCompetence)}</p>
+        </div>
+        <span className={styles.introCount}>{summary.totalEmployees} colaboradores · {summary.cltCount} CLT · {summary.pjCount} PJ{hasUndefinedRegime ? ` · ${summary.undefinedRegimeCount} a definir` : ''}</span>
+      </div>
       <div className={styles.summaryGrid}>
+        <article className={`${styles.summaryCard} ${styles.pendingCard}`}>
+          <div className={styles.summaryIcon}><span className="material-symbols-outlined">schedule</span></div>
+          <span className={styles.summaryLabel}>Pendente</span>
+          <strong className={styles.summaryValue}>{formatCurrency(displayedPendingPayrollTotal)}</strong>
+          <span className={styles.summaryMeta}>{summary.pendingCount} {summary.pendingCount === 1 ? 'pagamento pendente' : 'pagamentos pendentes'}{summary.reviewCount > 0 ? ` · ${summary.reviewCount} em revisão` : ''}</span>
+        </article>
+        <article className={`${styles.summaryCard} ${styles.paidCard}`}>
+          <div className={styles.summaryIcon}><span className="material-symbols-outlined">task_alt</span></div>
+          <span className={styles.summaryLabel}>Pago</span>
+          <strong className={styles.summaryValue}>{formatCurrency(summary.totalPaid)}</strong>
+          <span className={styles.summaryMeta}>{summary.paidCount} {summary.paidCount === 1 ? 'pagamento confirmado' : 'pagamentos confirmados'}</span>
+        </article>
         <article className={styles.summaryCard}>
           <div className={styles.summaryIcon}><span className="material-symbols-outlined">payments</span></div>
-          <span className={styles.summaryLabel}>Total pendente</span>
-          <strong className={styles.summaryValue}>{formatCurrency(displayedPendingPayrollTotal)}</strong>
-          <span className={styles.summaryMeta}>
-            {formatCurrency(summary.totalPaid)} pagos · folha total {formatCurrency(displayedPayrollTotal)}
-          </span>
-        </article>
-        <article className={styles.summaryCard}>
-          <div className={styles.summaryIcon}><span className="material-symbols-outlined">group</span></div>
-          <span className={styles.summaryLabel}>Colaboradores</span>
-          <strong className={styles.summaryValue}>{summary.totalEmployees}</strong>
-          <span className={styles.summaryMeta}>
-            {summary.cltCount} CLT · {summary.pjCount} PJ
-            {hasUndefinedRegime ? ` · ${summary.undefinedRegimeCount} a definir` : ''}
-          </span>
-        </article>
-        <article className={styles.summaryCard}>
-          <div className={styles.summaryIcon}><span className="material-symbols-outlined">tune</span></div>
-          <span className={styles.summaryLabel}>Ajustes do mês</span>
-          <div className={styles.adjustmentSummary}>
-            <strong className={styles.credit}>+ {formatCurrency(summary.totalCredits + Math.max(0, draftDelta))}</strong>
-            <strong className={styles.debit}>− {formatCurrency(summary.totalDebits + Math.max(0, -draftDelta))}</strong>
-          </div>
+          <span className={styles.summaryLabel}>Total da folha</span>
+          <strong className={styles.summaryValue}>{formatCurrency(displayedPayrollTotal)}</strong>
+          <span className={styles.summaryMeta}>Líquido após INSS e ajustes</span>
         </article>
         <article className={styles.summaryCard}>
           <div className={styles.summaryIcon}><span className="material-symbols-outlined">account_balance</span></div>
@@ -735,7 +764,15 @@ export function PayrollControl({
         </article>
       </div>
 
-      <div className={styles.panel}>
+      <div className={styles.adjustmentStrip}>
+        <span className="material-symbols-outlined">tune</span>
+        <strong>Ajustes do mês</strong>
+        <span className={styles.credit}>+ {formatCurrency(summary.totalCredits + Math.max(0, draftDelta))}</span>
+        <span className={styles.debit}>− {formatCurrency(summary.totalDebits + Math.max(0, -draftDelta))}</span>
+        <small>Atualizados na folha e em Custos</small>
+      </div>
+
+      <div className={`${styles.panel} ${visibleExpandedEntry && !loading && !loadError ? styles.panelWithDetails : ''}`}>
         <div className={styles.panelHeader}>
           <div>
             <h2>Colaboradores</h2>
@@ -748,14 +785,23 @@ export function PayrollControl({
           </button>
         </div>
 
+        <div className={styles.toolbar}>
+          <label className={styles.searchBox}>
+            <span className="material-symbols-outlined">search</span>
+            <input aria-label="Buscar colaborador" type="search" placeholder="Buscar colaborador..." value={search} onChange={event => setSearch(event.target.value)} />
+          </label>
+          <div className={styles.statusFilters} aria-label="Filtrar pagamentos">
+            <button type="button" className={statusFilter === 'all' ? styles.filterActive : ''} aria-pressed={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>Todos <span>{summary.totalEmployees}</span></button>
+            <button type="button" className={statusFilter === 'pending' ? styles.filterActive : ''} aria-pressed={statusFilter === 'pending'} onClick={() => setStatusFilter('pending')}>Pendentes <span>{summary.pendingCount + summary.reviewCount}</span></button>
+            <button type="button" className={statusFilter === 'paid' ? styles.filterActive : ''} aria-pressed={statusFilter === 'paid'} onClick={() => setStatusFilter('paid')}>Pagos <span>{summary.paidCount}</span></button>
+          </div>
+        </div>
+
         <div className={styles.tableHeader} aria-hidden="true">
           <span>Colaborador</span>
           <span>Regime</span>
-          <span>Salário-base</span>
-          <span>Ajustes</span>
-          <span>Faltas</span>
           <span>Líquido</span>
-          <span />
+          <span>Status e ações</span>
         </div>
 
         {loading ? (
@@ -776,10 +822,17 @@ export function PayrollControl({
             <p>Cadastre salário e regime para calcular a folha desta competência.</p>
             <button className={styles.primaryButton} onClick={openNewEmployee}>Adicionar colaborador</button>
           </div>
+        ) : visibleEntries.length === 0 ? (
+          <div className={styles.stateBox}>
+            <span className="material-symbols-outlined">search_off</span>
+            Nenhum colaborador corresponde à busca ou ao filtro.
+            <button onClick={() => { setSearch(''); setStatusFilter('all'); }}>Limpar filtros</button>
+          </div>
         ) : (
           <div className={styles.entryList}>
-            {entries.map(entry => {
+            {visibleEntries.map(entry => {
               const expanded = expandedId === entry.id;
+              const activeDetailTab = detailTab === 'vacation' && entry.employmentType !== 'CLT' ? 'summary' : detailTab;
               const isDraftEntry = adjustmentDraft?.payrollEntryId === entry.id;
               const persistedTotal = calculatePayrollTotal(entry);
               const legalFigures = calculatePayrollLegalFigures(entry);
@@ -830,6 +883,7 @@ export function PayrollControl({
                       aria-controls={`payroll-details-${entry.id}`}
                       onClick={() => {
                         setExpandedId(expanded ? null : entry.id);
+                        if (!expanded) setDetailTab('summary');
                         if (isDraftEntry) setAdjustmentDraft(null);
                         if (vacationDraft?.payrollEntryId === entry.id) setVacationDraft(null);
                       }}
@@ -918,6 +972,16 @@ export function PayrollControl({
                     </div>
 
                     <div className={styles.rowActions}>
+                      <button
+                        className={entry.paymentStatus === 'paid' ? styles.rowPaidButton : styles.rowPayButton}
+                        disabled={busyKey === `payment:${entry.id}`}
+                        aria-busy={busyKey === `payment:${entry.id}`}
+                        aria-label={`${entry.paymentStatus === 'paid' ? 'Desfazer pagamento' : 'Confirmar pagamento'} de ${entry.employeeName}`}
+                        onClick={() => void togglePayment(entry)}
+                      >
+                        <span className="material-symbols-outlined">{entry.paymentStatus === 'paid' ? 'undo' : 'check'}</span>
+                        {entry.paymentStatus === 'paid' ? 'Desfazer' : entry.paymentStatus === 'review' ? 'Revisar e pagar' : 'Confirmar pagamento'}
+                      </button>
                       <button aria-label={`Editar ${entry.employeeName}`} onClick={() => openEditEmployee(entry)}>
                         <span className="material-symbols-outlined">edit</span>
                       </button>
@@ -933,6 +997,17 @@ export function PayrollControl({
 
                   {expanded && (
                     <div className={styles.expandedPanel} id={`payroll-details-${entry.id}`}>
+                      <div className={styles.detailHeading}>
+                        <span className={styles.avatar}>{initials(entry.employeeName)}</span>
+                        <div><small>DETALHES DO COLABORADOR</small><h3>{entry.employeeName}</h3><span>{entry.cargo || entry.employmentType || 'Colaborador'}</span></div>
+                        <button aria-label="Fechar detalhes" onClick={() => setExpandedId(null)}><span className="material-symbols-outlined">close</span></button>
+                      </div>
+                      <div className={`${styles.detailTabs} ${entry.employmentType !== 'CLT' ? styles.detailTabsTwo : ''}`} aria-label={`Informações de ${entry.employeeName}`}>
+                        <button aria-pressed={activeDetailTab === 'summary'} className={activeDetailTab === 'summary' ? styles.detailTabActive : ''} onClick={() => setDetailTab('summary')}>Resumo</button>
+                        <button aria-pressed={activeDetailTab === 'adjustments'} className={activeDetailTab === 'adjustments' ? styles.detailTabActive : ''} onClick={() => setDetailTab('adjustments')}>Ajustes</button>
+                        {entry.employmentType === 'CLT' && <button aria-pressed={activeDetailTab === 'vacation'} className={activeDetailTab === 'vacation' ? styles.detailTabActive : ''} onClick={() => setDetailTab('vacation')}>Férias</button>}
+                      </div>
+                      {activeDetailTab === 'summary' && <>
                       <div className={`${styles.paymentStatusBar} ${
                         entry.paymentStatus === 'paid'
                           ? styles.paymentStatusPaid
@@ -1117,8 +1192,9 @@ export function PayrollControl({
                           )}
                         </section>
                       </div>
+                      </>}
 
-                      {entry.employmentType === 'CLT' && (
+                      {activeDetailTab === 'vacation' && entry.employmentType === 'CLT' && (
                         <section className={styles.vacationPanel} aria-label={`Férias de ${entry.employeeName}`}>
                           <div className={styles.vacationHeader}>
                             <span>
@@ -1234,7 +1310,7 @@ export function PayrollControl({
                         </section>
                       )}
 
-                      {isDraftEntry && adjustmentDraft ? (
+                      {activeDetailTab === 'adjustments' && (isDraftEntry && adjustmentDraft ? (
                         <div className={styles.adjustmentEditor}>
                           <label>
                             <span>Tipo</span>
@@ -1304,7 +1380,7 @@ export function PayrollControl({
                           <span className="material-symbols-outlined">add</span>
                           Adicionar desconto ou acréscimo
                         </button>
-                      )}
+                      ))}
                     </div>
                   )}
                 </article>
