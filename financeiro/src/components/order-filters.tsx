@@ -1,165 +1,84 @@
 'use client';
-import { useState } from 'react';
+
+import { DatePicker } from '@/components/ui/date-picker';
 
 export interface OrderFiltersProps {
-    searchQuery: string;
-    onSearchChange: (query: string) => void;
-    statusFilter: string;
-    onStatusChange: (status: string) => void;
-    urgencyFilter: string;
-    onUrgencyChange: (urgency: string) => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  statusFilter: string;
+  onStatusChange: (status: string) => void;
+  urgencyFilter: string;
+  onUrgencyChange: (urgency: string) => void;
+  dateFrom: string;
+  onDateFromChange: (date: string) => void;
+  dateTo: string;
+  onDateToChange: (date: string) => void;
 }
 
-const STATUS_OPTIONS = [
-    { value: 'All', label: 'Todos', icon: 'checklist' },
-    { value: 'Aguardando', label: 'Aguardando', icon: 'hourglass_top', color: '#f59e0b' },
-    { value: 'Pedido', label: 'Pedido Feito', icon: 'local_shipping', color: '#3b82f6' },
-    { value: 'Entregue', label: 'Entregue', icon: 'check_circle', color: '#10b981' },
-    { value: 'Cancelado', label: 'Cancelado', icon: 'cancel', color: '#ef4444' },
-];
-
-const URGENCY_OPTIONS = [
-    { value: 'All', label: 'Todas', icon: 'tune' },
-    { value: 'Baixa', label: 'Baixa', icon: 'arrow_downward', color: '#10b981' },
-    { value: 'Média', label: 'Média', icon: 'remove', color: '#f59e0b' },
-    { value: 'Alta', label: 'Alta', icon: 'arrow_upward', color: '#f97316' },
-    { value: 'Urgente', label: 'Urgente', icon: 'priority_high', color: '#ef4444' },
-];
-
 export function OrderFilters({
-    searchQuery, onSearchChange,
-    statusFilter, onStatusChange,
-    urgencyFilter, onUrgencyChange
+  searchQuery, onSearchChange, statusFilter, onStatusChange,
+  urgencyFilter, onUrgencyChange, dateFrom, onDateFromChange,
+  dateTo, onDateToChange,
 }: OrderFiltersProps) {
-    const [showStatus, setShowStatus] = useState(false);
-    const [showUrgency, setShowUrgency] = useState(false);
-
-    const activeStatus = STATUS_OPTIONS.find(s => s.value === statusFilter) || STATUS_OPTIONS[0];
-    const activeUrgency = URGENCY_OPTIONS.find(u => u.value === urgencyFilter) || URGENCY_OPTIONS[0];
-
-    const pillStyle = (isOpen: boolean) => ({
-        display: 'flex' as const, alignItems: 'center' as const, gap: 8,
-        padding: '9px 16px', borderRadius: 12,
-        border: isOpen ? '1px solid var(--primary)' : '1px solid var(--border)',
-        background: isOpen ? 'rgba(230,0,126,0.06)' : 'var(--bg)',
-        color: 'var(--text-main)', fontWeight: 700 as const, fontSize: '0.85rem',
-        cursor: 'pointer' as const, fontFamily: 'inherit' as const,
-        transition: 'all 0.2s',
-        boxShadow: isOpen ? '0 0 0 3px rgba(230,0,126,0.1)' : 'none',
-    });
-
-    return (
-        <div className="order-filters" style={{
-            display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center',
-            background: 'var(--card-bg)', padding: '16px 20px',
-            borderRadius: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-            border: '1px solid var(--border)', marginBottom: 24,
-        }}>
-            {/* Search Input */}
-            <div className="order-filter-search" style={{ flex: '1 1 300px', position: 'relative', minWidth: 0 }}>
-                <span className="material-symbols-outlined" style={{
-                    position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
-                    color: 'var(--primary)', fontSize: 18
-                }}>search</span>
-                <input
-                    type="text"
-                    placeholder="Buscar produto por nome..."
-                    value={searchQuery}
-                    onChange={(e) => onSearchChange(e.target.value)}
-                    style={{
-                        width: '100%', padding: '11px 14px 11px 42px', borderRadius: 12,
-                        border: '1px solid var(--border)', background: 'var(--bg)',
-                        fontFamily: 'inherit', fontSize: '0.88rem', outline: 'none',
-                        transition: 'border-color 0.2s, box-shadow 0.2s', color: 'var(--text-main)',
-                    }}
-                />
-            </div>
-
-            <div className="order-filter-pickers" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
-                {/* Status Picker */}
-                <div style={{ position: 'relative' }}>
-                    <button onClick={() => { setShowStatus(!showStatus); setShowUrgency(false); }} style={pillStyle(showStatus)}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: activeStatus.color || 'var(--primary)' }}>{activeStatus.icon}</span>
-                        {activeStatus.label}
-                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showStatus ? 'rotate(180deg)' : 'none' }}>expand_more</span>
-                    </button>
-                    {showStatus && (
-                        <>
-                            <div onClick={() => setShowStatus(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />
-                            <div style={{
-                                position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 100,
-                                background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)',
-                                boxShadow: '0 16px 48px rgba(0,0,0,0.12)', width: 200, overflow: 'hidden',
-                                animation: 'fadeIn 0.15s ease', padding: 8,
-                            }}>
-                                {STATUS_OPTIONS.map(opt => (
-                                    <button key={opt.value} onClick={() => { onStatusChange(opt.value); setShowStatus(false); }} style={{
-                                        display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', borderRadius: 10,
-                                        border: 'none', background: statusFilter === opt.value ? 'linear-gradient(135deg,var(--primary),#ff4db1)' : 'transparent',
-                                        color: statusFilter === opt.value ? '#fff' : 'var(--text-main)', fontWeight: 700, fontSize: '0.85rem',
-                                        cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', textAlign: 'left' as const,
-                                    }}
-                                    onMouseEnter={e => { if (statusFilter !== opt.value) (e.currentTarget).style.background = 'var(--bg)'; }}
-                                    onMouseLeave={e => { if (statusFilter !== opt.value) (e.currentTarget).style.background = 'transparent'; }}
-                                    >
-                                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: statusFilter === opt.value ? '#fff' : (opt.color || 'var(--text-muted)') }}>{opt.icon}</span>
-                                        {opt.label}
-                                        {statusFilter === opt.value && <span className="material-symbols-outlined" style={{ fontSize: 14, marginLeft: 'auto' }}>check</span>}
-                                    </button>
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                {/* Urgency Picker */}
-                <div style={{ position: 'relative' }}>
-                    <button onClick={() => { setShowUrgency(!showUrgency); setShowStatus(false); }} style={pillStyle(showUrgency)}>
-                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: activeUrgency.color || 'var(--primary)' }}>{activeUrgency.icon}</span>
-                        {activeUrgency.label}
-                        <span className="material-symbols-outlined" style={{ fontSize: 14, color: 'var(--text-muted)', transition: 'transform 0.2s', transform: showUrgency ? 'rotate(180deg)' : 'none' }}>expand_more</span>
-                    </button>
-                    {showUrgency && (
-                        <>
-                            <div onClick={() => setShowUrgency(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />
-                            <div style={{
-                                position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 100,
-                                background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)',
-                                boxShadow: '0 16px 48px rgba(0,0,0,0.12)', width: 200, overflow: 'hidden',
-                                animation: 'fadeIn 0.15s ease', padding: 8,
-                            }}>
-                                {URGENCY_OPTIONS.map(opt => (
-                                    <button key={opt.value} onClick={() => { onUrgencyChange(opt.value); setShowUrgency(false); }} style={{
-                                        display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', borderRadius: 10,
-                                        border: 'none', background: urgencyFilter === opt.value ? 'linear-gradient(135deg,var(--primary),#ff4db1)' : 'transparent',
-                                        color: urgencyFilter === opt.value ? '#fff' : 'var(--text-main)', fontWeight: 700, fontSize: '0.85rem',
-                                        cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s', textAlign: 'left' as const,
-                                    }}
-                                    onMouseEnter={e => { if (urgencyFilter !== opt.value) (e.currentTarget).style.background = 'var(--bg)'; }}
-                                    onMouseLeave={e => { if (urgencyFilter !== opt.value) (e.currentTarget).style.background = 'transparent'; }}
-                                    >
-                                        <span className="material-symbols-outlined" style={{ fontSize: 16, color: urgencyFilter === opt.value ? '#fff' : (opt.color || 'var(--text-muted)') }}>{opt.icon}</span>
-                                        {opt.label}
-                                        {urgencyFilter === opt.value && <span className="material-symbols-outlined" style={{ fontSize: 14, marginLeft: 'auto' }}>check</span>}
-                                    </button>
-                                ))}
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
-            <style>{`
-                .order-filters { min-width: 0; max-width: 100%; }
-                @media (max-width: 640px) {
-                    .order-filters { padding: 14px !important; }
-                    .order-filter-search { flex-basis: 100% !important; }
-                    .order-filter-pickers { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
-                    .order-filter-pickers > div, .order-filter-pickers > div > button { width: 100%; min-width: 0; }
-                }
-                @media (max-width: 380px) {
-                    .order-filter-pickers { grid-template-columns: minmax(0, 1fr); }
-                }
-            `}</style>
-        </div>
-    );
+  return (
+    <div className="orders-filter-toolbar" aria-label="Filtros de pedidos">
+      <label className="orders-filter-search">
+        <span className="material-symbols-outlined" aria-hidden="true">search</span>
+        <span className="sr-only">Buscar produto</span>
+        <input
+          type="search"
+          placeholder="Buscar produto por nome..."
+          value={searchQuery}
+          onChange={event => onSearchChange(event.target.value)}
+        />
+      </label>
+      <label className="orders-filter-select">
+        <span className="sr-only">Filtrar por status</span>
+        <select value={statusFilter} onChange={event => onStatusChange(event.target.value)}>
+          <option value="All">Todos os status</option>
+          <option value="Aguardando">Aguardando</option>
+          <option value="Pedido">Pedido Feito</option>
+          <option value="Entregue">Entregue</option>
+          <option value="Cancelado">Cancelado</option>
+        </select>
+      </label>
+      <label className="orders-filter-select">
+        <span className="sr-only">Filtrar por urgência</span>
+        <select value={urgencyFilter} onChange={event => onUrgencyChange(event.target.value)}>
+          <option value="All">Todas as urgências</option>
+          <option value="Baixa">Baixa</option>
+          <option value="Média">Média</option>
+          <option value="Alta">Alta</option>
+          <option value="Urgente">Urgente</option>
+        </select>
+      </label>
+      <div className="orders-filter-dates" aria-label="Período dos pedidos">
+        <span>Período</span>
+        <DatePicker value={dateFrom} onChange={onDateFromChange} variant="compact" placeholder="Início" />
+        <span>até</span>
+        <DatePicker value={dateTo} onChange={onDateToChange} variant="compact" placeholder="Fim" />
+        {(dateFrom || dateTo) && (
+          <button type="button" onClick={() => { onDateFromChange(''); onDateToChange(''); }} aria-label="Limpar período">
+            <span className="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        )}
+      </div>
+      <style>{`
+        .orders-filter-toolbar { display: grid; grid-template-columns: minmax(170px, 1fr) minmax(150px, auto) minmax(150px, auto); gap: 10px; align-items: center; min-width: 0; margin-bottom: 18px; }
+        .orders-filter-toolbar > * { min-width: 0; }
+        .orders-filter-search { display: flex; align-items: center; position: relative; min-width: 0; }
+        .orders-filter-search > .material-symbols-outlined { position: absolute; left: 12px; font-size: 19px; color: var(--text-muted); pointer-events: none; }
+        .orders-filter-search input, .orders-filter-select select { width: 100%; min-width: 0; min-height: 44px; padding: 0 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--card-bg); color: var(--text-main); font-family: inherit; font-size: 0.82rem; font-weight: 600; line-height: 1.3; }
+        .orders-filter-search input { padding-left: 40px; }
+        .orders-filter-search input::placeholder { color: var(--text-muted); }
+        .orders-filter-dates { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; min-width: 0; color: var(--text-muted); font-size: 0.78rem; font-weight: 700; }
+        .orders-filter-dates > div { width: 142px; max-width: 100%; min-width: 0; }
+        .orders-filter-dates > button { display: grid; place-items: center; flex: none; min-width: 36px; min-height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--card-bg); color: var(--text-muted); cursor: pointer; }
+        .orders-filter-dates > button .material-symbols-outlined { font-size: 17px; }
+        @media (min-width: 1180px) { .orders-filter-toolbar { grid-template-columns: minmax(170px, 1fr) 165px 170px auto; } .orders-filter-dates { grid-column: auto; } .orders-filter-dates > div { width: 116px; } }
+        @media (max-width: 640px) { .orders-filter-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); } .orders-filter-search, .orders-filter-dates { grid-column: 1 / -1; } .orders-filter-dates { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto; gap: 6px; } .orders-filter-dates > span:first-child { grid-column: 1 / -1; } .orders-filter-dates > div { width: 100%; } }
+        @media (max-width: 350px) { .orders-filter-toolbar { grid-template-columns: minmax(0, 1fr); } .orders-filter-search, .orders-filter-dates { grid-column: 1; } }
+      `}</style>
+    </div>
+  );
 }

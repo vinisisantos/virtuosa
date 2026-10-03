@@ -47,6 +47,20 @@ const orders = [
     estimatedArrival: '2026-09-20',
     costRecognizedAt: '2026-09-05T12:00:00.000Z',
   },
+  {
+    id: 'order-responsive-3',
+    productName: 'Luvas de procedimento',
+    quantity: 10,
+    urgency: 'Baixa',
+    status: 'Entregue',
+    notes: 'Outro lote para testar a seleção compacta.',
+    unit: 'SBC',
+    unitPrice: 41.8,
+    totalPrice: 418,
+    batchNumber: 93,
+    createdAt: '2026-09-03T09:30:00.000Z',
+    costRecognizedAt: null,
+  },
 ];
 
 const viewports = [
@@ -59,15 +73,18 @@ const viewports = [
   { width: 1024, height: 768 },
   { width: 1180, height: 820 },
   { width: 1440, height: 900 },
-];
+].filter(viewport => !process.env.ORDERS_UI_WIDTH || viewport.width === Number(process.env.ORDERS_UI_WIDTH));
 
 const browser = await puppeteer.launch({ headless: true });
 const screenshotDirectory = await mkdtemp(join(tmpdir(), 'virtuosa-orders-responsive-'));
+const activate = (page, selector) => page.$eval(selector, element => element.click());
 
 try {
   for (const viewport of viewports) {
     const page = await browser.newPage();
     const errors = [];
+    let savedView = 'detailed';
+    let preferenceWrites = 0;
     await page.setViewport({
       width: viewport.width,
       height: viewport.height,
@@ -87,6 +104,15 @@ try {
       let data = {};
       if (url.pathname === '/api/auth/me') data = { authenticated: true, user };
       else if (url.pathname === '/api/orders') data = orders;
+      else if (url.pathname === '/api/orders/view-preference') {
+        if (request.method() === 'PATCH') {
+          const body = JSON.parse(request.postData() || '{}');
+          assert.ok(['detailed', 'compact'].includes(body.view));
+          savedView = body.view;
+          preferenceWrites++;
+        }
+        data = { view: savedView };
+      }
       else if (url.pathname === '/api/orders/approvals') data = [];
       else if (url.pathname === '/api/orders/audit') data = { logs: [], total: 0, totalPages: 0 };
       else if (url.pathname === '/api/mercadolivre/status') data = { connected: false, mlUsername: null, unit: 'SBC' };
@@ -98,8 +124,9 @@ try {
       localStorage.setItem('virtuosa_global_unit', 'SBC');
     }, user);
 
-    await page.goto(`${origin}/pedidos`, { waitUntil: 'networkidle0', timeout: 120000 });
+    await page.goto(`${origin}/pedidos`, { waitUntil: 'domcontentloaded', timeout: 120000 });
     await page.waitForSelector('.orders-item-card');
+    await page.waitForSelector('.orders-view-switch button:not(:disabled)');
 
     const layout = await page.evaluate(() => {
       const root = document.documentElement;
@@ -125,6 +152,7 @@ try {
         mobileBarDisplay: mobileBar ? getComputedStyle(mobileBar).display : 'absent',
         headerNavDisplay: getComputedStyle(headerNav).display,
         tableCount: document.querySelectorAll('.orders-batch table').length,
+        viewMode: document.querySelector('.orders-view-switch button[aria-pressed="true"]')?.textContent?.trim(),
       };
     });
 
@@ -135,6 +163,10 @@ try {
     assert.deepEqual(layout.labels, ['Produto', 'Quantidade', 'Unidade', 'Preço unitário', 'Preço total', 'Urgência', 'Status', 'Observações', 'Ações']);
     assert.equal(layout.optionCount, 4, 'todas as opções de status continuam disponíveis');
     assert.equal(layout.tableCount, 0, 'a lista não depende mais de tabela horizontal');
+    assert.match(layout.viewMode, /Lotes detalhados/, 'lotes detalhados é o padrão');
+
+    const secondaryDetailed = await page.$eval('.orders-item-card .orders-unit-field', element => getComputedStyle(element).display);
+    assert.notEqual(secondaryDetailed, 'none', 'lotes detalhados mantêm os campos visíveis');
 
     if ([390, 834, 1440].includes(viewport.width)) {
       await page.screenshot({
@@ -151,7 +183,38 @@ try {
       assert.notEqual(layout.headerNavDisplay, 'none', `menu desktop presente em ${viewport.width}px`);
     }
 
-    await page.click('.orders-page-action');
+    if ([390, 430, 1440].includes(viewport.width)) {
+      const compactSaved = page.waitForResponse(response => response.url().includes('/api/orders/view-preference') && response.request().method() === 'PATCH');
+      await activate(page, '.orders-view-switch button:nth-child(2)');
+      await compactSaved;
+      await page.waitForSelector('.orders-batch-sidebar');
+      if ([390, 1440].includes(viewport.width)) {
+        await page.$eval('.orders-list-heading', element => element.scrollIntoView({ block: 'start' }));
+        await page.screenshot({ path: join(screenshotDirectory, `pedidos-compact-${viewport.width}.png`) });
+      }
+      assert.equal(savedView, 'compact', 'troca salva por usuário');
+      assert.equal(await page.$$eval('.orders-batch-choice', elements => elements.length), 2, 'lotes renderizados na fila');
+      assert.equal(await page.$$eval('.orders-item-card', elements => elements.length), 2, 'itens do lote selecionado visíveis');
+      const secondaryBefore = await page.$eval('.orders-item-card .orders-unit-field', element => getComputedStyle(element).display);
+      assert.equal(secondaryBefore, 'none', 'a fila compacta começa com dados secundários recolhidos');
+      await activate(page, '.orders-item-card .orders-detail-toggle');
+      const secondaryAfter = await page.$eval('.orders-item-card .orders-unit-field', element => getComputedStyle(element).display);
+      assert.notEqual(secondaryAfter, 'none', 'detalhes e ações podem ser expandidos na fila');
+      await activate(page, '.orders-batch-choice:nth-of-type(2)');
+      assert.equal(await page.$$eval('.orders-item-card', elements => elements.length), 1, 'troca de lote mostra seus itens');
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await page.waitForSelector('.orders-batch-sidebar');
+      await page.waitForFunction(() => [...document.querySelectorAll('.orders-view-switch button')].every(button => !button.disabled));
+      const activeCompact = await page.$eval('.orders-view-switch button[aria-pressed="true"]', element => element.textContent || '');
+      assert.match(activeCompact, /Fila compacta/, 'preferência preservada após recarga');
+      const detailedSaved = page.waitForResponse(response => response.url().includes('/api/orders/view-preference') && response.request().method() === 'PATCH');
+      await activate(page, '.orders-view-switch button:nth-child(1)');
+      await detailedSaved;
+      assert.equal(savedView, 'detailed', 'escolha pode ser alterada novamente');
+      assert.equal(preferenceWrites, 2, 'uma gravação por troca, nenhuma por item');
+    }
+
+    await activate(page, '.orders-page-action');
     await page.waitForSelector('.order-modal-panel');
     const modalLayout = await page.evaluate(() => {
       const panel = document.querySelector('.order-modal-panel');

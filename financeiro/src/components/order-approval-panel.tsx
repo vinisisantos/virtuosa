@@ -37,7 +37,7 @@ const FIELD_LABELS: Record<string, string> = {
   sourceUrl: 'URL do Produto',
 };
 
-export function OrderApprovalPanel({ unit }: { unit?: string }) {
+export function OrderApprovalPanel({ unit, onPendingCountChange }: { unit?: string; onPendingCountChange?: (count: number) => void }) {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -97,6 +97,9 @@ export function OrderApprovalPanel({ unit }: { unit?: string }) {
   };
 
   const pendingCount = approvals.length;
+  useEffect(() => {
+    if (!loading) onPendingCountChange?.(pendingCount);
+  }, [loading, onPendingCountChange, pendingCount]);
   if (loading) return null;
 
   const unitColors: Record<string, string> = {  Osasco: '#f59e0b', SBC: '#10b981', SCS: '#ef4444' };

@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { OrdersTable } from '@/components/orders-table';
 import { OrderFilters } from '@/components/order-filters';
 import { OrderModal, type OrderData } from '@/components/order-modal';
@@ -10,7 +10,7 @@ import { DeliveredBatches } from '@/components/delivered-batches';
 import { OrderApprovalPanel } from '@/components/order-approval-panel';
 import { OrderAuditPanel } from '@/components/order-audit-panel';
 import { useOrders } from '@/hooks/useOrders';
-import { DatePicker } from '@/components/ui/date-picker';
+import { useOrdersViewPreference } from '@/hooks/useOrdersViewPreference';
 import { formatCurrency as fmtBRL } from '@/lib/currency';
 
 function getUserPermissions() {
@@ -36,7 +36,9 @@ function getUserPermissions() {
 
 export function OrdersClient() {
   const o = useOrders();
+  const orderView = useOrdersViewPreference();
   const [showApprovals, setShowApprovals] = useState(false);
+  const [pendingApprovals, setPendingApprovals] = useState<{ unit: string; count: number } | null>(null);
   const [showAudit, setShowAudit] = useState(false);
   const [canDeleteHistory, setCanDeleteHistory] = useState(false);
   const [canManageCosts] = useState(() => getUserPermissions().canManageCosts);
@@ -48,6 +50,10 @@ export function OrdersClient() {
     setShowAudit(perms.canViewHistory);
     setCanDeleteHistory(perms.canDeleteHistory);
   }, []);
+
+  const updatePendingApprovals = useCallback((count: number) => {
+    setPendingApprovals({ unit: o.selectedUnit, count });
+  }, [o.selectedUnit]);
 
   // Listen for refresh events from approval panel
   useEffect(() => {
@@ -65,7 +71,7 @@ export function OrdersClient() {
             <h1 style={{ fontSize: '1.3rem', fontWeight: 900, letterSpacing: '-0.3px', margin: 0 }}>
               Controle de <span style={{ color: 'var(--primary)' }}>Compras</span>
             </h1>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: '3px 0 0' }}>Gerencie pedidos, preços e histórico por unidade.</p>
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: '3px 0 0' }}>Priorize aprovações e acompanhe cada item sem rolagem lateral.</p>
           </div>
           <div className="orders-page-actions">
             <button className="orders-page-action" onClick={o.openCreateModal} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: 'var(--primary)', color: 'white', border: 'none', padding: '0 14px', minHeight: 44, borderRadius: 10, fontFamily: 'inherit', fontWeight: 800, fontSize: '0.82rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -80,56 +86,52 @@ export function OrdersClient() {
         </div>
       </section>
 
-      {/* ─── KPI Cards — auto-fit, 2 cols em mobile ─── */}
+      {/* Indicadores da seleção atual, sem consultas adicionais. */}
       <div className="orders-kpi-grid">
         {[
-          { label: 'Total Pedidos', value: o.totalOrders.toString(), icon: 'inventory_2', color: '#6366f1' },
-          { label: 'Total Gasto', value: fmtBRL(o.totalSpent), icon: 'payments', color: '#10b981' },
-          { label: 'Custo Médio', value: fmtBRL(o.avgPrice), icon: 'analytics', color: '#f59e0b' },
-          { label: 'Aguardando', value: o.aguardando.toString(), icon: 'hourglass_top', color: '#ef4444' },
-        ].map((kpi, i) => (
-          <div key={i} style={{
-            background: 'var(--card-bg)', borderRadius: 14, border: '1px solid var(--border)',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.04)', padding: '12px 12px 10px', position: 'relative', overflow: 'hidden',
-          }}>
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: `linear-gradient(90deg,${kpi.color},${kpi.color}66)` }} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 5 }}>
-              <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' as const, letterSpacing: '0.4px', lineHeight: 1.3 }}>{kpi.label}</span>
-              <div style={{ width: 26, height: 26, borderRadius: 8, background: `${kpi.color}12`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginLeft: 4 }}>
-                <span className="material-symbols-outlined" style={{ fontSize: 14, color: kpi.color }}>{kpi.icon}</span>
-              </div>
-            </div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 900, color: kpi.color, lineHeight: 1.1, overflowWrap: 'anywhere' }}>{kpi.value}</div>
+          { label: 'Aguardando', value: o.aguardando.toString(), context: 'Itens ainda não pedidos', icon: 'hourglass_top', color: '#f59e0b' },
+          { label: 'Urgentes', value: o.orders.filter(order => order.urgency === 'Urgente').length.toString(), context: 'Prioridade de compra', icon: 'priority_high', color: '#ef4444' },
+          ...(showApprovals ? [{ label: 'Aprovações', value: pendingApprovals?.unit === o.selectedUnit ? pendingApprovals.count.toString() : '—', context: 'Solicitações pendentes', icon: 'approval', color: '#8b5cf6' }] : []),
+          { label: 'Total informado', value: fmtBRL(o.totalSpent), context: 'Valores dos itens filtrados', icon: 'payments', color: '#10b981' },
+        ].map(kpi => (
+          <div key={kpi.label} className="orders-kpi" style={{ borderTopColor: kpi.color }}>
+            <span>{kpi.label}</span>
+            <strong>{kpi.value}</strong>
+            <small>{kpi.context}</small>
           </div>
         ))}
       </div>
-
-      {/* ─── Date Filters — inline compacto ─── */}
-      <div className="orders-date-filters">
-        <div className="orders-date-label">
-          <span className="material-symbols-outlined" style={{ fontSize: 15, color: 'var(--text-muted)' }}>calendar_today</span>
-          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>Período:</span>
-        </div>
-        <DatePicker value={o.dateFrom} onChange={o.setDateFrom} label="Início" />
-        <span className="orders-date-separator" style={{ color: 'var(--text-muted)', fontWeight: 600, fontSize: '0.75rem' }}>até</span>
-        <DatePicker value={o.dateTo} onChange={o.setDateTo} label="Fim" />
-        {(o.dateFrom || o.dateTo) && (
-          <button onClick={() => { o.setDateFrom(''); o.setDateTo(''); }}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 3, padding: '5px 10px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-muted)', fontWeight: 700, fontSize: '0.73rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 13 }}>close</span>Limpar
-          </button>
-        )}
+      <div className="orders-secondary-metrics">
+        <span>Total de pedidos: <strong>{o.totalOrders}</strong></span>
+        <span>Custo médio: <strong>{fmtBRL(o.avgPrice)}</strong></span>
       </div>
 
       <OrderFilters searchQuery={o.searchQuery} onSearchChange={o.setSearchQuery}
         statusFilter={o.statusFilter} onStatusChange={o.setStatusFilter}
-        urgencyFilter={o.urgencyFilter} onUrgencyChange={o.setUrgencyFilter} />
+        urgencyFilter={o.urgencyFilter} onUrgencyChange={o.setUrgencyFilter}
+        dateFrom={o.dateFrom} onDateFromChange={o.setDateFrom}
+        dateTo={o.dateTo} onDateToChange={o.setDateTo} />
 
       {/* ─── Approval Panel — for users with pedidosAprovar ─── */}
-      {showApprovals && <OrderApprovalPanel unit={o.selectedUnit} />}
+      {showApprovals && <OrderApprovalPanel unit={o.selectedUnit} onPendingCountChange={updatePendingApprovals} />}
+
+      <div className="orders-list-heading">
+        <div>
+          <h2>Pedidos em andamento</h2>
+          <span>{o.totalOrders} {o.totalOrders === 1 ? 'item visível' : 'itens visíveis'}</span>
+        </div>
+        <div className="orders-view-switch" role="group" aria-label="Visualização dos pedidos">
+          <button type="button" aria-pressed={orderView.viewMode === 'detailed'} disabled={orderView.loading || orderView.saving} onClick={() => orderView.changeView('detailed')}>
+            <span className="material-symbols-outlined" aria-hidden="true">view_agenda</span> Lotes detalhados
+          </button>
+          <button type="button" aria-pressed={orderView.viewMode === 'compact'} disabled={orderView.loading || orderView.saving} onClick={() => orderView.changeView('compact')}>
+            <span className="material-symbols-outlined" aria-hidden="true">view_list</span> Fila compacta
+          </button>
+        </div>
+      </div>
 
       {/* ─── Orders Table ─── */}
-      {o.loading && o.orders.length === 0 ? (
+      {(o.loading && o.orders.length === 0) || orderView.loading ? (
         <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
           <span className="material-symbols-outlined" style={{ fontSize: 32, animation: 'spin 1s linear infinite' }}>progress_activity</span>
           <p style={{ marginTop: 12, fontWeight: 700 }}>Carregando pedidos...</p>
@@ -137,6 +139,7 @@ export function OrdersClient() {
       ) : (
         <OrdersTable
           orders={o.orders}
+          viewMode={orderView.viewMode}
           onEdit={o.openEditModal}
           onDelete={o.handleDeleteOrder}
           onStatusChange={o.handleStatusChange}
@@ -202,9 +205,22 @@ export function OrdersClient() {
         .orders-page { min-width: 0; max-width: 100%; overflow-x: hidden; }
         .orders-page-hero-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-width: 0; }
         .orders-page-actions { display: grid; grid-auto-flow: column; gap: 8px; flex-shrink: 0; }
-        .orders-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
-        .orders-date-filters { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; min-width: 0; }
-        .orders-date-label { display: flex; align-items: center; gap: 5px; }
+        .orders-kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; margin-bottom: 9px; }
+        .orders-kpi { display: flex; flex-direction: column; min-width: 0; min-height: 102px; padding: 13px 14px; background: var(--card-bg); border: 1px solid var(--border); border-top: 3px solid; border-radius: 12px; }
+        .orders-kpi > span { color: var(--text-muted); font-size: 0.72rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; }
+        .orders-kpi > strong { color: var(--text-main); font-size: 1.32rem; line-height: 1.25; overflow-wrap: anywhere; margin-top: 4px; }
+        .orders-kpi > small { color: var(--text-muted); font-size: 0.72rem; }
+        .orders-secondary-metrics { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--text-muted); font-size: 0.76rem; margin-bottom: 15px; }
+        .orders-secondary-metrics strong { color: var(--text-main); }
+        .orders-list-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+        .orders-list-heading > div:first-child { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+        .orders-list-heading h2 { margin: 0; color: var(--text-main); font-size: 1.05rem; font-weight: 800; }
+        .orders-list-heading > div:first-child > span { color: var(--text-muted); font-size: 0.75rem; }
+        .orders-view-switch { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px; border: 1px solid var(--border); border-radius: 11px; background: var(--card-bg); }
+        .orders-view-switch button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 40px; padding: 6px 11px; border: 0; border-radius: 8px; color: var(--text-muted); background: transparent; font-family: inherit; font-size: 0.76rem; font-weight: 700; line-height: 1.2; cursor: pointer; }
+        .orders-view-switch button[aria-pressed="true"] { background: var(--primary-light); color: var(--primary); }
+        .orders-view-switch button:disabled { cursor: wait; }
+        .orders-view-switch .material-symbols-outlined { font-size: 17px; }
 
         @media (max-width: 1023px) {
           .orders-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -214,15 +230,12 @@ export function OrdersClient() {
           .orders-page-hero-row { align-items: stretch; }
           .orders-page-actions { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
           .orders-page-action { width: 100%; min-width: 0; }
-          .orders-date-filters { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
-          .orders-date-label { grid-column: 1 / -1; }
-          .orders-date-filters > button:last-child { grid-column: 1 / -1; justify-content: center; width: 100%; min-height: 44px; }
+          .orders-view-switch { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .orders-view-switch button { min-width: 0; }
         }
 
         @media (max-width: 380px) {
-          .orders-page-actions, .orders-kpi-grid, .orders-date-filters { grid-template-columns: minmax(0, 1fr); }
-          .orders-date-label, .orders-date-filters > button:last-child { grid-column: 1; }
-          .orders-date-separator { display: none; }
+          .orders-page-actions { grid-template-columns: minmax(0, 1fr); }
         }
       `}</style>
 

@@ -4,9 +4,11 @@ import { useState } from 'react';
 import { OrderData } from './order-modal';
 import { DatePicker } from '@/components/ui/date-picker';
 import { formatCurrency } from '@/lib/currency';
+import type { OrdersViewMode } from '@/hooks/useOrdersViewPreference';
 
 interface OrdersTableProps {
     orders: OrderData[];
+    viewMode: OrdersViewMode;
     onEdit: (order: OrderData) => void;
     onDelete: (id: string) => void;
     onStatusChange: (id: string, newStatus: string, estimatedArrival?: string) => void;
@@ -32,10 +34,12 @@ interface BatchGroup {
     itemCount: number;
 }
 
-export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRecognition }: OrdersTableProps) {
+export function OrdersTable({ orders, viewMode, onEdit, onDelete, onStatusChange, onCostRecognition }: OrdersTableProps) {
     const [etaModal, setEtaModal] = useState<{id: string, productName: string} | null>(null);
     const [etaDate, setEtaDate] = useState('');
     const [collapsedBatches, setCollapsedBatches] = useState<Set<number | null>>(new Set());
+    const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+    const [selectedBatchKey, setSelectedBatchKey] = useState<string | null>(null);
 
     if (!orders || orders.length === 0) {
         return (
@@ -75,6 +79,20 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
         if (!b.createdAt) return -1;
         return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
+
+    const getBatchKey = (batch: BatchGroup) => batch.batchNumber === null ? 'unbatched' : String(batch.batchNumber);
+    const activeBatchKey = batches.some(batch => getBatchKey(batch) === selectedBatchKey)
+        ? selectedBatchKey
+        : getBatchKey(batches[0]);
+
+    const toggleOrder = (orderKey: string) => {
+        setExpandedOrders(previous => {
+            const next = new Set(previous);
+            if (next.has(orderKey)) next.delete(orderKey);
+            else next.add(orderKey);
+            return next;
+        });
+    };
 
     const toggleBatch = (batchNum: number | null) => {
         setCollapsedBatches(prev => {
@@ -145,8 +163,27 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
 
     return (
         <>
-            <div className="orders-batches">
+            <div className={`orders-board orders-board-${viewMode}`}>
+                {viewMode === 'compact' && (
+                    <aside className="orders-batch-sidebar" aria-label="Lotes em andamento">
+                        <h3>Lotes em andamento</h3>
+                        {batches.map(batch => {
+                            const batchKey = getBatchKey(batch);
+                            const waiting = batch.orders.filter(order => order.status === 'Aguardando').length;
+                            return (
+                                <button key={batchKey} type="button" className="orders-batch-choice"
+                                    aria-pressed={activeBatchKey === batchKey}
+                                    onClick={() => setSelectedBatchKey(batchKey)}>
+                                    <span><strong>Lote #{batch.batchNumber ?? '—'}</strong><small>{batch.itemCount} {batch.itemCount === 1 ? 'item' : 'itens'} · {batch.orders[0]?.unit || 'Todas'}</small></span>
+                                    <span className="orders-choice-count">{waiting ? `${waiting} aguardando` : 'Sem pendências'}</span>
+                                </button>
+                            );
+                        })}
+                    </aside>
+                )}
+                <div className="orders-batches">
                 {batches.map((batch) => {
+                    if (viewMode === 'compact' && getBatchKey(batch) !== activeBatchKey) return null;
                     const isCollapsed = collapsedBatches.has(batch.batchNumber);
                     const statusSummary = getBatchStatusSummary(batch.orders);
                     const batchDate = batch.createdAt ? new Date(batch.createdAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
@@ -159,13 +196,15 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                             overflow: 'hidden',
                         }}>
                             {/* Batch Header */}
-                            <div
+                            <button type="button"
                                 onClick={() => toggleBatch(batch.batchNumber)}
                                 className="orders-batch-header"
+                                aria-expanded={!isCollapsed}
+                                aria-label={`Lote ${batch.batchNumber ?? 'sem número'}: ${isCollapsed ? 'expandir' : 'recolher'} itens`}
                                 style={{
-                                    padding: '14px 20px', cursor: 'pointer',
+                                    padding: '14px 20px', cursor: 'pointer', width: '100%',
                                     background: 'var(--bg)', borderBottom: isCollapsed ? 'none' : '1px solid var(--border)',
-                                    transition: 'all 0.2s', userSelect: 'none',
+                                    transition: 'all 0.2s', userSelect: 'none', borderTop: 0, borderLeft: 0, borderRight: 0, textAlign: 'left', fontFamily: 'inherit',
                                 }}
                             >
                                 <div className="orders-batch-main">
@@ -234,12 +273,13 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                         transform: isCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
                                     }}>expand_more</span>
                                 </div>
-                            </div>
+                            </button>
 
                             {/* Batch items adapt to the available width without horizontal scrolling. */}
                             {!isCollapsed && (
                                 <div className="orders-items-list">
-                                    {batch.orders.map((order) => {
+                                    {batch.orders.map((order, orderIndex) => {
+                                                const orderKey = order.id || `${getBatchKey(batch)}-${orderIndex}`;
                                                 const statusCfg = getStatusConfig(order.status);
                                                 const urgencyCfg = getUrgencyConfig(order.urgency);
                                                 const eta = formatEta(order.estimatedArrival);
@@ -250,7 +290,7 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                                 const recognitionUnavailable = !isCostRecognized && (!hasFinancialValue || order.status === 'Cancelado');
 
                                                 return (
-                                                    <article key={order.id} className="orders-item-card">
+                                                    <article key={orderKey} className="orders-item-card" data-expanded={viewMode === 'detailed' || expandedOrders.has(orderKey)}>
                                                         <div className="orders-field orders-product-field">
                                                             <span className="orders-field-label">Produto</span>
                                                             <div className="orders-product-content">
@@ -383,6 +423,19 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                                                             )}
                                                         </div>
 
+                                                        {viewMode === 'compact' && (
+                                                            <button type="button" className="orders-quick-action" onClick={() => onEdit(order)}>
+                                                                {hasFinancialValue ? 'Conferir item' : 'Informar preço'}
+                                                            </button>
+                                                        )}
+                                                        {viewMode === 'compact' && (
+                                                            <button type="button" className="orders-detail-toggle"
+                                                                aria-expanded={expandedOrders.has(orderKey)} onClick={() => toggleOrder(orderKey)}>
+                                                                {expandedOrders.has(orderKey) ? 'Ocultar detalhes e ações' : 'Ver detalhes e ações'}
+                                                                <span className="material-symbols-outlined" aria-hidden="true">{expandedOrders.has(orderKey) ? 'expand_less' : 'expand_more'}</span>
+                                                            </button>
+                                                        )}
+
                                                         <div className="orders-field orders-notes-field">
                                                             <span className="orders-field-label">Observações</span>
                                                             <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', overflowWrap: 'anywhere', margin: 0 }}>{order.notes || '—'}</p>
@@ -409,54 +462,90 @@ export function OrdersTable({ orders, onEdit, onDelete, onStatusChange, onCostRe
                         </div>
                     );
                 })}
+                </div>
             </div>
 
             <style>{`
-                .orders-batches { display: flex; flex-direction: column; gap: 16px; min-width: 0; overflow-x: hidden; }
+                .orders-board { min-width: 0; }
+                .orders-board-compact { display: grid; grid-template-columns: minmax(210px, 260px) minmax(0, 1fr); align-items: start; gap: 14px; }
+                .orders-batch-sidebar { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card-bg); }
+                .orders-batch-sidebar h3 { margin: 0 0 2px; color: var(--text-main); font-size: 0.9rem; }
+                .orders-batch-choice { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; width: 100%; min-width: 0; min-height: 68px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text-main); text-align: left; cursor: pointer; font-family: inherit; }
+                .orders-batch-choice[aria-pressed="true"] { border-color: var(--primary); background: var(--primary-light); }
+                .orders-batch-choice > span:first-child { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+                .orders-batch-choice strong { font-size: 0.82rem; }
+                .orders-batch-choice small { color: var(--text-muted); font-size: 0.73rem; }
+                .orders-choice-count { color: var(--text-muted); font-size: 0.7rem; font-weight: 700; text-align: right; }
+                .orders-batches { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
                 .orders-batch { min-width: 0; }
                 .orders-batch-header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; }
                 .orders-batch-main { display: flex; align-items: center; gap: 12px; min-width: 0; }
                 .orders-batch-copy { min-width: 0; }
                 .orders-batch-summary { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
                 .orders-items-list { display: flex; flex-direction: column; min-width: 0; }
-                .orders-item-card { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: start; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--border); min-width: 0; transition: var(--transition); }
+                .orders-item-card { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); align-items: start; gap: 12px; margin: 9px; padding: 14px; border: 1px solid var(--border); border-radius: 10px; background: color-mix(in srgb, var(--card-bg) 82%, var(--bg)); min-width: 0; transition: var(--transition); }
                 .orders-item-card:last-child { border-bottom: 0; }
-                .orders-item-card:hover { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+                .orders-item-card:last-child { border-bottom: 1px solid var(--border); }
+                .orders-item-card:hover { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); }
                 .orders-field { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; min-width: 0; }
-                .orders-field-label { color: var(--text-muted); font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em; line-height: 1.2; text-transform: uppercase; }
-                .orders-product-field { grid-column: span 3; }
+                .orders-field-label { color: var(--text-muted); font-size: 0.7rem; font-weight: 800; letter-spacing: 0.04em; line-height: 1.2; text-transform: uppercase; }
+                .orders-product-field { grid-column: span 5; }
                 .orders-product-content { min-width: 0; width: 100%; }
-                .orders-quantity-field, .orders-unit-field, .orders-unit-price-field, .orders-total-field, .orders-urgency-field { grid-column: span 1; }
-                .orders-status-field, .orders-actions-field { grid-column: span 2; }
+                .orders-product-content > div { min-width: 0; }
+                .orders-quantity-field { grid-column: span 1; }
+                .orders-total-field, .orders-urgency-field, .orders-status-field { grid-column: span 2; }
+                .orders-unit-field, .orders-unit-price-field { grid-column: span 2; }
                 .orders-notes-field { grid-column: 1 / -1; padding-top: 2px; }
+                .orders-actions-field { grid-column: span 4; }
                 .orders-status-control { position: relative; width: 100%; min-width: 0; }
                 .orders-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; }
-                .orders-action-button { min-height: 40px; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; color: var(--text-muted); font: 800 0.72rem/1 inherit; transition: var(--transition); }
+                .orders-action-button { min-height: 40px; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 9px; color: var(--text-muted); font-family: inherit; font-size: 0.72rem; font-weight: 800; line-height: 1; cursor: pointer; transition: var(--transition); }
+                .orders-detail-toggle { grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: flex-start; gap: 5px; width: fit-content; min-height: 36px; padding: 4px 0; border: 0; background: transparent; color: var(--primary); font-family: inherit; font-size: 0.78rem; font-weight: 800; cursor: pointer; }
+                .orders-detail-toggle .material-symbols-outlined { font-size: 17px; }
+                .orders-quick-action { grid-column: 1 / -1; min-height: 42px; border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--border)); border-radius: 9px; background: var(--primary-light); color: var(--primary); font-family: inherit; font-size: 0.8rem; font-weight: 800; cursor: pointer; }
+                .orders-board-compact .orders-product-field { grid-column: span 4; }
+                .orders-board-compact .orders-quantity-field { grid-column: span 1; }
+                .orders-board-compact .orders-total-field, .orders-board-compact .orders-urgency-field { grid-column: span 2; }
+                .orders-board-compact .orders-status-field { grid-column: span 3; }
+                .orders-board-compact .orders-quick-action { grid-column: 1 / span 5; }
+                .orders-board-compact .orders-detail-toggle { grid-column: 6 / -1; }
+                .orders-board-compact .orders-item-card[data-expanded="false"] .orders-unit-field, .orders-board-compact .orders-item-card[data-expanded="false"] .orders-unit-price-field, .orders-board-compact .orders-item-card[data-expanded="false"] .orders-notes-field, .orders-board-compact .orders-item-card[data-expanded="false"] .orders-actions-field, .orders-board-compact .orders-item-card[data-expanded="false"] .orders-product-content > div { display: none; }
                 .hover-btn:hover { background: var(--bg); color: var(--text-main) !important; }
                 .hover-btn-danger:hover { background: #fee2e2; color: #ef4444 !important; }
 
                 @media (max-width: 1199px) {
-                    .orders-item-card { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+                    .orders-board-compact { grid-template-columns: minmax(0, 1fr); }
+                    .orders-batch-sidebar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+                    .orders-batch-sidebar h3 { grid-column: 1 / -1; }
+                    .orders-item-card { grid-template-columns: repeat(4, minmax(0, 1fr)); }
                     .orders-product-field { grid-column: 1 / -1; }
-                    .orders-quantity-field, .orders-unit-field, .orders-unit-price-field, .orders-total-field, .orders-urgency-field, .orders-status-field { grid-column: span 1; }
-                    .orders-notes-field { grid-column: span 4; }
+                    .orders-quantity-field, .orders-total-field, .orders-urgency-field, .orders-status-field { grid-column: span 1; }
+                    .orders-unit-field, .orders-unit-price-field { grid-column: span 2; }
                     .orders-actions-field { grid-column: span 2; }
+                    .orders-board-compact .orders-product-field { grid-column: 1 / -1; }
+                    .orders-board-compact .orders-quantity-field, .orders-board-compact .orders-total-field, .orders-board-compact .orders-urgency-field, .orders-board-compact .orders-status-field { grid-column: span 1; }
+                    .orders-board-compact .orders-quick-action { grid-column: 1 / span 2; }
+                    .orders-board-compact .orders-detail-toggle { grid-column: 3 / -1; }
                 }
 
                 @media (max-width: 720px) {
                     .orders-batch-header { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px !important; }
                     .orders-batch-main { align-items: flex-start; }
                     .orders-batch-summary { justify-content: space-between; padding-left: 48px; }
-                    .orders-item-card { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; padding: 16px 14px; }
+                    .orders-item-card { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 10px; padding: 13px; }
                     .orders-product-field, .orders-status-field, .orders-notes-field, .orders-actions-field { grid-column: 1 / -1; }
                     .orders-quantity-field, .orders-unit-field, .orders-unit-price-field, .orders-total-field, .orders-urgency-field { grid-column: span 1; }
                     .orders-actions { gap: 8px; }
                     .orders-action-button { min-height: 44px; font-size: 0.78rem; }
+                    .orders-batch-sidebar { grid-template-columns: minmax(0, 1fr); }
+                    .orders-batch-sidebar h3 { grid-column: 1; }
+                    .orders-board-compact .orders-product-field, .orders-board-compact .orders-status-field { grid-column: 1 / -1; }
+                    .orders-board-compact .orders-quantity-field, .orders-board-compact .orders-total-field, .orders-board-compact .orders-urgency-field { grid-column: span 1; }
+                    .orders-board-compact .orders-quick-action { grid-column: 1; }
+                    .orders-board-compact .orders-detail-toggle { grid-column: 2; }
                 }
 
                 @media (max-width: 380px) {
-                    .orders-item-card { grid-template-columns: minmax(0, 1fr); }
-                    .orders-product-field, .orders-quantity-field, .orders-unit-field, .orders-unit-price-field, .orders-total-field, .orders-urgency-field, .orders-status-field, .orders-notes-field, .orders-actions-field { grid-column: 1; }
                     .orders-batch-summary { padding-left: 0; }
                 }
             `}</style>
