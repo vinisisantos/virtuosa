@@ -135,6 +135,10 @@ try {
       const labels = [...(card?.querySelectorAll('.orders-field-label') || [])].map(element => element.textContent?.trim());
       const mobileBar = document.querySelector('.mobile-tab-bar');
       const headerNav = document.querySelector('.app-header-nav');
+      const filterSelects = [...document.querySelectorAll('.orders-filter-select select')].map(element => {
+        const rect = element.getBoundingClientRect();
+        return { width: rect.width, height: rect.height };
+      });
       if (!card || !select || !headerNav) return null;
       const cardRect = card.getBoundingClientRect();
       const selectRect = select.getBoundingClientRect();
@@ -149,6 +153,7 @@ try {
         cardRight: cardRect.right,
         labels,
         optionCount: select.options.length,
+        filterSelects,
         mobileBarDisplay: mobileBar ? getComputedStyle(mobileBar).display : 'absent',
         headerNavDisplay: getComputedStyle(headerNav).display,
         tableCount: document.querySelectorAll('.orders-batch table').length,
@@ -162,6 +167,10 @@ try {
     assert.ok(layout.selectLeft >= layout.cardLeft - 1 && layout.selectRight <= layout.cardRight + 1, `status visível em ${viewport.width}px`);
     assert.deepEqual(layout.labels, ['Produto', 'Quantidade', 'Unidade', 'Preço unitário', 'Preço total', 'Urgência', 'Status', 'Observações', 'Ações']);
     assert.equal(layout.optionCount, 4, 'todas as opções de status continuam disponíveis');
+    assert.equal(layout.filterSelects.length, 2, 'status e urgência estão disponíveis');
+    assert.ok(Math.abs(layout.filterSelects[0].width - layout.filterSelects[1].width) <= 1, `filtros com a mesma largura em ${viewport.width}px`);
+    assert.ok(Math.abs(layout.filterSelects[0].height - layout.filterSelects[1].height) <= 1, `filtros com a mesma altura em ${viewport.width}px`);
+    assert.ok(layout.filterSelects[0].height >= 44, `filtros com alvo de toque legível em ${viewport.width}px`);
     assert.equal(layout.tableCount, 0, 'a lista não depende mais de tabela horizontal');
     assert.match(layout.viewMode, /Lotes detalhados/, 'lotes detalhados é o padrão');
 
