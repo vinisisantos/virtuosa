@@ -121,8 +121,8 @@ try {
     assert.match(await page.$eval('textarea[placeholder="Digite uma mensagem"]', (element) => element.value), /qual região/);
 
     await page.click('button[aria-label="Opções da mensagem"]');
-    await page.waitForFunction(() => document.body.innerText.includes("Responder com IA"));
-    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Responder com IA"))?.click());
+    await page.waitForFunction(() => document.body.innerText.includes("Pedir à Alice"));
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Pedir à Alice"))?.click());
     await page.waitForFunction(() => document.body.textContent.includes("Respondendo esta mensagem"));
     await new Promise((resolve, reject) => {
       const deadline = Date.now() + 3_000;

@@ -2571,6 +2571,7 @@ function MessageBubble({
                   <button
                     type="button"
                     role="menuitem"
+                    aria-label="Pedir sugestão à Alice para esta mensagem"
                     onClick={(e) => {
                       e.stopPropagation();
                       onAiReply(msg);
@@ -2579,7 +2580,7 @@ function MessageBubble({
                     className={`${menuButtonClass} text-emerald-700 hover:bg-emerald-500/10 dark:text-emerald-300`}
                   >
                     <Sparkles className="h-3.5 w-3.5" />
-                    Responder com IA
+                    Pedir à Alice
                   </button>
                 )}
                 <button
