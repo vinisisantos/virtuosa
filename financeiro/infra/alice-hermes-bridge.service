@@ -13,7 +13,7 @@ Environment=HERMES_HOME=/var/lib/alice-hermes/.hermes
 Environment=PATH=/var/lib/alice-hermes/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
 Environment=ALICE_HERMES_EXECUTABLE=/var/lib/alice-hermes/.local/bin/hermes
 EnvironmentFile=/etc/alice-hermes/bridge.env
-ExecStart=/var/lib/alice-hermes/.hermes/tools/node-26.7.0-linux-x64/bin/node /var/lib/alice-hermes/bridge/alice-hermes-bridge.mjs
+ExecStart=/usr/local/bin/alice-hermes-node /var/lib/alice-hermes/bridge/alice-hermes-bridge.mjs
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
