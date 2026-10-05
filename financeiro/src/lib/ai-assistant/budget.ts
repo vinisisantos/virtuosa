@@ -4,7 +4,6 @@ import {
   AI_ASSISTANT_CONFIG_KEY,
   AI_ASSISTANT_MAX_DAILY_REQUESTS,
   AiAssistantError,
-  aiAssistantActualCost,
   aiAssistantDayKey,
 } from "@/lib/ai-assistant/policy";
 import type { AiAssistantUsage } from "@/lib/ai-assistant/provider";
@@ -59,7 +58,7 @@ export async function finishAiAssistantOperation(
     where: { id, status: "running" },
     data: {
       status: "completed",
-      actualMicroUsd: aiAssistantActualCost(usage.input, usage.output),
+      actualMicroUsd: 0,
       usage,
       completedAt: new Date(),
       ...(draft ? {

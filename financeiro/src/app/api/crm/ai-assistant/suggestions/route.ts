@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
+import { requireAliceOwner } from "@/lib/ai-assistant/access";
 import { prisma } from "@/lib/db";
 import { loadAccessibleAliceConversation } from "@/lib/ai-assistant/context";
 import { generateConversationSuggestion } from "@/lib/ai-assistant/generate";
 import { aiAssistantErrorResponse } from "@/lib/ai-assistant/http";
 import { AI_ASSISTANT_MODEL, AiAssistantError, normalizeAiAssistantMode } from "@/lib/ai-assistant/policy";
 import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
+import { requireAliceLiveRuntime } from "@/lib/ai-assistant/runtime";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 function requireUser(req: NextRequest) {
   const user = getUserFromHeaders(req);
   if (!user) throw new AiAssistantError("Não autorizado", 401);
+  requireAliceOwner(user.userId);
   return user;
 }
 
@@ -108,6 +112,7 @@ export async function PATCH(req: NextRequest) {
 
     if (input.action === "mode") {
       const mode = normalizeAiAssistantMode(input.mode);
+      if (mode === "suggestions") requireAliceLiveRuntime();
       const conversation = await prisma.whatsAppConversation.update({
         where: { id: conversationId },
         data: { aiMode: mode, aiModeUpdatedAt: new Date(), aiModeUpdatedBy: user.userId },

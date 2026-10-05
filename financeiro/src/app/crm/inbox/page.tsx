@@ -3481,7 +3481,7 @@ export default function InboxPage() {
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
 
   // ─── Usuário e seletor de instâncias/colaboradores ───
-  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string; unit?: string | null; phone?: string | null } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; name: string; role: string; unit?: string | null; phone?: string | null; canUseAliceSuggestions?: boolean } | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [canViewCollaborators, setCanViewCollaborators] = useState(false);
   const [collaborators, setCollaborators] = useState<CollaboratorInstance[]>([]);
@@ -3589,6 +3589,7 @@ export default function InboxPage() {
             role,
             unit: data.user.unit || null,
             phone: data.user.phone || null,
+            canUseAliceSuggestions: data.user.canUseAliceSuggestions === true,
           });
           setIsAdmin(role === "ADMINISTRADOR");
           setCanViewCollaborators(role === "ADMINISTRADOR" || role === "MARKETING");
@@ -5289,6 +5290,7 @@ export default function InboxPage() {
     const conversation = selectedConvRef.current;
     if (
       !conversation
+      || currentUser?.canUseAliceSuggestions !== true
       || !isAliceUnit(selectedConversationUnit)
       || !canReplyToConversation(conversation)
       || msg.fromMe
@@ -7702,7 +7704,7 @@ export default function InboxPage() {
                         msg={msg}
                         albumImages={item.kind === "album" ? item.images : undefined}
                         canReact={canReplyToSelectedConversation}
-                        canAiReply={isAliceUnit(selectedConversationUnit) && canReplyToSelectedConversation}
+                        canAiReply={currentUser?.canUseAliceSuggestions === true && isAliceUnit(selectedConversationUnit) && canReplyToSelectedConversation}
                         onReply={handleReplyMessage}
                         onAiReply={handleAiReplyMessage}
                         onReact={handleMessageReaction}
@@ -8038,7 +8040,7 @@ export default function InboxPage() {
               </div>
             ) : selectedConversationNeedsStart ? null : (
             <div className="inbox-thread-composer shrink-0 border-t px-2 py-1.5 sm:px-3 sm:py-2.5">
-              <AiAssistantComposer
+              {currentUser?.canUseAliceSuggestions === true && <AiAssistantComposer
                 key={selectedConv.id}
                 conversationId={selectedConv.id}
                 campaignName={selectedConv.campaignName}
@@ -8068,7 +8070,7 @@ export default function InboxPage() {
                   }));
                   window.requestAnimationFrame(() => textareaRef.current?.focus());
                 }}
-              />
+              />}
               {composerHasFormatting && !isRecording && !isPreparingRecordedAudio && !selectedPendingRecordedAudio && (
                 <div
                   className="inbox-composer-field mb-1 overflow-hidden rounded-lg border border-black/5 shadow-sm dark:border-white/5"

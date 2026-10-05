@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
+import { requireAliceOwner } from "@/lib/ai-assistant/access";
 import { prisma } from "@/lib/db";
 import { loadAiAssistantConfig } from "@/lib/ai-assistant/config";
 import { getAliceKnowledgeStatus } from "@/lib/ai-assistant/alice-knowledge";
@@ -19,6 +20,7 @@ export const dynamic = "force-dynamic";
 async function requireAdmin(req: NextRequest) {
   const auth = await requireRole(req, ["ADMINISTRADOR"]);
   if ("error" in auth) throw new AiAssistantError("Acesso administrativo necessário", auth.error.status);
+  requireAliceOwner(auth.user.userId);
   return auth.user;
 }
 export async function GET(req: NextRequest) {

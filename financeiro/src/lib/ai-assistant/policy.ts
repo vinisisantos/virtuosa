@@ -9,7 +9,7 @@ export type AliceUnit = (typeof ALICE_ALLOWED_UNITS)[number];
 export const AI_ASSISTANT_MODEL = "gpt-6-luna";
 export const AI_ASSISTANT_DAILY_BUDGET_MICRO_USD = 1_000_000;
 export const AI_ASSISTANT_MAX_DAILY_REQUESTS = 300;
-export const AI_ASSISTANT_RESERVED_MICRO_USD = 2_500;
+export const AI_ASSISTANT_RESERVED_MICRO_USD = 0;
 
 export type AiAssistantMode = "manual" | "suggestions";
 export type AiAssistantConfig = {
@@ -146,9 +146,4 @@ export function aiAssistantDayKey(date = new Date()) {
     month: "2-digit",
     day: "2-digit",
   }).format(date);
-}
-
-export function aiAssistantActualCost(inputTokens: number, outputTokens: number) {
-  // GPT-6 Luna: US$0.10/1M input tokens and US$0.50/1M output tokens.
-  return Math.ceil(inputTokens * 0.1 + outputTokens * 0.5);
 }

@@ -1,3 +1,4 @@
+import { createHmac, randomUUID } from "node:crypto";
 import { AI_ASSISTANT_MODEL, AiAssistantError } from "@/lib/ai-assistant/policy";
 
 export type AiAssistantUsage = { input: number; output: number };
@@ -43,43 +44,51 @@ function parseGeneration(value: unknown): AiAssistantGeneration {
 }
 
 export async function generateAiAssistantReply(input: unknown, usage: AiAssistantUsage) {
-  const key = process.env.OPENAI_API_KEY?.trim();
-  if (!key) throw new AiAssistantError("A credencial do provedor da Alice ainda não está configurada", 503);
+  const endpoint = process.env.ALICE_HERMES_BRIDGE_URL?.trim();
+  const secret = process.env.ALICE_HERMES_BRIDGE_SECRET?.trim();
+  if (!endpoint || !secret || secret.length < 32) {
+    throw new AiAssistantError("A ponte privada do Hermes ainda não está configurada", 503);
+  }
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    throw new AiAssistantError("O endereço da ponte privada do Hermes é inválido", 503);
+  }
+  const local = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+  if (
+    url.pathname !== "/v1/suggest" || url.username || url.password || url.search || url.hash
+    || (url.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && local && url.protocol === "http:"))
+  ) {
+    throw new AiAssistantError("O endereço da ponte privada do Hermes é inválido", 503);
+  }
 
   const body = buildAliceAssistantRequest(input);
-  if (Buffer.byteLength(JSON.stringify(body), "utf8") > 60_000) {
+  const payload = JSON.stringify(body);
+  if (Buffer.byteLength(payload, "utf8") > 80_000) {
     throw new AiAssistantError("O contexto da conversa ficou grande demais", 413);
   }
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
+  const timestamp = String(Date.now());
+  const nonce = randomUUID();
+  const signature = createHmac("sha256", secret).update(`${timestamp}.${nonce}.${payload}`).digest("hex");
+  const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
+      "X-Alice-Timestamp": timestamp,
+      "X-Alice-Nonce": nonce,
+      "X-Alice-Signature": signature,
     },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(25_000),
+    body: payload,
+    signal: AbortSignal.timeout(50_000),
     cache: "no-store",
   });
-  if (!response.ok) throw new AiAssistantError("O provedor da Alice não concluiu a sugestão", 502);
+  if (!response.ok) throw new AiAssistantError("O Hermes não concluiu a sugestão", 502);
   const result = await response.json();
-  usage.input += Number(result.usage?.input_tokens || 0);
-  usage.output += Number(result.usage?.output_tokens || 0);
-  if (result.status !== "completed") {
-    throw new AiAssistantError("A Alice não terminou a sugestão com segurança", 502);
-  }
-  const parts = (result.output || []).flatMap(
-    (item: { content?: { type: string; text?: string }[] }) => item.content || [],
-  );
-  if (parts.some((part: { type: string }) => part.type === "refusal")) {
-    throw new AiAssistantError("Esta conversa precisa de atendimento humano", 422);
-  }
-  const text = parts
-    .filter((part: { type: string }) => part.type === "output_text")
-    .map((part: { text?: string }) => part.text || "")
-    .join("");
+  usage.input += Number(result.usage?.input || 0);
+  usage.output += Number(result.usage?.output || 0);
   try {
-    return parseGeneration(JSON.parse(text));
+    return parseGeneration(JSON.parse(result.text));
   } catch (error) {
     if (error instanceof AiAssistantError) throw error;
     throw new AiAssistantError("A Alice devolveu uma sugestão inválida", 502);
@@ -114,16 +123,8 @@ export function buildAliceAssistantRequest(input: unknown) {
     ].join("\n"),
     input: JSON.stringify(removeConversationIdentifiers(conversationInput)),
     store: false,
-    reasoning: { effort: "xhigh" },
-    max_output_tokens: 800,
-    text: {
-      format: {
-        type: "json_schema",
-        name: "alice_reply_suggestion",
-        strict: true,
-        schema: RESPONSE_SCHEMA,
-      },
-    },
+    reasoning: "xhigh",
+    responseSchema: RESPONSE_SCHEMA,
   };
 }
 

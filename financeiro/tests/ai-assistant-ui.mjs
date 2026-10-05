@@ -7,7 +7,7 @@ import puppeteer from "puppeteer";
 // Todas as APIs e saídas externas são simuladas; este teste não toca dados reais.
 const origin = "http://127.0.0.1:3210";
 const output = await mkdtemp(join(tmpdir(), "virtuosa-ai-assistant-"));
-const user = { id: "admin", name: "Administradora Teste", role: "ADMINISTRADOR", unit: "SBC", permissions: { crm: true } };
+const user = { id: "admin", name: "Administradora Teste", role: "ADMINISTRADOR", unit: "SBC", permissions: { crm: true }, canUseAliceSuggestions: true };
 const now = new Date().toISOString();
 const config = {
   enabled: true,
@@ -71,7 +71,7 @@ try {
       if (url.pathname === "/api/auth/me") data = { authenticated: true, user };
       else if (url.pathname === "/api/crm/ai-assistant/settings") {
         data = request.method() === "GET"
-          ? { config, knowledge: { available: true, repository: "private/alice", revision: "be272f87ceff872dc684c26941aed75c72928927", activeUnits: ["SBC", "Osasco"], activeDocuments: 26, excludedTopics: ["Harmonização de Mamas", "Preenchimento Facial"], humanReviewRequired: true, automaticSending: false }, runtime: { ready: true, privateKnowledge: true, modelCredential: true, conversationDataApproved: true, liveSuggestionsEnabled: true, blockers: [] }, usage: { requestsToday: 3, reservedMicroUsdToday: 7_500, actualMicroUsdToday: 2_100 } }
+          ? { config, knowledge: { available: true, repository: "private/alice", revision: "be272f87ceff872dc684c26941aed75c72928927", activeUnits: ["SBC", "Osasco"], activeDocuments: 26, excludedTopics: ["Harmonização de Mamas", "Preenchimento Facial"], humanReviewRequired: true, automaticSending: false }, runtime: { ready: true, privateKnowledge: true, hermesBridgeConfigured: true, ownerConfigured: true, conversationDataApproved: true, liveSuggestionsEnabled: true, blockers: [] }, usage: { requestsToday: 3, reservedMicroUsdToday: 0, actualMicroUsdToday: 0 } }
           : { config };
       } else if (url.pathname === "/api/crm/ai-assistant/test") data = { response: "Resposta de teste segura." };
       else if (url.pathname === "/api/crm/ai-assistant/suggestions") {

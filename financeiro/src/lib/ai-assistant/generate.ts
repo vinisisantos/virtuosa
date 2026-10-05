@@ -45,6 +45,7 @@ export async function generateConversationSuggestion(params: {
   targetMessageId?: string | null;
   force?: boolean;
 }) {
+  requireAliceLiveRuntime();
   const context = await loadAliceSuggestionContext(params);
   if (context.conversation.aiMode !== "suggestions") {
     throw new AiAssistantError("Ative o modo Sugestões nesta conversa", 409);

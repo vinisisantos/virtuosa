@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { clearAuthCookie, requireAuth, setAuthCookie, signToken } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 import { canonicalUserUnit } from '@/lib/role-access';
+import { canUseAliceSuggestions } from '@/lib/ai-assistant/access';
 
 /**
  * GET /api/auth/me — Validates the current session and refreshes user info
@@ -60,6 +61,7 @@ export async function GET(req: NextRequest) {
       role: currentUser.role,
       unit: sessionUnit,
       permissions,
+      canUseAliceSuggestions: canUseAliceSuggestions(currentUser.id),
     }
   });
 

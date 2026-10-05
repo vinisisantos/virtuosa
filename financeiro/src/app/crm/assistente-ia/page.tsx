@@ -30,7 +30,8 @@ type SettingsResponse = {
   runtime: {
     ready: boolean;
     privateKnowledge: boolean;
-    modelCredential: boolean;
+    hermesBridgeConfigured: boolean;
+    ownerConfigured: boolean;
     conversationDataApproved: boolean;
     liveSuggestionsEnabled: boolean;
     blockers: string[];
@@ -123,7 +124,7 @@ export default function AiAssistantSettingsPage() {
               <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Copiloto · SBC e Osasco</p>
                 <h1 className="mt-1 text-xl font-bold text-foreground sm:text-2xl">Alice no CRM</h1>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">A Alice usa os arquivos oficiais da base privada para preparar sugestões. A equipe sempre revisa, pode editar e decide se envia.</p>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">A Alice usa os arquivos oficiais da base privada para preparar sugestões. Você revisa, pode editar e decide se envia.</p>
               </div>
             </div>
             <span className="inline-flex min-h-10 w-fit items-center gap-2 rounded-full bg-muted px-3 text-xs font-bold text-muted-foreground"><LockKeyhole className="h-4 w-4" /> Envio automático bloqueado</span>
@@ -138,20 +139,21 @@ export default function AiAssistantSettingsPage() {
               <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Estado do CRM</p><p className="mt-2 text-lg font-bold">{enabled ? "Ativado" : "Pausado"}</p><p className="mt-1 text-xs text-muted-foreground">Ainda sujeito aos bloqueios de segurança</p></div>
               <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Modelo</p><p className="mt-2 text-lg font-bold">GPT-6 Luna</p><p className="mt-1 text-xs text-muted-foreground">Sugestões, sem agente automático</p></div>
               <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Documentos ativos</p><p className="mt-2 text-lg font-bold">{data.knowledge.activeDocuments}</p><p className="mt-1 text-xs text-muted-foreground">Revisão {data.knowledge.revision.slice(0, 8)}</p></div>
-              <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Sugestões hoje</p><p className="mt-2 text-lg font-bold">{data.usage.requestsToday}</p><p className="mt-1 text-xs text-muted-foreground">Teto diário: US$ 1,00</p></div>
+              <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Sugestões hoje</p><p className="mt-2 text-lg font-bold">{data.usage.requestsToday}</p><p className="mt-1 text-xs text-muted-foreground">Máximo de 300 solicitações por dia</p></div>
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-4 sm:p-6">
               <div className="flex items-start gap-3"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" /><div><h2 className="font-bold">Verificações para operar</h2><p className="mt-1 text-sm text-muted-foreground">Sugestões de conversas reais só funcionam quando cada controle abaixo está configurado no servidor.</p></div></div>
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Status ok={data.runtime.privateKnowledge} label="Base privada fixada e carregada no servidor" />
-                <Status ok={data.runtime.modelCredential} label="Credencial do modelo configurada" />
+                <Status ok={data.runtime.hermesBridgeConfigured} label="Ponte privada do Hermes configurada" />
+                <Status ok={data.runtime.ownerConfigured} label="Acesso exclusivo do proprietário configurado" />
                 <Status ok={data.runtime.conversationDataApproved} label="Uso de trecho sanitizado aprovado" />
                 <Status ok={data.runtime.liveSuggestionsEnabled} label="Sugestões ao vivo habilitadas" />
               </div>
               {!data.runtime.ready && <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{data.runtime.blockers.join(" ")}</span></div>}
               <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
-                Repositório fonte: <span className="font-semibold">{data.knowledge.repository}</span>. A revisão é fixada no build; arquivos da Alice não são enviados ao navegador nem buscados a cada conversa. Ao modelo externo só será enviado um trecho recente, com identificadores pessoais removidos. Conteúdo clínico detectado é tratado localmente e encaminhado sem chamar o modelo.
+                Repositório fonte: <span className="font-semibold">{data.knowledge.repository}</span>. A revisão é fixada no build; arquivos da Alice não são enviados ao navegador nem buscados a cada conversa. A ponte Hermes recebe somente o trecho recente sanitizado e a base necessária; identificadores pessoais são removidos. Conteúdo clínico detectado é tratado localmente e encaminhado sem chamar o modelo.
               </div>
             </section>
 
@@ -172,7 +174,7 @@ export default function AiAssistantSettingsPage() {
                   {testing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Testar Alice
                 </button>
               </div>
-              <p className="mt-2 text-xs leading-5 text-muted-foreground">Se as verificações estiverem habilitadas, o texto de teste digitado aqui também será processado pela OpenAI. Não cole dados de clientes.</p>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">Se as verificações estiverem habilitadas, o texto de teste também será processado pelo Hermes com sua sessão ChatGPT. Não cole dados de clientes.</p>
               {testOutput && <div className="mt-3 rounded-xl border border-emerald-500/25 bg-background p-4"><p className="text-xs font-bold uppercase tracking-wide text-emerald-600">Resposta sugerida</p><p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground">{testOutput}</p></div>}
             </section>
 

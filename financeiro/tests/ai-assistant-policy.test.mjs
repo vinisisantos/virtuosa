@@ -5,7 +5,6 @@ import {
   AI_ASSISTANT_CONFIG_KEY,
   AI_ASSISTANT_DAILY_BUDGET_MICRO_USD,
   AI_ASSISTANT_MODEL,
-  aiAssistantActualCost,
   normalizeAiAssistantMode,
   parseAiAssistantConfig,
 } from "#lib/ai-assistant/policy";
@@ -16,6 +15,7 @@ import {
   sanitizeAiAssistantText,
 } from "#lib/ai-assistant/privacy";
 import { buildAliceAssistantRequest } from "#lib/ai-assistant/provider";
+import { canUseAliceSuggestions, requireAliceOwner } from "#lib/ai-assistant/access";
 import { aliceLocalHandoffReply, classifyAliceHandoff } from "#lib/ai-assistant/safety";
 
 test("Alice começa pausada, limitada às unidades aprovadas e sem modo agente", () => {
@@ -83,11 +83,22 @@ test("contato identificado apenas por número não deixa nome nem placeholder", 
   );
 });
 
-test("custo GPT-6 Luna é calculado em microdólares", () => {
-  assert.equal(aiAssistantActualCost(1_000, 500), 350);
+test("só o usuário explicitamente configurado pode usar Alice", () => {
+  const previous = process.env.ALICE_OWNER_USER_ID;
+  try {
+    delete process.env.ALICE_OWNER_USER_ID;
+    assert.equal(canUseAliceSuggestions("vinicius"), false);
+    assert.throws(() => requireAliceOwner("vinicius"), /proprietário/);
+    process.env.ALICE_OWNER_USER_ID = "vinicius";
+    assert.equal(canUseAliceSuggestions("vinicius"), true);
+    assert.equal(canUseAliceSuggestions("outro"), false);
+  } finally {
+    if (previous === undefined) delete process.env.ALICE_OWNER_USER_ID;
+    else process.env.ALICE_OWNER_USER_ID = previous;
+  }
 });
 
-test("requisição da Alice usa Luna, schema estrito, sem armazenamento e sem IDs do CRM", () => {
+test("requisição da Alice usa Luna, schema de saída e sem IDs do CRM", () => {
   const input = {
     BASE_ALICE: { revision: "pinned", documents: [{ source: "SAFETY.md", content: "Proteja dados." }] },
     UNIDADE: "SBC",
@@ -98,8 +109,8 @@ test("requisição da Alice usa Luna, schema estrito, sem armazenamento e sem ID
   const request = buildAliceAssistantRequest(input);
   assert.equal(request.model, "gpt-6-luna");
   assert.equal(AI_ASSISTANT_MODEL, "gpt-6-luna");
-  assert.equal(request.reasoning.effort, "xhigh");
-  assert.equal(request.text.format.type, "json_schema");
+  assert.equal(request.reasoning, "xhigh");
+  assert.equal(request.responseSchema.type, "object");
   assert.equal(request.store, false);
   assert.match(request.instructions, /nunca diga que é IA/i);
   assert.match(request.instructions, /<base_privada_aprovada>/);

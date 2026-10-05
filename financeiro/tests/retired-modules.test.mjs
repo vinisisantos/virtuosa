@@ -15,8 +15,8 @@ test('runtime não contém integrações, rotas ou modelos retirados', () => {
   for (const file of sourceFiles) assert.doesNotMatch(read(file), retired, file);
   assert.deepEqual(
     sourceFiles.filter(file => /api\.openai\.com/.test(read(file))),
-    ['src/lib/ai-assistant/provider.ts'],
-    'Somente o provedor revisável da Alice pode chamar a API OpenAI',
+    [],
+    'O CRM não deve usar chave da API OpenAI; Alice usa somente a ponte Hermes',
   );
   assert.doesNotMatch(read('src/lib/ai-assistant/provider.ts'), /api\.deepseek\.com|deepseek-chat/);
   assert.doesNotMatch(read('prisma/schema.prisma'), /model (Ai(?!(?:Learning(?:Observation|Candidate|Operation)|Assistant(?:Draft|Operation))\b)\w+|CrmSilentAnalysisSetting|CrmConversationInsight|WhatsAppMessageTranscript|InsumoUpload)\b/);
