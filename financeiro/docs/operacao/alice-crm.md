@@ -5,6 +5,7 @@
 - A integração é de sugestão assistida: somente o proprietário configurado solicita a geração e revisa/edita antes de decidir se envia.
 - O envio automático, o agendamento automático e o modo agente permanecem bloqueados.
 - A base é lida do repositório privado `vinisisantos/virtuosa-agent`, em commit fixo, apenas durante o build. As conversas não fazem chamadas ao GitHub.
+- A seleção por conversa preserva integralmente as instruções centrais, prioriza a ficha da campanha e os preços antes de referências genéricas e limita o contexto documental a 36 mil caracteres. Se faltar ou não couber uma instrução essencial, a geração falha fechada. Isso evita que uma pergunta sobre uma campanha receba apenas regras gerais ou uma ficha de outro procedimento.
 - Só SBC e Osasco estão no escopo. Mamas e Preenchimento Facial continuam excluídos; conteúdo clínico/fora do escopo gera texto local de encaminhamento.
 - Notificações internas usam pessoas já autorizadas na instância e unidade. Osasco encaminha à equipe local e não concede acesso a outras pessoas.
 - O aprendizado antigo fica preservado como arquivo, mas o observador automático deixa de processar conversas.
@@ -27,6 +28,7 @@ O build valida manifesto, unidades, exclusões e allowlist dos documentos. Ausê
 ## Dados, carga e validação
 
 - Por clique explícito, o CRM lê até 12 mensagens textuais recentes, monta um contexto sanitizado e faz no máximo uma chamada HTTPS assinada à ponte Hermes. Não existe polling nem fan-out por conversa. A cota é limitada a 300 solicitações por dia.
+- Quatro cenários fictícios na VM (Barriga Trincada, Glúteos Perfeitos 120 ml, Emagreça até 2 kg e Gordura Localizada) retornaram JSON válido em cerca de 20–29 segundos, consumindo aproximadamente 10,5–10,8 mil tokens de entrada por chamada. A cota de 300/dia é um teto de segurança, não uma capacidade garantida pelo plano ChatGPT; monitore limites e latência antes de aumentar uso.
 - Não envia identificadores de CRM, número de telefone, e-mail ou nomes dos participantes no payload. O corpo pode ainda conter informações identificadoras que a sanitização não reconheça; por isso a habilitação continua protegida pela aprovação explícita de uso de dados.
 - A ponte usa uma sessão one-shot no Hermes, rejeita eventos de ferramenta, limita uma inferência simultânea e tenta excluir a sessão após o resultado. Isso não é garantia de retenção zero nos sistemas externos; proteger disco, logs e backups da VM.
 - As únicas escritas de uma sugestão são os registros de orçamento/operação, rascunho e, quando necessário, notificação interna/atribuição autorizada. Nenhuma rota de geração chama a API de envio do WhatsApp.

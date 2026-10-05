@@ -9,7 +9,7 @@ const revision = "be272f87ceff872dc684c26941aed75c72928927";
 const maxDocumentBytes = 60_000;
 const maxTotalBytes = 180_000;
 const approvedDocuments = new Set([
-  "AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "PENDENCIAS-RESPOSTAS-OFFICIAIS.md",
+  "AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "PENDENCIAS-RESPOSTAS-OFICIAIS.md",
   "knowledge/barriga-trincada.md", "knowledge/clinic.md", "knowledge/emagreca-2kg.md",
   "knowledge/explicacoes-procedimentos.md", "knowledge/faq.md", "knowledge/gluteos-perfeitos-120ml.md",
   "knowledge/gluteos-perfeitos.md", "knowledge/gordura-localizada.md", "knowledge/orientacoes-clinicas.md",

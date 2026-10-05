@@ -124,6 +124,9 @@ test("requisição da Alice usa Luna, schema de saída e sem IDs do CRM", () => 
 test("mensagem sobre saúde encaminha localmente e evita avaliação clínica", () => {
   assert.equal(classifyAliceHandoff({ unit: "SBC", incomingMessages: ["Tenho diabetes e uso remédio. Posso fazer?"] }), "clinical_safety");
   assert.equal(classifyAliceHandoff({ unit: "Osasco", incomingMessages: ["Estou grávida, o que faço?"] }), "clinical_safety");
+  for (const message of ["Estou amamentando", "Tenho alergias", "Uso medicamentos", "Fiz cirurgia recente", "Tenho diabete"]) {
+    assert.equal(classifyAliceHandoff({ unit: "SBC", incomingMessages: [message] }), "clinical_safety", message);
+  }
   assert.match(aliceLocalHandoffReply("clinical_safety"), /profissional habilitada/i);
 });
 
@@ -131,4 +134,5 @@ test("escopo inativo vai para equipe; fala comercial sobre volume não dispara a
   assert.equal(classifyAliceHandoff({ unit: "SBC", campaignName: "Preenchimento Facial", incomingMessages: ["Quero saber mais"] }), "unsupported_procedure");
   assert.equal(classifyAliceHandoff({ unit: "SBC", campaignName: "Harmonização de Mamas", incomingMessages: ["Quero saber mais"] }), "unsupported_procedure");
   assert.equal(classifyAliceHandoff({ unit: "SBC", incomingMessages: ["Quero melhorar o volume e a assimetria"] }), null);
+  assert.doesNotMatch(aliceLocalHandoffReply("unsupported_procedure"), /escopo|IA|robô/i);
 });
