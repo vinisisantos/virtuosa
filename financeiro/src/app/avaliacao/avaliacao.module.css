@@ -20,15 +20,6 @@
   -webkit-font-smoothing: antialiased;
 }
 
-:global(body.evaluation-landing-page) {
-  min-height: 100%;
-  height: auto !important;
-  padding-bottom: 0 !important;
-  overflow-x: clip !important;
-  overflow-y: visible !important;
-  background: #f7f6f6 !important;
-}
-
 .page *,
 .page *::before,
 .page *::after {
