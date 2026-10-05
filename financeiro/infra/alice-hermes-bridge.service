@@ -1,0 +1,36 @@
+[Unit]
+Description=Alice Hermes suggestion bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alicehermes
+Group=alicehermes
+WorkingDirectory=/var/lib/alice-hermes/bridge
+Environment=HOME=/var/lib/alice-hermes
+Environment=HERMES_HOME=/var/lib/alice-hermes/.hermes
+Environment=PATH=/var/lib/alice-hermes/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/bin
+Environment=ALICE_HERMES_EXECUTABLE=/var/lib/alice-hermes/.local/bin/hermes
+EnvironmentFile=/etc/alice-hermes/bridge.env
+ExecStart=/var/lib/alice-hermes/.hermes/tools/node-26.7.0-linux-x64/bin/node /var/lib/alice-hermes/bridge/alice-hermes-bridge.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadWritePaths=/var/lib/alice-hermes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
