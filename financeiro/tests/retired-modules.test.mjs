@@ -10,8 +10,15 @@ function sources(dir) {
 }
 
 test('runtime não contém integrações, rotas ou modelos retirados', () => {
-  const retired = /@google\/generative-ai|generativelanguage\.googleapis|api\.(openai|groq|mistral)|@\/lib\/ai-(?!learning\/|assistant\/)|@\/lib\/ai\/|AI_INBOX_|AI_WHATSAPP_|crmSilentAnalysis/;
-  for (const file of sources('src')) assert.doesNotMatch(read(file), retired, file);
+  const sourceFiles = sources('src');
+  const retired = /@google\/generative-ai|generativelanguage\.googleapis|api\.(groq|mistral)|@\/lib\/ai-(?!learning\/|assistant\/)|@\/lib\/ai\/|AI_INBOX_|AI_WHATSAPP_|crmSilentAnalysis/;
+  for (const file of sourceFiles) assert.doesNotMatch(read(file), retired, file);
+  assert.deepEqual(
+    sourceFiles.filter(file => /api\.openai\.com/.test(read(file))),
+    ['src/lib/ai-assistant/provider.ts'],
+    'Somente o provedor revisável da Alice pode chamar a API OpenAI',
+  );
+  assert.doesNotMatch(read('src/lib/ai-assistant/provider.ts'), /api\.deepseek\.com|deepseek-chat/);
   assert.doesNotMatch(read('prisma/schema.prisma'), /model (Ai(?!(?:Learning(?:Observation|Candidate|Operation)|Assistant(?:Draft|Operation))\b)\w+|CrmSilentAnalysisSetting|CrmConversationInsight|WhatsAppMessageTranscript|InsumoUpload)\b/);
   assert.doesNotMatch(read('scripts/vercel-build.mjs'), /_ai_(?!(?:learning|assistant_suggestions)_sbc|readiness_feedback)|approved_campaign_knowledge|prepare-ai-inbox/);
   assert.doesNotMatch(read('middleware.ts'), /ai-inbox|ai-test|testar-ia/);

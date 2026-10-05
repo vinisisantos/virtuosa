@@ -13,17 +13,21 @@ test("aprovação exige confirmação humana e clínica quando aplicável", () =
   assert.equal(validateAiLearningReviewInput({ action: "approve", confirmed: true, clinicalConfirmed: true }, true), "approve");
 });
 
-test("tela e API deixam explícito que o aprendizado não atende clientes", () => {
+test("tela mantém o aprendizado antigo como arquivo e fora da base da Alice", () => {
   const page = read("src/app/crm/aprendizado-ia/page.tsx");
   const route = read("src/app/api/crm/ai-learning/route.ts");
-  assert.match(page, /Nada aqui responde clientes/);
-  assert.match(page, /Modo sombra ativo/);
+  const cron = read("src/app/api/cron/ai-learning-observe/route.ts");
+  assert.match(page, /Arquivo legado de aprendizado/);
+  assert.match(page, /observador automático antigo foi desativado/);
+  assert.match(page, /não são usados pela Alice/);
   assert.match(page, /ADMINISTRADOR/);
   assert.match(route, /requireAiLearningAdmin/);
   assert.doesNotMatch(route, /whatsapp\/send|sendWaha|sendText|Evolution/);
+  assert.match(cron, /status: 410/);
+  assert.doesNotMatch(cron, /observeAiLearningBatch/);
 });
 
-test("menu expõe revisão somente no bloco administrativo", () => {
+test("menu não oferece mais o módulo legado como caminho operacional", () => {
   const sidebar = read("src/components/crm-layout/sidebar.tsx");
-  assert.match(sidebar, /userRole === "ADMINISTRADOR"[\s\S]*\/crm\/aprendizado-ia/);
+  assert.doesNotMatch(sidebar, /\/crm\/aprendizado-ia/);
 });

@@ -8,11 +8,10 @@ import puppeteer from "puppeteer";
 const origin = "http://127.0.0.1:3210";
 const output = await mkdtemp(join(tmpdir(), "virtuosa-ai-assistant-"));
 const user = { id: "admin", name: "Administradora Teste", role: "ADMINISTRADOR", unit: "SBC", permissions: { crm: true } };
-const instance = { id: "instance-sbc", name: "Comercial SBC", instanceName: "Comercial SBC", unit: "SBC", status: "connected", userId: user.id, ownerId: user.id, canReply: true };
 const now = new Date().toISOString();
 const config = {
   enabled: true,
-  unit: "SBC",
+  unit: "Todas",
   businessDescription: "Clínica Virtuosa São Bernardo.",
   businessHours: "Segunda a sábado, mediante agenda.",
   email: "",
@@ -29,37 +28,39 @@ const config = {
   address: "Rua teste, 123 - São Bernardo do Campo",
   locationUrl: "https://maps.example/sbc",
   clinicName: "Clínica Virtuosa São Bernardo",
-  model: "deepseek-flash",
+  model: "gpt-6-luna",
 };
 
 const browser = await puppeteer.launch({ headless: true });
 const results = [];
 try {
-  for (const width of [390, 430, 1440]) {
+  for (const unit of ["SBC", "Osasco"]) for (const width of [390, 430, 1440]) {
     const page = await browser.newPage();
     const errors = [];
     const assistantCalls = [];
+    const sendCalls = [];
     let conversationMode = "manual";
+    const instance = { id: `instance-${unit.toLowerCase()}`, name: `Comercial ${unit}`, instanceName: `Comercial ${unit}`, unit, status: "connected", userId: user.id, ownerId: user.id, canReply: true };
     const conversation = {
-      id: "conversation-sbc",
+      id: `conversation-${unit.toLowerCase()}`,
       instanceId: instance.id,
       instance,
       status: "open",
       assignedTo: user.id,
       assignedToName: user.name,
       unreadCount: 0,
-      contact: { id: "contact", name: "Cliente Teste", phone: "5511999999999", unit: "SBC", tags: [] },
-      campaignName: "Preenchimento Facial",
-      lastMessage: "Gostaria de saber mais sobre o procedimento.",
+      contact: { id: "contact", name: "Cliente Teste", phone: "5511999999999", unit, tags: [] },
+      campaignName: "Glúteos Perfeitos 120ml",
+      lastMessage: "Vim pelo anúncio Glúteos Perfeitos 120ml e gostaria de saber mais.",
       lastMessageAt: now,
       aiMode: conversationMode,
     };
     await page.setViewport({ width, height: width === 430 ? 932 : width === 390 ? 844 : 900, isMobile: width < 600, hasTouch: width < 600 });
-    await page.evaluateOnNewDocument((currentUser) => {
+    await page.evaluateOnNewDocument((currentUser, selectedUnit) => {
       localStorage.setItem("virtuosa_user", JSON.stringify(currentUser));
-      localStorage.setItem("virtuosa_unit", "SBC");
-      localStorage.setItem("selectedUnit", "SBC");
-    }, user);
+      localStorage.setItem("virtuosa_unit", selectedUnit);
+      localStorage.setItem("selectedUnit", selectedUnit);
+    }, user, unit);
     page.on("pageerror", (error) => errors.push(error.message));
     await page.setRequestInterception(true);
     page.on("request", async (request) => {
@@ -70,7 +71,7 @@ try {
       if (url.pathname === "/api/auth/me") data = { authenticated: true, user };
       else if (url.pathname === "/api/crm/ai-assistant/settings") {
         data = request.method() === "GET"
-          ? { config, knowledge: { catalogItems: 24, approvedKnowledge: 7, pendingKnowledge: 2, savedReplies: 12 }, usage: { requestsToday: 3, reservedMicroUsdToday: 7_500, actualMicroUsdToday: 2_100 } }
+          ? { config, knowledge: { available: true, repository: "private/alice", revision: "be272f87ceff872dc684c26941aed75c72928927", activeUnits: ["SBC", "Osasco"], activeDocuments: 26, excludedTopics: ["Harmonização de Mamas", "Preenchimento Facial"], humanReviewRequired: true, automaticSending: false }, runtime: { ready: true, privateKnowledge: true, modelCredential: true, conversationDataApproved: true, liveSuggestionsEnabled: true, blockers: [] }, usage: { requestsToday: 3, reservedMicroUsdToday: 7_500, actualMicroUsdToday: 2_100 } }
           : { config };
       } else if (url.pathname === "/api/crm/ai-assistant/test") data = { response: "Resposta de teste segura." };
       else if (url.pathname === "/api/crm/ai-assistant/suggestions") {
@@ -84,6 +85,8 @@ try {
           data = { draft: { id: "draft-1", content: "Entendi. Para eu te orientar melhor, qual região você gostaria de tratar?", status: "active", version: 1, updatedAt: now, usage: { confidence: "high", needsHuman: false } } };
         } else if (request.method() === "PATCH") data = { success: true };
         else data = { mode: conversationMode, draft: null };
+      } else if (url.pathname === "/api/whatsapp/send") {
+        sendCalls.push({ method: request.method(), body: request.postData() || "" });
       } else if (url.pathname.includes("/instances")) data = { instances: [instance], users: [user] };
       else if (url.pathname === "/api/whatsapp/status") data = { connected: true, instance, status: "connected" };
       else if (url.pathname === "/api/whatsapp/conversations") data = { conversations: [{ ...conversation, aiMode: conversationMode }], appointmentSnapshot: {}, serverTime: now, hasMore: false, queueCounts: { open: 1 } };
@@ -95,18 +98,18 @@ try {
     });
 
     await page.goto(`${origin}/crm/assistente-ia`, { waitUntil: "networkidle0" });
-    await page.waitForFunction(() => document.body.innerText.includes("Assistente de IA do WhatsApp"));
-    assert.match(await page.$eval("body", (element) => element.innerText), /Agente bloqueado/);
+    await page.waitForFunction(() => document.body.innerText.includes("Alice no CRM"));
+    assert.match(await page.$eval("body", (element) => element.innerText), /Envio automático bloqueado/);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `configuração sem overflow em ${width}`);
     await page.screenshot({ path: join(output, `settings-${width}.png`), fullPage: true });
 
-    await page.goto(`${origin}/crm/inbox`, { waitUntil: "networkidle0" });
-    await page.waitForSelector('[data-conversation-id="conversation-sbc"]');
-    await page.click('[data-conversation-id="conversation-sbc"]');
-    await page.waitForFunction(() => document.body.innerText.includes("Minha resposta"));
+    await page.goto(`${origin}/crm/inbox?unit=${encodeURIComponent(unit)}`, { waitUntil: "networkidle0" });
+    await page.waitForSelector(`[data-conversation-id="conversation-${unit.toLowerCase()}"]`);
+    await page.click(`[data-conversation-id="conversation-${unit.toLowerCase()}"]`);
+    await page.waitForFunction(() => document.body.innerText.includes("Resposta manual"));
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 0, "modo manual não consulta o provedor");
-    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Minha resposta"))?.click());
-    await page.waitForFunction(() => document.body.innerText.includes("A IA sugere; você revisa, edita e envia."));
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Resposta manual"))?.click());
+    await page.waitForFunction(() => document.body.innerText.includes("Ela prepara; você revisa, edita e decide se envia."));
     await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.trim().startsWith("Sugestões"))?.click());
     await page.waitForFunction(() => document.body.innerText.includes("Gerar sugestão"));
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 0, "ativar sugestões ainda não consulta o provedor");
@@ -139,10 +142,11 @@ try {
     assert.equal(targetedRequest.targetMessageId, "message-1");
     assert.equal(targetedRequest.force, true);
     assert.match(await page.$eval("body", (element) => element.innerText), /Respondendo esta mensagem/i);
-    assert.match(await page.$eval("body", (element) => element.innerText), /Gostaria de saber mais sobre o procedimento/);
+    assert.match(await page.$eval("body", (element) => element.innerText), /Glúteos Perfeitos 120ml/);
+    assert.equal(sendCalls.length, 0, "nenhuma sugestão é enviada ao cliente automaticamente");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `inbox sem overflow em ${width}`);
-    await page.screenshot({ path: join(output, `inbox-${width}.png`), fullPage: true });
-    results.push({ width, errors, assistantCalls: assistantCalls.length });
+    await page.screenshot({ path: join(output, `inbox-${unit}-${width}.png`), fullPage: true });
+    results.push({ unit, width, errors, assistantCalls: assistantCalls.length, sendCalls: sendCalls.length });
     await page.close();
   }
   assert.deepEqual(results.flatMap((result) => result.errors), []);

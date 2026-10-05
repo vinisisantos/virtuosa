@@ -2,12 +2,11 @@ import { prisma } from "@/lib/db";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 import { resolveInboxConversationUnit } from "@/lib/whatsapp/conversation-unit";
 import { loadAiAssistantConfig } from "@/lib/ai-assistant/config";
-import {
-  AI_ASSISTANT_UNIT,
-  AiAssistantError,
-  aiAssistantDigest,
-  aiAssistantPublicConfig,
-} from "@/lib/ai-assistant/policy";
+import { buildAliceKnowledgeContext } from "@/lib/ai-assistant/alice-knowledge";
+import { isAliceUnit } from "@/lib/ai-assistant/scope";
+import { requireAliceLiveRuntime } from "@/lib/ai-assistant/runtime";
+import { classifyAliceHandoff } from "@/lib/ai-assistant/safety";
+import { AiAssistantError, aiAssistantDigest } from "@/lib/ai-assistant/policy";
 import { resolveAiAssistantContactName, sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
 
 type ContextMessage = {
@@ -18,23 +17,7 @@ type ContextMessage = {
   respondedByName: string | null;
 };
 
-function normalizedWords(value: string) {
-  return new Set(value
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((word) => word.length >= 4));
-}
-function relevanceScore(text: string, contextWords: Set<string>) {
-  let score = 0;
-  for (const word of normalizedWords(text)) {
-    if (contextWords.has(word)) score += 1;
-  }
-  return score;
-}
-
-export async function loadAccessibleSbcConversation(req: Request, conversationId: string, requireReply = true) {
+export async function loadAccessibleAliceConversation(req: Request, conversationId: string, requireReply = true) {
   const { instances } = await getInstancesForRequest(req);
   const accessible = new Map(instances.map((instance) => [instance.id, instance]));
   const conversation = await prisma.whatsAppConversation.findFirst({
@@ -46,8 +29,10 @@ export async function loadAccessibleSbcConversation(req: Request, conversationId
       blockedAt: true,
       archivedAt: true,
       status: true,
+      assignedTo: true,
+      assignedToName: true,
       contact: { select: { name: true, unit: true } },
-      instance: { select: { unit: true } },
+      instance: { select: { id: true, unit: true, userId: true } },
     },
   });
   if (!conversation) throw new AiAssistantError("Conversa não encontrada", 404);
@@ -57,8 +42,8 @@ export async function loadAccessibleSbcConversation(req: Request, conversationId
   }
   const requestUnit = new URL(req.url).searchParams.get("unit");
   const unit = resolveInboxConversationUnit(conversation.instance.unit, requestUnit, conversation.contact.unit);
-  if (unit !== AI_ASSISTANT_UNIT) {
-    throw new AiAssistantError("As sugestões estão em piloto somente em SBC", 403);
+  if (!isAliceUnit(unit)) {
+    throw new AiAssistantError("Alice está disponível somente para conversas de SBC e Osasco", 403);
   }
   if (conversation.blockedAt || conversation.archivedAt || ["closed", "resolved", "lost"].includes(conversation.status)) {
     throw new AiAssistantError("Esta conversa não está elegível para sugestões", 409);
@@ -66,14 +51,14 @@ export async function loadAccessibleSbcConversation(req: Request, conversationId
   return { conversation, unit };
 }
 
-export async function loadAiAssistantSuggestionContext(params: {
+export async function loadAliceSuggestionContext(params: {
   req: Request;
   conversationId: string;
   userId: string;
   campaignName?: string | null;
   targetMessageId?: string | null;
 }) {
-  const { conversation } = await loadAccessibleSbcConversation(params.req, params.conversationId);
+  const { conversation, unit } = await loadAccessibleAliceConversation(params.req, params.conversationId);
   const messages = (await prisma.whatsAppMessage.findMany({
     where: {
       conversationId: conversation.id,
@@ -83,12 +68,10 @@ export async function loadAiAssistantSuggestionContext(params: {
     },
     select: { id: true, body: true, fromMe: true, timestamp: true, respondedByName: true },
     orderBy: [{ timestamp: "desc" }, { id: "desc" }],
-    take: 18,
+    take: 12,
   })).reverse() as ContextMessage[];
   const latest = messages.at(-1);
-  if (!latest) {
-    throw new AiAssistantError("A conversa ainda não possui mensagens de texto.", 409);
-  }
+  if (!latest) throw new AiAssistantError("A conversa ainda não possui mensagens de texto.", 409);
   if (!params.targetMessageId && latest.fromMe) {
     throw new AiAssistantError("A última mensagem já é da equipe. Aguarde uma nova resposta do cliente.", 409);
   }
@@ -126,132 +109,55 @@ export async function loadAiAssistantSuggestionContext(params: {
       break;
     }
   }
-  const pendingMessages = messages
-    .slice(lastTeamMessageIndex + 1)
-    .filter((message) => !message.fromMe)
-    .map((message) => ({
-      id: message.id,
-      text: sanitizeAiAssistantText(message.body, names),
-    }));
+  const pendingRawMessages = messages.slice(lastTeamMessageIndex + 1).filter((message) => !message.fromMe);
+  const pendingMessages = pendingRawMessages.map((message) => ({
+    id: message.id,
+    text: sanitizeAiAssistantText(message.body, names),
+  }));
   const sanitizedTargetMessage = targetMessage ? {
     id: targetMessage.id,
     text: sanitizeAiAssistantText(targetMessage.body, names),
   } : null;
-  const conversationText = [
-    ...dialogue.map((message) => message.text),
-    ...(sanitizedTargetMessage ? [sanitizedTargetMessage.text] : []),
-  ].join(" ");
-  const contextWords = normalizedWords(conversationText);
+  const campaignName = sanitizeAiAssistantText(params.campaignName || "", names).slice(0, 160);
+  const safetyMessages = [
+    ...pendingRawMessages.map((message) => message.body),
+    ...(targetMessage ? [targetMessage.body] : []),
+  ];
+  const handoffReason = classifyAliceHandoff({ unit, campaignName, incomingMessages: safetyMessages });
   const config = await loadAiAssistantConfig();
-  if (!config.enabled) throw new AiAssistantError("As sugestões estão pausadas", 503);
+  if (!config.enabled) throw new AiAssistantError("Alice está pausada nas configurações", 503);
 
-  const [approvedCandidates, catalogItems, savedReplies] = await Promise.all([
-    prisma.aiLearningCandidate.findMany({
-      where: { unit: AI_ASSISTANT_UNIT, status: "approved" },
-      select: { id: true, content: true },
-      orderBy: { updatedAt: "desc" },
-      take: 60,
-    }),
-    prisma.serviceCatalog.findMany({
-      where: { active: true, unit: { in: [AI_ASSISTANT_UNIT, "Todas"] } },
-      select: { id: true, name: true, description: true, price: true, unit: true },
-      orderBy: { updatedAt: "desc" },
-      take: 200,
-    }),
-    prisma.whatsAppSavedReply.findMany({
-      where: {
-        userId: params.userId,
-        OR: [
-          { categoryId: null },
-          ...(params.campaignName ? [{ category: { campaignName: params.campaignName } }] : []),
-        ],
-      },
-      select: { id: true, title: true, content: true },
-      orderBy: [{ position: "asc" }, { updatedAt: "desc" }],
-      take: 40,
-    }),
-  ]);
-
-  const knowledge = approvedCandidates
-    .map((item) => {
-      const content = item.content as Record<string, unknown>;
-      return {
-        id: `aprendizado:${item.id}`,
-        topic: String(content.topic || ""),
-        questions: Array.isArray(content.questions) ? content.questions : [],
-        answer: String(content.answer || ""),
-        conditions: String(content.conditions || ""),
-      };
-    })
-    .map((item) => ({ item, score: relevanceScore(JSON.stringify(item), contextWords) }))
-    .filter(({ score }) => score > 0)
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 10)
-    .map(({ item }) => item);
-  const catalog = catalogItems
-    .map((item) => ({ item, score: relevanceScore(`${item.name} ${item.description || ""}`, contextWords) }))
-    .filter(({ score }) => score > 0)
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 12)
-    .map(({ item }) => ({
-      id: `catalogo:${item.id}`,
-      name: item.name,
-      description: item.description,
-      ...(config.sharePrices ? { price: item.price } : {}),
-    }));
-  const examples = savedReplies
-    .map((item) => ({ item, score: relevanceScore(`${item.title} ${item.content}`, contextWords) }))
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 8)
-    .map(({ item }) => ({ id: `resposta:${item.id}`, title: item.title, content: item.content }));
-  const publicConfig = aiAssistantPublicConfig(config);
-  const personalizationName = resolveAiAssistantContactName(conversation.contact.name);
+  const contactName = resolveAiAssistantContactName(conversation.contact.name);
   const sourceFingerprint = aiAssistantDigest({
-    messages: messages.map((message) => [
-      message.id,
-      message.body,
-      message.fromMe,
-      message.timestamp.toISOString(),
-    ]),
-    targetMessage: targetMessage ? [
-      targetMessage.id,
-      targetMessage.body,
-      targetMessage.timestamp.toISOString(),
-    ] : null,
+    messages: messages.map((message) => [message.id, message.body, message.fromMe, message.timestamp.toISOString()]),
+    targetMessage: targetMessage ? [targetMessage.id, targetMessage.body, targetMessage.timestamp.toISOString()] : null,
   });
+
+  let aliceKnowledge = null;
+  if (!handoffReason) {
+    requireAliceLiveRuntime();
+    aliceKnowledge = buildAliceKnowledgeContext({
+      unit,
+      campaignName,
+      messageText: [...pendingMessages, ...(sanitizedTargetMessage ? [sanitizedTargetMessage] : [])].map((message) => message.text).join(" "),
+    });
+    if (!aliceKnowledge) throw new AiAssistantError("A base privada da Alice não está disponível neste momento", 503);
+  }
 
   return {
     conversation,
+    unit,
     latestMessageId: latest.id,
     targetMessageId: targetMessage?.id || null,
     sourceFingerprint,
-    personalizationName,
+    contactName,
+    handoffReason,
     config,
-    prompt: {
-      DADOS_DA_EMPRESA: {
-        description: publicConfig.businessDescription,
-        hours: publicConfig.businessHours || "Não informado",
-        address: publicConfig.address,
-        locationUrl: publicConfig.locationUrl,
-        email: publicConfig.email || "Não informado",
-        website: publicConfig.website || "Não informado",
-        purchasePolicy: publicConfig.purchasePolicy,
-        paymentPolicy: publicConfig.paymentPolicy || "Não informado",
-        discountPolicy: publicConfig.discountPolicy || "Não informado",
-      },
-      REGRAS: {
-        allowEmojis: config.allowEmojis,
-        sharePrices: config.sharePrices,
-        askClientInfoAt: config.askClientInfoAt,
-        customInstructions: config.customInstructions,
-      },
-      CAMPANHA: params.campaignName || "Não identificada",
-      CONTATO: {
-        nomeSalvoDisponivel: Boolean(personalizationName),
-      },
-      CATALOGO_APROVADO: catalog,
-      CONHECIMENTO_APROVADO: knowledge,
-      RESPOSTAS_DE_EXEMPLO: examples,
+    prompt: handoffReason ? null : {
+      BASE_ALICE: aliceKnowledge,
+      UNIDADE: unit,
+      CAMPANHA: campaignName || "Não identificada",
+      CONTATO: { nomeSalvoDisponivel: Boolean(contactName) },
       MENSAGEM_ALVO: sanitizedTargetMessage,
       MENSAGENS_RECENTES_SEM_RESPOSTA: pendingMessages,
       CONVERSA: dialogue,

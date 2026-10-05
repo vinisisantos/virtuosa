@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { loadAiAssistantConfig } from "@/lib/ai-assistant/config";
+import { getAliceKnowledgeStatus } from "@/lib/ai-assistant/alice-knowledge";
+import { aliceRuntimeStatus } from "@/lib/ai-assistant/runtime";
 import { aiAssistantErrorResponse } from "@/lib/ai-assistant/http";
 import {
   AI_ASSISTANT_CONFIG_KEY,
-  AI_ASSISTANT_UNIT,
+  ALICE_ALLOWED_UNITS,
   AiAssistantError,
   aiAssistantDayKey,
   aiAssistantPublicConfig,
@@ -21,16 +23,12 @@ async function requireAdmin(req: NextRequest) {
 }
 export async function GET(req: NextRequest) {
   try {
-    const user = await requireAdmin(req);
+    await requireAdmin(req);
     const today = new Date(`${aiAssistantDayKey()}T00:00:00-03:00`);
-    const [config, catalogItems, approvedKnowledge, pendingKnowledge, savedReplies, usage, budgetSetting] = await Promise.all([
+    const [config, usage, budgetSetting] = await Promise.all([
       loadAiAssistantConfig(),
-      prisma.serviceCatalog.count({ where: { active: true, unit: { in: [AI_ASSISTANT_UNIT, "Todas"] } } }),
-      prisma.aiLearningCandidate.count({ where: { unit: AI_ASSISTANT_UNIT, status: "approved" } }),
-      prisma.aiLearningCandidate.count({ where: { unit: AI_ASSISTANT_UNIT, status: "pending" } }),
-      prisma.whatsAppSavedReply.count({ where: { userId: user.userId } }),
       prisma.aiAssistantOperation.aggregate({
-        where: { unit: AI_ASSISTANT_UNIT, createdAt: { gte: today } },
+        where: { unit: { in: [...ALICE_ALLOWED_UNITS] }, createdAt: { gte: today } },
         _count: { _all: true },
         _sum: { actualMicroUsd: true, reservedMicroUsd: true },
       }),
@@ -45,7 +43,8 @@ export async function GET(req: NextRequest) {
     } catch {}
     return NextResponse.json({
       config: aiAssistantPublicConfig(config),
-      knowledge: { catalogItems, approvedKnowledge, pendingKnowledge, savedReplies },
+      knowledge: getAliceKnowledgeStatus(),
+      runtime: aliceRuntimeStatus(),
       usage: {
         requestsToday: budget.requests || usage._count._all,
         reservedMicroUsdToday: budget.reserved || usage._sum.reservedMicroUsd || 0,

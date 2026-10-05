@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import {
   AI_ASSISTANT_CONFIG_KEY,
   AI_ASSISTANT_MAX_DAILY_REQUESTS,
-  AI_ASSISTANT_UNIT,
   AiAssistantError,
   aiAssistantActualCost,
   aiAssistantDayKey,
@@ -12,6 +11,7 @@ import type { AiAssistantUsage } from "@/lib/ai-assistant/provider";
 
 export async function reserveAiAssistantOperation(params: {
   conversationId?: string | null;
+  unit: "SBC" | "Osasco";
   kind: "suggestion" | "test";
   reservedMicroUsd: number;
   dailyLimit: number;
@@ -41,7 +41,7 @@ export async function reserveAiAssistantOperation(params: {
     return tx.aiAssistantOperation.create({
       data: {
         id: randomUUID(),
-        unit: AI_ASSISTANT_UNIT,
+        unit: params.unit,
         kind: params.kind,
         conversationId: params.conversationId || null,
         reservedMicroUsd: params.reservedMicroUsd,

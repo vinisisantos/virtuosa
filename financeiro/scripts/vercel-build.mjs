@@ -15,6 +15,8 @@ function migrationDatabaseUrl(value) {
   return url.toString();
 }
 
+run(process.execPath, ["scripts/sync-alice-knowledge.mjs"]);
+
 if (process.env.VERCEL_ENV === "production") {
   if (!process.env.DATABASE_URL) process.exit(1);
   const migrationUrl = migrationDatabaseUrl(process.env.DATABASE_URL);
@@ -46,6 +48,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260909120100_whatsapp_dispatch_index/migration.sql",
     "prisma/migrations/20260920180000_ai_learning_sbc/migration.sql",
     "prisma/migrations/20260920230000_ai_assistant_suggestions_sbc/migration.sql",
+    "prisma/migrations/20261004120000_alice_assistant_units/migration.sql",
     "prisma/migrations/20260925160000_ai_readiness_feedback/migration.sql",
     "prisma/migrations/20260922153000_whatsapp_inbound_postprocess_queue/migration.sql",
   ];
@@ -69,7 +72,7 @@ if (process.env.VERCEL_ENV === "production") {
   run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-campaign-welcome-cron.mjs"], {
     ...process.env, DATABASE_URL: migrationUrl,
   });
-  run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-ai-learning-cron.mjs"], {
+  run(process.execPath, ["--experimental-strip-types", "scripts/disable-ai-learning-cron.mjs"], {
     ...process.env, DATABASE_URL: migrationUrl,
   });
   run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-whatsapp-inbound-postprocess-cron.mjs"], {

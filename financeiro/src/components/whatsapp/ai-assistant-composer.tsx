@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "@/components/toast";
+import { isAliceUnit } from "@/lib/ai-assistant/scope";
 import type { Conversation } from "@/lib/whatsapp/inbox-utils";
 import styles from "./ai-assistant-composer.module.css";
 
@@ -28,6 +29,7 @@ type AiAssistantDraft = {
     needsHuman?: boolean;
   } | null;
 };
+type HandoffStatus = { notified: number; assigned: boolean } | null;
 
 type Props = {
   conversationId: string;
@@ -67,6 +69,7 @@ export function AiAssistantComposer({
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState<AiAssistantDraft | null>(null);
+  const [handoffStatus, setHandoffStatus] = useState<HandoffStatus>(null);
   const [loading, setLoading] = useState(false);
   const [changingMode, setChangingMode] = useState(false);
   const handledGenerationRequestRef = useRef<number | null>(null);
@@ -82,6 +85,7 @@ export function AiAssistantComposer({
     setMode(initialMode === "suggestions" ? "suggestions" : "manual");
     setMenuOpen(false);
     setDraft(null);
+    setHandoffStatus(null);
     handledGenerationRequestRef.current = null;
   }, [conversationId, initialMode]);
 
@@ -90,7 +94,7 @@ export function AiAssistantComposer({
   }, [conversationId, targetMessage?.id]);
 
   useEffect(() => {
-    if (unit !== "SBC" || mode !== "suggestions" || generationInFlightRef.current) return;
+    if (!isAliceUnit(unit) || mode !== "suggestions" || generationInFlightRef.current) return;
     const controller = new AbortController();
     setDraft(null);
     fetch(apiUrl, { cache: "no-store", signal: controller.signal })
@@ -144,6 +148,7 @@ export function AiAssistantComposer({
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar a sugestão.");
       setDraft(data.draft || null);
+      setHandoffStatus(data.handoff || null);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Não foi possível gerar a sugestão.", "error");
     } finally {
@@ -154,7 +159,7 @@ export function AiAssistantComposer({
 
   useEffect(() => {
     if (
-      unit !== "SBC"
+      !isAliceUnit(unit)
       || !generationRequest
       || generationRequest.conversationId !== conversationId
       || handledGenerationRequestRef.current === generationRequest.requestId
@@ -201,7 +206,10 @@ export function AiAssistantComposer({
         });
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Não foi possível gerar a sugestão.");
-        if (activeConversationRef.current === requestConversationId) setDraft(data.draft || null);
+        if (activeConversationRef.current === requestConversationId) {
+          setDraft(data.draft || null);
+          setHandoffStatus(data.handoff || null);
+        }
       } catch (error) {
         if (activeConversationRef.current === requestConversationId) {
           toast(error instanceof Error ? error.message : "Não foi possível gerar a sugestão.", "error");
@@ -228,7 +236,7 @@ export function AiAssistantComposer({
     unit,
   ]);
 
-  const useSuggestion = useCallback(async () => {
+  const insertSuggestion = useCallback(async () => {
     if (!draft) return;
     try {
       const response = await fetch(apiUrl, {
@@ -256,7 +264,7 @@ export function AiAssistantComposer({
     if (response.ok) setDraft(null);
   }, [apiUrl, conversationId, draft]);
 
-  if (unit !== "SBC") return null;
+  if (!isAliceUnit(unit)) return null;
 
   return (
     <div className="relative mx-auto mb-1 w-full max-w-3xl">
@@ -272,17 +280,17 @@ export function AiAssistantComposer({
             className={styles.modeControl}
             aria-expanded={menuOpen}
             aria-haspopup="menu"
-            aria-label={`Modo de resposta: ${mode === "suggestions" ? "Sugestões da IA" : "Resposta manual"}`}
+            aria-label={`Modo de resposta: ${mode === "suggestions" ? "Sugestões da Alice" : "Resposta manual"}`}
           >
             <span className={`${styles.modeIcon} ${mode === "suggestions" ? styles.aiIcon : ""}`}>
               {mode === "suggestions" ? <Sparkles className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
             </span>
             <span className="min-w-0 flex-1 text-left">
               <span className={styles.modeLabel}>
-                {mode === "suggestions" ? "Sugestões da IA" : "Resposta manual"}
+                {mode === "suggestions" ? "Sugestões da Alice" : "Resposta manual"}
               </span>
               <span className={styles.modeCaption}>
-                {mode === "suggestions" ? "IA disponível" : "Você escreve e envia"}
+                {mode === "suggestions" ? "Alice · revisão humana" : "Você escreve e envia"}
               </span>
             </span>
             <span className={styles.modeChevron}>
@@ -322,7 +330,7 @@ export function AiAssistantComposer({
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-semibold">Resposta manual</span>
-              <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">Você escreve e envia sem assistência da IA.</span>
+              <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">Você escreve e envia sem assistência da Alice.</span>
             </span>
             {mode === "manual" && <Check className="h-5 w-5 shrink-0 text-emerald-600" />}
           </button>
@@ -341,8 +349,8 @@ export function AiAssistantComposer({
               <Sparkles className="h-4 w-4" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">Sugestões da IA</span>
-              <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">A IA prepara; você revisa, edita e envia.</span>
+              <span className="block text-sm font-semibold">Sugestões da Alice</span>
+              <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">Ela prepara; você revisa, edita e decide se envia.</span>
             </span>
             {mode === "suggestions" && <Check className="h-5 w-5 shrink-0 text-emerald-600" />}
           </button>
@@ -351,7 +359,7 @@ export function AiAssistantComposer({
               <Bot className="h-4 w-4" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">Agente de IA</span>
+                <span className="block text-sm font-semibold">Agente automático</span>
               <span className="mt-0.5 block text-xs leading-4">Envio automático bloqueado neste piloto.</span>
             </span>
             <LockKeyhole className="h-4 w-4" />
@@ -382,7 +390,7 @@ export function AiAssistantComposer({
                 <Sparkles className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-foreground">A IA está preparando a resposta</span>
+                <span className="block text-sm font-semibold text-foreground">Alice está preparando a sugestão</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">Analisando o contexto da conversa</span>
               </span>
               <span className={styles.thinkingDots} aria-hidden="true">
@@ -399,11 +407,15 @@ export function AiAssistantComposer({
               </div>
               {draft.usage?.needsHuman && (
                 <p className="mt-2 rounded-lg bg-amber-500/10 px-2 py-1.5 text-xs text-amber-800 dark:text-amber-300">
-                  A IA encontrou incerteza. Revise com atenção antes de usar.
+                  A Alice identificou que este atendimento precisa de apoio humano. {handoffStatus
+                    ? handoffStatus.notified > 0
+                      ? `Notificação interna enviada para ${handoffStatus.notified} pessoa(s) com acesso a esta caixa.`
+                      : "Nenhuma pessoa elegível com acesso a esta caixa foi localizada; o acesso não foi ampliado. Acione a equipe manualmente."
+                    : "Revise o encaminhamento antes de responder."}
                 </p>
               )}
               <div className="mt-2 flex flex-wrap gap-2">
-                <button type="button" onClick={() => void useSuggestion()} disabled={draft.status === "inserted"} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-default disabled:bg-emerald-700/70">
+                <button type="button" onClick={() => void insertSuggestion()} disabled={draft.status === "inserted"} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-default disabled:bg-emerald-700/70">
                   {draft.status === "inserted" ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
                   {draft.status === "inserted" ? "Inserida no campo" : "Usar e editar"}
                 </button>
@@ -421,7 +433,7 @@ export function AiAssistantComposer({
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                 <span className={styles.readyDot} aria-hidden="true" />
-                <span><strong className="font-semibold text-foreground">IA disponível.</strong> Ela só será consultada quando você pedir.</span>
+                <span><strong className="font-semibold text-foreground">Alice pronta para sugestão.</strong> Ela só é consultada quando você pedir.</span>
               </div>
               <button type="button" onClick={() => void generate(false)} disabled={loading} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}

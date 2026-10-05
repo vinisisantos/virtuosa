@@ -16,6 +16,7 @@ import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
 import { InboxChatHeader } from "@/components/whatsapp/inbox-chat-header";
 import { AiAssistantComposer } from "@/components/whatsapp/ai-assistant-composer";
+import { isAliceUnit } from "@/lib/ai-assistant/scope";
 import { MessageStatusIcon } from "@/components/whatsapp/message-status-icon";
 import { DispatchBadge, DispatchDetails } from "@/components/whatsapp/dispatch-details";
 import { dispatchLabel, dispatchSnapshot, dispatchUnitEnabled, type DispatchSnapshot } from "@/lib/whatsapp/dispatch";
@@ -5288,7 +5289,7 @@ export default function InboxPage() {
     const conversation = selectedConvRef.current;
     if (
       !conversation
-      || selectedConversationUnit !== "SBC"
+      || !isAliceUnit(selectedConversationUnit)
       || !canReplyToConversation(conversation)
       || msg.fromMe
       || msg.type !== "text"
@@ -7701,7 +7702,7 @@ export default function InboxPage() {
                         msg={msg}
                         albumImages={item.kind === "album" ? item.images : undefined}
                         canReact={canReplyToSelectedConversation}
-                        canAiReply={selectedConversationUnit === "SBC" && canReplyToSelectedConversation}
+                        canAiReply={isAliceUnit(selectedConversationUnit) && canReplyToSelectedConversation}
                         onReply={handleReplyMessage}
                         onAiReply={handleAiReplyMessage}
                         onReact={handleMessageReaction}

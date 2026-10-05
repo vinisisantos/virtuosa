@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { loadAccessibleSbcConversation } from "@/lib/ai-assistant/context";
+import { loadAccessibleAliceConversation } from "@/lib/ai-assistant/context";
 import { generateConversationSuggestion } from "@/lib/ai-assistant/generate";
 import { aiAssistantErrorResponse } from "@/lib/ai-assistant/http";
-import { AiAssistantError, normalizeAiAssistantMode } from "@/lib/ai-assistant/policy";
+import { AI_ASSISTANT_MODEL, AiAssistantError, normalizeAiAssistantMode } from "@/lib/ai-assistant/policy";
 import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
   try {
     requireUser(req);
     const conversationId = conversationIdFrom(req.nextUrl.searchParams.get("conversationId"));
-    const { conversation } = await loadAccessibleSbcConversation(req, conversationId);
+    const { conversation, unit } = await loadAccessibleAliceConversation(req, conversationId);
     const [draft, latestMessage] = await Promise.all([
       prisma.aiAssistantDraft.findUnique({ where: { conversationId } }),
       prisma.whatsAppMessage.findFirst({
@@ -66,6 +66,8 @@ export async function GET(req: NextRequest) {
     ]);
     const currentDraft = draft
       && latestMessage?.id === draft.sourceMessageId
+      && draft.unit === unit
+      && draft.model === AI_ASSISTANT_MODEL
       && ["active", "inserted"].includes(draft.status)
       ? draft
       : null;
@@ -91,7 +93,7 @@ export async function POST(req: NextRequest) {
       targetMessageId: targetMessageIdFrom(input.targetMessageId),
       force: input.force === true,
     });
-    return NextResponse.json({ draft: serializeDraft(result.draft), cached: result.cached });
+    return NextResponse.json({ draft: serializeDraft(result.draft), cached: result.cached, handoff: result.handoff });
   } catch (error) {
     return aiAssistantErrorResponse(error);
   }
@@ -102,7 +104,7 @@ export async function PATCH(req: NextRequest) {
     const user = requireUser(req);
     const input = await req.json();
     const conversationId = conversationIdFrom(input.conversationId);
-    await loadAccessibleSbcConversation(req, conversationId);
+    const { unit } = await loadAccessibleAliceConversation(req, conversationId);
 
     if (input.action === "mode") {
       const mode = normalizeAiAssistantMode(input.mode);
@@ -118,7 +120,7 @@ export async function PATCH(req: NextRequest) {
     if (!draftId) throw new AiAssistantError("Sugestão não informada");
     if (input.action === "use") {
       const [draft, latestMessage] = await Promise.all([
-        prisma.aiAssistantDraft.findFirst({ where: { id: draftId, conversationId } }),
+        prisma.aiAssistantDraft.findFirst({ where: { id: draftId, conversationId, unit, model: AI_ASSISTANT_MODEL } }),
         prisma.whatsAppMessage.findFirst({
           where: { conversationId, type: "text", status: { not: "deleted" }, body: { not: "" } },
           select: { id: true, fromMe: true },
@@ -139,7 +141,7 @@ export async function PATCH(req: NextRequest) {
         if (!updated.count) throw new AiAssistantError("A sugestão mudou; gere outra", 409);
         await tx.aiAssistantOperation.updateMany({
           where: {
-            unit: "SBC",
+            unit,
             kind: "suggestion",
             draftId,
             draftVersion: draft.version,
@@ -156,6 +158,8 @@ export async function PATCH(req: NextRequest) {
         where: {
           id: draftId,
           conversationId,
+          unit,
+          model: AI_ASSISTANT_MODEL,
           status: { in: ["active", "inserted"] },
           ...(requestedVersion !== undefined ? { version: requestedVersion } : {}),
         },
@@ -170,7 +174,7 @@ export async function PATCH(req: NextRequest) {
           if (updated.count) {
             await tx.aiAssistantOperation.updateMany({
               where: {
-                unit: "SBC",
+                unit,
                 kind: "suggestion",
                 draftId,
                 draftVersion: draft.version,
