@@ -7,7 +7,7 @@
 - A base é lida do repositório privado `vinisisantos/virtuosa-agent`, em commit fixo, apenas durante o build. As conversas não fazem chamadas ao GitHub.
 - A seleção por conversa preserva integralmente as instruções centrais, prioriza a ficha da campanha e os preços antes de referências genéricas e limita o contexto documental a 36 mil caracteres. Se faltar ou não couber uma instrução essencial, a geração falha fechada. Isso evita que uma pergunta sobre uma campanha receba apenas regras gerais ou uma ficha de outro procedimento.
 - Só SBC e Osasco estão no escopo. Mamas e Preenchimento Facial continuam excluídos; conteúdo clínico/fora do escopo gera texto local de encaminhamento.
-- Notificações internas usam pessoas já autorizadas na instância e unidade. Osasco encaminha à equipe local e não concede acesso a outras pessoas.
+- Em SBC, a Gabriela recebe notificação e acesso somente à conversa atribuída a ela, por uma tela isolada; ela não se torna membro da instância. Osasco encaminha à equipe local já autorizada na instância.
 - O aprendizado antigo fica preservado como arquivo, mas o observador automático deixa de processar conversas.
 
 ## Configuração necessária para ativar
@@ -16,10 +16,11 @@ Não inclua valores secretos em código, GitHub, logs ou documentação. Cadastr
 
 1. `ALICE_CONTENT_READ_TOKEN`: fine-grained token somente de leitura (`Contents: read`), limitado ao repositório privado `vinisisantos/virtuosa-agent`.
 2. `ALICE_OWNER_USER_ID`: ID exato do usuário Vinicius; sem ele, as rotas da Alice retornam 403.
-3. `ALICE_HERMES_BRIDGE_URL`: URL HTTPS da ponte privada na VM, terminada em `/v1/suggest`.
-4. `ALICE_HERMES_BRIDGE_SECRET`: segredo aleatório de pelo menos 32 caracteres, idêntico no CRM e na VM, armazenado fora dos repositórios.
-5. `ALICE_CONVERSATION_DATA_APPROVED=true`: somente após autorização e validação de minimização dos trechos enviados ao Hermes.
-6. `ALICE_ENABLE_LIVE_SUGGESTIONS=true`: habilita sugestões reais somente após autenticação, HTTPS e testes de ponta a ponta.
+3. `ALICE_SBC_HANDOFF_USER_ID`: ID exato da comercial Gabriela, conferido no cadastro ativo de SBC. Sem ele, o encaminhamento recai apenas na equipe já autorizada na instância.
+4. `ALICE_HERMES_BRIDGE_URL`: URL HTTPS da ponte privada na VM, terminada em `/v1/suggest`.
+5. `ALICE_HERMES_BRIDGE_SECRET`: segredo aleatório de pelo menos 32 caracteres, idêntico no CRM e na VM, armazenado fora dos repositórios.
+6. `ALICE_CONVERSATION_DATA_APPROVED=true`: somente após autorização e validação de minimização dos trechos enviados ao Hermes.
+7. `ALICE_ENABLE_LIVE_SUGGESTIONS=true`: habilita sugestões reais somente após autenticação, HTTPS e testes de ponta a ponta.
 
 Além disso, o proprietário precisa ativar Alice em `/crm/assistente-ia`. Essa chave não substitui os bloqueios do servidor. Sem qualquer pré-requisito, o endpoint falha fechado e não chama o modelo. A VM não recebe credenciais de WhatsApp nem acesso ao banco.
 

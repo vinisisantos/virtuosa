@@ -64,16 +64,12 @@ export async function routeAliceHandoff(params: {
   let assignedRecipient: Recipient | null = null;
   let recipients: Recipient[] = [];
   if (params.unit === "SBC") {
-    const commercial = await prisma.user.findMany({
-      where: { isActive: true, unit: "SBC", name: { equals: "Gabriela Anselmo", mode: "insensitive" } },
+    const handoffUserId = process.env.ALICE_SBC_HANDOFF_USER_ID?.trim();
+    const commercial = handoffUserId ? await prisma.user.findUnique({
+      where: { id: handoffUserId },
       select: { id: true, name: true, role: true, unit: true, permissions: true, isActive: true },
-      take: 2,
-    }) as Recipient[];
-    if (commercial.length === 1) {
-      const candidate = commercial[0];
-      const sameInstance = permittedInstanceUsers.get(candidate.id);
-      if (sameInstance && hasCrmAccess(candidate) && belongsToUnit(candidate, "SBC")) assignedRecipient = candidate;
-    }
+    }) as Recipient | null : null;
+    if (commercial && hasCrmAccess(commercial) && belongsToUnit(commercial, "SBC")) assignedRecipient = commercial;
     recipients = assignedRecipient ? [assignedRecipient] : [...permittedInstanceUsers.values()].filter(
       (user) => hasCrmAccess(user) && belongsToUnit(user, "SBC"),
     );
@@ -93,7 +89,9 @@ export async function routeAliceHandoff(params: {
   const uniqueRecipients = [...new Map(recipients.map((user) => [user.id, user])).values()];
   if (!uniqueRecipients.length) return { notified: 0, assigned: false };
 
-  const link = `/crm/inbox?targetInstanceId=${encodeURIComponent(params.instanceId)}&conversationId=${encodeURIComponent(params.conversationId)}`;
+  const link = params.unit === "SBC" && assignedRecipient
+    ? `/crm/inbox/alice-handoff/${encodeURIComponent(params.conversationId)}`
+    : `/crm/inbox?targetInstanceId=${encodeURIComponent(params.instanceId)}&conversationId=${encodeURIComponent(params.conversationId)}`;
   const message = "Alice sinalizou que este atendimento precisa de apoio humano. Abra a conversa e retome o atendimento.";
   const notifications = uniqueRecipients.map((user) => ({
     id: notificationId(`${params.conversationId}:${params.sourceMessageId}:${user.id}:alice-handoff`),

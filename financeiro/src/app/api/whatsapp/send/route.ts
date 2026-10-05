@@ -36,6 +36,8 @@ import { firstWhatsAppLink, loadWhatsAppLinkPreview } from "@/lib/whatsapp/link-
 import { evolutionMessageLidCandidates } from "@/lib/whatsapp/chat-action-identifiers";
 import { getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 import { dispatchMetadataForSend, dispatchSnapshot, parseDispatchRequest } from "@/lib/whatsapp/dispatch";
+import { loadAssignedAliceHandoff } from "@/lib/ai-assistant/delegated-access";
+import { AiAssistantError } from "@/lib/ai-assistant/policy";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -230,8 +232,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
-    // Resolver instâncias do usuário autenticado (ou targetUserId para admin)
-    const { instances: dbInstances, isProxy } = await getInstancesForRequest(req);
+    // A delegação da Alice é estritamente desta conversa; não torna a instância acessível.
+    const delegatedHandoff = body.delegatedHandoff === true;
+    if (delegatedHandoff && (!conversationId || type !== "text" || body.file || body.dispatch || aiAssistantDraftId)) {
+      return NextResponse.json({ error: "Envio delegado inválido" }, { status: 400 });
+    }
+    const delegatedConversation = delegatedHandoff
+      ? await loadAssignedAliceHandoff(req, conversationId)
+      : null;
+    const access = delegatedConversation
+      ? { instances: [{ ...delegatedConversation.instance, canReply: true, canManage: false }], isProxy: false }
+      : await getInstancesForRequest(req);
+    const { instances: dbInstances, isProxy } = access;
     const userId = req.headers.get('x-user-id') || '';
     const userName = req.headers.get('x-user-name') || '';
     const operationalInstances = dbInstances.filter((instance: any) => instance.status !== "archived");
@@ -342,6 +354,11 @@ export async function POST(req: Request) {
           status: "open",
         },
       });
+    }
+
+    if (delegatedHandoff && (conversation.blockedAt || conversation.archivedAt
+      || ["closed", "resolved", "lost"].includes(conversation.status))) {
+      return NextResponse.json({ error: "Esta conversa não está disponível para resposta" }, { status: 409 });
     }
 
     const callbackUnit = dbInstance.unit === "Todas" ? contact?.unit : dbInstance.unit;
@@ -966,6 +983,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, message: responseMessage, callbackTracking, lastDispatch: dispatchSnapshot(message) });
 
   } catch (error: any) {
+    if (error instanceof AiAssistantError) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
     console.error("[WhatsApp Send API Error]:", error);
     return NextResponse.json({ error: "Erro interno", details: error.message }, { status: 500 });
   }
