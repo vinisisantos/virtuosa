@@ -2,16 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot,
   Check,
-  ChevronDown,
   Loader2,
-  LockKeyhole,
   Pencil,
   RefreshCw,
   Sparkles,
   Trash2,
-  X,
 } from "lucide-react";
 import { toast } from "@/components/toast";
 import { isAliceUnit } from "@/lib/ai-assistant/scope";
@@ -67,7 +63,6 @@ export function AiAssistantComposer({
   const [mode, setMode] = useState<"manual" | "suggestions">(
     initialMode === "suggestions" ? "suggestions" : "manual",
   );
-  const [menuOpen, setMenuOpen] = useState(false);
   const [draft, setDraft] = useState<AiAssistantDraft | null>(null);
   const [handoffStatus, setHandoffStatus] = useState<HandoffStatus>(null);
   const [loading, setLoading] = useState(false);
@@ -83,7 +78,6 @@ export function AiAssistantComposer({
 
   useEffect(() => {
     setMode(initialMode === "suggestions" ? "suggestions" : "manual");
-    setMenuOpen(false);
     setDraft(null);
     setHandoffStatus(null);
     handledGenerationRequestRef.current = null;
@@ -110,10 +104,7 @@ export function AiAssistantComposer({
   }, [activityVersion, apiUrl, mode, unit]);
 
   const changeMode = useCallback(async (nextMode: "manual" | "suggestions") => {
-    if (changingMode || nextMode === mode) {
-      setMenuOpen(false);
-      return;
-    }
+    if (changingMode || nextMode === mode) return;
     setChangingMode(true);
     try {
       const response = await fetch(apiUrl, {
@@ -125,7 +116,6 @@ export function AiAssistantComposer({
       if (!response.ok) throw new Error(data.error || "Não foi possível alterar o modo.");
       setMode(nextMode);
       setDraft(null);
-      setMenuOpen(false);
       onModeChange(nextMode);
       toast(nextMode === "suggestions" ? "Sugestões ativadas nesta conversa." : "Resposta manual ativada.", "success");
     } catch (error) {
@@ -189,7 +179,6 @@ export function AiAssistantComposer({
           if (activeConversationRef.current === requestConversationId) {
             setMode("suggestions");
             setDraft(null);
-            setMenuOpen(false);
             onModeChange("suggestions");
           }
         }
@@ -248,7 +237,6 @@ export function AiAssistantComposer({
       if (!response.ok) throw new Error(data.error || "A sugestão não está mais disponível.");
       onUseSuggestion(draft.content, draft.id, draft.version);
       setDraft((current) => current ? { ...current, status: "inserted" } : current);
-      setMenuOpen(false);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Não foi possível usar a sugestão.", "error");
     }
@@ -267,83 +255,36 @@ export function AiAssistantComposer({
   if (!isAliceUnit(unit)) return null;
 
   return (
-    <div className="relative mx-auto mb-1 w-full max-w-3xl">
-      <div className="relative w-fit max-w-full">
-        <div
-          className={`${styles.modeControlShell} ${mode === "suggestions" ? styles.aiModeActive : ""} ${changingMode ? styles.processing : ""}`}
-        >
+    <div className="relative mb-1 w-full">
+      <div className={styles.modeBar}>
+        <span className={styles.modeBarLabel}>Responder com</span>
+        <div className={styles.modeSwitch} role="group" aria-label="Modo de resposta" aria-busy={changingMode}>
           <button
             type="button"
-            onClick={() => setMenuOpen((current) => !current)}
-            className={styles.modeControl}
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            aria-label={`Modo de resposta: ${mode === "suggestions" ? "Sugestões da Alice" : "Resposta manual"}`}
+            onClick={() => void changeMode("manual")}
+            disabled={changingMode}
+            className={`${styles.modeSwitchButton} ${mode === "manual" ? styles.modeSwitchSelected : ""}`}
+            aria-label="Resposta manual"
+            aria-pressed={mode === "manual"}
           >
-            <span className={`${styles.modeIcon} ${mode === "suggestions" ? styles.aiIcon : ""}`}>
-              {mode === "suggestions" ? <Sparkles className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
-            </span>
-            <span className={styles.modeLabel}>
-              {mode === "suggestions" ? "Sugestões da Alice" : "Resposta manual"}
-            </span>
-            <span className={styles.modeChevron}>
-              {changingMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
-            </span>
+            <Pencil className="h-4 w-4" aria-hidden="true" />
+            Manual
+          </button>
+          <button
+            type="button"
+            onClick={() => void changeMode("suggestions")}
+            disabled={changingMode}
+            className={`${styles.modeSwitchButton} ${mode === "suggestions" ? styles.modeSwitchSelected : ""}`}
+            aria-label="Sugestões da Alice"
+            aria-pressed={mode === "suggestions"}
+          >
+            <Sparkles className="h-4 w-4" aria-hidden="true" />
+            Alice
           </button>
         </div>
-
-        {menuOpen && (
-          <div
-            className={styles.modeMenu}
-            role="menu"
-            aria-label="Selecionar modo de resposta"
-          >
-            <div className={styles.modeMenuHeader}>
-              <span>Modo de resposta</span>
-              <button type="button" onClick={() => setMenuOpen(false)} className={styles.modeMenuClose} aria-label="Fechar">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className={styles.modeMenuOptions}>
-              <button
-                type="button"
-                onClick={() => void changeMode("manual")}
-                className={`${styles.modeMenuOption} ${mode === "manual" ? styles.modeMenuOptionSelected : ""}`}
-                role="menuitemradio"
-                aria-checked={mode === "manual"}
-              >
-                <Pencil className={styles.modeMenuOptionIcon} />
-                <span className={styles.modeMenuOptionCopy}>
-                  <span className={styles.modeMenuOptionTitle}>Resposta manual</span>
-                  <span className={styles.modeMenuOptionDescription}>Você escreve e envia</span>
-                </span>
-                {mode === "manual" && <Check className={styles.modeMenuOptionCheck} />}
-              </button>
-              <button
-                type="button"
-                onClick={() => void changeMode("suggestions")}
-                className={`${styles.modeMenuOption} ${mode === "suggestions" ? styles.modeMenuOptionSelected : ""}`}
-                role="menuitemradio"
-                aria-checked={mode === "suggestions"}
-              >
-                <Sparkles className={styles.modeMenuOptionIcon} />
-                <span className={styles.modeMenuOptionCopy}>
-                  <span className={styles.modeMenuOptionTitle}>Sugestões da Alice</span>
-                  <span className={styles.modeMenuOptionDescription}>Você revisa antes de enviar</span>
-                </span>
-                {mode === "suggestions" && <Check className={styles.modeMenuOptionCheck} />}
-              </button>
-              <div className={`${styles.modeMenuOption} ${styles.modeMenuOptionDisabled}`} aria-disabled="true">
-                <Bot className={styles.modeMenuOptionIcon} />
-                <span className={styles.modeMenuOptionCopy}>
-                  <span className={styles.modeMenuOptionTitle}>Agente automático</span>
-                  <span className={styles.modeMenuOptionDescription}>Envio automático bloqueado</span>
-                </span>
-                <LockKeyhole className={styles.modeMenuOptionLock} />
-              </div>
-            </div>
-          </div>
-        )}
+        <span className={styles.modeBarCaption} role="status">
+          {changingMode ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Atualizando modo...</> : "Envio sempre manual"}
+        </span>
       </div>
 
       {mode === "suggestions" && (

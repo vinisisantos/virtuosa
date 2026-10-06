@@ -106,25 +106,20 @@ try {
     await page.goto(`${origin}/crm/inbox?unit=${encodeURIComponent(unit)}`, { waitUntil: "networkidle0" });
     await page.waitForSelector(`[data-conversation-id="conversation-${unit.toLowerCase()}"]`);
     await page.click(`[data-conversation-id="conversation-${unit.toLowerCase()}"]`);
-    await page.waitForFunction(() => document.body.innerText.includes("Resposta manual"));
-    const modeButton = await page.$('button[aria-label="Modo de resposta: Resposta manual"]');
+    await page.waitForSelector('button[aria-label="Resposta manual"]');
+    const modeButton = await page.$('button[aria-label="Resposta manual"]');
     const modeBounds = await modeButton.boundingBox();
-    assert.ok(modeBounds.width <= 200 && modeBounds.height >= 44, `seletor compacto e tocável em ${width}`);
+    assert.ok(modeBounds.height >= 44, `botão Manual tocável em ${width}`);
+    assert.equal(await page.$eval('button[aria-label="Resposta manual"]', (element) => element.getAttribute("aria-pressed")), "true");
+    assert.match(await page.$eval('[role="group"][aria-label="Modo de resposta"]', (element) => element.parentElement.innerText), /Envio sempre manual/);
     await page.screenshot({ path: join(output, `manual-${unit}-${width}.png`), fullPage: true });
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 0, "modo manual não consulta o provedor");
-    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Resposta manual"))?.click());
-    await page.waitForFunction(() => document.body.innerText.includes("Você revisa antes de enviar"));
-    const menuBounds = await page.$eval('[role="menu"][aria-label="Selecionar modo de resposta"]', (element) => {
-      const bounds = element.getBoundingClientRect();
-      return { width: bounds.width, height: bounds.height, left: bounds.left, right: bounds.right, top: bounds.top };
-    });
-    assert.ok(menuBounds.width <= 320 && menuBounds.height <= 250, `menu compacto em ${width}`);
-    assert.ok(menuBounds.left >= 0 && menuBounds.right <= width && menuBounds.top >= 0, `menu inteiramente visível em ${width}`);
-    assert.match(await page.$eval('[role="menu"]', (element) => element.innerText), /Agente automático[\s\S]*Envio automático bloqueado/);
-    await page.screenshot({ path: join(output, `menu-${unit}-${width}.png`), fullPage: true });
-    await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.trim().startsWith("Sugestões"))?.click());
+    await page.click('button[aria-label="Sugestões da Alice"]');
     await page.waitForFunction(() => document.body.innerText.includes("Gerar sugestão"));
+    assert.equal(await page.$eval('button[aria-label="Sugestões da Alice"]', (element) => element.getAttribute("aria-pressed")), "true");
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 0, "ativar sugestões ainda não consulta o provedor");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    await page.screenshot({ path: join(output, `alice-${unit}-${width}.png`), fullPage: true });
     await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Gerar sugestão"))?.click());
     await page.waitForFunction(() => document.body.innerText.includes("Usar e editar"));
     await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Usar e editar"))?.click());
@@ -158,6 +153,10 @@ try {
     assert.equal(sendCalls.length, 0, "nenhuma sugestão é enviada ao cliente automaticamente");
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `inbox sem overflow em ${width}`);
     await page.screenshot({ path: join(output, `inbox-${unit}-${width}.png`), fullPage: true });
+    await page.click('button[aria-label="Resposta manual"]');
+    await page.waitForFunction(() => !document.body.innerText.includes("Gerar outra"));
+    assert.equal(await page.$eval('button[aria-label="Resposta manual"]', (element) => element.getAttribute("aria-pressed")), "true");
+    assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 2, "retornar ao modo manual não gera sugestão");
     results.push({ unit, width, errors, assistantCalls: assistantCalls.length, sendCalls: sendCalls.length });
     await page.close();
   }
