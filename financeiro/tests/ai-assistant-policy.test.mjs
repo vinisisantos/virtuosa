@@ -7,6 +7,7 @@ import {
   AI_ASSISTANT_MODEL,
   normalizeAiAssistantMode,
   parseAiAssistantConfig,
+  validateAiAssistantConfigInput,
 } from "#lib/ai-assistant/policy";
 import { isAliceUnit } from "#lib/ai-assistant/scope";
 import {
@@ -42,6 +43,23 @@ test("configuração nunca libera agente e limita orçamento", () => {
   assert.equal(config.agentEnabled, false);
   assert.equal(config.dailyBudgetMicroUsd, AI_ASSISTANT_DAILY_BUDGET_MICRO_USD);
   assert.equal(config.sharePrices, true);
+});
+
+test("alterar somente a ativação preserva as orientações comerciais existentes", () => {
+  const current = parseAiAssistantConfig(JSON.stringify({
+    enabled: false,
+    businessHours: "Sábado até 13h",
+    paymentPolicy: "Condições verificadas na avaliação",
+    customInstructions: "Pergunte primeiro a dor da cliente",
+    sharePrices: true,
+  }));
+  const updated = validateAiAssistantConfigInput({ enabled: true }, current);
+  assert.equal(updated.enabled, true);
+  assert.equal(updated.businessHours, current.businessHours);
+  assert.equal(updated.paymentPolicy, current.paymentPolicy);
+  assert.equal(updated.customInstructions, current.customInstructions);
+  assert.equal(updated.sharePrices, true);
+  assert.equal(updated.agentEnabled, false);
 });
 
 test("modo aceita apenas escrita manual ou sugestão revisável", () => {
