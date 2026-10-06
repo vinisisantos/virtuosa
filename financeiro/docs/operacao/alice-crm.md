@@ -27,6 +27,13 @@ Além disso, o proprietário precisa ativar Alice em `/crm/assistente-ia`. Essa 
 
 O build valida manifesto, unidades, exclusões e allowlist dos documentos. Ausência do token deixa a aplicação compilável, mas a base indisponível e sugestões ao vivo bloqueadas. Falha em ler ou validar a base aborta o build. A revisão do repositório está deliberadamente fixada; atualizar a base requer revisar e alterar a revisão fixada no sincronizador.
 
+## Publicação e autoria
+
+- Os commits de publicação devem ser atribuídos ao usuário GitHub `vinisisantos`, ligado ao projeto Vercel. Confirme o autor efetivo com `git var GIT_AUTHOR_IDENT` antes do commit; não reescreva o histórico para trocar autoria de commits antigos.
+- A integração deve ser validada em um build de Production sem atribuição de domínio antes de substituir o deploy ativo. Esse build usa as variáveis de Production e executa as migrações idempotentes previstas em `scripts/vercel-build.mjs`; inspecione os logs e não promova um build com erro.
+- Preview não possui `DATABASE_URL` nem a base privada da Alice. Portanto, builds de Preview não são um ambiente funcional de CRM e não devem receber as credenciais de Production para eliminar erros de compilação.
+- Um build concluído não ativa as sugestões para leads reais: mantenha os bloqueios de dados e de sugestões desligados até validar a elegibilidade de uso do plano ChatGPT neste aplicativo privado hospedado remotamente e concluir os testes fictícios de ponta a ponta.
+
 ## Dados, carga e validação
 
 - Por clique explícito, o CRM lê até 12 mensagens textuais recentes, monta um contexto sanitizado e faz no máximo uma chamada HTTPS assinada à ponte Hermes. Não existe polling nem fan-out por conversa. A cota é limitada a 300 solicitações por dia.
