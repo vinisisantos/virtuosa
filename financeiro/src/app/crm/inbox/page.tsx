@@ -1981,12 +1981,16 @@ function VoiceMessagePlayer({
   avatarContact,
   avatarFetchUrl,
   onPlaybackChange,
+  onRecoverMedia,
+  isRecoveringMedia,
 }: {
   msg: Message;
   isMe: boolean;
   avatarContact: Contact;
   avatarFetchUrl?: string;
   onPlaybackChange: (messageId: string, isPlaying: boolean) => void;
+  onRecoverMedia?: () => void;
+  isRecoveringMedia?: boolean;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -2005,6 +2009,8 @@ function VoiceMessagePlayer({
     [msg.id, msg.mediaUrl, msg.messageId],
   );
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+
+  useEffect(() => { setPlaybackError(null); }, [msg.mediaUrl]);
 
   useEffect(() => () => {
     onPlaybackChange(msg.id, false);
@@ -2124,7 +2130,15 @@ function VoiceMessagePlayer({
       </div>
 
       {playbackError && (
-        <p role="status" className="basis-full text-xs leading-relaxed text-inherit">{playbackError}</p>
+        <div role="status" className="basis-full text-xs leading-relaxed text-inherit">
+          <p>{playbackError}</p>
+          {onRecoverMedia && (
+            <button type="button" onClick={onRecoverMedia} disabled={isRecoveringMedia}
+              className="mt-1 min-h-10 rounded-md px-2 font-medium text-[#53bdeb] underline disabled:opacity-50">
+              {isRecoveringMedia ? "Recuperando áudio…" : "Recuperar áudio"}
+            </button>
+          )}
+        </div>
       )}
       <audio
         ref={audioRef}
@@ -2241,6 +2255,7 @@ function MessageBubble({
   audioAvatarContact,
   audioAvatarFetchUrl,
   onAudioPlaybackChange,
+  onRecoverMedia,
   quotedContactLabel,
   mediaInstanceId,
   domId,
@@ -2263,6 +2278,7 @@ function MessageBubble({
   audioAvatarContact: Contact;
   audioAvatarFetchUrl?: string;
   onAudioPlaybackChange: (messageId: string, isPlaying: boolean) => void;
+  onRecoverMedia: (message: Message) => Promise<void>;
   quotedContactLabel?: string | null;
   mediaInstanceId?: string;
   domId: string;
@@ -2273,6 +2289,10 @@ function MessageBubble({
   const [reactionPickerOpen, setReactionPickerOpen] = useState(false);
   const [loadDeferredMedia, setLoadDeferredMedia] = useState(false);
   const [deferredMediaFailed, setDeferredMediaFailed] = useState(false);
+  const [mediaLoadFailed, setMediaLoadFailed] = useState(false);
+  const [failedAlbumMediaIds, setFailedAlbumMediaIds] = useState<string[]>([]);
+  const [recoveringMediaId, setRecoveringMediaId] = useState<string | null>(null);
+  const [mediaRecoveryError, setMediaRecoveryError] = useState<string | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPopupRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -2293,6 +2313,20 @@ function MessageBubble({
     : null;
   const renderedMessage = deferredMediaUrl ? { ...msg, mediaUrl: deferredMediaUrl } : msg;
   const renderedMediaUrl = renderedMessage.mediaUrl;
+  useEffect(() => { setMediaLoadFailed(false); setMediaRecoveryError(null); }, [renderedMediaUrl]);
+  const recoverMedia = async (message: Message) => {
+    setRecoveringMediaId(message.id);
+    setMediaRecoveryError(null);
+    try {
+      await onRecoverMedia(message);
+      setMediaLoadFailed(false);
+      setFailedAlbumMediaIds((ids) => ids.filter((id) => id !== message.id));
+    } catch (error) {
+      setMediaRecoveryError(error instanceof Error ? error.message : "Não foi possível recuperar a mídia.");
+    } finally {
+      setRecoveringMediaId(null);
+    }
+  };
   const isMediaMessage = Boolean(
     renderedMediaUrl && (msg.type === "image" || renderedMediaUrl.startsWith("data:image/")),
   );
@@ -2311,6 +2345,8 @@ function MessageBubble({
     : null;
   const hasQuotedMessage = Boolean(msg.quotedMessageId && msg.status !== "deleted");
   const albumSources = albumImages?.flatMap((image) => image.mediaUrl ? [image.mediaUrl] : []) || [];
+  const albumMediaKey = albumImages?.map((image) => `${image.id}:${image.mediaUrl || ""}`).join("|") || "";
+  useEffect(() => { setFailedAlbumMediaIds([]); }, [albumMediaKey]);
   const visibleBody = isAlbumMessage
     ? albumImages?.map(visibleMediaBody).find(Boolean) || ""
     : visibleMediaBody(msg);
@@ -2690,6 +2726,10 @@ function MessageBubble({
                     className={`group/album relative min-h-0 min-w-0 overflow-hidden bg-black/20 ${spansRows ? "row-span-2" : ""}`}
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (failedAlbumMediaIds.includes(imageMessage.id) || !imageMessage.mediaUrl) {
+                        if (!imageMessage.fromMe) void recoverMedia(imageMessage);
+                        return;
+                      }
                       if (imageMessage.mediaUrl) {
                         onOpenImage(
                           imageMessage.mediaUrl,
@@ -2697,13 +2737,20 @@ function MessageBubble({
                         );
                       }
                     }}
-                    aria-label={`Abrir imagem ${imageIndex + 1} de ${albumImages.length}`}
+                    aria-label={`${failedAlbumMediaIds.includes(imageMessage.id) || !imageMessage.mediaUrl ? "Recuperar" : "Abrir"} imagem ${imageIndex + 1} de ${albumImages.length}`}
                   >
-                    <img
-                      src={imageMessage.mediaUrl || undefined}
-                      alt=""
-                      className="h-full w-full object-cover transition-transform duration-200 group-hover/album:scale-[1.015]"
-                    />
+                    {imageMessage.mediaUrl && !failedAlbumMediaIds.includes(imageMessage.id) ? (
+                      <img
+                        src={imageMessage.mediaUrl}
+                        alt=""
+                        onError={() => setFailedAlbumMediaIds((ids) => ids.includes(imageMessage.id) ? ids : [...ids, imageMessage.id])}
+                        className="h-full w-full object-cover transition-transform duration-200 group-hover/album:scale-[1.015]"
+                      />
+                    ) : (
+                      <span className="flex h-full items-center justify-center px-2 text-center text-xs text-white">
+                        {recoveringMediaId === imageMessage.id ? "Recuperando imagem…" : "Recuperar imagem"}
+                      </span>
+                    )}
                     {hiddenImageCount > 0 && (
                       <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-2xl font-medium text-white">
                         +{hiddenImageCount}
@@ -2716,10 +2763,11 @@ function MessageBubble({
           )}
 
           {/* Image — aceita type "image" ou data URLs de imagem */}
-          {!isAlbumMessage && isMediaMessage && renderedMediaUrl && (
+          {!isAlbumMessage && isMediaMessage && renderedMediaUrl && !mediaLoadFailed && (
             <img
               src={renderedMediaUrl}
               alt=""
+              onError={() => setMediaLoadFailed(true)}
               className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-full cursor-pointer rounded-[7px] object-contain"
               onClick={(e) => {
                 e.stopPropagation();
@@ -2727,6 +2775,15 @@ function MessageBubble({
               }}
             />
           )}
+
+          {!isAlbumMessage && !isMe && (msg.type === "image" || msg.type === "audio") &&
+            !msg.mediaPayloadOmitted && (!renderedMediaUrl || (msg.type === "image" && mediaLoadFailed)) && (
+              <button type="button" onClick={() => void recoverMedia(msg)} disabled={!!recoveringMediaId}
+                className="mb-1 flex min-h-11 max-w-full items-center rounded-lg bg-black/5 px-3 py-2 text-left text-xs text-[#007a62] underline disabled:opacity-50 dark:bg-white/10 dark:text-[#53bdeb]">
+                {recoveringMediaId === msg.id ? "Recuperando mídia…" : `Recuperar ${msg.type === "audio" ? "áudio" : "imagem"}`}
+              </button>
+            )}
+          {mediaRecoveryError && <p role="status" className="mb-1 max-w-[290px] text-xs text-red-600 dark:text-red-300">{mediaRecoveryError}</p>}
 
           {isVideoMessage && (
             <video
@@ -2750,6 +2807,8 @@ function MessageBubble({
               avatarContact={audioAvatarContact}
               avatarFetchUrl={audioAvatarFetchUrl}
               onPlaybackChange={onAudioPlaybackChange}
+              onRecoverMedia={!isMe ? () => void recoverMedia(msg) : undefined}
+              isRecoveringMedia={recoveringMediaId === msg.id}
             />
           )}
 
@@ -4436,6 +4495,29 @@ export default function InboxPage() {
       }
     });
     return request;
+  }, [inboxScopeKey, waParams]);
+
+  const recoverInboundMedia = useCallback(async (message: Message) => {
+    const scopeAtStart = inboxScopeKey;
+    const response = await fetch(`/api/whatsapp/media/recover?${waParams()}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: message.id }),
+    });
+    const data = await response.json().catch(() => ({})) as {
+      mediaUrl?: string;
+      mediaMimeType?: string | null;
+      mediaSizeBytes?: number | null;
+      error?: string;
+    };
+    if (!response.ok || !data.mediaUrl) throw new Error(data.error || "Não foi possível recuperar a mídia.");
+    if (scopeAtStart !== activeScopeRef.current || selectedConvRef.current?.id !== message.conversationId) return;
+    setMessages((current) => current.map((item) => item.id === message.id ? {
+      ...item,
+      mediaUrl: data.mediaUrl!,
+      mediaMimeType: data.mediaMimeType ?? item.mediaMimeType,
+      mediaSizeBytes: data.mediaSizeBytes ?? item.mediaSizeBytes,
+    } : item));
   }, [inboxScopeKey, waParams]);
 
   useEffect(() => {
@@ -7736,6 +7818,7 @@ export default function InboxPage() {
                         audioAvatarContact={audioAvatarContact}
                         audioAvatarFetchUrl={audioAvatarFetchUrl}
                         onAudioPlaybackChange={handleAudioPlaybackChange}
+                        onRecoverMedia={recoverInboundMedia}
                         quotedContactLabel={selectedConv.contact.name || selectedConv.contact.phone}
                         mediaInstanceId={selectedConv.instanceId || targetInstanceId || undefined}
                         domId={messageDomId(item.id)}

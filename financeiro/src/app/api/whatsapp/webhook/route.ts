@@ -72,6 +72,13 @@ import {
   type InboundPostProcessPayload,
 } from "@/lib/whatsapp/inbound-postprocess-queue";
 import { broadcastInboxRealtimeChange } from "@/lib/whatsapp/inbox-realtime";
+import { downloadEvolutionMediaDataUrl } from "@/lib/whatsapp/inbound-media";
+import { needsEvolutionMediaDownload } from "@/lib/whatsapp/inbound-media-policy";
+import {
+  isPrivateBlobUrl,
+  shouldDiscardTemporaryEvolutionMediaUrl,
+  storePrivateInboundMedia,
+} from "@/lib/whatsapp/media-storage";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -218,7 +225,8 @@ function extractMediaMetadata(msg: any, messageType: string) {
     isMedia: true,
     type: normalizedMediaMessageType(messageType),
     mediaUrl: directUrl || (directBase64
-      ? `data:${mediaMimeType || "application/octet-stream"};base64,${directBase64}`
+      ? directBase64.startsWith("data:") ? directBase64 :
+        `data:${mediaMimeType || "application/octet-stream"};base64,${directBase64}`
       : null),
     mediaFileName: cleanMediaFileName(
       mediaMessage?.fileName || mediaMessage?.filename || mediaMessage?.title ||
@@ -1099,6 +1107,9 @@ async function persistIncomingMessageFast(params: {
   receivedAt: Date;
 }) {
   const media = extractMediaMetadata(params.msg, params.messageType);
+  const initialMediaUrl = shouldDiscardTemporaryEvolutionMediaUrl(
+    getInstanceProvider(params.dbInstance), media.mediaUrl,
+  ) ? null : media.mediaUrl;
   const jobPayload = compactInboundPostProcessPayload({
     message: params.msg,
     webhook: params.payload || {},
@@ -1113,7 +1124,7 @@ async function persistIncomingMessageFast(params: {
         messageId: params.messageId,
         body: params.messageBody,
         type: media.type,
-        mediaUrl: media.mediaUrl,
+        mediaUrl: initialMediaUrl,
         mediaFileName: media.mediaFileName,
         mediaMimeType: media.mediaMimeType,
         mediaSizeBytes: media.mediaSizeBytes,
@@ -1213,7 +1224,7 @@ async function hydratePersistedMedia(params: {
   messageType: string;
 }) {
   const metadata = extractMediaMetadata(params.msg, params.messageType);
-  if (!metadata.isMedia) return;
+  if (!metadata.isMedia) return false;
 
   const existing = await prisma.whatsAppMessage.findUnique({
     where: {
@@ -1230,47 +1241,54 @@ async function hydratePersistedMedia(params: {
       mediaSizeBytes: true,
     },
   });
-  if (!existing) return;
+  if (!existing) return false;
 
   let mediaUrl = metadata.mediaUrl;
-  if (!existing.mediaUrl && !mediaUrl && getInstanceProvider(params.dbInstance) === "evolution") {
-    try {
-      const { url, apiKey } = getEvolutionConfig();
-      const response = await fetch(
-        `${url}/chat/getBase64FromMediaMessage/${params.dbInstance.name}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", apikey: apiKey },
-          body: JSON.stringify({ message: params.msg }),
-          signal: AbortSignal.timeout(15_000),
-        },
-      );
-      if (response.ok) {
-        const data = await response.json();
-        if (typeof data?.base64 === "string" && data.base64) {
-          mediaUrl = `data:${metadata.mediaMimeType || "application/octet-stream"};base64,${data.base64}`;
-        }
-      }
-    } catch (error) {
-      console.error("[WhatsApp Postprocess] Falha ao baixar mídia:", error);
-    }
+  const storedIsPrivate = isPrivateBlobUrl(existing.mediaUrl);
+  let storedNow = false;
+  if (storedIsPrivate) mediaUrl = null;
+  if (existing.mediaUrl?.startsWith("data:")) mediaUrl = existing.mediaUrl;
+
+  if (needsEvolutionMediaDownload(
+    getInstanceProvider(params.dbInstance), existing.mediaUrl, mediaUrl,
+  )) {
+    mediaUrl = await downloadEvolutionMediaDataUrl({
+      instanceName: params.dbInstance.name,
+      message: params.msg,
+      fallbackMimeType: metadata.mediaMimeType,
+    });
+  }
+
+  if (mediaUrl?.startsWith("data:")) {
+    const stored = await storePrivateInboundMedia({
+      conversationId: params.conversationId,
+      messageDbId: existing.id,
+      dataUrl: mediaUrl,
+      fallbackMimeType: metadata.mediaMimeType,
+    });
+    mediaUrl = stored.url;
+    metadata.mediaMimeType = stored.mimeType;
+    metadata.mediaSizeBytes = stored.sizeBytes;
+    storedNow = true;
   }
 
   const update = {
-    ...(!existing.mediaUrl && mediaUrl ? { mediaUrl } : {}),
+    ...(!storedIsPrivate && mediaUrl && mediaUrl !== existing.mediaUrl ? { mediaUrl } : {}),
     ...(!existing.mediaFileName && metadata.mediaFileName
       ? { mediaFileName: metadata.mediaFileName }
       : {}),
-    ...(!existing.mediaMimeType && metadata.mediaMimeType
+    ...(metadata.mediaMimeType && (storedNow || !existing.mediaMimeType) && metadata.mediaMimeType !== existing.mediaMimeType
       ? { mediaMimeType: metadata.mediaMimeType }
       : {}),
-    ...(!existing.mediaSizeBytes && metadata.mediaSizeBytes !== null
+    ...(metadata.mediaSizeBytes !== null && (storedNow || !existing.mediaSizeBytes) && metadata.mediaSizeBytes !== existing.mediaSizeBytes
       ? { mediaSizeBytes: metadata.mediaSizeBytes }
       : {}),
   };
   if (Object.keys(update).length > 0) {
     await prisma.whatsAppMessage.update({ where: { id: existing.id }, data: update });
+    return true;
   }
+  return false;
 }
 
 async function processInboundPostProcessJobs() {
@@ -1988,6 +2006,24 @@ async function processMessage(
     return;
   }
 
+  // A fila mantém o payload original criptografado para novas tentativas.
+  // Falha de download/Blob não pode concluir o job nem deixar mídia quebrada.
+  const mediaUpdated = await hydratePersistedMedia({
+    msg,
+    dbInstance,
+    conversationId: conversation.id,
+    messageId,
+    messageType: msgType,
+  });
+  if (mediaUpdated) {
+    await broadcastInboxRealtimeChange({
+      instanceId: dbInstance.id,
+      conversationId: conversation.id,
+      messageId,
+      kind: "message",
+    });
+  }
+
   if (adReply) {
     adTitle = adReply.title || adReply.body || adReply.description || "Campanha Desconhecida";
     adBody = adReply.body || null;
@@ -2562,16 +2598,6 @@ async function processMessage(
       });
     }
   }
-
-  await hydratePersistedMedia({
-    msg,
-    dbInstance,
-    conversationId: conversation.id,
-    messageId,
-    messageType: msgType,
-  }).catch((error) => {
-    console.error("[WhatsApp Postprocess] Falha ao hidratar mídia:", error);
-  });
 
   if (welcomeInput && welcomeReception?.isActive) {
     await enqueueWelcome(welcomeInput).catch((error) => {
