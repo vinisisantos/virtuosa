@@ -2293,6 +2293,7 @@ function MessageBubble({
   const [failedAlbumMediaIds, setFailedAlbumMediaIds] = useState<string[]>([]);
   const [recoveringMediaId, setRecoveringMediaId] = useState<string | null>(null);
   const [mediaRecoveryError, setMediaRecoveryError] = useState<string | null>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const menuPopupRef = useRef<HTMLDivElement>(null);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0 });
@@ -2313,7 +2314,10 @@ function MessageBubble({
     : null;
   const renderedMessage = deferredMediaUrl ? { ...msg, mediaUrl: deferredMediaUrl } : msg;
   const renderedMediaUrl = renderedMessage.mediaUrl;
-  useEffect(() => { setMediaLoadFailed(false); setMediaRecoveryError(null); }, [renderedMediaUrl]);
+  useEffect(() => {
+    setMediaLoadFailed(Boolean(imageRef.current?.complete && imageRef.current.naturalWidth === 0));
+    setMediaRecoveryError(null);
+  }, [renderedMediaUrl]);
   const recoverMedia = async (message: Message) => {
     setRecoveringMediaId(message.id);
     setMediaRecoveryError(null);
@@ -2765,6 +2769,7 @@ function MessageBubble({
           {/* Image — aceita type "image" ou data URLs de imagem */}
           {!isAlbumMessage && isMediaMessage && renderedMediaUrl && !mediaLoadFailed && (
             <img
+              ref={imageRef}
               src={renderedMediaUrl}
               alt=""
               onError={() => setMediaLoadFailed(true)}
