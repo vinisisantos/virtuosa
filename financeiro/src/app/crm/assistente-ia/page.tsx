@@ -32,6 +32,7 @@ type SettingsResponse = {
     privateKnowledge: boolean;
     hermesBridgeConfigured: boolean;
     ownerConfigured: boolean;
+    secondaryUserConfigured: boolean;
     conversationDataApproved: boolean;
     liveSuggestionsEnabled: boolean;
     blockers: string[];
@@ -147,7 +148,7 @@ export default function AiAssistantSettingsPage() {
               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                 <Status ok={data.runtime.privateKnowledge} label="Base privada fixada e carregada no servidor" />
                 <Status ok={data.runtime.hermesBridgeConfigured} label="Ponte privada do Hermes configurada" />
-                <Status ok={data.runtime.ownerConfigured} label="Acesso exclusivo do proprietário configurado" />
+                <Status ok={data.runtime.ownerConfigured && data.runtime.secondaryUserConfigured} label="Acesso limitado aos dois logins autorizados" />
                 <Status ok={data.runtime.conversationDataApproved} label="Uso de trecho sanitizado aprovado" />
                 <Status ok={data.runtime.liveSuggestionsEnabled} label="Sugestões ao vivo habilitadas" />
               </div>

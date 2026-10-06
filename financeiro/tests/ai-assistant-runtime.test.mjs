@@ -6,6 +6,7 @@ const GATE_KEYS = [
   "ALICE_HERMES_BRIDGE_URL",
   "ALICE_HERMES_BRIDGE_SECRET",
   "ALICE_OWNER_USER_ID",
+  "ALICE_SECONDARY_USER_ID",
   "ALICE_CONVERSATION_DATA_APPROVED",
   "ALICE_ENABLE_LIVE_SUGGESTIONS",
 ];
@@ -19,6 +20,7 @@ test("Alice falha fechada sem base, credenciais e autorização explícita", () 
     assert.equal(status.privateKnowledge, false);
     assert.equal(status.hermesBridgeConfigured, false);
     assert.equal(status.ownerConfigured, false);
+    assert.equal(status.secondaryUserConfigured, false);
     assert.equal(status.conversationDataApproved, false);
     assert.equal(status.liveSuggestionsEnabled, false);
     assert.throws(() => requireAliceLiveRuntime(), /não está habilitada/);
@@ -27,5 +29,22 @@ test("Alice falha fechada sem base, credenciais e autorização explícita", () 
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
     }
+  }
+});
+
+test("segundo login deve estar presente e ser distinto do proprietário", () => {
+  const previousOwner = process.env.ALICE_OWNER_USER_ID;
+  const previousSecondary = process.env.ALICE_SECONDARY_USER_ID;
+  try {
+    process.env.ALICE_OWNER_USER_ID = "vinicius";
+    process.env.ALICE_SECONDARY_USER_ID = "vinicius";
+    assert.equal(aliceRuntimeStatus().secondaryUserConfigured, false);
+    process.env.ALICE_SECONDARY_USER_ID = "claudenice";
+    assert.equal(aliceRuntimeStatus().secondaryUserConfigured, true);
+  } finally {
+    if (previousOwner === undefined) delete process.env.ALICE_OWNER_USER_ID;
+    else process.env.ALICE_OWNER_USER_ID = previousOwner;
+    if (previousSecondary === undefined) delete process.env.ALICE_SECONDARY_USER_ID;
+    else process.env.ALICE_SECONDARY_USER_ID = previousSecondary;
   }
 });

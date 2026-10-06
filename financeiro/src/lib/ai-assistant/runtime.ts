@@ -2,10 +2,13 @@ import { ALICE_KNOWLEDGE } from "@/generated/alice-knowledge";
 import { AiAssistantError } from "@/lib/ai-assistant/policy";
 
 export function aliceRuntimeStatus() {
+  const ownerId = process.env.ALICE_OWNER_USER_ID?.trim();
+  const secondaryId = process.env.ALICE_SECONDARY_USER_ID?.trim();
   const checks = {
     privateKnowledge: ALICE_KNOWLEDGE.available,
     hermesBridgeConfigured: Boolean(process.env.ALICE_HERMES_BRIDGE_URL?.trim() && (process.env.ALICE_HERMES_BRIDGE_SECRET?.trim().length || 0) >= 32),
-    ownerConfigured: Boolean(process.env.ALICE_OWNER_USER_ID?.trim()),
+    ownerConfigured: Boolean(ownerId),
+    secondaryUserConfigured: Boolean(secondaryId && secondaryId !== ownerId),
     conversationDataApproved: process.env.ALICE_CONVERSATION_DATA_APPROVED === "true",
     liveSuggestionsEnabled: process.env.ALICE_ENABLE_LIVE_SUGGESTIONS === "true",
   };
@@ -13,6 +16,7 @@ export function aliceRuntimeStatus() {
     ...(!checks.privateKnowledge ? ["Base privada da Alice ainda não foi conectada ao build."] : []),
     ...(!checks.hermesBridgeConfigured ? ["Ponte privada do Hermes não configurada."] : []),
     ...(!checks.ownerConfigured ? ["Usuário proprietário da Alice não configurado."] : []),
+    ...(!checks.secondaryUserConfigured ? ["Segundo login autorizado da Alice não configurado."] : []),
     ...(!checks.conversationDataApproved ? ["Uso de trechos de conversa no provedor externo não foi aprovado."] : []),
     ...(!checks.liveSuggestionsEnabled ? ["Sugestões ao vivo estão desativadas por segurança."] : []),
   ];

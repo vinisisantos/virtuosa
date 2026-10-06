@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromHeaders } from "@/lib/auth";
-import { requireAliceOwner } from "@/lib/ai-assistant/access";
+import { requireAliceAuthorizedUser } from "@/lib/ai-assistant/access";
 import { prisma } from "@/lib/db";
 import { loadAccessibleAliceConversation } from "@/lib/ai-assistant/context";
 import { generateConversationSuggestion } from "@/lib/ai-assistant/generate";
@@ -15,7 +15,7 @@ export const maxDuration = 60;
 function requireUser(req: NextRequest) {
   const user = getUserFromHeaders(req);
   if (!user) throw new AiAssistantError("Não autorizado", 401);
-  requireAliceOwner(user.userId);
+  requireAliceAuthorizedUser(user.userId);
   return user;
 }
 

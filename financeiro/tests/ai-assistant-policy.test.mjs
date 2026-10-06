@@ -16,7 +16,7 @@ import {
   sanitizeAiAssistantText,
 } from "#lib/ai-assistant/privacy";
 import { buildAliceAssistantRequest } from "#lib/ai-assistant/provider";
-import { canUseAliceSuggestions, requireAliceOwner } from "#lib/ai-assistant/access";
+import { canUseAliceSuggestions, requireAliceAuthorizedUser } from "#lib/ai-assistant/access";
 import { aliceLocalHandoffReply, classifyAliceHandoff } from "#lib/ai-assistant/safety";
 
 test("Alice começa pausada, limitada às unidades aprovadas e sem modo agente", () => {
@@ -101,18 +101,24 @@ test("contato identificado apenas por número não deixa nome nem placeholder", 
   );
 });
 
-test("só o usuário explicitamente configurado pode usar Alice", () => {
+test("somente os dois IDs configurados podem usar Alice", () => {
   const previous = process.env.ALICE_OWNER_USER_ID;
+  const previousSecondary = process.env.ALICE_SECONDARY_USER_ID;
   try {
     delete process.env.ALICE_OWNER_USER_ID;
+    process.env.ALICE_SECONDARY_USER_ID = "claudenice";
     assert.equal(canUseAliceSuggestions("vinicius"), false);
-    assert.throws(() => requireAliceOwner("vinicius"), /proprietário/);
+    assert.equal(canUseAliceSuggestions("claudenice"), false);
+    assert.throws(() => requireAliceAuthorizedUser("vinicius"), /usuários autorizados/);
     process.env.ALICE_OWNER_USER_ID = "vinicius";
     assert.equal(canUseAliceSuggestions("vinicius"), true);
+    assert.equal(canUseAliceSuggestions("claudenice"), true);
     assert.equal(canUseAliceSuggestions("outro"), false);
   } finally {
     if (previous === undefined) delete process.env.ALICE_OWNER_USER_ID;
     else process.env.ALICE_OWNER_USER_ID = previous;
+    if (previousSecondary === undefined) delete process.env.ALICE_SECONDARY_USER_ID;
+    else process.env.ALICE_SECONDARY_USER_ID = previousSecondary;
   }
 });
 

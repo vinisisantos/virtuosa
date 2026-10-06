@@ -2,7 +2,7 @@
 
 ## Escopo e segurança
 
-- A integração é de sugestão assistida: somente o proprietário configurado solicita a geração e revisa/edita antes de decidir se envia.
+- A integração é de sugestão assistida: somente os dois logins configurados de Vinicius e Claudenice solicitam a geração e revisam/editam antes de decidir se enviam.
 - O envio automático, o agendamento automático e o modo agente permanecem bloqueados.
 - A base é lida do repositório privado `vinisisantos/virtuosa-agent`, em commit fixo, apenas durante o build. As conversas não fazem chamadas ao GitHub.
 - A seleção por conversa preserva integralmente as instruções centrais, prioriza a ficha da campanha e os preços antes de referências genéricas e limita o contexto documental a 36 mil caracteres. Se faltar ou não couber uma instrução essencial, a geração falha fechada. Isso evita que uma pergunta sobre uma campanha receba apenas regras gerais ou uma ficha de outro procedimento.
@@ -16,14 +16,15 @@ Não inclua valores secretos em código, GitHub, logs ou documentação. Cadastr
 
 1. `ALICE_CONTENT_READ_TOKEN`: fine-grained token somente de leitura (`Contents: read`), limitado ao repositório privado `vinisisantos/virtuosa-agent`.
 2. `ALICE_OWNER_USER_ID`: ID exato do usuário Vinicius; sem ele, as rotas da Alice retornam 403.
-3. `ALICE_SBC_HANDOFF_USER_ID`: ID exato da comercial Gabriela, conferido no cadastro ativo de SBC. Sem ele, o encaminhamento recai apenas na equipe já autorizada na instância.
-4. `ALICE_HERMES_BRIDGE_URL`: URL HTTPS da ponte privada na VM, terminada em `/v1/suggest`.
-5. `ALICE_HERMES_BRIDGE_SECRET`: segredo aleatório de pelo menos 32 caracteres, idêntico no CRM e na VM, armazenado fora dos repositórios.
-6. `ALICE_CONVERSATION_DATA_APPROVED=true`: somente após autorização e validação de minimização dos trechos enviados ao Hermes.
-7. `ALICE_ENABLE_LIVE_SUGGESTIONS=true`: habilita sugestões reais somente após autenticação, HTTPS e testes de ponta a ponta.
-8. `ALICE_RETIRE_DEEPSEEK_AFTER_CUTOVER=confirmed`: definir somente no corte validado; depois do deploy funcional, remover o cron legado manualmente. Definir antes faz o endpoint retornar 410 sem ativar a Alice.
+3. `ALICE_SECONDARY_USER_ID`: ID exato da conta Claudenice, autorizada por Vinicius. Deve ser diferente do proprietário; sem os dois IDs, a geração falha fechada. Não use cargo ou lista aberta de administradores.
+4. `ALICE_SBC_HANDOFF_USER_ID`: ID exato da comercial Gabriela, conferido no cadastro ativo de SBC. Sem ele, o encaminhamento recai apenas na equipe já autorizada na instância.
+5. `ALICE_HERMES_BRIDGE_URL`: URL HTTPS da ponte privada na VM, terminada em `/v1/suggest`.
+6. `ALICE_HERMES_BRIDGE_SECRET`: segredo aleatório de pelo menos 32 caracteres, idêntico no CRM e na VM, armazenado fora dos repositórios.
+7. `ALICE_CONVERSATION_DATA_APPROVED=true`: somente após autorização e validação de minimização dos trechos enviados ao Hermes.
+8. `ALICE_ENABLE_LIVE_SUGGESTIONS=true`: habilita sugestões reais somente após autenticação, HTTPS e testes de ponta a ponta.
+9. `ALICE_RETIRE_DEEPSEEK_AFTER_CUTOVER=confirmed`: definir somente no corte validado; depois do deploy funcional, remover o cron legado manualmente. Definir antes faz o endpoint retornar 410 sem ativar a Alice.
 
-Além disso, o proprietário precisa ativar Alice em `/crm/assistente-ia`. Essa chave não substitui os bloqueios do servidor. Sem qualquer pré-requisito, o endpoint falha fechado e não chama o modelo. A VM não recebe credenciais de WhatsApp nem acesso ao banco.
+Além disso, um dos dois logins autorizados precisa ativar Alice em `/crm/assistente-ia`. Essa chave não substitui os bloqueios do servidor. Sem qualquer pré-requisito, o endpoint falha fechado e não chama o modelo. A VM não recebe credenciais de WhatsApp nem acesso ao banco.
 
 O build valida manifesto, unidades, exclusões e allowlist dos documentos. Ausência do token deixa a aplicação compilável, mas a base indisponível e sugestões ao vivo bloqueadas. Falha em ler ou validar a base aborta o build. A revisão do repositório está deliberadamente fixada; atualizar a base requer revisar e alterar a revisão fixada no sincronizador.
 
@@ -42,5 +43,5 @@ O build valida manifesto, unidades, exclusões e allowlist dos documentos. Ausê
 - A ponte usa uma sessão one-shot no Hermes, rejeita eventos de ferramenta, limita uma inferência simultânea e tenta excluir a sessão após o resultado. Isso não é garantia de retenção zero nos sistemas externos; proteger disco, logs e backups da VM.
 - As únicas escritas de uma sugestão são os registros de orçamento/operação, rascunho e, quando necessário, notificação interna/atribuição autorizada. Nenhuma rota de geração chama a API de envio do WhatsApp.
 - Para validar: `npm test`, `npx tsc --noEmit`, build, teste visual `node --experimental-strip-types --import ./tests/register-paths.mjs tests/ai-assistant-ui.mjs` com as APIs interceptadas e rede externa bloqueada. Testar 390, 430 e 1440 px nas unidades SBC e Osasco; conferir o bloqueio de credenciais/base, modo manual, geração explícita, revisão e encaminhamento.
-- Antes de ativar com dados reais, testar CRM → HTTPS/HMAC → Hermes (`openai-codex`, `gpt-6-luna`) somente com conversa fictícia, verificar acesso exclusivo do proprietário e observar que gerar, inserir ou descartar rascunho não chama `/api/whatsapp/send`.
+- Antes de ativar com dados reais, testar CRM → HTTPS/HMAC → Hermes (`openai-codex`, `gpt-6-luna`) somente com conversa fictícia, verificar que apenas os dois logins autorizados têm acesso e observar que gerar, inserir ou descartar rascunho não chama `/api/whatsapp/send`.
 - Correções dos documentos da Alice exigem publicar uma nova revisão no repositório privado, revisar a allowlist e o commit fixo no sincronizador do CRM e reconstruir o aplicativo. O Hermes da VM não deve autoeditar a base oficial.
