@@ -107,6 +107,10 @@ try {
     await page.waitForSelector(`[data-conversation-id="conversation-${unit.toLowerCase()}"]`);
     await page.click(`[data-conversation-id="conversation-${unit.toLowerCase()}"]`);
     await page.waitForFunction(() => document.body.innerText.includes("Resposta manual"));
+    const modeButton = await page.$('button[aria-label="Modo de resposta: Resposta manual"]');
+    const modeBounds = await modeButton.boundingBox();
+    assert.ok(modeBounds.width <= 200 && modeBounds.height >= 44, `seletor compacto e tocável em ${width}`);
+    await page.screenshot({ path: join(output, `manual-${unit}-${width}.png`), fullPage: true });
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 0, "modo manual não consulta o provedor");
     await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Resposta manual"))?.click());
     await page.waitForFunction(() => document.body.innerText.includes("Ela prepara; você revisa, edita e decide se envia."));

@@ -270,9 +270,7 @@ export function AiAssistantComposer({
     <div className="relative mx-auto mb-1 w-full max-w-3xl">
       <div className="relative w-fit max-w-full">
         <div
-          className={`${styles.modeControlShell} ${
-            mode === "suggestions" ? styles.aiModeActive : styles.manualMode
-          } ${changingMode ? styles.processing : ""}`}
+          className={`${styles.modeControlShell} ${mode === "suggestions" ? styles.aiModeActive : ""} ${changingMode ? styles.processing : ""}`}
         >
           <button
             type="button"
@@ -285,16 +283,11 @@ export function AiAssistantComposer({
             <span className={`${styles.modeIcon} ${mode === "suggestions" ? styles.aiIcon : ""}`}>
               {mode === "suggestions" ? <Sparkles className="h-4 w-4" /> : <Pencil className="h-4 w-4" />}
             </span>
-            <span className="min-w-0 flex-1 text-left">
-              <span className={styles.modeLabel}>
-                {mode === "suggestions" ? "Sugestões da Alice" : "Resposta manual"}
-              </span>
-              <span className={styles.modeCaption}>
-                {mode === "suggestions" ? "Alice · revisão humana" : "Você escreve e envia"}
-              </span>
+            <span className={styles.modeLabel}>
+              {mode === "suggestions" ? "Sugestões da Alice" : "Resposta manual"}
             </span>
             <span className={styles.modeChevron}>
-              {changingMode ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronDown className="h-4 w-4" />}
+              {changingMode ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </span>
           </button>
         </div>
