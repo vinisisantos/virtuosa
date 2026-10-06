@@ -8,7 +8,7 @@
 - A seleção por conversa preserva integralmente as instruções centrais, prioriza a ficha da campanha e os preços antes de referências genéricas e limita o contexto documental a 36 mil caracteres. Se faltar ou não couber uma instrução essencial, a geração falha fechada. Isso evita que uma pergunta sobre uma campanha receba apenas regras gerais ou uma ficha de outro procedimento.
 - Só SBC e Osasco estão no escopo. Mamas e Preenchimento Facial continuam excluídos; conteúdo clínico/fora do escopo gera texto local de encaminhamento.
 - Em SBC, a Gabriela recebe notificação e acesso somente à conversa atribuída a ela, por uma tela isolada; ela não se torna membro da instância. Osasco encaminha à equipe local já autorizada na instância.
-- O aprendizado antigo fica preservado como arquivo, mas o observador automático deixa de processar conversas.
+- O aprendizado antigo e seu observador horário permanecem ativos durante a homologação. Somente no corte final, depois da Alice validada, `ALICE_RETIRE_DEEPSEEK_AFTER_CUTOVER=confirmed` faz o endpoint legado responder 410. Após confirmar que a nova versão está publicada e funcional, execute `scripts/disable-ai-learning-cron.mjs` com conexão administrativa para remover o agendamento. O build nunca o remove antecipadamente; os dados históricos permanecem intactos.
 
 ## Configuração necessária para ativar
 
@@ -21,6 +21,7 @@ Não inclua valores secretos em código, GitHub, logs ou documentação. Cadastr
 5. `ALICE_HERMES_BRIDGE_SECRET`: segredo aleatório de pelo menos 32 caracteres, idêntico no CRM e na VM, armazenado fora dos repositórios.
 6. `ALICE_CONVERSATION_DATA_APPROVED=true`: somente após autorização e validação de minimização dos trechos enviados ao Hermes.
 7. `ALICE_ENABLE_LIVE_SUGGESTIONS=true`: habilita sugestões reais somente após autenticação, HTTPS e testes de ponta a ponta.
+8. `ALICE_RETIRE_DEEPSEEK_AFTER_CUTOVER=confirmed`: definir somente no corte validado; depois do deploy funcional, remover o cron legado manualmente. Definir antes faz o endpoint retornar 410 sem ativar a Alice.
 
 Além disso, o proprietário precisa ativar Alice em `/crm/assistente-ia`. Essa chave não substitui os bloqueios do servidor. Sem qualquer pré-requisito, o endpoint falha fechado e não chama o modelo. A VM não recebe credenciais de WhatsApp nem acesso ao banco.
 

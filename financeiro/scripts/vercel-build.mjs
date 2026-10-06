@@ -72,9 +72,11 @@ if (process.env.VERCEL_ENV === "production") {
   run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-campaign-welcome-cron.mjs"], {
     ...process.env, DATABASE_URL: migrationUrl,
   });
-  run(process.execPath, ["--experimental-strip-types", "scripts/disable-ai-learning-cron.mjs"], {
-    ...process.env, DATABASE_URL: migrationUrl,
-  });
+  if (process.env.ALICE_RETIRE_DEEPSEEK_AFTER_CUTOVER !== "confirmed") {
+    run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-ai-learning-cron.mjs"], {
+      ...process.env, DATABASE_URL: migrationUrl,
+    });
+  }
   run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-whatsapp-inbound-postprocess-cron.mjs"], {
     ...process.env, DATABASE_URL: migrationUrl,
   });

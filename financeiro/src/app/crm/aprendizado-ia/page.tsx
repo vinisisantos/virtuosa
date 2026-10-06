@@ -338,7 +338,7 @@ export default function AiLearningPage() {
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground"><BrainCircuit className="h-5 w-5" /></span>
               <div>
                 <h2 className="text-lg font-bold text-foreground sm:text-xl">Arquivo legado de aprendizado · SBC</h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">O observador automático antigo foi desativado. Os registros ficam preservados para consulta, mas não são usados pela Alice; a base ativa dela vem do repositório privado virtuosa-agent.</p>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">O observador antigo continua durante a homologação e será desligado somente no corte para a Alice. Os registros permanecem preservados para consulta, mas não são usados pela Alice; a base ativa dela vem do repositório privado virtuosa-agent.</p>
               </div>
             </div>
             <span className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-2 text-xs font-bold ${enabled ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"}`}>
