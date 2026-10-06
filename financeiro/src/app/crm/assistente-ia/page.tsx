@@ -153,14 +153,14 @@ export default function AiAssistantSettingsPage() {
               </div>
               {!data.runtime.ready && <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><span>{data.runtime.blockers.join(" ")}</span></div>}
               <div className="mt-4 rounded-xl border border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
-                Repositório fonte: <span className="font-semibold">{data.knowledge.repository}</span>. A revisão é fixada no build; arquivos da Alice não são enviados ao navegador nem buscados a cada conversa. A ponte Hermes recebe somente o trecho recente sanitizado e a base necessária; identificadores pessoais são removidos. Conteúdo clínico detectado é tratado localmente e encaminhado sem chamar o modelo.
+                Repositório fonte: <span className="font-semibold">{data.knowledge.repository}</span>. A revisão é fixada no build; arquivos da Alice não são enviados ao navegador nem buscados a cada conversa. A ponte Hermes recebe somente o trecho recente sanitizado e a base necessária. Telefones, e-mails e nomes detectados são removidos, mas o texto livre ainda pode conter dados pessoais. Conteúdo clínico detectado é tratado localmente e encaminhado sem chamar o modelo.
               </div>
             </section>
 
             <section className="rounded-2xl border border-border bg-card p-4 sm:p-6">
               <h2 className="font-bold">Escopo e encaminhamento humano</h2>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-border bg-background p-4"><p className="text-sm font-semibold">Unidades habilitadas</p><p className="mt-1 text-sm text-muted-foreground">{data.knowledge.activeUnits.join(" · ")}</p><p className="mt-3 text-sm font-semibold">SBC</p><p className="mt-1 text-sm text-muted-foreground">Encaminha para Gabriela somente quando ela já tem acesso àquela caixa.</p></div>
+                <div className="rounded-xl border border-border bg-background p-4"><p className="text-sm font-semibold">Unidades habilitadas</p><p className="mt-1 text-sm text-muted-foreground">{data.knowledge.activeUnits.join(" · ")}</p><p className="mt-3 text-sm font-semibold">SBC</p><p className="mt-1 text-sm text-muted-foreground">Encaminha para Gabriela com acesso somente à conversa atribuída, sem liberar a caixa inteira.</p></div>
                 <div className="rounded-xl border border-border bg-background p-4"><p className="text-sm font-semibold">Osasco</p><p className="mt-1 text-sm text-muted-foreground">Notifica a equipe local que já tem acesso à instância; nenhuma permissão nova é concedida.</p><p className="mt-3 text-sm font-semibold">Fora do escopo ativo</p><p className="mt-1 text-sm text-muted-foreground">{data.knowledge.excludedTopics.join(" · ")}</p></div>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">Notificações são internas. A Alice nunca envia mensagem de WhatsApp nem agenda automaticamente.</p>
