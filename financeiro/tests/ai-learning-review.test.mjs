@@ -29,7 +29,8 @@ test("tela mantém o aprendizado antigo fora da base da Alice até o corte contr
   const build = read("scripts/vercel-build.mjs");
   assert.match(build, /ALICE_RETIRE_DEEPSEEK_AFTER_CUTOVER !== "confirmed"/);
   assert.match(build, /scripts\/setup-ai-learning-cron\.mjs/);
-  assert.doesNotMatch(build, /scripts\/disable-ai-learning-cron\.mjs/);
+  assert.match(build, /ALICE_RETIRE_DEEPSEEK_AFTER_CUTOVER === "confirmed"/);
+  assert.ok(build.indexOf('run("npm", ["run", "build"])') < build.indexOf("scripts/disable-ai-learning-cron.mjs"));
   assert.match(read("scripts/disable-ai-learning-cron.mjs"), /cron\.unschedule/);
 });
 

@@ -89,3 +89,10 @@ if (process.env.VERCEL_ENV === "production") {
 }
 
 run("npm", ["run", "build"]);
+
+if (process.env.VERCEL_ENV === "production" && process.env.ALICE_RETIRE_DEEPSEEK_AFTER_CUTOVER === "confirmed") {
+  run(process.execPath, ["--experimental-strip-types", "scripts/disable-ai-learning-cron.mjs"], {
+    ...process.env,
+    DATABASE_URL: migrationDatabaseUrl(process.env.DATABASE_URL),
+  });
+}
