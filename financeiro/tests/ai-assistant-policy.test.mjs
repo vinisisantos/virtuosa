@@ -112,7 +112,10 @@ test("requisição da Alice usa Luna, schema de saída e sem IDs do CRM", () => 
   assert.equal(request.reasoning, "xhigh");
   assert.equal(request.responseSchema.type, "object");
   assert.equal(request.store, false);
-  assert.match(request.instructions, /nunca diga que é IA/i);
+  assert.match(request.instructions, /na primeira resposta, apresente-se como Alice/i);
+  assert.match(request.instructions, /sem anunciar espontaneamente que é IA/i);
+  assert.match(request.instructions, /se a pessoa perguntar diretamente, explique com transparência que é assistente virtual/i);
+  assert.doesNotMatch(request.instructions, /nunca exponha que não é humana/i);
   assert.match(request.instructions, /<base_privada_aprovada>/);
   const serializedInput = JSON.stringify(request.input);
   assert.equal(serializedInput.includes("message-private-id"), false);
