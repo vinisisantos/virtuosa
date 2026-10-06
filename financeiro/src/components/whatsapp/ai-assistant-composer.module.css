@@ -70,6 +70,140 @@
   border-color: var(--primary);
 }
 
+.modeMenu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(320px, 70dvh);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.22);
+}
+
+.modeMenuHeader {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding: 0 8px 0 14px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.modeMenuClose {
+  display: inline-flex;
+  height: 36px;
+  width: 36px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  color: var(--muted-foreground);
+}
+
+.modeMenuClose:hover,
+.modeMenuClose:focus-visible {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.modeMenuOptions {
+  padding: 5px;
+}
+
+.modeMenuOption {
+  display: flex;
+  min-height: 54px;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  border-radius: 9px;
+  padding: 6px 10px;
+  text-align: left;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+button.modeMenuOption:hover,
+button.modeMenuOption:focus-visible {
+  background: var(--muted);
+}
+
+.modeMenuOptionSelected,
+button.modeMenuOptionSelected:hover {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.modeMenuOptionIcon,
+.modeMenuOptionCheck,
+.modeMenuOptionLock {
+  height: 17px;
+  width: 17px;
+  flex: none;
+}
+
+.modeMenuOptionIcon {
+  color: var(--muted-foreground);
+}
+
+.modeMenuOptionSelected .modeMenuOptionIcon,
+.modeMenuOptionCheck {
+  color: var(--primary);
+}
+
+.modeMenuOptionCopy {
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+.modeMenuOptionTitle,
+.modeMenuOptionDescription {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modeMenuOptionTitle {
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 17px;
+}
+
+.modeMenuOptionDescription {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.modeMenuOptionDisabled {
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  color: var(--muted-foreground);
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.modeMenuOptionDisabled .modeMenuOptionTitle {
+  color: var(--muted-foreground);
+}
+
+.modeMenuClose:focus-visible,
+.modeMenuOption:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
 .assistantSurface {
   margin-top: 7px;
   border-radius: 16px;

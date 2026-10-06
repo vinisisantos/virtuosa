@@ -113,7 +113,15 @@ try {
     await page.screenshot({ path: join(output, `manual-${unit}-${width}.png`), fullPage: true });
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 0, "modo manual não consulta o provedor");
     await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Resposta manual"))?.click());
-    await page.waitForFunction(() => document.body.innerText.includes("Ela prepara; você revisa, edita e decide se envia."));
+    await page.waitForFunction(() => document.body.innerText.includes("Você revisa antes de enviar"));
+    const menuBounds = await page.$eval('[role="menu"][aria-label="Selecionar modo de resposta"]', (element) => {
+      const bounds = element.getBoundingClientRect();
+      return { width: bounds.width, height: bounds.height, left: bounds.left, right: bounds.right, top: bounds.top };
+    });
+    assert.ok(menuBounds.width <= 320 && menuBounds.height <= 250, `menu compacto em ${width}`);
+    assert.ok(menuBounds.left >= 0 && menuBounds.right <= width && menuBounds.top >= 0, `menu inteiramente visível em ${width}`);
+    assert.match(await page.$eval('[role="menu"]', (element) => element.innerText), /Agente automático[\s\S]*Envio automático bloqueado/);
+    await page.screenshot({ path: join(output, `menu-${unit}-${width}.png`), fullPage: true });
     await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.trim().startsWith("Sugestões"))?.click());
     await page.waitForFunction(() => document.body.innerText.includes("Gerar sugestão"));
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 0, "ativar sugestões ainda não consulta o provedor");

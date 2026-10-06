@@ -294,69 +294,54 @@ export function AiAssistantComposer({
 
         {menuOpen && (
           <div
-            className="absolute bottom-full left-0 z-40 mb-2 w-[min(calc(100vw-2rem),400px)] overflow-hidden rounded-2xl border border-border bg-popover p-2.5 text-popover-foreground shadow-2xl"
+            className={styles.modeMenu}
             role="menu"
             aria-label="Selecionar modo de resposta"
           >
-          <div className="flex items-center justify-between px-2 pb-2 pt-1">
-            <div>
-              <p className="text-sm font-semibold text-foreground">Como deseja responder?</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">Você pode trocar de modo a qualquer momento.</p>
+            <div className={styles.modeMenuHeader}>
+              <span>Modo de resposta</span>
+              <button type="button" onClick={() => setMenuOpen(false)} className={styles.modeMenuClose} aria-label="Fechar">
+                <X className="h-4 w-4" />
+              </button>
             </div>
-            <button type="button" onClick={() => setMenuOpen(false)} className="rounded-full p-2 hover:bg-muted" aria-label="Fechar">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <button
-            type="button"
-            onClick={() => void changeMode("manual")}
-            className={`flex min-h-16 w-full items-center gap-3 rounded-xl border px-3 text-left transition-colors ${
-              mode === "manual"
-                ? "border-foreground/10 bg-muted/80"
-                : "border-transparent hover:border-border hover:bg-muted/60"
-            }`}
-            role="menuitemradio"
-            aria-checked={mode === "manual"}
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background text-foreground shadow-sm ring-1 ring-border">
-              <Pencil className="h-4 w-4" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">Resposta manual</span>
-              <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">Você escreve e envia sem assistência da Alice.</span>
-            </span>
-            {mode === "manual" && <Check className="h-5 w-5 shrink-0 text-emerald-600" />}
-          </button>
-          <button
-            type="button"
-            onClick={() => void changeMode("suggestions")}
-            className={`mt-1 flex min-h-16 w-full items-center gap-3 rounded-xl border px-3 text-left transition-colors ${
-              mode === "suggestions"
-                ? "border-emerald-500/25 bg-emerald-500/[0.08]"
-                : "border-transparent hover:border-emerald-500/20 hover:bg-emerald-500/[0.06]"
-            }`}
-            role="menuitemradio"
-            aria-checked={mode === "suggestions"}
-          >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 shadow-sm ring-1 ring-emerald-500/20 dark:text-emerald-300">
-              <Sparkles className="h-4 w-4" />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-sm font-semibold">Sugestões da Alice</span>
-              <span className="mt-0.5 block text-xs leading-4 text-muted-foreground">Ela prepara; você revisa, edita e decide se envia.</span>
-            </span>
-            {mode === "suggestions" && <Check className="h-5 w-5 shrink-0 text-emerald-600" />}
-          </button>
-          <div className="mt-1 flex min-h-16 items-center gap-3 rounded-xl border border-transparent px-3 opacity-55" aria-disabled="true">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted ring-1 ring-border">
-              <Bot className="h-4 w-4" />
-            </span>
-            <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold">Agente automático</span>
-              <span className="mt-0.5 block text-xs leading-4">Envio automático bloqueado neste piloto.</span>
-            </span>
-            <LockKeyhole className="h-4 w-4" />
-          </div>
+            <div className={styles.modeMenuOptions}>
+              <button
+                type="button"
+                onClick={() => void changeMode("manual")}
+                className={`${styles.modeMenuOption} ${mode === "manual" ? styles.modeMenuOptionSelected : ""}`}
+                role="menuitemradio"
+                aria-checked={mode === "manual"}
+              >
+                <Pencil className={styles.modeMenuOptionIcon} />
+                <span className={styles.modeMenuOptionCopy}>
+                  <span className={styles.modeMenuOptionTitle}>Resposta manual</span>
+                  <span className={styles.modeMenuOptionDescription}>Você escreve e envia</span>
+                </span>
+                {mode === "manual" && <Check className={styles.modeMenuOptionCheck} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => void changeMode("suggestions")}
+                className={`${styles.modeMenuOption} ${mode === "suggestions" ? styles.modeMenuOptionSelected : ""}`}
+                role="menuitemradio"
+                aria-checked={mode === "suggestions"}
+              >
+                <Sparkles className={styles.modeMenuOptionIcon} />
+                <span className={styles.modeMenuOptionCopy}>
+                  <span className={styles.modeMenuOptionTitle}>Sugestões da Alice</span>
+                  <span className={styles.modeMenuOptionDescription}>Você revisa antes de enviar</span>
+                </span>
+                {mode === "suggestions" && <Check className={styles.modeMenuOptionCheck} />}
+              </button>
+              <div className={`${styles.modeMenuOption} ${styles.modeMenuOptionDisabled}`} aria-disabled="true">
+                <Bot className={styles.modeMenuOptionIcon} />
+                <span className={styles.modeMenuOptionCopy}>
+                  <span className={styles.modeMenuOptionTitle}>Agente automático</span>
+                  <span className={styles.modeMenuOptionDescription}>Envio automático bloqueado</span>
+                </span>
+                <LockKeyhole className={styles.modeMenuOptionLock} />
+              </div>
+            </div>
           </div>
         )}
       </div>
