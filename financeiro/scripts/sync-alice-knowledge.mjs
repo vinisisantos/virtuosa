@@ -5,11 +5,11 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = resolve(root, "src/generated/alice-knowledge.ts");
 const repository = "vinisisantos/virtuosa-agent";
-const revision = "be272f87ceff872dc684c26941aed75c72928927";
+const revision = "4771d4f46702872a50c41b9bdc1cb1bc5e8f6612";
 const maxDocumentBytes = 60_000;
 const maxTotalBytes = 180_000;
 const approvedDocuments = new Set([
-  "AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "PENDENCIAS-RESPOSTAS-OFICIAIS.md",
+  "AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "MEMORY.md", "PENDENCIAS-RESPOSTAS-OFICIAIS.md",
   "knowledge/barriga-trincada.md", "knowledge/clinic.md", "knowledge/emagreca-2kg.md",
   "knowledge/explicacoes-procedimentos.md", "knowledge/faq.md", "knowledge/gluteos-perfeitos-120ml.md",
   "knowledge/gluteos-perfeitos.md", "knowledge/gordura-localizada.md", "knowledge/orientacoes-clinicas.md",
@@ -18,7 +18,7 @@ const approvedDocuments = new Set([
   "workflows/new-lead.md", "workflows/objections.md", "workflows/qualification.md",
   "workflows/roteiro-procedimentos.md", "workflows/scheduling.md",
 ]);
-const requiredDocuments = ["AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md"];
+const requiredDocuments = ["AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "MEMORY.md"];
 
 const token = process.env.ALICE_CONTENT_READ_TOKEN?.trim();
 if (!token) {

@@ -1,7 +1,7 @@
 export const ALICE_KNOWLEDGE = {
   available: false,
   repository: "vinisisantos/virtuosa-agent",
-  revision: "be272f87ceff872dc684c26941aed75c72928927",
+  revision: "4771d4f46702872a50c41b9bdc1cb1bc5e8f6612",
   activeUnits: ["SBC", "Osasco"],
   excludedTopics: ["Harmonização de Mamas", "Preenchimento Facial"],
   behavior: {

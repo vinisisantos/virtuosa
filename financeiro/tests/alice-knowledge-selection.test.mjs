@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { selectAliceKnowledgeDocuments } from "#lib/ai-assistant/alice-knowledge-selection";
 
-const core = ["AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md"]
+const core = ["AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "MEMORY.md"]
   .map((path) => ({ path, content: "Regra da Alice. ".repeat(200) }));
 const documents = [
   ...core,
@@ -50,6 +50,7 @@ test("variante 120 ml mencionada após campanha genérica inclui sua ficha", () 
 
 test("base incompleta falha fechada", () => {
   assert.equal(selectAliceKnowledgeDocuments({ documents: documents.slice(1), campaignName: "", messageText: "Olá" }), null);
+  assert.equal(selectAliceKnowledgeDocuments({ documents: documents.filter((document) => document.path !== "MEMORY.md"), campaignName: "", messageText: "Olá" }), null);
   const oversizedCore = documents.map((document) => document.path === "AGENTS.md"
     ? { ...document, content: "A".repeat(36_001) }
     : document);

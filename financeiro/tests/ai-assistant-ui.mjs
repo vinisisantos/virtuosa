@@ -71,7 +71,7 @@ try {
       if (url.pathname === "/api/auth/me") data = { authenticated: true, user };
       else if (url.pathname === "/api/crm/ai-assistant/settings") {
         data = request.method() === "GET"
-          ? { config, knowledge: { available: true, repository: "private/alice", revision: "be272f87ceff872dc684c26941aed75c72928927", activeUnits: ["SBC", "Osasco"], activeDocuments: 26, excludedTopics: ["Harmonização de Mamas", "Preenchimento Facial"], humanReviewRequired: true, automaticSending: false }, runtime: { ready: true, privateKnowledge: true, hermesBridgeConfigured: true, ownerConfigured: true, secondaryUserConfigured: true, conversationDataApproved: true, liveSuggestionsEnabled: true, blockers: [] }, usage: { requestsToday: 3, reservedMicroUsdToday: 0, actualMicroUsdToday: 0 } }
+          ? { config, knowledge: { available: true, repository: "private/alice", revision: "4771d4f46702872a50c41b9bdc1cb1bc5e8f6612", activeUnits: ["SBC", "Osasco"], activeDocuments: 27, excludedTopics: ["Harmonização de Mamas", "Preenchimento Facial"], humanReviewRequired: true, automaticSending: false }, runtime: { ready: true, privateKnowledge: true, hermesBridgeConfigured: true, ownerConfigured: true, secondaryUserConfigured: true, conversationDataApproved: true, liveSuggestionsEnabled: true, blockers: [] }, usage: { requestsToday: 3, reservedMicroUsdToday: 0, actualMicroUsdToday: 0 } }
           : { config };
       } else if (url.pathname === "/api/crm/ai-assistant/test") data = { response: "Resposta de teste segura." };
       else if (url.pathname === "/api/crm/ai-assistant/suggestions") {

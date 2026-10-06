@@ -1,6 +1,6 @@
 type AliceDocument = { path: string; content: string };
 
-const CORE_DOCUMENTS = ["AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md"];
+const CORE_DOCUMENTS = ["AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "MEMORY.md"];
 const GENERAL_DOCUMENTS = [
   "knowledge/clinic.md",
   "knowledge/prices.md",
