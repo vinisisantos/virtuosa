@@ -71,6 +71,7 @@ import {
   type AudioPlaybackRate,
 } from "@/lib/whatsapp/audio-playback";
 import { whatsappDeferredMediaUrl } from "@/lib/whatsapp/deferred-media";
+import { isRenderableImageMedia } from "@/lib/whatsapp/message-visibility";
 import { findQuotedImagePreviewTarget } from "@/lib/whatsapp/quoted-media";
 import {
   fixRecordedWebmDuration,
@@ -2331,9 +2332,7 @@ function MessageBubble({
       setRecoveringMediaId(null);
     }
   };
-  const isMediaMessage = Boolean(
-    renderedMediaUrl && (msg.type === "image" || renderedMediaUrl.startsWith("data:image/")),
-  );
+  const isMediaMessage = isRenderableImageMedia(msg.type, renderedMediaUrl);
   const isVideoMessage = msg.type === "video" && Boolean(renderedMediaUrl);
   const isAlbumMessage = Boolean(albumImages && albumImages.length >= 2);
   const hasVisualMedia = isMediaMessage || isVideoMessage || isAlbumMessage;
@@ -2766,14 +2765,14 @@ function MessageBubble({
             </div>
           )}
 
-          {/* Image — aceita type "image" ou data URLs de imagem */}
+          {/* Imagens e figurinhas usam a mesma mídia visual, sem integrar figurinhas a álbuns. */}
           {!isAlbumMessage && isMediaMessage && renderedMediaUrl && !mediaLoadFailed && (
             <img
               ref={imageRef}
               src={renderedMediaUrl}
               alt=""
               onError={() => setMediaLoadFailed(true)}
-              className="mb-0.5 block h-auto w-auto max-h-[min(52dvh,440px)] max-w-full cursor-pointer rounded-[7px] object-contain"
+              className={`mb-0.5 block h-auto w-auto max-w-full cursor-pointer rounded-[7px] object-contain ${msg.type === "sticker" ? "max-h-[220px] max-w-[220px]" : "max-h-[min(52dvh,440px)]"}`}
               onClick={(e) => {
                 e.stopPropagation();
                 onOpenImage(renderedMediaUrl);
@@ -2781,11 +2780,11 @@ function MessageBubble({
             />
           )}
 
-          {!isAlbumMessage && !isMe && (msg.type === "image" || msg.type === "audio") &&
-            !msg.mediaPayloadOmitted && (!renderedMediaUrl || (msg.type === "image" && mediaLoadFailed)) && (
+          {!isAlbumMessage && !isMe && ["image", "audio", "sticker"].includes(msg.type) &&
+            !msg.mediaPayloadOmitted && (!renderedMediaUrl || (msg.type !== "audio" && mediaLoadFailed)) && (
               <button type="button" onClick={() => void recoverMedia(msg)} disabled={!!recoveringMediaId}
                 className="mb-1 flex min-h-11 max-w-full items-center rounded-lg bg-black/5 px-3 py-2 text-left text-xs text-[#007a62] underline disabled:opacity-50 dark:bg-white/10 dark:text-[#53bdeb]">
-                {recoveringMediaId === msg.id ? "Recuperando mídia…" : `Recuperar ${msg.type === "audio" ? "áudio" : "imagem"}`}
+                {recoveringMediaId === msg.id ? "Recuperando mídia…" : `Recuperar ${msg.type === "audio" ? "áudio" : msg.type === "sticker" ? "figurinha" : "imagem"}`}
               </button>
             )}
           {mediaRecoveryError && <p role="status" className="mb-1 max-w-[290px] text-xs text-red-600 dark:text-red-300">{mediaRecoveryError}</p>}

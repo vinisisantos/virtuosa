@@ -1,4 +1,5 @@
 import { parseCrmMediaBatchMarkerBody } from "@/lib/whatsapp/media-batch";
+import { messageHasVisibleContent } from "@/lib/whatsapp/message-visibility";
 import type { InboxAppointment } from "@/lib/whatsapp/inbox-appointments";
 import type { DispatchMetadata, DispatchSnapshot } from "@/lib/whatsapp/dispatch";
 
@@ -123,15 +124,6 @@ export interface Message {
 export type VisibleMessageItem =
   | { kind: "message"; id: string; message: Message }
   | { kind: "album"; id: string; message: Message; images: Message[] };
-
-function messageHasVisibleContent(message: Message) {
-  if ((message.body || "").trim()) return true;
-  if (message.linkPreviewUrl) return true;
-  if (message.mediaPayloadOmitted) return true;
-  if (!message.mediaUrl) return false;
-  if (message.mediaUrl.startsWith("data:image/")) return true;
-  return ["image", "audio", "ptt", "video", "document", "sticker"].includes(message.type);
-}
 
 function isVisibleImageMessage(message: Message) {
   return Boolean(

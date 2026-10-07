@@ -45,7 +45,7 @@ export async function POST(req: Request) {
     },
   });
   if (!message) return NextResponse.json({ error: "Mensagem não encontrada." }, { status: 404 });
-  if (message.fromMe || !["image", "audio"].includes(message.type)) {
+  if (message.fromMe || !["image", "audio", "sticker"].includes(message.type)) {
     return NextResponse.json({ error: "Essa mídia não permite recuperação." }, { status: 400 });
   }
 

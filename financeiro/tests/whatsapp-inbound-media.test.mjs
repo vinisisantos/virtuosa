@@ -28,6 +28,8 @@ test("resposta da Evolution conserva MIME e não duplica prefixo base64", () => 
     "data:audio/ogg;base64,YQ==");
   assert.equal(evolutionMediaDataUrl({ base64: "data:image/jpeg;base64,YQ==" }),
     "data:image/jpeg;base64,YQ==");
+  assert.equal(evolutionMediaDataUrl({ base64: "YQ==", mimetype: "image/webp" }),
+    "data:image/webp;base64,YQ==");
   assert.equal(evolutionMediaDataUrl({}), null);
 });
 
