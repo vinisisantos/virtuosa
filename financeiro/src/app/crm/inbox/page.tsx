@@ -18,6 +18,15 @@ import { InboxChatHeader } from "@/components/whatsapp/inbox-chat-header";
 import { AiAssistantComposer } from "@/components/whatsapp/ai-assistant-composer";
 import { isAliceUnit } from "@/lib/ai-assistant/scope";
 import { MessageStatusIcon } from "@/components/whatsapp/message-status-icon";
+import { normalizeWhatsAppMessageStatus } from "@/lib/whatsapp/message-status";
+import {
+  PENDING_RECONCILIATION_CONVERSATION_COOLDOWN_MS,
+  pendingReconciliationKey,
+  pendingReconciliationRetryDelayMs,
+  planPendingMessageReconciliation,
+  releaseSkippedPendingCheck,
+  type PendingReconciliationCheck,
+} from "@/lib/whatsapp/pending-message-reconciliation";
 import { DispatchBadge, DispatchDetails } from "@/components/whatsapp/dispatch-details";
 import { dispatchLabel, dispatchSnapshot, dispatchUnitEnabled, type DispatchSnapshot } from "@/lib/whatsapp/dispatch";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -3226,6 +3235,9 @@ export default function InboxPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [messageLoadError, setMessageLoadError] = useState<string | null>(null);
   const [messageReloadKey, setMessageReloadKey] = useState(0);
+  const [pendingStatusNow, setPendingStatusNow] = useState(() => Date.now());
+  const [isTabVisible, setIsTabVisible] = useState(true);
+  const [failedPendingCheck, setFailedPendingCheck] = useState<{ conversationId: string; messageId: string } | null>(null);
   const [highlightedMessageItemId, setHighlightedMessageItemId] = useState<string | null>(null);
   const [internalNotes, setInternalNotes] = useState<InternalNote[]>([]);
   const [mentionableUsers, setMentionableUsers] = useState<MentionableUser[]>([]);
@@ -3334,6 +3346,11 @@ export default function InboxPage() {
   const conversationsLastSyncRef = useRef<string | null>(null);
   const conversationsIncrementalPollsRef = useRef(0);
   const messagesInFlightRequestsRef = useRef<Map<string, Promise<MessageLoadResult>>>(new Map());
+  const attemptedPendingChecksRef = useRef<Map<string, number>>(new Map());
+  const nextPendingCheckAtRef = useRef<Map<string, number>>(new Map());
+  const nextInstancePendingCheckAtRef = useRef<Map<string, number>>(new Map());
+  const unsupportedPendingCheckInstancesRef = useRef<Set<string>>(new Set());
+  const pendingCheckInFlightRef = useRef<string | null>(null);
   const pendingRealtimeMessageRequestsRef = useRef<Set<string>>(new Set());
   const retryRealtimeMessageRefreshRef = useRef<(conversationId: string) => void>(() => {});
   const loadedMessagesConversationIdRef = useRef<string | null>(null);
@@ -4551,6 +4568,125 @@ export default function InboxPage() {
     void request.then(releaseRequest, releaseRequest);
     return request;
   }, [inboxScopeKey, waParams]);
+
+  useEffect(() => {
+    const updateVisibility = () => {
+      setIsTabVisible(document.visibilityState !== "hidden");
+      setPendingStatusNow(Date.now());
+    };
+    updateVisibility();
+    document.addEventListener("visibilitychange", updateVisibility);
+    return () => document.removeEventListener("visibilitychange", updateVisibility);
+  }, []);
+
+  const pendingCheckInstanceKey = selectedConv?.instanceId || inboxScopeKey;
+  const pendingReconciliationPlan = useMemo(() => selectedConversationId
+    ? planPendingMessageReconciliation(
+      selectedConversationId,
+      messages,
+      attemptedPendingChecksRef.current,
+      Math.max(pendingStatusNow, Date.now()),
+      Math.max(
+        nextPendingCheckAtRef.current.get(selectedConversationId) || 0,
+        nextInstancePendingCheckAtRef.current.get(pendingCheckInstanceKey) || 0,
+      ),
+    )
+    : null,
+  [messages, pendingCheckInstanceKey, pendingStatusNow, selectedConversationId]);
+
+  const pendingCheckFailureVisible = Boolean(
+    failedPendingCheck?.conversationId === selectedConversationId
+    && messages.some((message) => message.messageId === failedPendingCheck.messageId
+      && message.fromMe
+      && normalizeWhatsAppMessageStatus(message.status) === "pending"),
+  );
+
+  useEffect(() => {
+    if (!isTabVisible || !selectedConversationId || !pendingReconciliationPlan
+      || selectedConversationIdRef.current !== selectedConversationId) return;
+
+    const { nextCheck, nextWakeAt } = pendingReconciliationPlan;
+    const timer = nextWakeAt === null ? null : window.setTimeout(
+      () => setPendingStatusNow(Date.now()),
+      Math.max(0, nextWakeAt - Date.now()),
+    );
+    const instanceKey = pendingCheckInstanceKey;
+
+    if (nextCheck && !pendingCheckInFlightRef.current
+      && !unsupportedPendingCheckInstancesRef.current.has(instanceKey)) {
+      const checkKey = pendingReconciliationKey(selectedConversationId, nextCheck.messageId);
+      attemptedPendingChecksRef.current.set(checkKey, nextCheck.checkpoint);
+      const nextAllowedAt = Date.now() + PENDING_RECONCILIATION_CONVERSATION_COOLDOWN_MS;
+      nextPendingCheckAtRef.current.set(selectedConversationId, nextAllowedAt);
+      nextInstancePendingCheckAtRef.current.set(instanceKey, nextAllowedAt);
+      pendingCheckInFlightRef.current = checkKey;
+      const scopeAtRequestStart = inboxScopeKey;
+      const conversationId = selectedConversationId;
+      const ownerScope = !targetInstanceId && !targetUserId ? { ownerOnly: "1" } : undefined;
+
+      void (async (check: PendingReconciliationCheck) => {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 15_000);
+        try {
+          const response = await fetch(buildUrl("/api/whatsapp/messages/reconcile", ownerScope), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ conversationId, messageId: check.messageId }),
+            signal: controller.signal,
+          });
+          const data = await response.json().catch(() => ({})) as {
+            checked?: boolean;
+            status?: unknown;
+            unsupported?: boolean;
+            throttled?: boolean;
+            retryAfterMs?: unknown;
+            error?: string;
+          };
+          if (!response.ok) throw new Error(data.error || "Não foi possível verificar o status.");
+
+          if (data.unsupported === true) {
+            unsupportedPendingCheckInstancesRef.current.add(instanceKey);
+            return;
+          }
+
+          const status = normalizeWhatsAppMessageStatus(data.status);
+          if (typeof data.checked !== "boolean" || !status) throw new Error("Resposta de status inválida.");
+
+          if (!data.checked && status === "pending") {
+            releaseSkippedPendingCheck(attemptedPendingChecksRef.current, conversationId, check);
+            const retryAt = Date.now() + pendingReconciliationRetryDelayMs(data.retryAfterMs);
+            const cooldowns = data.throttled ? nextInstancePendingCheckAtRef.current : nextPendingCheckAtRef.current;
+            const cooldownKey = data.throttled ? instanceKey : conversationId;
+            cooldowns.set(cooldownKey, Math.max(cooldowns.get(cooldownKey) || 0, retryAt));
+          }
+
+          if (scopeAtRequestStart === activeScopeRef.current
+            && selectedConversationIdRef.current === conversationId) {
+            if (data.checked || status !== "pending") {
+              setFailedPendingCheck((current) => current?.conversationId === conversationId
+                && current.messageId === check.messageId ? null : current);
+            }
+            if (status !== "pending" && document.visibilityState !== "hidden") {
+              void fetchMessages(conversationId, false);
+            }
+          }
+        } catch (error) {
+          console.warn("[Inbox] Não foi possível verificar o status pendente.", error);
+          if (scopeAtRequestStart === activeScopeRef.current
+            && selectedConversationIdRef.current === conversationId) {
+            setFailedPendingCheck({ conversationId, messageId: check.messageId });
+          }
+        } finally {
+          window.clearTimeout(timeout);
+          if (pendingCheckInFlightRef.current === checkKey) pendingCheckInFlightRef.current = null;
+          setPendingStatusNow(Date.now());
+        }
+      })(nextCheck);
+    }
+
+    return () => { if (timer !== null) window.clearTimeout(timer); };
+  }, [buildUrl, fetchMessages, inboxScopeKey, isTabVisible, pendingCheckInstanceKey,
+    pendingReconciliationPlan, selectedConversationId, targetInstanceId, targetUserId]);
 
   retryRealtimeMessageRefreshRef.current = (conversationId) => {
     scheduleRealtimeRefreshRef.current({ conversationId, refreshList: false, refreshSelected: true });
@@ -7933,6 +8069,24 @@ export default function InboxPage() {
               )}
               <div aria-hidden="true" />
             </div>
+
+            {!loadingMessages && !messageLoadError
+              && selectedConversationIdRef.current === selectedConversationId
+              && (pendingCheckFailureVisible || pendingReconciliationPlan?.hasProlongedPending) && (
+                <div role="status" aria-live="polite" className="shrink-0 border-t border-amber-500/30 bg-amber-500/10 px-3 py-2.5 sm:px-6">
+                  <div className="mx-auto flex max-w-3xl min-w-0 items-start gap-2 text-amber-900 dark:text-amber-200">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                    <div className="min-w-0 text-xs leading-5 sm:text-sm">
+                      <p className="font-semibold">{pendingCheckFailureVisible ? "Status não verificado" : "Envio ainda sem confirmação"}</p>
+                      <p className="break-words">
+                        {pendingCheckFailureVisible
+                          ? "Não foi possível verificar o status no WhatsApp. O envio pode ter ocorrido; confira no aplicativo antes de tentar novamente."
+                          : "Sem confirmação do WhatsApp; confira no aplicativo antes de tentar novamente."}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
             {isDraggingAttachment && attachments.length < WHATSAPP_MEDIA_MAX_BATCH_FILES && (
               <div

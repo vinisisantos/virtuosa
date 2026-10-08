@@ -95,6 +95,7 @@ const DEFAULT_CALL_BLOCK_MESSAGE =
 const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
 const LEGACY_CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
 const TECHNICAL_LID_ARCHIVE_ACTOR = "Sistema — identificador técnico LID";
+const MISSING_ACK_MESSAGE_RETRY_DELAYS_MS = [100, 250, 500] as const;
 
 type CallBlockSettings = {
   enabled: boolean;
@@ -156,6 +157,17 @@ async function updateOutgoingMessageStatus(id: string, value: unknown) {
     data: { status },
   });
   return result.count;
+}
+
+async function retryMissingAckLookup<T>(lookup: () => Promise<T>, isMissing: (result: T) => boolean) {
+  let result = await lookup();
+  // A Evolution pode entregar o ACK antes de a rota de envio gravar a mensagem.
+  for (const delayMs of MISSING_ACK_MESSAGE_RETRY_DELAYS_MS) {
+    if (!isMissing(result)) break;
+    await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+    result = await lookup();
+  }
+  return result;
 }
 
 function cleanMediaFileName(value: unknown) {
@@ -2627,14 +2639,40 @@ async function processMessageStatusUpdate(params: {
   if (!resolvedContact.isSendablePhone) {
     const status = normalizeWhatsAppMessageStatus(msg.status);
     if (!status) return;
-    await prisma.whatsAppMessage.updateMany({
+    const scopedMessageWhere = {
+      messageId,
+      fromMe: true,
+      conversation: { instanceId: dbInstance.id },
+    };
+    const matches = await retryMissingAckLookup(
+      () => prisma.whatsAppMessage.findMany({
+        where: scopedMessageWhere,
+        select: { id: true, conversationId: true, status: true },
+        take: 2,
+      }),
+      (messages) => messages.length === 0,
+    );
+    // messageId não é único na instância; com mais de uma conversa não há
+    // destino seguro para o ACK nem para o aviso em tempo real.
+    if (matches.length !== 1) return;
+    const [existingMessage] = matches;
+    if (mergeWhatsAppMessageStatus(existingMessage.status, status) === existingMessage.status) return;
+    const updated = await prisma.whatsAppMessage.updateMany({
       where: {
+        id: existingMessage.id,
         messageId,
         fromMe: true,
         status: whatsAppStatusUpdateFilter(status),
         conversation: { instanceId: dbInstance.id },
       },
       data: { status },
+    });
+    if (!updated.count) return;
+    await broadcastInboxRealtimeChange({
+      instanceId: dbInstance.id,
+      conversationId: existingMessage.conversationId,
+      messageId: existingMessage.id,
+      kind: "status",
     });
     return;
   }
@@ -2657,7 +2695,7 @@ async function processMessageStatusUpdate(params: {
   if (!conversation) return;
 
   // messageId só é único dentro da conversa; nunca atualizar por messageId global.
-  const existingMessage = await prisma.whatsAppMessage.findUnique({
+  const messageLookup = {
     where: {
       conversationId_messageId: {
         conversationId: conversation.id,
@@ -2665,7 +2703,11 @@ async function processMessageStatusUpdate(params: {
       },
     },
     select: { id: true, fromMe: true, status: true },
-  });
+  };
+  const existingMessage = await retryMissingAckLookup(
+    () => prisma.whatsAppMessage.findUnique(messageLookup),
+    (message) => !message,
+  );
   if (!existingMessage?.fromMe || existingMessage.status === "deleted" || msg.status === undefined) return;
 
   const nextStatus = mergeWhatsAppMessageStatus(existingMessage.status, msg.status);
