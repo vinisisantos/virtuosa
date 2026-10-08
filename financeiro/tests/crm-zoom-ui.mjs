@@ -18,6 +18,7 @@ const conversation = {
   id: 'crm-zoom-conversation',
   instanceId: 'crm-zoom-instance',
   status: 'open',
+  assignedTo: user.id,
   unreadCount: 0,
   lastMessage: 'Uma resposta de teste com conteúdo longo.',
   lastMessageAt: '2026-10-08T12:00:00.000Z',
@@ -116,7 +117,7 @@ try {
       assert.equal(layout.shellPosition, 'fixed', 'layout habitual permanece fixo');
     }
 
-    if (viewport.width === 756 || viewport.width === 1440) {
+    if ([390, 430, 756, 1440].includes(viewport.width)) {
       if (viewport.width === 1440) {
         await page.waitForFunction(() => document.body.textContent.includes('Contato de Teste'));
         await page.evaluate(() => {
@@ -125,38 +126,81 @@ try {
         });
         await page.waitForSelector('[data-inbox-thread-open="true"] .inbox-thread-messages');
       }
+      const originalThreadHeight = await page.$eval('.inbox-thread-messages', thread => thread.getBoundingClientRect().height).catch(() => null);
       const session = await page.createCDPSession();
-      await session.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
-      await page.waitForFunction(() => window.visualViewport?.scale >= 1.9);
-      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      const pinchLayout = await page.evaluate(() => {
-        const shell = document.querySelector('.crm-viewport-lock');
-        const thread = document.querySelector('.inbox-thread-messages');
-        return {
-          scale: window.visualViewport.scale,
-          visualHeight: window.visualViewport.height,
-          layoutHeight: window.innerHeight,
-          shellPosition: getComputedStyle(shell).position,
-          shellHeight: shell.getBoundingClientRect().height,
-          shellTop: shell.getBoundingClientRect().top,
-          threadHeight: thread?.getBoundingClientRect().height ?? null,
-        };
-      });
-      assert.ok(pinchLayout.visualHeight < pinchLayout.layoutHeight, 'pinch reduz só a viewport visual');
-      assert.equal(pinchLayout.shellPosition, 'fixed', 'pinch mantém o shell no layout original');
-      assert.ok(
-        Math.abs(pinchLayout.shellHeight - pinchLayout.visualHeight * pinchLayout.scale) <= 2,
-        'pinch preserva a altura de layout inteira, não só a fatia visível',
-      );
-      assert.ok(Math.abs(pinchLayout.shellTop) <= 1, 'pinch não desloca o shell');
-      if (pinchLayout.threadHeight !== null) {
-        assert.ok(pinchLayout.threadHeight > pinchLayout.visualHeight, 'a conversa não encolhe para a fatia visual ampliada');
+      if (viewport.width === 1440) {
+        await session.send('Input.synthesizePinchGesture', {
+          x: 1080, y: 250, scaleFactor: 2, gestureSourceType: 'touch',
+        });
+        await page.waitForFunction(() => window.visualViewport?.scale >= 1.9);
+        const gestureLayout = await page.evaluate(() => {
+          const visual = window.visualViewport;
+          const header = document.querySelector('.crm-shell-header');
+          const composer = document.querySelector('[data-inbox-thread-open="true"] .inbox-thread-composer');
+          return {
+            offsetTop: visual.offsetTop,
+            offsetLeft: visual.offsetLeft,
+            visualHeight: visual.height,
+            headerBottom: header.getBoundingClientRect().bottom,
+            composerTop: composer.getBoundingClientRect().top,
+            shellPosition: getComputedStyle(document.querySelector('.crm-viewport-lock')).position,
+          };
+        });
+        assert.ok(gestureLayout.offsetTop > 0 && gestureLayout.offsetLeft > 0, 'o navegador ancora o zoom no ponto do gesto');
+        assert.equal(gestureLayout.shellPosition, 'relative', 'o CRM percorre a página como um conjunto durante o gesto');
+        assert.ok(gestureLayout.headerBottom < gestureLayout.offsetTop, 'cabeçalho não fica preso sobre a conversa ampliada');
+        assert.ok(gestureLayout.composerTop > gestureLayout.offsetTop + gestureLayout.visualHeight, 'compositor não fica preso sobre a conversa ampliada');
+        if (screenshotDirectory) {
+          const gesturePath = join(screenshotDirectory, `${viewport.width}x${viewport.height}-gesture.png`);
+          await page.screenshot({ path: gesturePath });
+          console.log(gesturePath);
+        }
+        await session.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+        await page.waitForFunction(() => window.visualViewport?.scale === 1);
+      }
+      for (const scale of [2, 3]) {
+        await session.send('Emulation.setPageScaleFactor', { pageScaleFactor: scale });
+        await page.waitForFunction(expected => window.visualViewport?.scale >= expected - 0.1, {}, scale);
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        const pinchLayout = await page.evaluate(() => {
+          const shell = document.querySelector('.crm-viewport-lock');
+          const thread = document.querySelector('.inbox-thread-messages');
+          return {
+            scale: window.visualViewport.scale,
+            visualHeight: window.visualViewport.height,
+            layoutHeight: window.innerHeight,
+            shellPosition: getComputedStyle(shell).position,
+            shellHeight: shell.getBoundingClientRect().height,
+            shellTop: shell.getBoundingClientRect().top,
+            threadHeight: thread?.getBoundingClientRect().height ?? null,
+          };
+        });
+        assert.ok(pinchLayout.visualHeight < pinchLayout.layoutHeight, 'pinch reduz só a viewport visual');
+        assert.equal(pinchLayout.shellPosition, 'relative', `zoom ${scale}× mantém todo o CRM na mesma camada da página`);
+        assert.ok(
+          Math.abs(pinchLayout.shellHeight - pinchLayout.visualHeight * pinchLayout.scale) <= 2,
+          'pinch preserva a altura de layout inteira, não só a fatia visível',
+        );
+        assert.ok(Math.abs(pinchLayout.shellTop) <= 1, 'pinch não desloca o shell');
+        if (pinchLayout.threadHeight !== null) {
+          assert.ok(pinchLayout.threadHeight > pinchLayout.visualHeight, 'a conversa não encolhe para a fatia visual ampliada');
+          assert.ok(Math.abs(pinchLayout.threadHeight - originalThreadHeight) <= 1, 'cabeçalho e compositor não comprimem a conversa no zoom');
+        }
+        if (screenshotDirectory && viewport.width === 1440) {
+          const path = join(screenshotDirectory, `${viewport.width}x${viewport.height}-zoom-${scale}x.png`);
+          await page.screenshot({ path });
+          console.log(path);
+        }
       }
       await session.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
       await page.waitForFunction(() => window.visualViewport?.scale === 1);
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      const restoredHeight = await page.$eval('.crm-viewport-lock', shell => shell.getBoundingClientRect().height);
-      assert.ok(Math.abs(restoredHeight - layout.shellHeight) <= 1, 'o shell volta à altura normal após desfazer o pinch');
+      const restoredLayout = await page.$eval('.crm-viewport-lock', shell => ({
+        height: shell.getBoundingClientRect().height,
+        position: getComputedStyle(shell).position,
+      }));
+      assert.ok(Math.abs(restoredLayout.height - layout.shellHeight) <= 1, 'o shell volta à altura normal após desfazer o pinch');
+      assert.equal(restoredLayout.position, layout.shellPosition, 'o shell recupera o modo de rolagem original após desfazer o pinch');
       await session.detach();
     }
 

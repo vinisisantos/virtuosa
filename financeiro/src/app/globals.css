@@ -204,6 +204,18 @@ html[data-theme="violet"] {
   padding: 0 !important;
 }
 
+/* Keep the CRM as one document layer while Safari pans a pinch-zoomed page.
+   A fixed shell pins its header and composer to the magnified visual slice. */
+html[data-crm-pinch-zoom] body.crm-shell-active {
+  height: auto;
+  min-height: 100%;
+}
+
+html[data-crm-pinch-zoom] .crm-viewport-lock {
+  position: relative;
+  overscroll-behavior: auto;
+}
+
 /* A genuinely short layout viewport needs page scrolling. Pinch zoom only
    shrinks the visual slice; the browser must keep its native zoom anchor. */
 @media (max-height: 42rem) {
