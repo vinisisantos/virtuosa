@@ -268,7 +268,7 @@ function AutomaticCostDetails({
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
           <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)' }}>
-            <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 700 }}>SALÁRIOS</div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 700 }}>SALÁRIOS · LÍQUIDO DA FOLHA</div>
             <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1rem', fontWeight: 850 }}>{fmt(payroll.salaryTotal)}</div>
           </div>
           <div style={{ padding: 12, borderRadius: 10, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.09)' }}>
@@ -279,7 +279,7 @@ function AutomaticCostDetails({
             <div style={{ marginTop: 4, color: '#b45309', fontSize: '1rem', fontWeight: 900 }}>{fmt(payroll.fgtsTotal)}</div>
           </div>
           <div style={{ padding: 12, borderRadius: 10, border: '1px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.08)' }}>
-            <div style={{ color: 'var(--primary)', fontSize: '0.7rem', fontWeight: 800 }}>TOTAL PENDENTE</div>
+            <div style={{ color: 'var(--primary)', fontSize: '0.7rem', fontWeight: 800 }}>CUSTO PENDENTE · SALÁRIO + FGTS</div>
             <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1rem', fontWeight: 900 }}>{fmt(payroll.pendingTotal)}</div>
             <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700 }}>
               Pago {fmt(payroll.paidTotal)} · Total somado aos custos {fmt(payroll.total)}
@@ -311,10 +311,12 @@ function AutomaticCostDetails({
                   <div style={{ flex: '1 1 180px', minWidth: 0 }}>
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 800 }}>{entry.employeeName}</div>
                     <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.68rem' }}>
-                      {entry.unit} · Salário {fmt(entry.salary)} · FGTS {fmt(entry.fgts)}
+                      {entry.unit} · FGTS da empresa {fmt(entry.fgts)} · Custo total {fmt(entry.total)}
                     </div>
                   </div>
-                  <div style={{ minWidth: 90, color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 850 }}>{fmt(entry.total)}</div>
+                  <div style={{ minWidth: 90, color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 850 }} aria-label={`Salário líquido ${fmt(entry.salary)}`}>
+                    {fmt(entry.salary)}
+                  </div>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', borderRadius: 7, background: isPaid ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: isPaid ? '#22c55e' : '#ef4444', fontSize: '0.7rem', fontWeight: 800 }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{isPaid ? 'check_circle' : 'schedule'}</span>
                     {isPaid
@@ -1593,9 +1595,21 @@ export function CustosUnificado({
                 displayedExpenseRows.map(row => {
                   const rowId = String(row.id);
                   const isAutomatic = row.source.startsWith('automatic-');
-                  const displayedValue = row.source === 'automatic-payroll' && filterStatus === 'all'
-                    ? row.pendingPortion
+                  const payroll = row.source === 'automatic-payroll' ? row.raw as AutomaticPayrollCost : null;
+                  const displayedValue = payroll
+                    ? filterStatus === 'pago'
+                      ? payroll.paidSalaryTotal
+                      : filterStatus === 'pendente'
+                        ? payroll.pendingSalaryTotal
+                        : payroll.salaryTotal
                     : row.value;
+                  const displayedFgts = payroll
+                    ? filterStatus === 'pago'
+                      ? payroll.paidFgtsTotal
+                      : filterStatus === 'pendente'
+                        ? payroll.pendingFgtsTotal
+                        : payroll.fgtsTotal
+                    : 0;
                   const isExpanded = isAutomatic && expandedAutomaticRows.has(rowId);
                   const isManualProduct = !isAutomatic && normalizeCategoryLabel(row.category) === 'produtos';
                   const manualProductItems = isManualProduct ? normalizeProductExpenseItems(row.raw.items) : [];
@@ -1635,9 +1649,10 @@ export function CustosUnificado({
                         <td className="cost-due-cell" style={{ padding: '16px 20px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{row.dueInfo}</td>
                         <td className="cost-value-cell" style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>
                           {fmt(displayedValue)}
-                          {row.source === 'automatic-payroll' && filterStatus === 'all' && (
+                          {payroll && (
                             <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600 }}>
-                              Pago {fmt(row.paidPortion)} · Total da folha {fmt(row.periodTotal)}
+                              Salários líquidos · FGTS {fmt(displayedFgts)} · Custo total {fmt(displayedValue + displayedFgts)}
+                              {filterStatus === 'all' && ` · Pago ${fmt(payroll.paidTotal)} · Pendente ${fmt(payroll.pendingTotal)}`}
                             </div>
                           )}
                           {row.occurrenceCount > 1 && (
