@@ -164,15 +164,10 @@ export function useFinanceiro() {
     }
   }, [invalidateRequests, resetRevision]);
 
-  const setCompetenceMonth = useCallback((month: number) => {
-    if (month === competenceMonthRef.current) return;
-    updatePendingScope(month, competenceYearRef.current, selectedUnitRef.current);
+  const setCompetencePeriod = useCallback(({ month, year }: { month: number; year: number }) => {
+    if (month === competenceMonthRef.current && year === competenceYearRef.current) return;
+    updatePendingScope(month, year, selectedUnitRef.current);
     setCompetenceMonthState(month);
-  }, [updatePendingScope]);
-
-  const setCompetenceYear = useCallback((year: number) => {
-    if (year === competenceYearRef.current) return;
-    updatePendingScope(competenceMonthRef.current, year, selectedUnitRef.current);
     setCompetenceYearState(year);
   }, [updatePendingScope]);
 
@@ -456,9 +451,8 @@ export function useFinanceiro() {
     activeTab,
     setActiveTab,
     competenceMonth: competenceMonthState,
-    setCompetenceMonth,
     competenceYear: competenceYearState,
-    setCompetenceYear,
+    setCompetencePeriod,
     entries,
     summary,
     taxConfig,

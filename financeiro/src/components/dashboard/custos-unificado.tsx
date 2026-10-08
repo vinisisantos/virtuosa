@@ -251,15 +251,14 @@ function AutomaticCostDetails({
   }
   if (row.source === 'automatic-payroll') {
     const payroll = row.raw as AutomaticPayrollCost;
-    const competenceLabel = `${String(payroll.competenceMonth).padStart(2, '0')}/${payroll.competenceYear}`;
 
     return (
       <div style={{ padding: 18, border: '1px solid var(--border)', borderRadius: 14, background: 'var(--bg)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
           <div>
-            <div style={{ color: 'var(--text-main)', fontWeight: 800, fontSize: '0.9rem' }}>Composição da folha · {competenceLabel}</div>
+            <div style={{ color: 'var(--text-main)', fontWeight: 800, fontSize: '0.9rem' }}>Composição da folha</div>
             <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.75rem', lineHeight: 1.45 }}>
-              O valor é lido da Folha de Pagamento e refletido automaticamente no mês seguinte.
+              Os valores são sincronizados automaticamente com a Folha de Pagamento.
             </div>
           </div>
           <span style={{ padding: '4px 8px', borderRadius: 999, background: 'rgba(139,92,246,0.12)', color: 'var(--primary)', fontSize: '0.7rem', fontWeight: 800 }}>
@@ -340,8 +339,8 @@ function AutomaticCostDetails({
 
         <div style={{ marginTop: 12, color: 'var(--text-muted)', fontSize: '0.72rem', lineHeight: 1.45 }}>
           {canManagePayrollPayments
-            ? `A confirmação é individual e atualiza automaticamente a competência ${competenceLabel}. `
-            : `Somente leitura em Custos. Qualquer alteração na competência ${competenceLabel} é atualizada aqui automaticamente. `}
+            ? 'A confirmação é individual e atualiza automaticamente Folha e Custos. '
+            : 'Somente leitura em Custos. As alterações na Folha são atualizadas aqui automaticamente. '}
           Como a folha não possui baixa separada de FGTS, o status do encargo acompanha o status de pagamento de cada pessoa.
         </div>
       </div>
@@ -838,7 +837,7 @@ export function CustosUnificado({
       const competenceLabel = `${String(payroll.competenceMonth).padStart(2, '0')}/${payroll.competenceYear}`;
       rows.push({
         id: `automatic-payroll-${competenceLabel}`,
-        name: `Folha de pagamento · competência ${competenceLabel}`,
+        name: 'Folha de pagamento',
         value: payroll.total,
         periodTotal: payroll.total,
         occurrenceCount: 1,
@@ -973,11 +972,10 @@ export function CustosUnificado({
     }> = [];
     const payroll = automaticCosts?.payroll;
     if (payroll && payroll.total > 0) {
-      const competenceLabel = `${String(payroll.competenceMonth).padStart(2, '0')}/${payroll.competenceYear}`;
       if (payroll.paidSalaryTotal > 0) {
         expenses.push({
           key: `automatic-payroll-salary-paid-${selectedMonthKey}`,
-          name: `Salários pagos · competência ${competenceLabel}`,
+          name: 'Salários pagos',
           value: payroll.paidSalaryTotal,
           category: 'Salários',
           date: `${selectedMonthKey}-05`,
@@ -987,7 +985,7 @@ export function CustosUnificado({
       if (payroll.pendingSalaryTotal > 0) {
         expenses.push({
           key: `automatic-payroll-salary-pending-${selectedMonthKey}`,
-          name: `Salários pendentes · competência ${competenceLabel}`,
+          name: 'Salários pendentes',
           value: payroll.pendingSalaryTotal,
           category: 'Salários',
           date: `${selectedMonthKey}-05`,
@@ -997,7 +995,7 @@ export function CustosUnificado({
       if (payroll.paidFgtsTotal > 0) {
         expenses.push({
           key: `automatic-payroll-fgts-paid-${selectedMonthKey}`,
-          name: `FGTS pago · competência ${competenceLabel}`,
+          name: 'FGTS pago',
           value: payroll.paidFgtsTotal,
           category: 'Encargos trabalhistas',
           date: `${selectedMonthKey}-05`,
@@ -1007,7 +1005,7 @@ export function CustosUnificado({
       if (payroll.pendingFgtsTotal > 0) {
         expenses.push({
           key: `automatic-payroll-fgts-pending-${selectedMonthKey}`,
-          name: `FGTS pendente · competência ${competenceLabel}`,
+          name: 'FGTS pendente',
           value: payroll.pendingFgtsTotal,
           category: 'Encargos trabalhistas',
           date: `${selectedMonthKey}-05`,
@@ -1446,8 +1444,8 @@ export function CustosUnificado({
       {!loadingAutomaticCosts && !automaticCostsError && automaticCosts && automaticCosts.missingPayrollUnits.length > 0 && (
         <div role="status" style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 12, border: '1px solid rgba(59,130,246,0.28)', background: 'rgba(59,130,246,0.08)', color: '#2563eb', fontSize: '0.82rem', fontWeight: 650, lineHeight: 1.5 }}>
           <strong>Folha ainda não refletida:</strong>{' '}
-          não há folha cadastrada na competência {String(automaticCosts.payrollCompetence.month).padStart(2, '0')}/{automaticCosts.payrollCompetence.year} para {automaticCosts.missingPayrollUnits.join(', ')}.
-          Cadastre essa competência na Folha de Pagamento; os valores aparecerão aqui automaticamente, sem copiar ou estimar dados.
+          não há folha cadastrada para {automaticCosts.missingPayrollUnits.join(', ')}.
+          Cadastre a folha do mês selecionado em Folha de Pagamento; os valores aparecerão aqui automaticamente, sem copiar ou estimar dados.
         </div>
       )}
 

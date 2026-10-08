@@ -731,7 +731,6 @@ export function PayrollControl({
       <div className={styles.introBar}>
         <div>
           <span className={styles.eyebrow}>GESTÃO DE PESSOAS</span>
-          <p>Competência {formatCompetence({ month: competenceMonth, year: competenceYear })} · pagamento em {formatCompetence(costsCompetence)}</p>
         </div>
         <span className={styles.introCount}>{summary.totalEmployees} colaboradores · {summary.cltCount} CLT · {summary.pjCount} PJ{hasUndefinedRegime ? ` · ${summary.undefinedRegimeCount} a definir` : ''}</span>
       </div>
@@ -777,7 +776,6 @@ export function PayrollControl({
           <div>
             <h2>Colaboradores</h2>
             <span className={styles.liveStatus}><i /> Cálculo atualizado em tempo real</span>
-            <span className={styles.costsCompetence}>Folha {formatCompetence({ month: competenceMonth, year: competenceYear })} → Custos {formatCompetence(costsCompetence)}</span>
           </div>
           <button className={styles.compactAddButton} onClick={openNewEmployee}>
             <span className="material-symbols-outlined">person_add</span>

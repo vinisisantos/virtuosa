@@ -5,6 +5,9 @@ import AuthGuard from '@/components/auth-guard';
 import { useFinanceiro, TABS } from '@/hooks/useFinanceiro';
 import { useDashboard } from '@/hooks/useDashboard';
 import dynamic from 'next/dynamic';
+import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
+import { nextCompetence, previousCompetence } from '@/lib/automatic-costs';
 
 // Light components — keep static
 import { CompetencySelector } from '@/components/competency-selector';
@@ -32,9 +35,10 @@ function DashboardBackedFinanceTab({ type }: { type: 'custos' | 'analise' }) {
   );
 }
 
-export default function Home() {
+function FinanceiroHome() {
   const f = useFinanceiro();
   const activeTabMeta = TABS.find(t => t.key === f.activeTab) || TABS[0];
+  const paymentPeriod = nextCompetence({ month: f.competenceMonth, year: f.competenceYear });
 
   return (
     <AuthGuard allowedRoles={['ADMINISTRADOR', 'GERENTE']} requiredPermission="financeiro" alternativePermissions={['finReembolso', 'finAdiantamento', 'finPremiacao', 'finCustos', 'finAnalise']}>
@@ -58,7 +62,7 @@ export default function Home() {
           {/* 1. Folha de Pagamento */}
           {f.activeTab === 'folha' && (
             <div>
-              <CompetencySelector month={f.competenceMonth} year={f.competenceYear} onChangeMonth={f.setCompetenceMonth} onChangeYear={f.setCompetenceYear} />
+              <CompetencySelector month={paymentPeriod.month} year={paymentPeriod.year} onChangePeriod={period => f.setCompetencePeriod(previousCompetence(period))} label="Mês do pagamento" />
               <PayrollControl
                 entries={f.entries}
                 summary={f.summary}
@@ -82,7 +86,7 @@ export default function Home() {
           {/* 3. Premiação */}
           {f.activeTab === 'premiacao' && (
             <div>
-              <CompetencySelector month={f.competenceMonth} year={f.competenceYear} onChangeMonth={f.setCompetenceMonth} onChangeYear={f.setCompetenceYear} />
+              <CompetencySelector month={f.competenceMonth} year={f.competenceYear} onChangePeriod={f.setCompetencePeriod} label="Mês da premiação" />
               <PremiacaoSection selectedUnit={f.selectedUnit} selectedMonth={f.competenceMonth - 1} selectedYear={f.competenceYear} />
             </div>
           )}
@@ -106,4 +110,13 @@ export default function Home() {
       </div>
     </AuthGuard>
   );
+}
+
+function FinanceiroByTab() {
+  const searchParams = useSearchParams();
+  return <FinanceiroHome key={searchParams.get('tab') || 'default'} />;
+}
+
+export default function Home() {
+  return <Suspense fallback={null}><FinanceiroByTab /></Suspense>;
 }

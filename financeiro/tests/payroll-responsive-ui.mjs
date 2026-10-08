@@ -104,6 +104,7 @@ try {
   for (const viewport of viewports) {
     const page = await browser.newPage();
     const errors = [];
+    const payrollQueries = [];
     await page.setViewport({
       width: viewport.width,
       height: viewport.height,
@@ -119,6 +120,8 @@ try {
         else void request.abort();
         return;
       }
+
+      if (url.pathname === '/api/payroll/entries') payrollQueries.push(url.searchParams);
 
       const data = url.pathname === '/api/auth/me'
         ? { authenticated: true, user }
@@ -145,6 +148,40 @@ try {
 
     await page.goto(`${origin}/?tab=folha`, { waitUntil: 'networkidle0', timeout: 120000 });
     await page.waitForFunction(name => document.body.textContent?.includes(name), {}, entry.employeeName);
+
+    const today = new Date();
+    const expectedCompetence = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const selectedPaymentPeriod = await page.evaluate(() => {
+      const selector = document.querySelector('[aria-label="Mês do pagamento"]');
+      return {
+        month: Number(selector?.querySelector('select[aria-label="Mês"]')?.value),
+        year: Number(selector?.querySelector('strong')?.textContent),
+      };
+    });
+    assert.deepEqual(selectedPaymentPeriod, { month: today.getMonth() + 1, year: today.getFullYear() });
+    assert.equal(Number(payrollQueries.at(-1)?.get('month')), expectedCompetence.getMonth() + 1);
+    assert.equal(Number(payrollQueries.at(-1)?.get('year')), expectedCompetence.getFullYear());
+
+    if (viewport.width === 390 || viewport.width === 1440) {
+      const previousPayment = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+      const previousCompetence = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+      await page.click('button[aria-label="Mês anterior"]');
+      await page.waitForFunction(({ month, year }) => {
+        const selector = document.querySelector('[aria-label="Mês do pagamento"]');
+        return Number(selector?.querySelector('select[aria-label="Mês"]')?.value) === month
+          && Number(selector?.querySelector('strong')?.textContent) === year;
+      }, {}, { month: previousPayment.getMonth() + 1, year: previousPayment.getFullYear() });
+      await page.waitForFunction((month, year) => Boolean([...performance.getEntriesByType('resource')]
+        .some(resource => resource.name.includes(`/api/payroll/entries?month=${month}&year=${year}`))), {}, previousCompetence.getMonth() + 1, previousCompetence.getFullYear());
+      assert.equal(Number(payrollQueries.at(-1)?.get('month')), previousCompetence.getMonth() + 1);
+      assert.equal(Number(payrollQueries.at(-1)?.get('year')), previousCompetence.getFullYear());
+      await page.click('button[aria-label="Próximo mês"]');
+      await page.waitForFunction((month, year) => {
+        const selector = document.querySelector('[aria-label="Mês do pagamento"]');
+        return Number(selector?.querySelector('select[aria-label="Mês"]')?.value) === month
+          && Number(selector?.querySelector('strong')?.textContent) === year;
+      }, {}, today.getMonth() + 1, today.getFullYear());
+    }
 
     const layout = await page.evaluate(() => {
       const detailsButton = document.querySelector('button[aria-controls^="payroll-details-"]');
@@ -237,7 +274,6 @@ try {
     });
     await page.waitForFunction(() => document.body.textContent?.includes('Prévia da Folha · competência 09/2026'));
     const visibleCompetences = await page.evaluate(() => document.body.textContent || '');
-    assert.match(visibleCompetences, /Folha 09\/2026 → Custos 10\/2026/);
     assert.match(visibleCompetences, /Folha 09\/2026: 15 dias de férias → Custos 10\/2026/);
     assert.match(visibleCompetences, /Folha 10\/2026: 5 dias de férias → Custos 11\/2026/);
     const advanceLayout = await page.evaluate(() => ({

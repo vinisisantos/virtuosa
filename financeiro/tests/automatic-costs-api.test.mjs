@@ -61,8 +61,8 @@ function payrollEntry(overrides = {}) {
   };
 }
 
-function request(unit, permissions, role = 'GERENTE') {
-  return new NextRequest(`http://localhost/api/costs/automatic?month=9&year=2026&unit=${encodeURIComponent(unit)}`, {
+function request(unit, permissions, role = 'GERENTE', month = 9, year = 2026) {
+  return new NextRequest(`http://localhost/api/costs/automatic?month=${month}&year=${year}&unit=${encodeURIComponent(unit)}`, {
     headers: {
       'x-user-id': 'user-1',
       'x-user-name': 'Usuário teste',
@@ -125,6 +125,30 @@ test('custos de setembro consulta e identifica a folha de agosto', async () => {
   assert.equal(payrollCall.where.competenceMonth, 8);
   assert.equal(payrollCall.where.competenceYear, 2026);
   assert.equal(payrollCall.where.unit, 'Osasco');
+});
+
+test('custos de outubro reproduz o líquido e FGTS da folha de setembro', async () => {
+  payrollImports[0].unit = 'SBC';
+  payrollImports[0].entries = [payrollEntry({
+    employeeName: 'Gabriela',
+    netSalary: 3750,
+    baseSalary: 3750,
+    bonus: 913.68,
+    employmentType: 'CLT',
+    hasFgts: true,
+    adjustments: [{ kind: 'transport', direction: 'debit', label: 'Vale-transporte', quantity: null, amount: 225 }],
+  })];
+
+  const response = await GET(request('SBC', { finCustos: true }, 'GERENTE', 10, 2026));
+  const body = await response.json();
+  const payrollCall = calls.find(([operation]) => operation === 'payrollImport.findMany')[1];
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(body.payrollCompetence, { month: 9, year: 2026 });
+  assert.equal(payrollCall.where.competenceMonth, 9);
+  assert.equal(payrollCall.where.competenceYear, 2026);
+  assert.equal(body.payroll.entries[0].salary, 4100.08);
+  assert.equal(body.payroll.entries[0].fgts, 300);
 });
 
 test('adiantamento de férias aparece uma vez em Custos no mês do pagamento', async () => {

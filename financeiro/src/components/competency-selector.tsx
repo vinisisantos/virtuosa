@@ -5,29 +5,23 @@ import styles from './competency-selector.module.css';
 interface CompetencySelectorProps {
     month: number;
     year: number;
-    onChangeMonth: (month: number) => void;
-    onChangeYear: (year: number) => void;
+    onChangePeriod: (period: { month: number; year: number }) => void;
+    label?: string;
 }
 
 const MONTHS = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
-export function CompetencySelector({ month, year, onChangeMonth, onChangeYear }: CompetencySelectorProps) {
+export function CompetencySelector({ month, year, onChangePeriod, label = 'Mês' }: CompetencySelectorProps) {
     const handlePrev = () => {
-        if (month === 1) {
-            onChangeMonth(12);
-            onChangeYear(year - 1);
-        } else onChangeMonth(month - 1);
+        onChangePeriod(month === 1 ? { month: 12, year: year - 1 } : { month: month - 1, year });
     };
     const handleNext = () => {
-        if (month === 12) {
-            onChangeMonth(1);
-            onChangeYear(year + 1);
-        } else onChangeMonth(month + 1);
+        onChangePeriod(month === 12 ? { month: 1, year: year + 1 } : { month: month + 1, year });
     };
 
     return (
-        <div className={styles.wrapper} aria-label="Competência da folha">
-            <button className={styles.navButton} onClick={handlePrev} aria-label="Competência anterior">
+        <div className={styles.wrapper} aria-label={label}>
+            <button className={styles.navButton} onClick={handlePrev} aria-label="Mês anterior">
                 <span className="material-symbols-outlined">chevron_left</span>
             </button>
 
@@ -36,7 +30,7 @@ export function CompetencySelector({ month, year, onChangeMonth, onChangeYear }:
                     <button
                         key={label}
                         className={month === index + 1 ? styles.activeMonth : styles.monthButton}
-                        onClick={() => onChangeMonth(index + 1)}
+                        onClick={() => onChangePeriod({ month: index + 1, year })}
                     >
                         {label}
                     </button>
@@ -44,13 +38,13 @@ export function CompetencySelector({ month, year, onChangeMonth, onChangeYear }:
             </div>
 
             <div className={styles.mobileCompetence}>
-                <select value={month} onChange={event => onChangeMonth(Number(event.target.value))} aria-label="Mês">
+                <select value={month} onChange={event => onChangePeriod({ month: Number(event.target.value), year })} aria-label="Mês">
                     {MONTHS.map((label, index) => <option key={label} value={index + 1}>{label}</option>)}
                 </select>
                 <strong>{year}</strong>
             </div>
 
-            <button className={styles.navButton} onClick={handleNext} aria-label="Próxima competência">
+            <button className={styles.navButton} onClick={handleNext} aria-label="Próximo mês">
                 <span className="material-symbols-outlined">chevron_right</span>
             </button>
             <span className={styles.year}>{year}</span>

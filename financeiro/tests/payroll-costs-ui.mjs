@@ -159,7 +159,7 @@ try {
     }, user, staleLocalFixed);
 
     await page.goto(`${origin}/?tab=custos&month=8&year=2026`, { waitUntil: 'networkidle0', timeout: 120000 });
-    await page.waitForFunction(() => document.body.textContent?.includes('Folha de pagamento · competência 08/2026'));
+    await page.waitForFunction(() => document.body.textContent?.includes('Folha de pagamento'));
     await page.waitForFunction(() => document.body.textContent?.includes('Aluguel sincronizado'));
     assert.equal(await page.evaluate(() => document.body.textContent?.includes('Aluguel antigo do celular')), false);
     if (width === 390) {
@@ -176,7 +176,7 @@ try {
     await page.waitForFunction(() => document.body.textContent?.includes('Pagamentos por colaborador'));
     const payrollRowValue = () => page.evaluate(() => {
       const row = [...document.querySelectorAll('tr.cost-main-row')]
-        .find(element => element.textContent?.includes('Folha de pagamento · competência 08/2026'));
+        .find(element => element.textContent?.includes('Folha de pagamento'));
       return row?.querySelector('.cost-value-cell')?.textContent?.trim().replace(/\s+/g, ' ') || null;
     });
     const initialPayrollRowValue = await payrollRowValue();
@@ -207,7 +207,7 @@ try {
     await page.waitForFunction(() => document.body.textContent?.includes('Desfazer pagamento'));
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('tr.cost-main-row')]
-        .find(element => element.textContent?.includes('Folha de pagamento · competência 08/2026'));
+        .find(element => element.textContent?.includes('Folha de pagamento'));
       return row?.querySelector('.cost-value-cell')?.textContent?.trim().replace(/\s+/g, ' ').startsWith('R$ 1.080,00')
         && row.textContent?.includes('Parcial');
     });
