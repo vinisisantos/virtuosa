@@ -23,6 +23,17 @@ export function CrmViewportSync() {
     const syncViewport = () => {
       window.cancelAnimationFrame(animationFrame);
       animationFrame = window.requestAnimationFrame(() => {
+        if (viewport && viewport.scale > 1.01) {
+          // Pinch-zoom moves the visual viewport over the layout viewport.
+          // Resizing the entire CRM to the visual slice breaks the browser's
+          // native zoom anchor and clips the thread under the pointer.
+          root.style.setProperty("--crm-visual-height", `${Math.round(viewport.height * viewport.scale)}px`);
+          root.style.setProperty("--crm-visual-offset-top", "0px");
+          root.setAttribute("data-crm-pinch-zoom", "");
+          return;
+        }
+
+        root.removeAttribute("data-crm-pinch-zoom");
         const height = viewport?.height ?? window.innerHeight;
         const offsetTop = viewport?.offsetTop ?? 0;
         const width = viewport?.width ?? window.innerWidth;
@@ -63,6 +74,7 @@ export function CrmViewportSync() {
       document.removeEventListener("focusout", syncViewport);
       root.style.removeProperty("--crm-visual-height");
       root.style.removeProperty("--crm-visual-offset-top");
+      root.removeAttribute("data-crm-pinch-zoom");
       root.removeAttribute("data-keyboard-open");
       document.body.classList.remove("crm-shell-active");
     };

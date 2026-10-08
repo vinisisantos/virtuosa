@@ -14,6 +14,26 @@ const user = {
   unit: 'SBC',
   permissions: { admin: true, crm: true },
 };
+const conversation = {
+  id: 'crm-zoom-conversation',
+  instanceId: 'crm-zoom-instance',
+  status: 'open',
+  unreadCount: 0,
+  lastMessage: 'Uma resposta de teste com conteúdo longo.',
+  lastMessageAt: '2026-10-08T12:00:00.000Z',
+  contact: { id: 'crm-zoom-contact', phone: '5511999999999', name: 'Contato de Teste', unit: 'SBC' },
+};
+const messages = [
+  {
+    id: 'crm-zoom-message-1', conversationId: conversation.id, body: 'Gostaria de saber mais detalhes.',
+    type: 'text', fromMe: false, status: 'delivered', timestamp: '2026-10-08T11:59:00.000Z',
+  },
+  {
+    id: 'crm-zoom-message-2', conversationId: conversation.id,
+    body: 'Este é um texto longo de teste para confirmar que o balão mantém sua largura e não é cortado quando o navegador amplia a área apontada pelo usuário.',
+    type: 'text', fromMe: true, status: 'sent', timestamp: '2026-10-08T12:00:00.000Z',
+  },
+];
 
 const viewports = [
   { width: 390, height: 844, compactHeight: false },
@@ -48,7 +68,9 @@ try {
         : url.pathname.includes('/instances')
           ? { instances: [] }
           : url.pathname === '/api/whatsapp/conversations'
-            ? { conversations: [], serverTime: '2026-10-08T12:00:00.000Z' }
+            ? { conversations: [conversation], serverTime: '2026-10-08T12:00:00.000Z' }
+            : url.pathname === '/api/whatsapp/messages'
+              ? { messages, markedAsRead: true }
             : {};
       void request.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
     });
@@ -92,6 +114,50 @@ try {
       await page.evaluate(() => window.scrollTo(0, 0));
     } else {
       assert.equal(layout.shellPosition, 'fixed', 'layout habitual permanece fixo');
+    }
+
+    if (viewport.width === 756 || viewport.width === 1440) {
+      if (viewport.width === 1440) {
+        await page.waitForFunction(() => document.body.textContent.includes('Contato de Teste'));
+        await page.evaluate(() => {
+          const item = [...document.querySelectorAll('button')].find(button => button.textContent.includes('Contato de Teste'));
+          item?.click();
+        });
+        await page.waitForSelector('[data-inbox-thread-open="true"] .inbox-thread-messages');
+      }
+      const session = await page.createCDPSession();
+      await session.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2 });
+      await page.waitForFunction(() => window.visualViewport?.scale >= 1.9);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const pinchLayout = await page.evaluate(() => {
+        const shell = document.querySelector('.crm-viewport-lock');
+        const thread = document.querySelector('.inbox-thread-messages');
+        return {
+          scale: window.visualViewport.scale,
+          visualHeight: window.visualViewport.height,
+          layoutHeight: window.innerHeight,
+          shellPosition: getComputedStyle(shell).position,
+          shellHeight: shell.getBoundingClientRect().height,
+          shellTop: shell.getBoundingClientRect().top,
+          threadHeight: thread?.getBoundingClientRect().height ?? null,
+        };
+      });
+      assert.ok(pinchLayout.visualHeight < pinchLayout.layoutHeight, 'pinch reduz só a viewport visual');
+      assert.equal(pinchLayout.shellPosition, 'fixed', 'pinch mantém o shell no layout original');
+      assert.ok(
+        Math.abs(pinchLayout.shellHeight - pinchLayout.visualHeight * pinchLayout.scale) <= 2,
+        'pinch preserva a altura de layout inteira, não só a fatia visível',
+      );
+      assert.ok(Math.abs(pinchLayout.shellTop) <= 1, 'pinch não desloca o shell');
+      if (pinchLayout.threadHeight !== null) {
+        assert.ok(pinchLayout.threadHeight > pinchLayout.visualHeight, 'a conversa não encolhe para a fatia visual ampliada');
+      }
+      await session.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 });
+      await page.waitForFunction(() => window.visualViewport?.scale === 1);
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const restoredHeight = await page.$eval('.crm-viewport-lock', shell => shell.getBoundingClientRect().height);
+      assert.ok(Math.abs(restoredHeight - layout.shellHeight) <= 1, 'o shell volta à altura normal após desfazer o pinch');
+      await session.detach();
     }
 
     if (screenshotDirectory) {
