@@ -2001,6 +2001,7 @@ async function processMessage(
         conversationId: conversation.id,
         messageId: persisted.message.id,
         kind: "message",
+        isNewInboundMessage: !isFromMe,
       });
     }
     return;

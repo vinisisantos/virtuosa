@@ -9,6 +9,7 @@ type InboxRealtimeChange = {
   conversationId: string;
   messageId?: string | null;
   kind: InboxRealtimeChangeKind;
+  isNewInboundMessage?: boolean;
 };
 
 type InboxRealtimeFetch = typeof fetch;
@@ -52,6 +53,9 @@ export function inboxRealtimePayload(change: Omit<InboxRealtimeChange, "instance
     conversationId: change.conversationId,
     ...(change.messageId ? { messageId: change.messageId } : {}),
     kind: change.kind,
+    ...(change.kind === "message" && change.isNewInboundMessage === true
+      ? { isNewInboundMessage: true }
+      : {}),
     occurredAt: new Date().toISOString(),
   };
 }

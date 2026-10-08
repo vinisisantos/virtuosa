@@ -3,11 +3,67 @@ import test from "node:test";
 
 import {
   buildWhatsappUnreadSummaryUrl,
+  diffUnreadConversationSnapshot,
   dueWhatsAppFollowUpKeys,
+  excludeConversationsReadAfterRequest,
   hasAudibleWhatsAppNotification,
+  isNewInboundRealtimePayload,
+  realtimeRefreshDelay,
+  withConversationReadBaseline,
   newDueWhatsAppFollowUps,
   whatsappFollowUpNotificationKey,
 } from "../src/lib/whatsapp/notification-scope.ts";
+
+test("primeiro Broadcast é rápido e rajadas respeitam cooldown de lista e resumo", () => {
+  assert.equal(realtimeRefreshDelay(10_000, 0, 3_000, 120), 120);
+  assert.equal(realtimeRefreshDelay(10_000, 9_000, 3_000, 120), 2_000);
+  assert.equal(realtimeRefreshDelay(10_000, 0, 5_000, 250), 250);
+  assert.equal(realtimeRefreshDelay(10_000, 8_000, 5_000, 250), 3_000);
+});
+
+test("ignora Broadcasts de saída, status, reação e hidratação de mídia", () => {
+  assert.equal(isNewInboundRealtimePayload({ kind: "message", isNewInboundMessage: true }), true);
+  for (const payload of [
+    { kind: "message" },
+    { kind: "status", isNewInboundMessage: true },
+    { kind: "reaction", isNewInboundMessage: true },
+    null,
+  ]) {
+    assert.equal(isNewInboundRealtimePayload(payload), false);
+  }
+});
+
+test("substitui o snapshot ao ler a conversa, permitindo aviso no próximo recebimento", () => {
+  const first = diffUnreadConversationSnapshot([{ id: "conversa", instanceId: "ativa", unreadCount: 3 }], {});
+  const readBaseline = withConversationReadBaseline(first.nextCounts, "conversa");
+  const nextMessage = diffUnreadConversationSnapshot(
+    [{ id: "conversa", instanceId: "ativa", unreadCount: 1 }],
+    readBaseline,
+  );
+
+  assert.deepEqual(first.newlyUnread.map((conversation) => conversation.id), ["conversa"]);
+  assert.deepEqual(readBaseline, { conversa: 0 });
+  assert.deepEqual(withConversationReadBaseline(readBaseline, "sem-acesso"), readBaseline);
+  assert.deepEqual(nextMessage.newlyUnread.map((conversation) => conversation.id), ["conversa"]);
+
+  const read = diffUnreadConversationSnapshot([], first.nextCounts);
+  assert.deepEqual(read.nextCounts, {});
+  assert.deepEqual(read.newlyUnread, []);
+  assert.equal(hasAudibleWhatsAppNotification(nextMessage.newlyUnread, new Set(["ativa"])), false);
+});
+
+test("resumo iniciado antes da leitura não restaura a contagem antiga", () => {
+  const staleResponse = [{ id: "conversa", unreadCount: 3 }, { id: "outra", unreadCount: 2 }];
+  const readVersions = new Map([["conversa", 2]]);
+  assert.deepEqual(
+    excludeConversationsReadAfterRequest(staleResponse, readVersions, 1),
+    [{ id: "outra", unreadCount: 2 }],
+  );
+  assert.deepEqual(
+    excludeConversationsReadAfterRequest(staleResponse, readVersions, 2),
+    staleResponse,
+  );
+});
 
 test("restringe as notificações à instância selecionada no Inbox", () => {
   assert.equal(

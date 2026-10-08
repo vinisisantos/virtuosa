@@ -45,9 +45,15 @@ import { useVisiblePolling } from "@/hooks/use-visible-polling";
 import { useWhatsAppInstanceNotificationMutes } from "@/hooks/use-whatsapp-instance-notification-mutes";
 import {
   buildWhatsappUnreadSummaryUrl,
+  diffUnreadConversationSnapshot,
   dueWhatsAppFollowUpKeys,
+  excludeConversationsReadAfterRequest,
   hasAudibleWhatsAppNotification,
   newDueWhatsAppFollowUps,
+  realtimeRefreshDelay,
+  WHATSAPP_CONVERSATION_READ_EVENT,
+  WHATSAPP_INBOUND_REALTIME_EVENT,
+  withConversationReadBaseline,
   type WhatsAppFollowUpNotificationCandidate,
 } from "@/lib/whatsapp/notification-scope";
 import { toast } from "@/components/toast";
@@ -120,6 +126,13 @@ interface UnreadConversationSummary {
   id: string;
   instanceId?: string | null;
   unreadCount: number;
+}
+
+const INBOUND_SUMMARY_DEBOUNCE_MS = 250;
+const INBOUND_SUMMARY_COOLDOWN_MS = 5_000;
+
+function isDocumentVisible() {
+  return document.visibilityState !== "hidden";
 }
 
 function createAudioContext() {
@@ -204,7 +217,17 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   const [totalUnread, setTotalUnread] = useState(0);
   const prevUnreadRef = useRef<Record<string, number>>({});
+  const readVersionRef = useRef(0);
+  const readVersionsByConversationRef = useRef<Map<string, number>>(new Map());
   const unreadInFlightRef = useRef(false);
+  const unreadInFlightUrlRef = useRef<string | null>(null);
+  const unreadScopeRefreshPendingRef = useRef(false);
+  const unreadInboundRefreshPendingRef = useRef(false);
+  const unreadRefreshTimerRef = useRef<number | null>(null);
+  const lastInboundSummaryRefreshAtRef = useRef(0);
+  const fetchUnreadRef = useRef<() => void>(() => {});
+  const scheduleInboundSummaryRefreshRef = useRef<() => void>(() => {});
+  const sidebarMountedRef = useRef(true);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const seenFollowUpKeysRef = useRef<Set<string>>(new Set());
   const followUpBaselineLoadedRef = useRef(false);
@@ -274,9 +297,14 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
 
   // Polling de conversas não lidas — badge + som + notificação do sistema
   const fetchUnread = useCallback(async () => {
-    if (unreadInFlightRef.current) return;
+    if (unreadInFlightRef.current) {
+      if (unreadInFlightUrlRef.current !== unreadSummaryUrl) unreadScopeRefreshPendingRef.current = true;
+      return;
+    }
     if (document.visibilityState === "hidden") return;
     unreadInFlightRef.current = true;
+    unreadInFlightUrlRef.current = unreadSummaryUrl;
+    const requestReadVersion = readVersionRef.current;
     try {
       const requestUrl = unreadSummaryUrl;
       const res = await fetch(requestUrl);
@@ -284,30 +312,27 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
       const data = await res.json();
       const activeUrl = buildWhatsappUnreadSummaryUrl(window.location.pathname, window.location.search);
       if (activeUrl !== requestUrl) return;
-      if (data.conversations) {
-        const convs = data.conversations as UnreadConversationSummary[];
-        const newConvs: UnreadConversationSummary[] = [];
-
-        convs.forEach((conv) => {
-          const prev = prevUnreadRef.current[conv.id];
-          if (prev === undefined) {
-            if (conv.unreadCount > 0) newConvs.push(conv);
-          } else if (conv.unreadCount > prev) {
-            newConvs.push(conv);
-          }
-          prevUnreadRef.current[conv.id] = conv.unreadCount;
-        });
+      if (Array.isArray(data.conversations)) {
+        const convs = excludeConversationsReadAfterRequest(
+          data.conversations as UnreadConversationSummary[],
+          readVersionsByConversationRef.current,
+          requestReadVersion,
+        );
+        const { nextCounts, newlyUnread } = diffUnreadConversationSnapshot(convs, prevUnreadRef.current);
+        prevUnreadRef.current = nextCounts;
+        for (const [conversationId, readVersion] of readVersionsByConversationRef.current) {
+          if (readVersion <= requestReadVersion) readVersionsByConversationRef.current.delete(conversationId);
+        }
 
         if (
           notificationMutesLoadedRef.current
-          && hasAudibleWhatsAppNotification(newConvs, mutedInstanceIdsRef.current)
+          && hasAudibleWhatsAppNotification(newlyUnread, mutedInstanceIdsRef.current)
         ) {
           // Tocar som da plataforma
           playNotificationSound();
         }
 
-        const count = typeof data.count === "number" ? data.count : convs.filter((c) => c.unreadCount > 0).length;
-        setTotalUnread(count);
+        setTotalUnread(convs.length);
       }
       if (Array.isArray(data.followUps)) {
         const followUps = data.followUps as WhatsAppFollowUpNotificationCandidate[];
@@ -344,11 +369,74 @@ export function Sidebar({ open = false, onClose }: SidebarProps) {
     } catch {
     } finally {
       unreadInFlightRef.current = false;
+      unreadInFlightUrlRef.current = null;
+      if (unreadScopeRefreshPendingRef.current && sidebarMountedRef.current && isDocumentVisible()) {
+        unreadScopeRefreshPendingRef.current = false;
+        unreadInboundRefreshPendingRef.current = false;
+        queueMicrotask(() => {
+          if (sidebarMountedRef.current && isDocumentVisible()) fetchUnreadRef.current();
+        });
+      } else if (unreadInboundRefreshPendingRef.current && sidebarMountedRef.current && isDocumentVisible()) {
+        unreadInboundRefreshPendingRef.current = false;
+        queueMicrotask(() => {
+          if (sidebarMountedRef.current && isDocumentVisible()) scheduleInboundSummaryRefreshRef.current();
+        });
+      }
     }
   }, [playNotificationSound, unreadSummaryUrl]);
 
+  fetchUnreadRef.current = () => { void fetchUnread(); };
+
+  const scheduleInboundSummaryRefresh = useCallback(() => {
+    if (!isDocumentVisible() || unreadRefreshTimerRef.current !== null || unreadInboundRefreshPendingRef.current) return;
+    const delay = realtimeRefreshDelay(
+      Date.now(),
+      lastInboundSummaryRefreshAtRef.current,
+      INBOUND_SUMMARY_COOLDOWN_MS,
+      INBOUND_SUMMARY_DEBOUNCE_MS,
+    );
+    unreadRefreshTimerRef.current = window.setTimeout(() => {
+      unreadRefreshTimerRef.current = null;
+      if (document.visibilityState === "hidden") return;
+      lastInboundSummaryRefreshAtRef.current = Date.now();
+      if (unreadInFlightRef.current) {
+        unreadInboundRefreshPendingRef.current = true;
+        return;
+      }
+      fetchUnreadRef.current();
+    }, delay);
+  }, []);
+
+  scheduleInboundSummaryRefreshRef.current = scheduleInboundSummaryRefresh;
+
   useEffect(() => {
+    sidebarMountedRef.current = true;
+    const onConversationRead = (event: Event) => {
+      const conversationId = (event as CustomEvent<{ conversationId?: unknown }>).detail?.conversationId;
+      if (typeof conversationId === "string" && Object.prototype.hasOwnProperty.call(prevUnreadRef.current, conversationId)) {
+        readVersionRef.current += 1;
+        readVersionsByConversationRef.current.set(conversationId, readVersionRef.current);
+        prevUnreadRef.current = withConversationReadBaseline(prevUnreadRef.current, conversationId);
+      }
+    };
+    window.addEventListener(WHATSAPP_INBOUND_REALTIME_EVENT, scheduleInboundSummaryRefresh);
+    window.addEventListener(WHATSAPP_CONVERSATION_READ_EVENT, onConversationRead);
+    return () => {
+      sidebarMountedRef.current = false;
+      window.removeEventListener(WHATSAPP_INBOUND_REALTIME_EVENT, scheduleInboundSummaryRefresh);
+      window.removeEventListener(WHATSAPP_CONVERSATION_READ_EVENT, onConversationRead);
+      if (unreadRefreshTimerRef.current !== null) window.clearTimeout(unreadRefreshTimerRef.current);
+      unreadRefreshTimerRef.current = null;
+    };
+  }, [scheduleInboundSummaryRefresh]);
+
+  useEffect(() => {
+    if (unreadRefreshTimerRef.current !== null) window.clearTimeout(unreadRefreshTimerRef.current);
+    unreadRefreshTimerRef.current = null;
+    lastInboundSummaryRefreshAtRef.current = 0;
+    unreadInboundRefreshPendingRef.current = false;
     prevUnreadRef.current = {};
+    readVersionsByConversationRef.current.clear();
     seenFollowUpKeysRef.current = new Set();
     followUpBaselineLoadedRef.current = false;
     setTotalUnread(0);

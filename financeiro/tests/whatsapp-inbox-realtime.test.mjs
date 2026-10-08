@@ -56,6 +56,29 @@ test("payload do broadcast não transporta conteúdo nem dados do contato", () =
   assert.equal(JSON.stringify(payload).includes("name"), false);
 });
 
+test("marcador de nova mensagem recebida só acompanha o evento de ingestão inbound", () => {
+  const inbound = inboxRealtimePayload({
+    conversationId: "conversation-1",
+    messageId: "message-1",
+    kind: "message",
+    isNewInboundMessage: true,
+  });
+  const outbound = inboxRealtimePayload({
+    conversationId: "conversation-1",
+    kind: "message",
+  });
+  const status = inboxRealtimePayload({
+    conversationId: "conversation-1",
+    kind: "status",
+    isNewInboundMessage: true,
+  });
+
+  assert.equal(inbound.isNewInboundMessage, true);
+  assert.equal("isNewInboundMessage" in outbound, false);
+  assert.equal("isNewInboundMessage" in status, false);
+  assert.equal(JSON.stringify(inbound).includes("body"), false);
+});
+
 test("configuração pública exige HTTPS e a chave pública", () => {
   withRealtimeEnv(() => {
     assert.deepEqual(inboxRealtimePublicConfig(), {
@@ -130,4 +153,14 @@ test("Inbox assina Broadcast e preserva polling de 30 segundos", async () => {
   assert.match(source, /removeAllChannels\(\)/);
   assert.match(source, /useVisiblePolling\(refreshVisibleInbox, INBOX_POLL_INTERVAL_MS/);
   assert.match(utils, /INBOX_POLL_INTERVAL_MS\s*=\s*30000/);
+  assert.match(source, /pendingRealtimeConversationScopeRef\.current\s*=\s*conversationListScopeKey/);
+  assert.match(source, /pendingRealtimeMessageRequestsRef\.current\.add\(requestKey\)/);
+  assert.match(source, /isNewInboundRealtimePayload\(payload\)/);
+  assert.match(source, /refreshList: payload\.kind === "message"/);
+  assert.match(source, /pendingRealtimeConversationScopeRef\.current === scopeAtRequestStart/);
+  assert.match(source, /conversationsInFlightScopeRef\.current === requestKey\s*&& requestSeq === conversationsRequestSeqRef\.current/);
+  assert.match(source, /pendingRealtimeMessageRequestsRef\.current\.delete\(requestKey\)/);
+  assert.match(source, /refreshList: payload\.kind === "message"/);
+  assert.match(source, /scheduleRealtimeRefreshRef\.current\(\{ refreshList: true, refreshSelected: false \}\)/);
+  assert.match(source, /scheduleRealtimeRefreshRef\.current\(\{ conversationId, refreshList: false, refreshSelected: true \}\)/);
 });

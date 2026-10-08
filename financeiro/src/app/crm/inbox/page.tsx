@@ -33,6 +33,12 @@ import {
   type SavedReply,
 } from "@/hooks/use-whatsapp-saved-replies";
 import { useWhatsAppInstanceNotificationMutes } from "@/hooks/use-whatsapp-instance-notification-mutes";
+import {
+  WHATSAPP_CONVERSATION_READ_EVENT,
+  WHATSAPP_INBOUND_REALTIME_EVENT,
+  isNewInboundRealtimePayload,
+  realtimeRefreshDelay,
+} from "@/lib/whatsapp/notification-scope";
 import { useCompatibleAudioSource } from "@/hooks/use-compatible-audio-source";
 import { audioPlaybackErrorMessage } from "@/lib/whatsapp/audio-compatibility";
 import {
@@ -3318,9 +3324,18 @@ export default function InboxPage() {
   const internalNotesTriggerRef = useRef<HTMLButtonElement>(null);
   const internalNoteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const conversationsInFlightScopeRef = useRef<string | null>(null);
+  const pendingRealtimeConversationScopeRef = useRef<string | null>(null);
+  const retryRealtimeConversationRefreshRef = useRef<() => void>(() => {});
+  const scheduleRealtimeRefreshRef = useRef<(options: {
+    conversationId?: string;
+    refreshList: boolean;
+    refreshSelected: boolean;
+  }) => void>(() => {});
   const conversationsLastSyncRef = useRef<string | null>(null);
   const conversationsIncrementalPollsRef = useRef(0);
   const messagesInFlightRequestsRef = useRef<Map<string, Promise<MessageLoadResult>>>(new Map());
+  const pendingRealtimeMessageRequestsRef = useRef<Set<string>>(new Set());
+  const retryRealtimeMessageRefreshRef = useRef<(conversationId: string) => void>(() => {});
   const loadedMessagesConversationIdRef = useRef<string | null>(null);
   const activeScopeRef = useRef("");
   const activeConversationListScopeRef = useRef("");
@@ -4211,9 +4226,13 @@ export default function InboxPage() {
     incremental?: boolean;
     phase?: "initial" | "enrich" | "page" | "refresh";
     cursor?: string;
+    realtime?: boolean;
   }) => {
     const scopePrefix = `${conversationListScopeKey}:`;
-    if (conversationsInFlightScopeRef.current?.startsWith(scopePrefix)) return null;
+    if (conversationsInFlightScopeRef.current?.startsWith(scopePrefix)) {
+      if (options?.realtime) pendingRealtimeConversationScopeRef.current = conversationListScopeKey;
+      return null;
+    }
 
     const lastSync = conversationsLastSyncRef.current;
     const incremental = Boolean(
@@ -4371,11 +4390,27 @@ export default function InboxPage() {
       ) {
         setConversationListLoading(false);
       }
-      if (conversationsInFlightScopeRef.current === requestKey) {
+      if (
+        conversationsInFlightScopeRef.current === requestKey
+        && requestSeq === conversationsRequestSeqRef.current
+      ) {
         conversationsInFlightScopeRef.current = null;
+        if (pendingRealtimeConversationScopeRef.current === scopeAtRequestStart) {
+          pendingRealtimeConversationScopeRef.current = null;
+          queueMicrotask(() => {
+            if (
+              scopeAtRequestStart === activeConversationListScopeRef.current
+              && document.visibilityState !== "hidden"
+            ) retryRealtimeConversationRefreshRef.current();
+          });
+        }
       }
     }
   }, [archivedView, conversationListScopeKey, conversationSearch, deepLinkConversationId, isLeadsOsascoInbox, serverConversationStatus, waParams]);
+
+  retryRealtimeConversationRefreshRef.current = () => {
+    scheduleRealtimeRefreshRef.current({ refreshList: true, refreshSelected: false });
+  };
 
   const applyCallbackTrackingSnapshot = useCallback((
     conversationId: string,
@@ -4434,10 +4469,13 @@ export default function InboxPage() {
     return !!conv?.assignedTo && conv.status !== "waiting_response";
   }, []);
 
-  const fetchMessages = useCallback((convId: string, markAsRead = false): Promise<MessageLoadResult> => {
+  const fetchMessages = useCallback((convId: string, markAsRead = false, realtime = false): Promise<MessageLoadResult> => {
     const requestKey = `${inboxScopeKey}:${convId}:${markAsRead ? "read" : "peek"}`;
     const existingRequest = messagesInFlightRequestsRef.current.get(requestKey);
-    if (existingRequest) return existingRequest;
+    if (existingRequest) {
+      if (realtime) pendingRealtimeMessageRequestsRef.current.add(requestKey);
+      return existingRequest;
+    }
 
     const requestSeq = ++messagesRequestSeqRef.current;
     const scopeAtRequestStart = inboxScopeKey;
@@ -4479,6 +4517,9 @@ export default function InboxPage() {
           setSelectedConv((prev) =>
             prev?.id === convId && prev.unreadCount !== 0 ? { ...prev, unreadCount: 0 } : prev
           );
+          window.dispatchEvent(new CustomEvent(WHATSAPP_CONVERSATION_READ_EVENT, {
+            detail: { conversationId: convId },
+          }));
         }
         return { status: "applied" };
       } catch (error) {
@@ -4493,13 +4534,27 @@ export default function InboxPage() {
     })();
 
     messagesInFlightRequestsRef.current.set(requestKey, request);
-    void request.finally(() => {
+    const releaseRequest = () => {
       if (messagesInFlightRequestsRef.current.get(requestKey) === request) {
         messagesInFlightRequestsRef.current.delete(requestKey);
+        if (pendingRealtimeMessageRequestsRef.current.delete(requestKey)) {
+          queueMicrotask(() => {
+            if (
+              scopeAtRequestStart === activeScopeRef.current
+              && selectedConvRef.current?.id === convId
+              && document.visibilityState !== "hidden"
+            ) retryRealtimeMessageRefreshRef.current(convId);
+          });
+        }
       }
-    });
+    };
+    void request.then(releaseRequest, releaseRequest);
     return request;
   }, [inboxScopeKey, waParams]);
+
+  retryRealtimeMessageRefreshRef.current = (conversationId) => {
+    scheduleRealtimeRefreshRef.current({ conversationId, refreshList: false, refreshSelected: true });
+  };
 
   const recoverInboundMedia = useCallback(async (message: Message) => {
     const scopeAtStart = inboxScopeKey;
@@ -4637,9 +4692,11 @@ export default function InboxPage() {
     conversationsRequestSeqRef.current += 1;
     messagesRequestSeqRef.current += 1;
     conversationsInFlightScopeRef.current = null;
+    pendingRealtimeConversationScopeRef.current = null;
     conversationsLastSyncRef.current = null;
     conversationsIncrementalPollsRef.current = 0;
     messagesInFlightRequestsRef.current.clear();
+    pendingRealtimeMessageRequestsRef.current.clear();
     selectedConversationIdRef.current = null;
     loadedMessagesConversationIdRef.current = null;
     setSelectedConv(null);
@@ -4662,6 +4719,7 @@ export default function InboxPage() {
 
     conversationsRequestSeqRef.current += 1;
     conversationsInFlightScopeRef.current = null;
+    pendingRealtimeConversationScopeRef.current = null;
     conversationsLastSyncRef.current = null;
     conversationsIncrementalPollsRef.current = 0;
     activeConversationListScopeRef.current = conversationListScopeKey;
@@ -4758,30 +4816,61 @@ export default function InboxPage() {
   useEffect(() => {
     const controller = new AbortController();
     let disposed = false;
-    let refreshTimer: number | null = null;
+    let listRefreshTimer: number | null = null;
+    let threadRefreshTimer: number | null = null;
+    let refreshAnySelectedConversation = false;
+    const pendingRealtimeConversationIds = new Set<string>();
+    let lastListRefreshAt = 0;
+    let lastThreadRefreshAt = 0;
     let realtimeClient: ReturnType<typeof createClient> | null = null;
 
-    const scheduleRefresh = (conversationId?: string) => {
-      if (document.visibilityState === "hidden") return;
-      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = null;
-        const hasSyncCursor = Boolean(conversationsLastSyncRef.current);
-        void fetchConversations({ incremental: hasSyncCursor });
-
-        const selectedConversation = selectedConvRef.current;
-        if (
-          selectedConversation
-          && (!conversationId || selectedConversation.id === conversationId)
-          && !activeAudioMessageIdRef.current
-        ) {
-          void fetchMessages(
-            selectedConversation.id,
-            isConversationInService(selectedConversation),
-          );
+    const scheduleRefresh = (options: {
+      conversationId?: string;
+      refreshList: boolean;
+      refreshSelected: boolean;
+    }) => {
+      if (disposed || document.visibilityState === "hidden") return;
+      if (options.refreshList && listRefreshTimer === null) {
+        const delay = realtimeRefreshDelay(Date.now(), lastListRefreshAt, 3_000, 120);
+        listRefreshTimer = window.setTimeout(() => {
+          listRefreshTimer = null;
+          lastListRefreshAt = Date.now();
+          const hasSyncCursor = Boolean(conversationsLastSyncRef.current);
+          void fetchConversations({ incremental: hasSyncCursor, realtime: true });
+        }, delay);
+      }
+      if (options.refreshSelected) {
+        if (options.conversationId) pendingRealtimeConversationIds.add(options.conversationId);
+        else refreshAnySelectedConversation = true;
+        if (threadRefreshTimer === null) {
+          const delay = realtimeRefreshDelay(Date.now(), lastThreadRefreshAt, 3_000, 120);
+          threadRefreshTimer = window.setTimeout(() => {
+            threadRefreshTimer = null;
+            lastThreadRefreshAt = Date.now();
+            const selectedConversation = selectedConvRef.current;
+            const shouldRefreshSelectedConversation = Boolean(
+              selectedConversation
+              && (refreshAnySelectedConversation || pendingRealtimeConversationIds.has(selectedConversation.id))
+            );
+            refreshAnySelectedConversation = false;
+            pendingRealtimeConversationIds.clear();
+            if (
+              selectedConversation
+              && shouldRefreshSelectedConversation
+              && !activeAudioMessageIdRef.current
+            ) {
+              void fetchMessages(
+                selectedConversation.id,
+                isConversationInService(selectedConversation),
+                true,
+              );
+            }
+          }, delay);
         }
-      }, 120);
+      }
     };
+
+    scheduleRealtimeRefreshRef.current = scheduleRefresh;
 
     const connect = async () => {
       try {
@@ -4820,11 +4909,19 @@ export default function InboxPage() {
           realtimeClient
             .channel(topic, { config: { broadcast: { self: false }, private: false } })
             .on("broadcast", { event: config.event }, (event) => {
-              const payload = event?.payload as { conversationId?: unknown } | undefined;
+              const payload = event?.payload as { conversationId?: unknown; kind?: unknown } | undefined;
+              if (!payload || !["message", "status", "reaction"].includes(String(payload.kind))) return;
               const conversationId = typeof payload?.conversationId === "string"
                 ? payload.conversationId
                 : undefined;
-              scheduleRefresh(conversationId);
+              scheduleRefresh({
+                conversationId,
+                refreshList: payload.kind === "message",
+                refreshSelected: true,
+              });
+              if (isNewInboundRealtimePayload(payload)) {
+                window.dispatchEvent(new Event(WHATSAPP_INBOUND_REALTIME_EVENT));
+              }
             })
             .subscribe((status, error) => {
               if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
@@ -4842,8 +4939,10 @@ export default function InboxPage() {
 
     return () => {
       disposed = true;
+      scheduleRealtimeRefreshRef.current = () => {};
       controller.abort();
-      if (refreshTimer !== null) window.clearTimeout(refreshTimer);
+      if (listRefreshTimer !== null) window.clearTimeout(listRefreshTimer);
+      if (threadRefreshTimer !== null) window.clearTimeout(threadRefreshTimer);
       if (realtimeClient) void realtimeClient.removeAllChannels();
     };
   }, [fetchConversations, fetchMessages, inboxScopeKey, isConversationInService, waParams]);
