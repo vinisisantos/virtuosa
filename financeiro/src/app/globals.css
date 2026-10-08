@@ -204,6 +204,22 @@ html[data-theme="violet"] {
   padding: 0 !important;
 }
 
+/* Browser zoom reduces the CSS viewport height. Keep the CRM's scrollable
+   panels tall enough to reach their controls instead of clipping them inside
+   a fixed viewport shorter than their headers. */
+@media (max-height: 42rem) {
+  body.crm-shell-active {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .crm-viewport-lock {
+    position: relative;
+    top: 0;
+    height: max(44rem, var(--crm-visual-height, 100dvh));
+  }
+}
+
 
 .app-container {
   width: 100%;

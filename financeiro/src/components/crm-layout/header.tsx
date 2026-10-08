@@ -169,7 +169,7 @@ export function Header({ onOpenSidebar }: HeaderProps) {
               {initial}
             </AvatarFallback>
           </Avatar>
-          <span className="hidden text-sm font-medium text-foreground sm:inline">
+          <span className="hidden text-sm font-medium text-foreground lg:inline">
             {userName}
           </span>
         </DropdownMenuTrigger>

@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useEffect, useRef, useCallback, useId } from 'react';
+import { Bell } from 'lucide-react';
 import { useVisiblePolling } from '@/hooks/use-visible-polling';
 import {
   CRM_NOTIFICATION_SNAPSHOT_EVENT,
@@ -118,7 +119,7 @@ export function NotificationBell({ passive = false }: { passive?: boolean }) {
         onMouseEnter={e => e.currentTarget.style.background = 'var(--bg)'}
         onMouseLeave={e => e.currentTarget.style.background = 'none'}
       >
-        <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 24, color: 'var(--text-muted)' }}>notifications</span>
+        <Bell aria-hidden="true" className="size-6" style={{ color: 'var(--text-muted)' }} />
         {unreadCount > 0 && (
           <span aria-hidden="true" style={{ position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: '50%', background: '#ef4444', color: '#fff', fontSize: '0.62rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--card-bg)' }}>
             {unreadCount > 9 ? '9+' : unreadCount}
