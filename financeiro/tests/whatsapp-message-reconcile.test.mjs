@@ -32,7 +32,7 @@ process.env.EVOLUTION_API_KEY = "test-key";
 const conversationId = "conversation-a";
 const messageId = "wa-message-a";
 const phone = "5511900000000";
-let message, logs, providerPayload, providerHttpStatus, providerCalls, updateCalls, readCalls, forceDuplicateClaim;
+let message, logs, providerPayload, providerHttpStatus, providerCalls, updateCalls, readCalls, forceDuplicateClaim, testUnit;
 globalThis.broadcasts = [];
 globalThis.testInstances = [{ id: "instance-a", status: "connected", canView: true }];
 
@@ -44,7 +44,7 @@ globalThis.prisma = {
         id: conversationId,
         lastKnownJid: `${phone}@s.whatsapp.net`,
         contact: { phone },
-        instance: { id: "instance-a", name: "test-instance", provider: "evolution" },
+        instance: { id: "instance-a", name: "test-instance", provider: "evolution", unit: testUnit },
       };
     },
   },
@@ -106,11 +106,12 @@ beforeEach(() => {
     messages: { records: [{
       key: { id: messageId, fromMe: true, remoteJid: `${phone}@s.whatsapp.net` },
       message: { conversation: "teste" },
-      status: "DELIVERY_ACK",
+      MessageUpdate: [{ status: "SERVER_ACK" }, { status: "DELIVERY_ACK" }],
     }] },
   };
   providerCalls = updateCalls = readCalls = 0;
   forceDuplicateClaim = false;
+  testUnit = "SBC";
   globalThis.broadcasts = [];
   globalThis.testInstances = [{ id: "instance-a", status: "connected", canView: true }];
 });
@@ -144,10 +145,51 @@ test("não confunde mesmo messageId de outro contato nem inventa confirmação",
   assert.equal(globalThis.broadcasts.length, 0);
 });
 
+test("não promove envio quando a Evolution não possui recibo consultável", async () => {
+  providerPayload.messages.records[0].MessageUpdate = [];
+  const result = await reconcile();
+  assert.deepEqual(result.body, { checked: true, providerFound: true, status: "pending" });
+  assert.equal(updateCalls, 0);
+  assert.equal(globalThis.broadcasts.length, 0);
+});
+
+test("mantém a leitura antiga fora da unidade canário", async () => {
+  testUnit = "Osasco";
+  const result = await reconcile();
+  assert.deepEqual(result.body, { checked: true, providerFound: true, status: "pending" });
+  assert.equal(updateCalls, 0);
+});
+
 test("não aceita outro DDI com os mesmos dez dígitos finais", async () => {
   providerPayload.messages.records[0].key.remoteJid = `1${phone}@s.whatsapp.net`;
   const result = await reconcile();
   assert.deepEqual(result.body, { checked: true, providerFound: false, status: "pending" });
+  assert.equal(updateCalls, 0);
+});
+
+test("aceita ACK LID somente quando o JID alternativo identifica o contato", async () => {
+  providerPayload.messages.records[0].key.remoteJid = "123456789@lid";
+  providerPayload.messages.records[0].key.remoteJidAlt = `${phone}@s.whatsapp.net`;
+  assert.equal((await reconcile()).body.status, "delivered");
+  assert.equal(updateCalls, 1);
+});
+
+test("não associa recibo LID sem telefone correspondente nem mensagem de entrada", async () => {
+  providerPayload.messages.records[0].key.remoteJid = "123456789@lid";
+  providerPayload.messages.records[0].key.remoteJidAlt = "5511800000000@s.whatsapp.net";
+  assert.equal((await reconcile()).body.status, "pending");
+  assert.equal(updateCalls, 0);
+
+  logs = [];
+  providerPayload.messages.records[0].key.remoteJid = `${phone}@s.whatsapp.net`;
+  providerPayload.messages.records[0].key.fromMe = false;
+  assert.equal((await reconcile()).body.status, "pending");
+  assert.equal(updateCalls, 0);
+});
+
+test("não usa recibo de outro ID da mesma conversa", async () => {
+  providerPayload.messages.records[0].key.id = "other-message";
+  assert.deepEqual((await reconcile()).body, { checked: true, providerFound: false, status: "pending" });
   assert.equal(updateCalls, 0);
 });
 

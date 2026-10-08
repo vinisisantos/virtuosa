@@ -21,6 +21,24 @@ export function normalizeWhatsAppMessageStatus(value: unknown): WhatsAppMessageS
   return STATUS_ALIASES[String(value).trim().toUpperCase()] || null;
 }
 
+/** Evolution 2.3.7 exposes receipts in MessageUpdate, not the Message.status field. */
+export function evolutionMessageReceiptStatus(value: unknown): WhatsAppMessageStatus | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  let strongest = normalizeWhatsAppMessageStatus(record.status);
+  if (!Array.isArray(record.MessageUpdate)) return strongest;
+
+  for (const receipt of record.MessageUpdate) {
+    if (!receipt || typeof receipt !== "object") continue;
+    const status = normalizeWhatsAppMessageStatus((receipt as Record<string, unknown>).status);
+    if (!status || status === "deleted") continue;
+    strongest = strongest
+      ? normalizeWhatsAppMessageStatus(mergeWhatsAppMessageStatus(strongest, status))
+      : status;
+  }
+  return strongest;
+}
+
 export function normalizeWahaMessageAck(ackName: unknown, ack: unknown): WhatsAppMessageStatus | null {
   const named = typeof ackName === "string" ? normalizeWhatsAppMessageStatus(ackName) : null;
   if (named) return named;

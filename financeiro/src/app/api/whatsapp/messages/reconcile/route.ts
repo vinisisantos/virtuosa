@@ -5,6 +5,7 @@ import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 import { findEvolutionMessageById } from "@/lib/whatsapp/inbound-media";
 import { broadcastInboxRealtimeChange } from "@/lib/whatsapp/inbox-realtime";
 import {
+  evolutionMessageReceiptStatus,
   normalizeWhatsAppMessageStatus,
   whatsAppStatusUpdateFilter,
 } from "@/lib/whatsapp/message-status";
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
       id: true,
       lastKnownJid: true,
       contact: { select: { phone: true } },
-      instance: { select: { id: true, name: true, provider: true } },
+      instance: { select: { id: true, name: true, provider: true, unit: true } },
     },
   });
   if (!conversation) {
@@ -190,7 +191,10 @@ export async function POST(req: Request) {
         conversation.contact.phone,
       ),
     );
-    const providerStatus = normalizeWhatsAppMessageStatus(original?.status);
+    // Piloto em SBC; outras unidades conservam a leitura anterior até a validação operacional.
+    const providerStatus = conversation.instance.unit === "SBC"
+      ? evolutionMessageReceiptStatus(original)
+      : normalizeWhatsAppMessageStatus(original?.status);
     let updated = false;
     if (providerStatus && providerStatus !== "pending" && providerStatus !== "deleted") {
       const result = await prisma.whatsAppMessage.updateMany({

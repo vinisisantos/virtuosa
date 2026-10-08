@@ -2,12 +2,32 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import {
+  evolutionMessageReceiptStatus,
   extractEvolutionStatusUpdate,
   mergeWhatsAppMessageStatus,
   normalizeWhatsAppMessageStatus,
   normalizeWahaMessageAck,
   whatsAppStatusUpdateFilter,
 } from "../src/lib/whatsapp/message-status.ts";
+
+test("lê o melhor recibo de MessageUpdate mesmo fora de ordem sem inventar entrega", () => {
+  assert.equal(evolutionMessageReceiptStatus({
+    MessageUpdate: [
+      { status: "READ" },
+      { status: "DELIVERY_ACK" },
+      { status: "SERVER_ACK" },
+    ],
+  }), "read");
+  assert.equal(evolutionMessageReceiptStatus({
+    status: "PENDING",
+    MessageUpdate: [{ status: "ERROR" }, { status: "DELIVERY_ACK" }],
+  }), "delivered");
+  assert.equal(evolutionMessageReceiptStatus({ status: "SERVER_ACK", MessageUpdate: [] }), "sent");
+  assert.equal(evolutionMessageReceiptStatus({ MessageUpdate: [{ status: "future-status" }, null] }), null);
+  assert.equal(evolutionMessageReceiptStatus({ MessageUpdate: [{ status: "DELETED" }] }), null);
+  assert.equal(evolutionMessageReceiptStatus({ MessageUpdate: { status: "READ" } }), null);
+  assert.equal(evolutionMessageReceiptStatus(null), null);
+});
 
 test("normaliza ACKs numéricos, strings e enums sem inferir status desconhecido", () => {
   for (const [number, status] of ["error", "pending", "sent", "delivered", "read", "played"].entries()) {
