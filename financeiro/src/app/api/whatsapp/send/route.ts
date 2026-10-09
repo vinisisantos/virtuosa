@@ -440,6 +440,7 @@ export async function POST(req: Request) {
 
     const resolvedContact = contact!;
     const unitConfig = getEvaluationScheduleUnitConfigByUnit(dbInstance.unit || resolvedContact.unit);
+    // A autoria fica nos metadados do CRM, nunca como prefixo automático ao cliente.
     const messageBody = renderWhatsAppMessageTemplate(rawMessageBody, {
       contactName: resolvedContact.name,
       contactPhone: resolvedContact.phone,
@@ -515,13 +516,12 @@ export async function POST(req: Request) {
       }
 
       if (isMedia) {
-        const captionWithName = messageBody && userName ? `*${userName}:* ${messageBody}` : messageBody || "";
         const result = await sendWahaMedia({
           sessionName: instanceName,
           chatId: providerSendTarget,
           type: type || "document",
           file: providerMediaReference,
-          caption: captionWithName,
+          caption: messageBody || "",
           fileName: body.docName || undefined,
           mimeType: verifiedMediaMimeType,
           replyTo: replyid || null,
@@ -552,14 +552,10 @@ export async function POST(req: Request) {
           return NextResponse.json({ error: "Erro ao enviar mídia pela WAHA", details: sendData }, { status: result.res.status });
         }
       } else {
-        let finalTextBody = messageBody;
-        if (userName && messageBody) {
-          finalTextBody = `*${userName}:*\n${messageBody}`;
-        }
         const result = await sendWahaText({
           sessionName: instanceName,
           chatId: providerSendTarget,
-          text: finalTextBody,
+          text: messageBody,
           replyTo: replyid || null,
           linkPreview: Boolean(linkPreviewSourceUrl),
         });
@@ -633,14 +629,11 @@ export async function POST(req: Request) {
       }
     } else if (isMedia) {
       // Evolution API v2: POST /message/sendMedia/{instanceName}
-      // Assinatura do operador na legenda da mídia
-      const captionWithName = messageBody && userName ? `*${userName}:* ${messageBody}` : messageBody || '';
-
       const mediaPayload: any = {
         number: sendTarget,
         mediatype: type,
         media: providerMediaReference,
-        caption: captionWithName,
+        caption: messageBody || '',
         fileName: body.docName || undefined,
         ...(verifiedMediaMimeType ? { mimetype: verifiedMediaMimeType } : {}),
       };
@@ -684,15 +677,9 @@ export async function POST(req: Request) {
       }
     } else {
       // Evolution API v2: POST /message/sendText/{instanceName}
-      // Assinatura do operador na mensagem WhatsApp
-      let finalTextBody = messageBody;
-      if (userName && messageBody) {
-        finalTextBody = `*${userName}:*\n${messageBody}`;
-      }
-
       const textPayload: any = {
         number: sendTarget,
-        text: finalTextBody,
+        text: messageBody,
         ...(linkPreviewSourceUrl ? { linkPreview: true } : {}),
       };
 

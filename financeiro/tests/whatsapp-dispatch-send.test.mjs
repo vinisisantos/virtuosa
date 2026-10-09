@@ -43,13 +43,19 @@ const db={
 };
 globalThis.prisma=db;
 globalThis.fetch=async(url,options)=>{
-  assert.match(String(url),/^http:\/\/localhost:8080\/message\/send(Text|Media)\/test-instance$/);
+  const isWaha=globalThis.dispatchInstances[0].provider==='waha';
+  assert.match(String(url),isWaha
+    ? /^http:\/\/localhost:8081\/api\/send(Text|Image|Video|File)$/
+    : /^http:\/\/localhost:8080\/message\/send(Text|Media)\/test-instance$/);
   sent.push(JSON.parse(options.body));
-  return new Response(JSON.stringify(providerOk?(missingMessageId?{}:{key:{id:'wa-id'},status:providerStatus}):{error:'Falha sintética'}),{status:providerOk?200:502});
+  return new Response(JSON.stringify(providerOk?(missingMessageId?{}:isWaha?{id:'wa-id',ack:1}:{key:{id:'wa-id'},status:providerStatus}):{error:'Falha sintética'}),{status:providerOk?200:502});
 };
 const {POST}=await import('../src/app/api/whatsapp/send/route.ts');
 const dispatch={batchId:'12345678-1234-1234-1234-123456789abc',size:2,source:'inbox_bulk',campaignName:'Botox'};
 beforeEach(()=>{
+  process.env.EVOLUTION_API_URL='http://localhost:8080';
+  process.env.WAHA_API_URL='http://localhost:8081';
+  process.env.WAHA_API_KEY='synthetic-test-key';
   saved=null;sent=[];providerOk=true;echo=null;writes=0;missingMessageId=false;providerStatus=undefined;
   globalThis.dispatchAfterTasks=[];
   globalThis.dispatchLinkPreview=null;globalThis.dispatchPrivateBlob=null;globalThis.dispatchQuotedMessage=null;
@@ -61,6 +67,44 @@ const send=async(extra={},query='')=>{
   await Promise.all(globalThis.dispatchAfterTasks.splice(0).map(task=>task()));
   return response;
 };
+for(const provider of ['evolution','waha']){
+  for(const unit of ['Osasco','SBC','SCS','Todas']){
+    test(`${provider}/${unit}: texto e legendas sem assinatura externa, com autoria interna`,async()=>{
+      Object.assign(globalThis.dispatchInstances[0],{provider,unit});
+      for(const bulk of [false,true]){
+        for(const type of (bulk?['text','image']:['text','image','video','document'])){
+          const body='Olá!\nSua avaliação está confirmada. 😊';
+          const res=await send({dispatch:bulk?dispatch:undefined,body,type,
+            ...(type!=='text'?{file:'https://example.test/arquivo',docName:'arquivo'}:{})});
+          assert.equal(res.status,200,`${type}/${bulk}: ${await res.clone().text()}`);
+          assert.equal(sent.at(-1)[type==='text'?'text':'caption'],body);
+          assert.equal(sent.at(-1).respondedByName,undefined);
+          assert.equal(saved.body,body);
+          assert.equal(saved.respondedBy,'operator');
+          assert.equal(saved.respondedByName,'Operadora real');
+          const result=await res.json();
+          assert.equal(result.message.respondedByName,'Operadora real','autoria continua disponível no CRM');
+        }
+      }
+      assert.equal(sent.length,6,'apenas um envio por solicitação');
+    });
+  }
+  test(`${provider}: não inventa legenda nem remove nomes e variáveis explícitos`,async()=>{
+    globalThis.dispatchInstances[0].provider=provider;
+    const empty=await send({dispatch:undefined,type:'image',file:'https://example.test/photo.png',body:''});
+    assert.equal(empty.status,200);assert.equal(sent.at(-1).caption||'','');assert.equal(saved.body,'');
+    const authored='*Operadora real:*\nEu sou {{atendente}}. Como posso ajudar?';
+    assert.equal((await send({dispatch:undefined,body:authored})).status,200);
+    assert.equal(sent.at(-1).text,'*Operadora real:*\nEu sou Operadora real. Como posso ajudar?');
+    assert.equal(saved.respondedByName,'Operadora real');
+    globalThis.dispatchQuotedMessage={messageId:'quote-id',body:'Olá',type:'text',fromMe:false};
+    assert.equal((await send({dispatch:undefined,body:'Pode conferir https://example.test',replyid:'quote-id'})).status,200);
+    assert.equal(sent.at(-1).text,'Pode conferir https://example.test');
+    assert.equal(sent.at(-1).linkPreview,true);
+    assert.equal(provider==='waha'?sent.at(-1).reply_to:sent.at(-1).quoted.key.id,'quote-id');
+    assert.equal(saved.quotedMessageId,'quote-id');
+  });
+}
 test('novo lote grava origem/autoria na mensagem após envio e retorna selo',async()=>{
   const res=await send();assert.equal(res.status,200);const result=await res.json();
   assert.equal(sent.length,1);assert.equal(writes,1);assert.equal(saved.dispatchMetadata.unit,'Osasco');
