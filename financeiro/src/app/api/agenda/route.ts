@@ -147,7 +147,7 @@ export async function PUT(req: NextRequest) {
     if (body.totalSessions !== undefined) data.totalSessions = body.totalSessions;
     if (body.notes !== undefined) data.notes = body.notes;
 
-    const { updated, noticeId } = await withSerializableRetry(async (tx) => {
+    const { updated, groupNotice } = await withSerializableRetry(async (tx) => {
       const latest = await tx.agendamento.findUnique({ where: { id: body.id } });
       if (!latest) throw new Error('Agendamento não encontrado');
       guard.enforceUnit(latest.unit);
@@ -162,15 +162,16 @@ export async function PUT(req: NextRequest) {
         await incrementPackageSession(tx, result);
       }
 
-      const noticeId = await enqueueEvaluationGroupConfirmation(tx, {
+      const groupNotice = await enqueueEvaluationGroupConfirmation(tx, {
         appointment: result,
         previousStatus: latest.status,
       });
-      return { updated: result, noticeId };
+      return { updated: result, groupNotice };
     });
 
+    const noticeId = groupNotice.status === 'queued' ? groupNotice.noticeId : null;
     if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
-    return NextResponse.json(updated);
+    return NextResponse.json({ ...updated, groupNotice });
   } catch (err: any) {
     if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     console.error('Agenda PUT error:', err);

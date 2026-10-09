@@ -90,7 +90,7 @@ export function EvaluationGroupPanel() {
       {snapshot?.config?.enabled && <div className="space-y-2 text-xs text-muted-foreground">
         <p>Novos agendamentos: avaliações elegíveis desde {time(snapshot.config.activatedAt)}. Sem importação de histórico ou avisos de sessões. Remarcar ou cancelar não gera aviso por si só.</p>
         {snapshot.config.confirmationsActivatedAt
-          ? <p>Novas confirmações ativas desde {time(snapshot.config.confirmationsActivatedAt)}, somente para avaliações elegíveis do piloto. Um aviso por avaliação e data/horário confirmados. Reconfirmar o mesmo horário não repete; remarcar e confirmar um novo horário permite outro aviso.</p>
+          ? <p>Novas confirmações ativas desde {time(snapshot.config.confirmationsActivatedAt)}, incluindo avaliações antigas com vínculo comprovado à Leads - Paloma e procedimento informado. Um aviso por avaliação e data/horário confirmados, sem envio retroativo em massa. Reconfirmar o mesmo horário não repete; remarcar e confirmar um novo horário permite outro aviso.</p>
           : <p>Avisos de confirmação ainda não estão ativados.</p>}
       </div>}
       {snapshot && !snapshot.connected && <p role="status" className="text-sm text-amber-700 dark:text-amber-400">A Leads - Paloma está desconectada. Verifique a conexão antes de aguardar novos avisos.</p>}

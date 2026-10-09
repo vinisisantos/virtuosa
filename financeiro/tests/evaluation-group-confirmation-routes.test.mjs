@@ -86,12 +86,15 @@ state.enqueue = async (database, params) => {
   assert.equal(database, tx);
   assert.equal(state.inTransaction, true);
   state.events.push({ kind: 'enqueue', params: copy(params) });
-  if (params.appointment.status !== 'confirmado' || params.previousStatus === 'confirmado') return null;
-  if (params.appointment.unit !== 'SBC' || params.appointment.procedimento !== 'Avaliação') return null;
+  if (params.appointment.status !== 'confirmado') return { status: 'skipped', reason: 'not_confirmation' };
+  if (params.previousStatus === 'confirmado') return { status: 'skipped', reason: 'unchanged' };
+  if (params.appointment.unit !== 'SBC' || params.appointment.procedimento !== 'Avaliação') return { status: 'skipped', reason: 'not_future_evaluation' };
+  if (state.blockedReason) return { status: 'skipped', reason: state.blockedReason };
+  if (!params.appointment.evaluationProcedure) return { status: 'skipped', reason: 'missing_procedure' };
   const key = `${params.appointment.id}:${params.appointment.startTime.toISOString()}`;
-  if (state.notices.includes(key)) return null;
+  if (state.notices.includes(key)) return { status: 'already_recorded', noticeId: key, state: 'submitted' };
   state.notices.push(key);
-  return key;
+  return { status: 'queued', noticeId: key, state: 'queued' };
 };
 state.dispatch = async id => {
   assert.equal(state.inTransaction, false, 'dispatch never runs in transaction');
@@ -117,7 +120,7 @@ function reset() {
       notes: '[evaluationAssignedUserId:operator]', profissional: { id: 'professional', name: 'Operadora' },
     },
     notices: [], events: [], callbacks: [], inTransaction: false,
-    beforeTransaction: null, failCommit: false, failDispatch: false,
+    beforeTransaction: null, failCommit: false, failDispatch: false, blockedReason: null,
   });
 }
 beforeEach(reset);
@@ -166,6 +169,7 @@ test('as três rotas persistem confirmação e aviso juntos e despacham somente 
     await state.callbacks[0]();
     assert.equal(events('dispatch').length, 1);
     if (route.handler === checkin) assert.equal(body.success, true);
+    assert.equal(body.groupNotice.status, 'queued');
   }
 });
 
@@ -265,4 +269,71 @@ test('check-in preserva 404 para registro ausente sem aviso', async () => {
   assert.deepEqual(await response.json(), { error: 'Agendamento not found' });
   assert.equal(events('update').length, 0);
   assert.equal(state.callbacks.length, 0);
+});
+
+test('procedimento faltante em candidato elegível desfaz confirmação e pede informação explícita', async () => {
+  state.appointment.evaluationProcedure = null;
+  const response = await PATCH(request(routes[0]));
+  assert.equal(response.status, 422);
+  assert.equal((await response.json()).code, 'EVALUATION_PROCEDURE_REQUIRED');
+  assert.equal(state.appointment.status, 'pendente');
+  assert.equal(state.appointment.evaluationProcedure, null);
+  assert.equal(events('rollback').length, 1);
+  assert.equal(events('audit').length, 0);
+  assert.equal(state.notices.length, 0);
+  assert.equal(state.callbacks.length, 0);
+});
+
+test('procedimento explícito normalizado é salvo com status, aviso e auditoria na mesma transação', async () => {
+  state.appointment.evaluationProcedure = null;
+  const response = await PATCH(request(routes[0], { body: { ...routes[0].body, evaluationProcedure: '  Tratamento\n  explícito  ' } }));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.evaluation.evaluationProcedure, 'Tratamento explícito');
+  assert.equal(body.groupNotice.status, 'queued');
+  assert.equal(events('enqueue')[0].params.appointment.evaluationProcedure, 'Tratamento explícito');
+  const audit = JSON.parse(events('audit')[0].data.details);
+  assert.equal(audit.evaluationProcedureFrom, null);
+  assert.equal(audit.evaluationProcedureTo, 'Tratamento explícito');
+  assert.equal(state.callbacks.length, 1);
+});
+
+test('procedimento genérico, vazio, longo ou fora da ação Confirmado não produz alterações', async () => {
+  for (const evaluationProcedure of [null, 17, '', 'Avaliação', 'AVALIAÇÃO GRATUITA', 'a'.repeat(161)]) {
+    reset();
+    assert.equal((await PATCH(request(routes[0], { body: { ...routes[0].body, evaluationProcedure } }))).status, 400);
+    assert.equal(events('update').length, 0);
+    assert.equal(state.callbacks.length, 0);
+  }
+  assert.equal((await PATCH(request(routes[0], { body: { ...routes[0].body, status: 'pendente', evaluationProcedure: 'Tratamento explícito' } }))).status, 400);
+  assert.equal(events('update').length, 0);
+});
+
+test('aviso bloqueado informa o motivo sem desfazer status ou iniciar despacho', async () => {
+  for (const reason of ['disabled', 'unverified_source', 'invalid_phone', 'missing_name']) {
+    reset();
+    state.appointment.evaluationProcedure = null;
+    state.blockedReason = reason;
+    const response = await PATCH(request(routes[0]));
+    assert.equal(response.status, 200, reason);
+    const body = await response.json();
+    assert.equal(body.evaluation.status, 'confirmado');
+    assert.deepEqual(body.groupNotice, { status: 'skipped', reason });
+    assert.equal(state.callbacks.length, 0);
+    assert.equal(state.notices.length, 0);
+  }
+});
+
+test('aviso já registrado não agenda novo despacho mesmo em outra transição', async () => {
+  for (const route of routes) {
+    reset();
+    state.notices.push(`${state.appointment.id}:${state.appointment.startTime.toISOString()}`);
+    const response = await route.handler(request(route));
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.groupNotice.status, 'already_recorded');
+    assert.equal(body.groupNotice.state, 'submitted');
+    assert.equal(state.callbacks.length, 0);
+    assert.equal(state.notices.length, 1);
+  }
 });

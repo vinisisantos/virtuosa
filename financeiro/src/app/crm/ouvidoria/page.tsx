@@ -44,6 +44,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { EvaluationProcedureField } from "@/components/evaluation-procedure-field";
 import { SaleItemsEditor } from "@/components/pipelines/sale-items-editor";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -60,6 +61,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { formatCurrency } from "@/lib/currency";
+import { normalizeEvaluationProcedure } from "@/lib/evaluation-procedure";
+import type { EvaluationGroupConfirmationResult } from "@/lib/whatsapp/evaluation-group-notice";
 import { millisecondsUntilNextSaoPauloDay, saoPauloDateKey } from "@/lib/date-filter";
 import {
   saleItemDraftsFromCampaignOffer,
@@ -106,6 +109,7 @@ type Evaluation = {
   clientName: string;
   clientPhone?: string | null;
   procedimento: string;
+  evaluationProcedure?: string | null;
   status: string;
   unit: string;
   startTime: string;
@@ -160,6 +164,7 @@ type StatusUiConfig = {
 };
 
 type OutcomeFlow =
+  | "confirmation_procedure"
   | "attended_decision"
   | "closed"
   | "not_closed"
@@ -167,6 +172,35 @@ type OutcomeFlow =
   | "no_show_reschedule"
   | "no_show_reason"
   | null;
+
+function groupNoticeFeedback(notice?: EvaluationGroupConfirmationResult): { message: string; warning: boolean } {
+  if (notice?.status === "queued") {
+    return { message: "Confirmação salva. Aviso incluído na fila do grupo AVALIAÇÕES SBC. A entrega ainda não está confirmada; acompanhe em Automações.", warning: false };
+  }
+  if (notice?.status === "already_recorded") {
+    if (notice.state === "submitted") {
+      return { message: "Já existe um aviso aceito pelo provedor para esta data e horário. Nenhum reenvio foi feito. O aceite não comprova entrega; confira o histórico em Automações.", warning: false };
+    }
+    if (notice.state === "queued" || notice.state === "processing") {
+      return { message: "Já existe um aviso na fila para esta data e horário. Nenhum aviso duplicado foi criado; acompanhe em Automações.", warning: false };
+    }
+    return { message: "Já existe um aviso para esta data e horário que precisa de conferência no histórico de Automações. Nenhum reenvio automático foi feito.", warning: true };
+  }
+  const reasons: Record<string, string> = {
+    unchanged: "A avaliação já estava confirmada. Nenhum novo aviso ao grupo foi criado.",
+    not_confirmation: "Status salvo. Esta alteração não gera um aviso de confirmação ao grupo.",
+    not_future_evaluation: "Status salvo, mas o aviso ao grupo exige uma avaliação de SBC com data e horário futuros.",
+    disabled: "Status salvo, mas os avisos de confirmação ao grupo estão desativados ou ainda não foram liberados.",
+    unverified_source: "Status salvo, mas não foi possível comprovar o vínculo desta avaliação com Leads - Paloma. Nenhum aviso ao grupo foi criado.",
+    missing_name: "Status salvo, mas falta um nome válido no cadastro da avaliação. Nenhum aviso ao grupo foi criado.",
+    invalid_phone: "Status salvo, mas falta um telefone válido no cadastro da avaliação. Nenhum aviso ao grupo foi criado.",
+    missing_procedure: "Confirme o procedimento de interesse para salvar a confirmação e gerar o aviso ao grupo.",
+  };
+  return {
+    message: reasons[notice?.reason || ""] || "Status salvo, mas o resultado do aviso ao grupo não foi informado. Confira o histórico em Automações antes de tentar novamente.",
+    warning: notice?.reason !== "unchanged" && notice?.reason !== "not_confirmation",
+  };
+}
 
 const STATUS_UI: Record<EvaluationStatus, StatusUiConfig> = {
   pendente: {
@@ -746,6 +780,9 @@ export default function AvaliacoesAgendaPage() {
   selectedEvaluationIdRef.current = selectedEvaluationId;
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState<EvaluationStatus | null>(null);
+  const [confirmationProcedure, setConfirmationProcedure] = useState("");
+  const [confirmationProcedureError, setConfirmationProcedureError] = useState("");
+  const [confirmationGroupFeedback, setConfirmationGroupFeedback] = useState<{ message: string; warning: boolean } | null>(null);
   const [activeEvaluationId, setActiveEvaluationId] = useState<string | null>(null);
   const [pendingReschedule, setPendingReschedule] = useState<{
     evaluationId: string;
@@ -902,6 +939,12 @@ export default function AvaliacoesAgendaPage() {
   );
 
   useEffect(() => {
+    setConfirmationProcedure("");
+    setConfirmationProcedureError("");
+    setConfirmationGroupFeedback(null);
+  }, [selectedEvaluationId]);
+
+  useEffect(() => {
     if (!selectedEvaluation) return;
     setScheduleDate(dateKey(selectedEvaluation.startTime));
     setScheduleTime(timeInputValue(selectedEvaluation.startTime));
@@ -928,7 +971,7 @@ export default function AvaliacoesAgendaPage() {
   }, [evaluationAssignees, scheduleAssigneeUserId, selectedEvaluation]);
 
   useEffect(() => {
-    if (outcomeFlow !== "closed") return;
+    if (outcomeFlow !== "closed" && outcomeFlow !== "confirmation_procedure") return;
     outcomeEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [outcomeFlow]);
 
@@ -1289,14 +1332,24 @@ export default function AvaliacoesAgendaPage() {
     successMessage = "Status da avaliação atualizado",
   ) => {
     if (!selectedEvaluation) return;
+    const submittingId = selectedEvaluation.id;
     setUpdatingStatus(status);
+    setConfirmationProcedureError("");
     try {
       const res = await fetch("/api/crm/evaluations", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: selectedEvaluation.id, status, ...payload }),
+        body: JSON.stringify({ id: submittingId, status, ...payload }),
       });
       const data = await res.json().catch(() => ({}));
+      if (res.status === 422 && data.code === "EVALUATION_PROCEDURE_REQUIRED") {
+        if (selectedEvaluationIdRef.current === submittingId) {
+          setConfirmationProcedure(typeof payload.evaluationProcedure === "string" ? payload.evaluationProcedure : "");
+          setOutcomeFlow("confirmation_procedure");
+          setConfirmationGroupFeedback(null);
+        }
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Erro ao atualizar avaliação");
 
       const updated = data.evaluation as Evaluation;
@@ -1306,7 +1359,10 @@ export default function AvaliacoesAgendaPage() {
           ? current.map((evaluation) => (evaluation.id === updated.id ? updated : evaluation))
           : current.filter((evaluation) => evaluation.id !== updated.id),
       );
+      if (selectedEvaluationIdRef.current !== submittingId) return;
       setOutcomeFlow(null);
+      setConfirmationProcedure("");
+      setConfirmationGroupFeedback(status === "confirmado" ? groupNoticeFeedback(data.groupNotice) : null);
       setEditingClosedPackage(false);
       setOutcomeReason("");
       setOutcomeDetails("");
@@ -1327,7 +1383,11 @@ export default function AvaliacoesAgendaPage() {
         setMonth(new Date(updatedDate.getFullYear(), updatedDate.getMonth(), 1));
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao atualizar avaliação");
+      const message = error instanceof Error ? error.message : "Erro ao atualizar avaliação";
+      if (selectedEvaluationIdRef.current === submittingId && status === "confirmado" && payload.evaluationProcedure !== undefined) {
+        setConfirmationProcedureError(message);
+      }
+      toast.error(message);
     } finally {
       setUpdatingStatus(null);
     }
@@ -1362,6 +1422,7 @@ export default function AvaliacoesAgendaPage() {
   };
 
   const startOutcomeFlow = (status: EvaluationStatus) => {
+    setConfirmationGroupFeedback(null);
     setOutcomeReason("");
     setOutcomeDetails("");
     setSaleItemsInput(saleItemDraftsFromView(selectedEvaluation?.pipelineSaleItems));
@@ -2294,6 +2355,18 @@ export default function AvaliacoesAgendaPage() {
                     })()}
                   </div>
 
+                  {confirmationGroupFeedback && (
+                    <div
+                      role="status"
+                      data-testid="evaluation-group-feedback"
+                      className={`mb-3 rounded-xl border p-3 text-sm break-words ${confirmationGroupFeedback.warning
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200"
+                        : "border-sky-500/30 bg-sky-500/10 text-sky-800 dark:text-sky-200"}`}
+                    >
+                      {confirmationGroupFeedback.message}
+                    </div>
+                  )}
+
                   <div className="grid gap-2 sm:grid-cols-2">
                     {EVALUATION_STATUS_ACTION_VALUES.map((status) => {
                       const statusConfig = STATUS_UI[status];
@@ -2324,6 +2397,53 @@ export default function AvaliacoesAgendaPage() {
 
                   {outcomeFlow && (
                     <div ref={outcomeEditorRef} className="mt-3 scroll-mt-4 rounded-xl border border-primary/25 bg-primary/5 p-4">
+                      {outcomeFlow === "confirmation_procedure" && (
+                        <div className="min-w-0 space-y-3" data-testid="evaluation-confirmation-procedure">
+                          <div>
+                            <div className="font-semibold text-foreground">Confirme o procedimento da avaliação</div>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              O status ainda não foi alterado. Falta informar o tratamento para gerar o aviso ao grupo.
+                            </p>
+                            {selectedEvaluation.campaignProcedureName && (
+                              <p className="mt-2 break-words text-xs text-muted-foreground">
+                                Categoria da campanha: {selectedEvaluation.campaignProcedureName}. É apenas uma referência; informe abaixo o tratamento confirmado com a pessoa.
+                              </p>
+                            )}
+                          </div>
+                          <EvaluationProcedureField
+                            value={confirmationProcedure}
+                            onChange={(value) => { setConfirmationProcedure(value); setConfirmationProcedureError(""); }}
+                            clientPhone={selectedEvaluation.clientPhone}
+                            required
+                            disabled={!!updatingStatus}
+                          />
+                          {confirmationProcedureError && (
+                            <p role="alert" className="break-words text-sm text-red-700 dark:text-red-300">
+                              {confirmationProcedureError}
+                            </p>
+                          )}
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Button
+                              type="button"
+                              className="min-h-11 w-full whitespace-normal sm:w-auto"
+                              disabled={!!updatingStatus || !normalizeEvaluationProcedure(confirmationProcedure)}
+                              onClick={() => void submitEvaluationOutcome("confirmado", { evaluationProcedure: normalizeEvaluationProcedure(confirmationProcedure) })}
+                            >
+                              {updatingStatus === "confirmado" && <Loader2 className="mr-2 h-4 w-4 shrink-0 animate-spin" />}
+                              Confirmar avaliação
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="min-h-11 w-full sm:w-auto"
+                              disabled={!!updatingStatus}
+                              onClick={() => { setOutcomeFlow(null); setConfirmationProcedure(""); }}
+                            >
+                              Cancelar
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                       {outcomeFlow === "attended_decision" && (
                         <div>
                           <div className="font-semibold text-foreground">A cliente fechou o pacote?</div>

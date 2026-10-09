@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { Prisma, WhatsAppEvaluationGroupNotice } from "@prisma/client";
+import { Prisma, type WhatsAppEvaluationGroupNotice } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { evaluationGroupConfirmationSourcePredicate } from "@/lib/whatsapp/evaluation-group-confirmation-source";
 import {
   EVALUATION_GROUP_INSTANCE_ID,
   EVALUATION_GROUP_SETTING_KEY,
@@ -85,46 +86,62 @@ export async function enqueueEvaluationGroupNotice(
   return notice.id;
 }
 
+export type EvaluationGroupConfirmationSkipReason = "unchanged" | "not_confirmation" | "not_future_evaluation"
+  | "disabled" | "unverified_source" | "missing_name" | "invalid_phone" | "missing_procedure";
+export type EvaluationGroupConfirmationResult = {
+  status: "queued" | "already_recorded" | "skipped";
+  reason?: EvaluationGroupConfirmationSkipReason;
+  noticeId?: string;
+  state?: string;
+};
+
 export async function enqueueEvaluationGroupConfirmation(
-  database: EnqueueDatabase,
-  params: { appointment: EvaluationGroupAppointment; previousStatus: string },
+  database: EnqueueDatabase & Pick<Prisma.TransactionClient, "$queryRaw">,
+  params: { appointment: EvaluationGroupAppointment; previousStatus: string; recoverMissingNotice?: boolean },
   now = new Date(),
-): Promise<string | null> {
+): Promise<EvaluationGroupConfirmationResult> {
   const { appointment, previousStatus } = params;
-  if (previousStatus === "confirmado" || appointment.status !== "confirmado" || !isNewEvaluation(appointment, now)) return null;
-  const snapshot = snapshotOf(appointment);
-  if (!snapshot) return null;
+  const skip = (reason: EvaluationGroupConfirmationSkipReason): EvaluationGroupConfirmationResult => ({ status: "skipped", reason });
+  if (previousStatus === "confirmado" && !params.recoverMissingNotice) return skip("unchanged");
+  if (appointment.status !== "confirmado") return skip("not_confirmation");
+  if (!isNewEvaluation(appointment, now)) return skip("not_future_evaluation");
   const setting = await database.appSetting.findUnique({
     where: { key: EVALUATION_GROUP_SETTING_KEY }, select: { value: true },
   });
   const config = parseEvaluationGroupConfig(setting?.value);
-  if (!config?.enabled || !config.confirmationsActivatedAt || new Date(config.confirmationsActivatedAt) > now
-    || appointment.createdAt < new Date(config.activatedAt)) return null;
-
-  // A agenda não persiste a caixa de origem. O aviso inicial é a prova de elegibilidade
-  // do piloto: filtrar só SBC incluiria avaliações de outras caixas excluídas na criação.
-  const original = await database.whatsAppEvaluationGroupNotice.findUnique({
-    where: { appointmentId_eventKey: { appointmentId: appointment.id, eventKey: "scheduled" } },
-    select: { instanceId: true, groupJid: true, configActivatedAt: true, appointmentCreatedAt: true },
-  });
-  if (!original || original.instanceId !== config.instanceId || original.groupJid !== config.groupJid
-    || original.configActivatedAt.toISOString() !== config.activatedAt
-    || original.appointmentCreatedAt.getTime() !== appointment.createdAt.getTime()) return null;
+  if (!config?.enabled || !config.confirmationsActivatedAt || new Date(config.confirmationsActivatedAt) > now) return skip("disabled");
+  const source = await database.$queryRaw<{ eligible: boolean }[]>(Prisma.sql`SELECT ${evaluationGroupConfirmationSourcePredicate({
+    appointmentId: appointment.id, startTime: appointment.startTime, appointmentCreatedAt: appointment.createdAt,
+    clientPhone: appointment.clientPhone, config,
+  })} AS eligible`);
+  if (!source[0]?.eligible) return skip("unverified_source");
 
   const eventKey = `confirmed:${appointment.startTime.toISOString()}`;
+  const existing = await database.whatsAppEvaluationGroupNotice.findUnique({
+    where: { appointmentId_eventKey: { appointmentId: appointment.id, eventKey } },
+    select: { id: true, state: true },
+  });
+  if (existing) return { status: "already_recorded", noticeId: existing.id, state: existing.state };
+  const clientName = normalizeEvaluationGroupText(appointment.clientName, 200);
+  const clientPhone = normalizeEvaluationGroupPhone(appointment.clientPhone);
+  const evaluationProcedure = normalizeEvaluationGroupProcedure(appointment.evaluationProcedure);
+  if (!clientName) return skip("missing_name");
+  if (!clientPhone) return skip("invalid_phone");
+  if (!evaluationProcedure) return skip("missing_procedure");
+  const id = randomUUID();
   const notice = await database.whatsAppEvaluationGroupNotice.upsert({
     where: { appointmentId_eventKey: { appointmentId: appointment.id, eventKey } },
     create: {
-      appointmentId: appointment.id, eventType: "confirmed", eventKey,
+      id, appointmentId: appointment.id, eventType: "confirmed", eventKey,
       instanceId: config.instanceId, groupJid: config.groupJid, groupName: config.groupName,
-      configActivatedAt: new Date(config.activatedAt), ...snapshot,
+      configActivatedAt: new Date(config.activatedAt), clientName, clientPhone, evaluationProcedure,
       startTime: appointment.startTime, appointmentCreatedAt: appointment.createdAt,
       availableAt: now, createdAt: now,
     },
     // A mesma ocorrência não reabre nem após uma alternância de status ou envio incerto.
-    update: {}, select: { id: true },
+    update: {}, select: { id: true, state: true },
   });
-  return notice.id;
+  return { status: notice.id === id ? "queued" : "already_recorded", noticeId: notice.id, state: notice.state };
 }
 
 export function buildEvaluationGroupNoticeMessage(notice: {
@@ -258,6 +275,10 @@ export async function dispatchEvaluationGroupNotice(
           AND "startTime" > ${sendAt})
         AND EXISTS (SELECT 1 FROM "WhatsAppInstance" WHERE "id" = ${EVALUATION_GROUP_INSTANCE_ID}
           AND "name" = ${instance.name} AND "unit" = 'SBC' AND "provider" = 'evolution' AND "status" = 'connected')
+        AND ${notice.eventType === "confirmed" ? evaluationGroupConfirmationSourcePredicate({
+          appointmentId: notice.appointmentId, startTime: notice.startTime,
+          appointmentCreatedAt: notice.appointmentCreatedAt, clientPhone: appointment!.clientPhone, config,
+        }) : Prisma.sql`true`}
     `;
     if (fenced !== 1) return finish("cancelled", "Dados ou configuração alterados durante a preparação do envio.");
     sendingStarted = true;

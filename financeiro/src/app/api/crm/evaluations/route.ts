@@ -42,6 +42,9 @@ import { suppressWhatsAppCallbacksForClosedPackage } from "@/lib/whatsapp/callba
 import { sendEvaluationNoShowNotification } from "@/lib/whatsapp/evaluation-no-show-notification";
 import { sendEvaluationRescheduleNotification } from "@/lib/whatsapp/evaluation-reschedule-notification";
 import { dispatchEvaluationGroupNotice, enqueueEvaluationGroupConfirmation } from "@/lib/whatsapp/evaluation-group-notice";
+import { normalizeEvaluationProcedure } from "@/lib/evaluation-procedure";
+
+class EvaluationProcedureRequiredError extends Error {}
 
 function monthRange(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -467,6 +470,8 @@ export async function PATCH(req: NextRequest) {
     const submittedSaleItems = body.saleItems;
     const editingClosedPackage = body.editClosedPackage === true;
     const rescheduled = body.rescheduled === true;
+    const hasEvaluationProcedure = Object.hasOwn(body, "evaluationProcedure");
+    const evaluationProcedure = normalizeEvaluationProcedure(body.evaluationProcedure);
 
     if (!id) {
       return NextResponse.json({ error: "Informe a avaliação." }, { status: 400 });
@@ -485,6 +490,13 @@ export async function PATCH(req: NextRequest) {
 
     if (hasStatus && !isEvaluationStatus(status)) {
       return NextResponse.json({ error: "Status de avaliação inválido." }, { status: 400 });
+    }
+
+    if (hasEvaluationProcedure && (status !== "confirmado" || !evaluationProcedure)) {
+      return NextResponse.json(
+        { error: "Informe o tratamento de interesse ao confirmar a avaliação (até 160 caracteres)." },
+        { status: 400 },
+      );
     }
 
     if (hasStartTime && (!requestedStartTime || Number.isNaN(requestedStartTime.getTime()))) {
@@ -562,6 +574,9 @@ export async function PATCH(req: NextRequest) {
       } else if (shouldResetConfirmation) {
         updateData.status = "pendente";
       }
+      if (hasEvaluationProcedure && evaluationProcedure) {
+        updateData.evaluationProcedure = evaluationProcedure;
+      }
       if (requestedStartTime) {
         const currentDurationMs = latest.endTime.getTime() - latest.startTime.getTime();
         const durationMs = currentDurationMs > 0 ? currentDurationMs : 60 * 60 * 1000;
@@ -574,10 +589,14 @@ export async function PATCH(req: NextRequest) {
         data: updateData,
         include: { profissional: true },
       });
-      const noticeId = await enqueueEvaluationGroupConfirmation(tx, {
+      const groupNotice = await enqueueEvaluationGroupConfirmation(tx, {
         appointment: savedEvaluation,
         previousStatus: latest.status,
       });
+      if (groupNotice.status === "skipped" && groupNotice.reason === "missing_procedure") {
+        // Throw instead of returning a response so the attempted status update is rolled back.
+        throw new EvaluationProcedureRequiredError("Confirme o procedimento de interesse antes de salvar a confirmação e gerar o aviso ao grupo.");
+      }
 
       if (hasStatus && isEvaluationStatus(status) && !rescheduled) {
         await syncPipelineFromEvaluationStatus({
@@ -626,6 +645,10 @@ export async function PATCH(req: NextRequest) {
           details: JSON.stringify({
             eventType,
             ...(hasStatus ? { from: latest.status, to: savedEvaluation.status, requestedStatus: status } : {}),
+            ...(hasEvaluationProcedure ? {
+              evaluationProcedureFrom: latest.evaluationProcedure || null,
+              evaluationProcedureTo: savedEvaluation.evaluationProcedure,
+            } : {}),
             ...(reason ? { reason } : {}),
             ...(saleValue != null ? { saleValue } : {}),
             ...(procedureName ? { procedureName, procedureNames } : {}),
@@ -659,11 +682,14 @@ export async function PATCH(req: NextRequest) {
         },
       });
 
-      return { updated: savedEvaluation, previous: latest, noticeId, scheduleChanged };
+      return { updated: savedEvaluation, previous: latest, groupNotice, scheduleChanged };
     });
     if (transactionResult instanceof NextResponse) return transactionResult;
-    const { updated, previous, noticeId, scheduleChanged } = transactionResult;
-    if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
+    const { updated, previous, groupNotice, scheduleChanged } = transactionResult;
+    if (groupNotice.status === "queued" && groupNotice.noticeId) {
+      const noticeId = groupNotice.noticeId;
+      after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
+    }
 
     const noShowNotification = (
       hasStatus
@@ -694,8 +720,14 @@ export async function PATCH(req: NextRequest) {
       : null;
 
     const [enriched] = await enrichEvaluationsWithPipelineData([updated]);
-    return NextResponse.json({ evaluation: enriched, noShowNotification, rescheduleNotification });
+    return NextResponse.json({ evaluation: enriched, noShowNotification, rescheduleNotification, groupNotice });
   } catch (error) {
+    if (error instanceof EvaluationProcedureRequiredError) {
+      return NextResponse.json(
+        { error: error.message, code: "EVALUATION_PROCEDURE_REQUIRED" },
+        { status: 422 },
+      );
+    }
     if (error instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     if (error instanceof EvaluationSchedulingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

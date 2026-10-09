@@ -43,16 +43,17 @@ export async function POST(req: NextRequest) {
         where: { id: agendamentoId },
         data: { status: 'confirmado' },
       });
-      const noticeId = await enqueueEvaluationGroupConfirmation(tx, {
+      const groupNotice = await enqueueEvaluationGroupConfirmation(tx, {
         appointment: updated,
         previousStatus: latest.status,
       });
-      return { updated, noticeId };
+      return { updated, groupNotice };
     });
     if (!result) return NextResponse.json({ error: 'Agendamento not found' }, { status: 404 });
-    const { updated, noticeId } = result;
+    const { updated, groupNotice } = result;
+    const noticeId = groupNotice.status === 'queued' ? groupNotice.noticeId : null;
     if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
-    return NextResponse.json({ success: true, agendamento: updated });
+    return NextResponse.json({ success: true, agendamento: updated, groupNotice });
   } catch (error) {
     if (error instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     return NextResponse.json({ error: 'Agendamento not found' }, { status: 404 });

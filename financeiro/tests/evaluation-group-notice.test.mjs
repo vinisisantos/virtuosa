@@ -54,9 +54,9 @@ function database({ beforeFence, failSubmitted = false } = {}) {
         const data = { id: randomUUID(), ...create, updatedAt: now };
         const keys = Object.keys(data);
         const inserted = await query(Prisma.sql`INSERT INTO "WhatsAppEvaluationGroupNotice" (${Prisma.join(keys.map(col))})
-          VALUES (${Prisma.join(keys.map(key => data[key]))}) ON CONFLICT ("appointmentId", "eventKey") DO NOTHING RETURNING id`);
+          VALUES (${Prisma.join(keys.map(key => data[key]))}) ON CONFLICT ("appointmentId", "eventKey") DO NOTHING RETURNING id, state`);
         const key = where.appointmentId_eventKey;
-        return inserted.rows[0] ?? (await pg.query('SELECT id FROM "WhatsAppEvaluationGroupNotice" WHERE "appointmentId"=$1 AND "eventKey"=$2', [key.appointmentId, key.eventKey])).rows[0];
+        return inserted.rows[0] ?? (await pg.query('SELECT id, state FROM "WhatsAppEvaluationGroupNotice" WHERE "appointmentId"=$1 AND "eventKey"=$2', [key.appointmentId, key.eventKey])).rows[0];
       },
       updateMany: async ({ where, data }) => {
         operations++;
@@ -90,6 +90,10 @@ before(async () => {
     CREATE TABLE "WhatsAppInstance" (id text PRIMARY KEY, name text, unit text, status text, provider text);
     CREATE TABLE "Agendamento" (id text PRIMARY KEY, "clientName" text, "clientPhone" text, procedimento text,
       unit text, "startTime" timestamp, "createdAt" timestamp, status text);
+    CREATE TABLE "Automation" (id text PRIMARY KEY, "triggerType" text, unit text);
+    CREATE TABLE "AutomationLog" (id text PRIMARY KEY, "automationId" text, "contactPhone" text, "triggerData" jsonb, result text);
+    CREATE TABLE "WhatsAppContact" (id text PRIMARY KEY, phone text);
+    CREATE TABLE "WhatsAppConversation" (id text PRIMARY KEY, "instanceId" text, "contactId" text);
   `);
   const migrationSql = await readFile(migration, "utf8");
   await pg.exec(migrationSql);
@@ -100,7 +104,7 @@ before(async () => {
   await pg.exec('DROP INDEX IF EXISTS "WhatsAppEvaluationGroupNotice_appointmentId_key"');
 });
 beforeEach(async () => {
-  await pg.exec('TRUNCATE "WhatsAppEvaluationGroupNotice", "AppSetting", "WhatsAppInstance", "Agendamento"');
+  await pg.exec('TRUNCATE "WhatsAppEvaluationGroupNotice", "AppSetting", "WhatsAppInstance", "Agendamento", "Automation", "AutomationLog", "WhatsAppContact", "WhatsAppConversation"');
   now = new Date("2026-10-09T12:00:00Z");
   config = { enabled: true, instanceId: EVALUATION_GROUP_INSTANCE_ID, groupJid: "120363000001@g.us",
     groupName: EVALUATION_GROUP_NAME, activatedAt: "2026-10-09T00:00:00Z", approvedBy: "operator-fixture" };
@@ -259,11 +263,12 @@ test("recuperação limita cada limpeza a vinte linhas e não repete HTTP incert
   assert.equal(sent.length, 0);
 });
 
-async function confirm(extra = {}) {
+async function confirmResult(extra = {}) {
   appointment.status = 'confirmado';
   await pg.query('UPDATE "Agendamento" SET status=$1, "startTime"=$2 WHERE id=$3', [appointment.status, appointment.startTime, appointment.id]);
   return enqueueEvaluationGroupConfirmation(database(), { appointment, previousStatus: 'pendente', ...extra }, now);
 }
+async function confirm(extra = {}) { return (await confirmResult(extra)).noticeId ?? null; }
 async function enableConfirmations() {
   config.confirmationsActivatedAt = now.toISOString();
   await saveConfig();
@@ -279,10 +284,11 @@ test('confirmação desligada por padrão, ausente, inválida ou futura não env
   assert.equal(await confirm(), null);
   assert.equal(sent.length, 0);
 });
-test('confirmação exige participação no piloto original e corte/destino correspondentes', async () => {
+test('confirmação exige prova; aviso inicial existente com corte/destino divergente não permite fallback', async () => {
   await enableConfirmations();
   assert.equal(await confirm(), null, 'SBC sem aviso original não comprova a caixa de origem');
   await enqueue();
+  await legacyConfirmationProof();
   for (const [column, value] of [['groupJid', '999999999@g.us'], ['configActivatedAt', new Date(0)], ['appointmentCreatedAt', new Date(0)]]) {
     const saved = await job();
     await query(Prisma.sql`UPDATE "WhatsAppEvaluationGroupNotice" SET ${col(column)}=${value}`);
@@ -291,7 +297,7 @@ test('confirmação exige participação no piloto original e corte/destino corr
   }
   assert.equal(sent.length, 0);
 });
-test('uma confirmação gera mensagem distinta, nove operações mais trava da rota e um HTTP', async () => {
+test('uma confirmação gera mensagem distinta, dez operações mais trava da rota e um HTTP', async () => {
   const scheduledId = await enqueue();
   await dispatch(scheduledId);
   await enableConfirmations();
@@ -299,7 +305,7 @@ test('uma confirmação gera mensagem distinta, nove operações mais trava da r
   const id = await confirm();
   assert.notEqual(id, scheduledId);
   assert.equal((await dispatch(id)).status, 'submitted');
-  assert.equal(operations, 9);
+  assert.equal(operations, 10);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].text, [
     '✅ *Avaliação confirmada — SBC*', '', 'Nome: Maria Exemplo', 'Telefone: 5511999999999',
@@ -376,4 +382,126 @@ test('timeout de confirmação nunca autoriza reenvio ao repetir status ou recup
   await recoverEvaluationGroupNotices({ database: database(), fetcher, now: () => new Date(now.getTime() + 5 * 60_000) });
   assert.equal(sent.length, 1);
   assert.equal((await noticeById(id)).state, 'uncertain');
+});
+
+async function legacyConfirmationProof({ automationId = 'confirmation-fixture', logPatch = {}, triggerPatch = {},
+  contactPhone = appointment.clientPhone, conversationInstance = EVALUATION_GROUP_INSTANCE_ID } = {}) {
+  const action = 'evaluation_confirmation_request';
+  const id = `evaluation-message:${action}:${automationId}:${appointment.id}:${appointment.startTime.toISOString()}`;
+  await pg.query('INSERT INTO "Automation" VALUES ($1,$2,$3)', [automationId, action, 'SBC']);
+  await pg.query('INSERT INTO "WhatsAppContact" VALUES ($1,$2) ON CONFLICT (id) DO UPDATE SET phone=EXCLUDED.phone', ['contact-fixture', contactPhone]);
+  await pg.query('INSERT INTO "WhatsAppConversation" VALUES ($1,$2,$3) ON CONFLICT (id) DO UPDATE SET "instanceId"=EXCLUDED."instanceId"', ['conversation-fixture', conversationInstance, 'contact-fixture']);
+  const data = {
+    id, automationId, contactPhone: appointment.clientPhone, result: 'success',
+    triggerData: { topic: 'AGENDA', action, appointmentId: appointment.id, startTime: appointment.startTime.toISOString(),
+      conversationId: 'conversation-fixture', instanceId: EVALUATION_GROUP_INSTANCE_ID, unit: 'SBC', ...triggerPatch },
+    ...logPatch,
+  };
+  await pg.query('INSERT INTO "AutomationLog" VALUES ($1,$2,$3,$4,$5)', [data.id, data.automationId, data.contactPhone, JSON.stringify(data.triggerData), data.result]);
+  return id;
+}
+async function makeAppointmentLegacy() {
+  appointment.createdAt = new Date('2026-10-07T19:34:00Z');
+  await pg.query('UPDATE "Agendamento" SET "createdAt"=$1', [appointment.createdAt]);
+}
+
+test('avaliação anterior ao piloto confirma com prova exata de ocorrência, sem gerar aviso de criação', async () => {
+  await makeAppointmentLegacy(); await enableConfirmations(); await legacyConfirmationProof();
+  assert.equal(await enqueue(), null);
+  operations = 0;
+  const result = await confirmResult();
+  assert.equal(result.status, 'queued'); assert.equal(result.state, 'queued');
+  assert.equal((await dispatch(result.noticeId)).status, 'submitted');
+  assert.equal(operations, 10); assert.equal(sent.length, 1);
+  assert.equal((await pg.query('SELECT count(*)::int AS count FROM "WhatsAppEvaluationGroupNotice" WHERE "eventKey"=\'scheduled\'')).rows[0].count, 0);
+});
+test('telefone presente na caixa sem prova de ocorrência não autoriza confirmação antiga', async () => {
+  await makeAppointmentLegacy(); await enableConfirmations();
+  await legacyConfirmationProof({ logPatch: { id: 'random-not-the-execution-key' } });
+  assert.deepEqual(await confirmResult(), { status: 'skipped', reason: 'unverified_source' });
+  assert.equal(sent.length, 0);
+});
+for (const [label, fixture] of [
+  ['unidade do evento', { triggerPatch: { unit: 'Osasco' } }],
+  ['caixa do evento', { triggerPatch: { instanceId: 'another-instance' } }],
+  ['caixa da conversa', { conversationInstance: 'another-instance' }],
+  ['outra conversa', { triggerPatch: { conversationId: 'missing-conversation' } }],
+  ['outro agendamento', { triggerPatch: { appointmentId: 'other-appointment' } }],
+  ['outro horário', { triggerPatch: { startTime: '2026-10-16T17:30:00.000Z' } }],
+  ['outro tópico', { triggerPatch: { topic: 'OTHER' } }],
+  ['outra ação', { triggerPatch: { action: 'evaluation_scheduled' } }],
+  ['log não aceito', { logPatch: { result: 'failed' } }],
+  ['telefone divergente', { contactPhone: '5511988888888' }],
+  ['telefone do log divergente', { logPatch: { contactPhone: '5511988888888' } }],
+  ['LID não é telefone', { contactPhone: '5511999999999@lid' }],
+  ['prefixo externo com sufixo igual', { contactPhone: '9911999999999' }],
+  ['prefixo externo no log com sufixo igual', { logPatch: { contactPhone: '9911999999999' } }],
+]) {
+  test(`prova de confirmação rejeita ${label}`, async () => {
+    await enableConfirmations(); await legacyConfirmationProof(fixture);
+    assert.deepEqual(await confirmResult(), { status: 'skipped', reason: 'unverified_source' });
+    assert.equal(await job(), undefined); assert.equal(sent.length, 0);
+  });
+}
+test('prova normaliza somente telefone nacional/55 equivalente e rejeita evidência ambígua', async () => {
+  await enableConfirmations(); await legacyConfirmationProof({ contactPhone: '(11) 99999-9999' });
+  const first = await confirmResult(); assert.equal(first.status, 'queued');
+  await legacyConfirmationProof({ automationId: 'duplicate-confirmation-fixture' });
+  assert.deepEqual(await confirmResult(), { status: 'skipped', reason: 'unverified_source' });
+  assert.equal((await dispatch(first.noticeId)).status, 'cancelled');
+  assert.equal(sent.length, 0);
+});
+test('procedimento ausente solicita dado somente depois de comprovar caixa e não infere campanha', async () => {
+  await makeAppointmentLegacy(); await enableConfirmations();
+  appointment.evaluationProcedure = null;
+  assert.deepEqual(await confirmResult(), { status: 'skipped', reason: 'unverified_source' });
+  await legacyConfirmationProof();
+  assert.deepEqual(await confirmResult(), { status: 'skipped', reason: 'missing_procedure' });
+  assert.equal(await job(), undefined);
+});
+test('regularização explícita não alterna status nem reabre ocorrência enviada ou incerta', async () => {
+  await makeAppointmentLegacy(); await enableConfirmations(); await legacyConfirmationProof();
+  assert.deepEqual(await confirmResult({ previousStatus: 'confirmado' }), { status: 'skipped', reason: 'unchanged' });
+  const recovery = await confirmResult({ previousStatus: 'confirmado', recoverMissingNotice: true });
+  assert.equal(recovery.status, 'queued');
+  assert.equal((await dispatch(recovery.noticeId, { fetcher: async () => { sent.push({}); throw new Error('timeout'); } })).status, 'uncertain');
+  assert.deepEqual(await confirmResult({ previousStatus: 'confirmado', recoverMissingNotice: true }), {
+    status: 'already_recorded', noticeId: recovery.noticeId, state: 'uncertain',
+  });
+  assert.equal(sent.length, 1);
+  assert.equal((await pg.query('SELECT status FROM "Agendamento"')).rows[0].status, 'confirmado');
+});
+test('fence revalida a prova de caixa quando o log ou a conversa muda antes do HTTP', async () => {
+  await makeAppointmentLegacy(); await enableConfirmations(); await legacyConfirmationProof();
+  const result = await confirmResult();
+  const outcome = await dispatch(result.noticeId, { database: database({ beforeFence: async () => {
+    await pg.exec('UPDATE "WhatsAppConversation" SET "instanceId"=\'other-instance\'');
+  } }) });
+  assert.equal(outcome.status, 'cancelled'); assert.equal(sent.length, 0);
+});
+test('remarcação de avaliação antiga precisa de prova para o novo horário', async () => {
+  await makeAppointmentLegacy(); await enableConfirmations(); await legacyConfirmationProof();
+  appointment.startTime = new Date('2026-10-16T17:30:00Z');
+  assert.deepEqual(await confirmResult(), { status: 'skipped', reason: 'unverified_source' });
+  assert.equal(sent.length, 0);
+});
+for (const phone of ['9911999999999', '555119999999999', '5511999999999@lid', 'cliente5511999999999']) {
+  test(`telefone inválido no agendamento não comprova vínculo por sufixo (${phone})`, async () => {
+    await enableConfirmations(); await legacyConfirmationProof();
+    appointment.clientPhone = phone;
+    assert.deepEqual(await confirmResult(), { status: 'skipped', reason: 'unverified_source' });
+    assert.equal(await job(), undefined);
+  });
+}
+test('enfileiramento concorrente retorna já registrado sem reabrir nem duplicar envio legado', async () => {
+  await makeAppointmentLegacy(); await enableConfirmations(); await legacyConfirmationProof();
+  appointment.status = 'confirmado';
+  await pg.exec('UPDATE "Agendamento" SET status=\'confirmado\'');
+  const results = await Promise.all([0, 1].map(() => enqueueEvaluationGroupConfirmation(database(), {
+    appointment, previousStatus: 'pendente',
+  }, now)));
+  assert.deepEqual(results.map(result => result.status).sort(), ['already_recorded', 'queued']);
+  assert.equal(results[0].noticeId, results[1].noticeId);
+  await Promise.all(results.map(result => dispatch(result.noticeId)));
+  assert.equal(sent.length, 1);
 });
