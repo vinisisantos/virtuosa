@@ -3,7 +3,8 @@ import puppeteer from 'puppeteer';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-const origin = 'http://127.0.0.1:3210';
+const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:3210';
+const palomaInstanceId = 'a6871ee7-8352-4b66-bfb2-b8dba9e4f8e3';
 const output = await mkdtemp(join(tmpdir(), 'virtuosa-inbox-schedule-'));
 const browser = await puppeteer.launch({ headless: true });
 const results = [];
@@ -32,7 +33,7 @@ try {
             let scheduled = false, conflictOnce = unit === 'SCS' && width === 390, loadFailure = false;
             const newContact = unit === 'SBC' && width === 430;
             const user = { id: 'user-test', name: 'Operadora Teste', role: 'ADMINISTRADOR', unit, permissions: { crm: true, admin: true } };
-            const instance = { id: 'instance-test', name: `Comercial ${unit}`, instanceName: `Comercial ${unit}`, unit, status: 'connected', userId: user.id, ownerId: user.id, canReply: true };
+            const instance = { id: unit === 'SBC' ? palomaInstanceId : 'instance-test', name: `Comercial ${unit}`, instanceName: `Comercial ${unit}`, unit, status: 'connected', userId: user.id, ownerId: user.id, canReply: true };
             const now = Date.now();
             const conv = { id: 'chat-test', instanceId: instance.id, instance, status: 'open', contact: { id: 'contact-test', name: 'Cliente com nome muito longo para conferir a organização no celular', phone: '5511987654321', unit }, lastMessage: 'Igualmente 💕', lastMessageAt: new Date(now).toISOString(), lastInboundAt: new Date(now - 49 * 60000).toISOString(), lastOutboundAt: new Date(now - 50 * 60000).toISOString(), unreadCount: 1, assignedTo: user.id, campaignName: 'Harmonização de Mamas', campaignAccountOrigin: 'secondary' };
             const appointment = { id: 'appointment-test', unit, startTime: '2026-09-15T12:30:00.000Z' };
@@ -120,6 +121,13 @@ try {
                 el.dispatchEvent(new Event('change', { bubbles: true }));
             });
             await page.select('[aria-label="Responsável pela avaliação"]', 'assignee-test');
+            if (unit === 'SBC') {
+                await button(page, 'Confirmar');
+                assert.equal(writes.filter(r => r.path === '/api/pipeline').length, 0, 'novo agendamento Paloma exige procedimento explícito');
+                await page.type('[aria-label="Procedimento de interesse"]', 'Tratamento corporal com nome longo confirmado pela pessoa');
+            } else {
+                assert.equal(await page.$('[aria-label="Procedimento de interesse"]'), null, 'outras unidades preservadas');
+            }
             await fit(page, width);
             await page.screenshot({ path: join(output, `${unit}-${width}-form.png`), fullPage: true });
             await button(page, 'Confirmar');
@@ -136,8 +144,10 @@ try {
             assert.equal(submitted.body.whatsappInstanceId, instance.id);
             assert.equal(submitted.body.stageId, 'scheduled');
             assert.equal(submitted.body.evaluationAssigneeUserId, 'assignee-test');
+            if (unit === 'SBC') assert.equal(submitted.body.evaluationProcedure, 'Tratamento corporal com nome longo confirmado pela pessoa');
             assert.ok(submitted.body.evaluationStartTime.startsWith('2026-09-15T'));
             assert.equal(new URL(submitted.url).searchParams.get('unit'), unit);
+            assert.equal(new URL(submitted.url).searchParams.get('targetInstanceId'), instance.id);
             const card = await page.$eval('[data-conversation-id="chat-test"]', el => el.innerText);
             assert.doesNotMatch(card, /49m/);
             assert.match(card, /1/, 'não lidas preservadas');

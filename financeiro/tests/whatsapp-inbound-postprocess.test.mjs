@@ -64,9 +64,13 @@ test("SQL do cron dispara somente com trabalho recuperável e respeita claims in
         id text PRIMARY KEY, state text, "availableAt" timestamp DEFAULT NOW(),
         attempts integer DEFAULT 1, "claimedAt" timestamp, "claimToken" text
       );
+      CREATE TABLE "WhatsAppEvaluationGroupNotice" (
+        id text PRIMARY KEY, state text, "availableAt" timestamp DEFAULT NOW(),
+        attempts integer DEFAULT 1, "claimedAt" timestamp
+      );
     `);
     const command = inboundPostProcessDispatchCommand("secret'quote");
-    const dispatch = async (expected) => {
+    const dispatch = async (expected, groupDue = false) => {
       await pg.exec("TRUNCATE net.requests;");
       await pg.exec(command);
       const requests = (await pg.query("SELECT * FROM net.requests")).rows;
@@ -74,7 +78,7 @@ test("SQL do cron dispara somente com trabalho recuperável e respeita claims in
       if (expected) {
         assert.equal(requests[0].url, "https://clinicasgestao.com.br/api/whatsapp/webhook");
         assert.equal(requests[0].headers.Authorization, "Bearer secret'quote");
-        assert.deepEqual(requests[0].body, { event: "internal.whatsapp-postprocess" });
+        assert.deepEqual(requests[0].body, { event: "internal.whatsapp-postprocess", evaluationGroupNotices: groupDue });
       }
     };
     await dispatch(0);
@@ -104,6 +108,22 @@ test("SQL do cron dispara somente com trabalho recuperável e respeita claims in
     await dispatch(0);
     await pg.exec(`UPDATE "WhatsAppInboundPostProcessJob" SET "claimedAt"=NOW()-interval '3 minutes';`);
     await dispatch(1);
+    await pg.exec(`TRUNCATE "WhatsAppStatusReceipt", "WhatsAppInboundPostProcessJob";
+      INSERT INTO "WhatsAppEvaluationGroupNotice" (id,state) VALUES ('group','queued');`);
+    await dispatch(1, true);
+    await pg.exec(`UPDATE "WhatsAppEvaluationGroupNotice" SET "availableAt"=NOW()+interval '1 minute';`);
+    await dispatch(0);
+    await pg.exec(`UPDATE "WhatsAppEvaluationGroupNotice" SET state='processing', "claimedAt"=NOW();`);
+    await dispatch(0);
+    await pg.exec(`INSERT INTO "WhatsAppStatusReceipt" (id,state) VALUES ('receipt','pending');`);
+    await dispatch(1, false); // Grupo em preparação não bloqueia confirmações do atendimento.
+    await pg.exec(`TRUNCATE "WhatsAppStatusReceipt";
+      UPDATE "WhatsAppEvaluationGroupNotice" SET state='sending', "claimedAt"=NOW()-interval '3 minutes';`);
+    await dispatch(1, true);
+    await pg.exec(`UPDATE "WhatsAppEvaluationGroupNotice" SET state='uncertain';`);
+    await dispatch(0);
+    await pg.exec(`UPDATE "WhatsAppEvaluationGroupNotice" SET state='queued', attempts=3, "availableAt"=NOW();`);
+    await dispatch(0);
   } finally {
     await pg.close();
   }

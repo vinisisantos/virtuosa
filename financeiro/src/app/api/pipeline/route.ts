@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
@@ -47,6 +47,45 @@ import { sendEvaluationRescheduleNotification } from '@/lib/whatsapp/evaluation-
 import { suppressWhatsAppCallbacksForClosedPackage } from '@/lib/whatsapp/callback-suppression';
 import { CommercialError, refreshCommercialPauses, saveCommercialClassification } from '@/lib/pipeline/commercial-service';
 import { pausesCommercialCallbacks } from '@/lib/pipeline/commercial-status';
+import { dispatchEvaluationGroupNotice } from '@/lib/whatsapp/evaluation-group-notice';
+import { EVALUATION_GROUP_INSTANCE_ID } from '@/lib/whatsapp/evaluation-group-notice-config';
+import { getInstancesForRequest } from '@/lib/whatsapp/instance-resolver';
+
+async function resolveEvaluationGroupSource(params: {
+  request: NextRequest;
+  unit: string;
+  instanceId?: unknown;
+  conversationId?: unknown;
+  clientPhone?: string | null;
+}) {
+  const instanceId = typeof params.instanceId === 'string' ? params.instanceId : null;
+  if (params.unit !== 'SBC') return instanceId;
+  if (instanceId !== EVALUATION_GROUP_INSTANCE_ID) {
+    if (params.conversationId && !instanceId) {
+      throw new EvaluationSchedulingError('Informe a caixa de origem do agendamento');
+    }
+    return instanceId;
+  }
+  const { instances } = await getInstancesForRequest(params.request);
+  if (!instances.some((instance) => instance.id === instanceId && instance.canReply === true)) {
+    throw new EvaluationSchedulingError('Sem permissão para agendar por esta caixa');
+  }
+  const conversation = typeof params.conversationId === 'string'
+    ? await prisma.whatsAppConversation.findFirst({
+        where: { id: params.conversationId, instanceId },
+        select: { contact: { select: { phone: true } } },
+      })
+    : null;
+  const phone = phoneLookupKey(params.clientPhone);
+  if (!conversation || !phone || phoneLookupKey(conversation.contact.phone) !== phone) {
+    throw new EvaluationSchedulingError('A conversa não corresponde ao contato desta avaliação');
+  }
+  return instanceId;
+}
+
+function dispatchGroupNoticeAfterCommit(noticeId?: string | null) {
+  if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
+}
 
 type EvaluationScheduleConflict = NonNullable<Awaited<ReturnType<typeof findEvaluationScheduleConflict>>>;
 
@@ -172,6 +211,7 @@ async function enrichDealsWithEvaluationData<T extends { id: string }>(deals: T[
       evaluationStartTime: appointment?.startTime?.toISOString() || null,
       evaluationEndTime: appointment?.endTime?.toISOString() || null,
       evaluationStatus: appointment?.status || null,
+      evaluationProcedure: appointment?.evaluationProcedure || null,
       evaluationProfessionalId: appointment?.profissionalId || null,
       evaluationProfessionalName: appointment?.profissional?.name || null,
       evaluationAssigneeUserId: assignedUserId,
@@ -325,6 +365,7 @@ export async function POST(req: NextRequest) {
       evaluationStartTime,
       evaluationAssigneeUserId,
       evaluationDurationMinutes,
+      evaluationProcedure,
       whatsappConversationId,
       whatsappInstanceId,
       closedAt,
@@ -341,6 +382,12 @@ export async function POST(req: NextRequest) {
     const ownerAssignedTo = guard.isAdmin ? (assignedTo ?? ownerScope?.ownerUserId ?? null) : guard.userId;
     const ownerAssignedName = guard.isAdmin ? assignedName : guard.userName;
     const targetUnit = guard.createUnit(unit);
+    const evaluationSourceInstanceId = evaluationStartTime
+      ? await resolveEvaluationGroupSource({
+          request: req, unit: targetUnit, instanceId: whatsappInstanceId,
+          conversationId: whatsappConversationId, clientPhone: contactPhone,
+        })
+      : null;
     const leadSource = canonicalPipelineSource(source || socialSource);
     const placement = await resolvePipelinePlacement({
       unit: targetUnit,
@@ -550,6 +597,8 @@ export async function POST(req: NextRequest) {
             startTime: evaluationStartTime,
             assigneeUserId: evaluationAssigneeUserId,
             durationMinutes: evaluationDurationMinutes,
+            evaluationProcedure,
+            sourceInstanceId: evaluationSourceInstanceId,
           }, tx)
           : null;
         if (movedToScheduled) {
@@ -584,6 +633,7 @@ export async function POST(req: NextRequest) {
 
         return { saved, appointment };
       });
+      dispatchGroupNoticeAfterCommit(updated.appointment?.evaluationGroupNoticeId);
 
       const clientStage = pipelineToClientStage[effectiveStage];
       if (clientStage) {
@@ -623,6 +673,10 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json({
         ...updated.saved,
+        ...(updated.appointment ? {
+          evaluationAppointmentId: updated.appointment.id,
+          evaluationProcedure: updated.appointment.evaluationProcedure,
+        } : {}),
         procedureNames: effectiveProcedureNames,
         procedureName: effectiveProcedureName || null,
         scheduleConfirmation,
@@ -662,6 +716,8 @@ export async function POST(req: NextRequest) {
           startTime: evaluationStartTime,
           assigneeUserId: evaluationAssigneeUserId,
           durationMinutes: evaluationDurationMinutes,
+          evaluationProcedure,
+          sourceInstanceId: evaluationSourceInstanceId,
         }, tx)
         : null;
       if (isScheduledStage(effectiveStage)) {
@@ -696,6 +752,7 @@ export async function POST(req: NextRequest) {
 
       return { saved, appointment };
     });
+    dispatchGroupNoticeAfterCommit(entry.appointment?.evaluationGroupNoticeId);
 
     const clientStage = pipelineToClientStage[effectiveStage];
     if (clientStage) {
@@ -719,6 +776,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ...entry.saved,
+      ...(entry.appointment ? {
+        evaluationAppointmentId: entry.appointment.id,
+        evaluationProcedure: entry.appointment.evaluationProcedure,
+      } : {}),
       procedureNames: normalizedProcedureNames,
       procedureName: normalizedProcedureName || null,
       scheduleConfirmation,
@@ -760,6 +821,7 @@ export async function PUT(req: NextRequest) {
       evaluationStartTime,
       evaluationAssigneeUserId,
       evaluationDurationMinutes,
+      evaluationProcedure,
       contactPhone,
       whatsappConversationId,
       whatsappInstanceId,
@@ -786,6 +848,12 @@ export async function PUT(req: NextRequest) {
     if (!(await canAccessPipelineDeal(existing, ownerScope))) {
       return unitAccessDeniedResponse();
     }
+    const evaluationSourceInstanceId = evaluationStartTime
+      ? await resolveEvaluationGroupSource({
+          request: req, unit: existing.unit, instanceId: whatsappInstanceId,
+          conversationId: whatsappConversationId, clientPhone: existingClient?.phone || contactPhone,
+        })
+      : null;
 
     if (body.commercial !== undefined) {
       const updated = await saveCommercialClassification({ req, guard, existing, phone: existingClient?.phone || null,
@@ -942,6 +1010,8 @@ export async function PUT(req: NextRequest) {
           startTime: evaluationStartTime,
           assigneeUserId: evaluationAssigneeUserId,
           durationMinutes: evaluationDurationMinutes,
+          evaluationProcedure,
+          sourceInstanceId: evaluationSourceInstanceId,
         }, tx)
         : null;
       if (isMovingToScheduled) {
@@ -987,6 +1057,7 @@ export async function PUT(req: NextRequest) {
 
       return { saved, appointment };
     });
+    dispatchGroupNoticeAfterCommit(updated.appointment?.evaluationGroupNoticeId);
 
     // ── Sync Client stage when pipeline moves ──
     if (effectiveStage && existing.clientId) {
@@ -1029,6 +1100,10 @@ export async function PUT(req: NextRequest) {
 
     return NextResponse.json({
       ...updated.saved,
+      ...(updated.appointment ? {
+        evaluationAppointmentId: updated.appointment.id,
+        evaluationProcedure: updated.appointment.evaluationProcedure,
+      } : {}),
       procedureNames: nextProcedureNames,
       procedureName: nextProcedureName || null,
       scheduleConfirmation,

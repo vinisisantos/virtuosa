@@ -51,6 +51,7 @@ import { useGlobalUnit } from "@/contexts/UnitContext";
 import { CampaignWelcomeDialog } from "@/components/whatsapp/campaign-welcome-dialog";
 import { CAMPAIGN_WELCOME_TRIGGER } from "@/lib/whatsapp/campaign-welcome-policy";
 import { EvaluationNoResponseDialog } from "@/components/whatsapp/evaluation-no-response-dialog";
+import { EvaluationGroupPanel } from "@/components/whatsapp/evaluation-group-panel";
 import { EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig } from "@/lib/whatsapp/evaluation-no-response-policy";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -1203,6 +1204,7 @@ export default function AutomationsPage() {
       </div>
 
       {selectedCategory === "general" && <CallBlockAutomationPanel />}
+      {selectedCategory === "SBC" && <EvaluationGroupPanel />}
 
       {/* Quick-start templates */}
       {showTemplates && (

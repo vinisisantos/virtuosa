@@ -337,6 +337,7 @@ model Agendamento {
   clientName     String
   clientPhone    String?
   procedimento   String
+  evaluationProcedure String?
   profissionalId String
   unit           String       @default("Barueri")
   startTime      DateTime
@@ -1672,6 +1673,36 @@ model WhatsAppStatusReceipt {
   @@unique([instanceId, messageId, remoteJid, receiptStatus], map: "WhatsAppStatusReceipt_identity_key")
   @@index([state, availableAt])
   @@index([state, claimedAt])
+}
+
+model WhatsAppEvaluationGroupNotice {
+  id                   String   @id @default(uuid())
+  appointmentId        String   @unique
+  instanceId           String
+  groupJid             String
+  groupName            String
+  configActivatedAt    DateTime
+  clientName           String
+  clientPhone          String
+  evaluationProcedure  String
+  startTime            DateTime
+  appointmentCreatedAt DateTime
+  state                String   @default("queued")
+  attempts             Int      @default(0)
+  availableAt          DateTime @default(now())
+  claimToken           String?
+  claimedAt            DateTime?
+  sendStartedAt        DateTime?
+  providerMessageId    String?
+  submittedAt          DateTime?
+  lastError            String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // A auditoria sobrevive à exclusão da agenda; só o evento inicial pode enviar.
+  @@index([state, availableAt])
+  @@index([state, claimedAt])
+  @@index([instanceId, createdAt])
 }
 
 model AiLearningObservation {

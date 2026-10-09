@@ -19,6 +19,7 @@ export type Deal = SalesPipeline & {
   evaluationStartTime?: string | null;
   evaluationEndTime?: string | null;
   evaluationStatus?: string | null;
+  evaluationProcedure?: string | null;
   evaluationProfessionalId?: string | null;
   evaluationProfessionalName?: string | null;
   evaluationAssigneeUserId?: string | null;

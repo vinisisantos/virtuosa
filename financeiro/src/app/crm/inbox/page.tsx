@@ -11,6 +11,8 @@ import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import { EvaluationAvailabilityDialog } from "@/components/whatsapp/evaluation-availability-dialog";
+import { EvaluationProcedureField } from "@/components/evaluation-procedure-field";
+import { normalizeEvaluationProcedure, usesEvaluationProcedure } from "@/lib/evaluation-procedure";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
@@ -841,6 +843,7 @@ function PipelineStageSelector({
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("09:00");
   const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
+  const [scheduleProcedure, setScheduleProcedure] = useState("");
   const [evaluationAssignees, setEvaluationAssignees] = useState<EvaluationAssignee[]>([]);
   const [loadingAssignees, setLoadingAssignees] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -848,6 +851,7 @@ function PipelineStageSelector({
   const [scheduleLoadError, setScheduleLoadError] = useState<string | null>(null);
 
   const effectiveUnit = unit || clientData?.unit || deal?.unit || "";
+  const showEvaluationProcedure = usesEvaluationProcedure(effectiveUnit, whatsappInstanceId);
   const isOsascoSchedule = effectiveUnit === "Osasco";
   const pipelineMutationUrl = useMemo(() => {
     if (!whatsappInstanceId) return "/api/pipeline";
@@ -938,6 +942,7 @@ function PipelineStageSelector({
             const scheduledStage = schedulePipeline.stages?.find((stage: any) => isScheduledPipelineStageName(stage.name));
             if (!scheduledStage) throw new Error("A unidade não possui a etapa Agendado configurada.");
             setPendingScheduledStageId(scheduledStage.id);
+            setScheduleProcedure(clientDeal?.evaluationProcedure || "");
             setScheduleModalOpen(true);
           }
         } else if (layout === "schedule") {
@@ -995,6 +1000,7 @@ function PipelineStageSelector({
     setScheduleDate("");
     setScheduleTime("09:00");
     setScheduleAssigneeUserId("");
+    setScheduleProcedure("");
     setIsScheduling(false);
     setScheduleConflict(null);
     onScheduleClose?.();
@@ -1002,7 +1008,7 @@ function PipelineStageSelector({
 
   const updateStage = async (
     newStageId: string,
-    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number; forceScheduleConflict?: boolean },
+    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number; procedure?: string; forceScheduleConflict?: boolean },
   ): Promise<boolean> => {
     if (!newStageId) return false;
 
@@ -1013,6 +1019,7 @@ function PipelineStageSelector({
       setScheduleDate("");
       setScheduleTime("09:00");
       setScheduleAssigneeUserId(defaultAssignee);
+      setScheduleProcedure(deal?.evaluationProcedure || "");
       setScheduleConflict(null);
       setScheduleModalOpen(true);
       return false;
@@ -1058,6 +1065,7 @@ function PipelineStageSelector({
                   evaluationStartTime: evaluation.startTime,
                   evaluationAssigneeUserId: evaluation.assigneeUserId,
                   evaluationDurationMinutes: evaluation.durationMinutes || 60,
+                  evaluationProcedure: evaluation.procedure,
                   forceScheduleConflict: evaluation.forceScheduleConflict === true,
                   whatsappConversationId,
                   whatsappInstanceId,
@@ -1109,6 +1117,7 @@ function PipelineStageSelector({
                 evaluationStartTime: evaluation.startTime,
                 evaluationAssigneeUserId: evaluation.assigneeUserId,
                 evaluationDurationMinutes: evaluation.durationMinutes || 60,
+                evaluationProcedure: evaluation.procedure,
                 forceScheduleConflict: evaluation.forceScheduleConflict === true,
                 contactPhone,
                 whatsappConversationId,
@@ -1159,12 +1168,17 @@ function PipelineStageSelector({
       toast("Selecione a responsável pela avaliação", "error");
       return;
     }
+    if (showEvaluationProcedure && !deal?.evaluationAppointmentId && !normalizeEvaluationProcedure(scheduleProcedure)) {
+      toast("Informe o procedimento de interesse da nova avaliação", "error");
+      return;
+    }
 
     setIsScheduling(true);
     const ok = await updateStage(pendingScheduledStageId, {
       startTime,
       assigneeUserId: scheduleAssigneeUserId || undefined,
       durationMinutes: 60,
+      procedure: showEvaluationProcedure ? scheduleProcedure : undefined,
       forceScheduleConflict,
     });
     setIsScheduling(false);
@@ -1257,6 +1271,15 @@ function PipelineStageSelector({
         </div>
 
         <div className="grid gap-4">
+          {showEvaluationProcedure && (
+            <EvaluationProcedureField
+              value={scheduleProcedure}
+              onChange={setScheduleProcedure}
+              required={!deal?.evaluationAppointmentId}
+              clientPhone={contactPhone}
+              disabled={isScheduling}
+            />
+          )}
           <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
             <div className="grid gap-1.5">
               <label className="text-sm font-medium text-foreground">Data</label>

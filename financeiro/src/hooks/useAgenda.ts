@@ -4,6 +4,7 @@ import { dateKey, addDays, startOfWeek, getMonthDays } from '@/components/agenda
 import { useNotification } from '@/components/ui/notifications';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { logActivity } from '@/lib/activity-logger';
+import { isEvaluationAppointment, normalizeEvaluationProcedure, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
 
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; }
@@ -227,6 +228,7 @@ export function useAgenda() {
     const e = new Date(ag.endTime);
     setForm({
       clientName: ag.clientName, clientPhone: ag.clientPhone || '', procedimento: ag.procedimento,
+      evaluationProcedure: ag.evaluationProcedure || '',
       profissionalId: ag.profissionalId, startDate: dateKey(s),
       startHour: String(s.getHours()).padStart(2, '0'), startMin: String(s.getMinutes()).padStart(2, '0'),
       endHour: String(e.getHours()).padStart(2, '0'), endMin: String(e.getMinutes()).padStart(2, '0'),
@@ -239,6 +241,11 @@ export function useAgenda() {
 
   const saveAgendamento = async () => {
     try {
+      if (!editingId && usesEvaluationProcedure(form.unit) && isEvaluationAppointment(form.procedimento)
+        && !normalizeEvaluationProcedure(form.evaluationProcedure)) {
+        toast('Informe o procedimento de interesse da nova avaliação', 'error');
+        return;
+      }
       // Block new appointments if contract is not signed (skip for ausente)
       if (!editingId && form.clientName && form.status !== 'ausente') {
         try {
@@ -270,6 +277,7 @@ export function useAgenda() {
         ...(editingId && { id: editingId }),
         clientName: form.clientName, clientPhone: form.clientPhone || null,
         procedimento: form.procedimento, profissionalId: form.profissionalId,
+        evaluationProcedure: form.evaluationProcedure || undefined,
         unit: form.unit, startTime, endTime, status: form.status, sala: form.sala || null,
         sessionNumber: form.sessionNumber ? parseInt(form.sessionNumber) : null,
         totalSessions: form.totalSessions ? parseInt(form.totalSessions) : null,

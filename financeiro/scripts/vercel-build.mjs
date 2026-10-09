@@ -52,6 +52,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20260925160000_ai_readiness_feedback/migration.sql",
     "prisma/migrations/20260922153000_whatsapp_inbound_postprocess_queue/migration.sql",
     "prisma/migrations/20261009010000_whatsapp_status_receipts/migration.sql",
+    "prisma/migrations/20261009020000_whatsapp_evaluation_group_notice/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {

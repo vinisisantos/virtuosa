@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { after, NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { incrementPackageSession, withSerializableRetry } from '@/lib/agenda/finalization';
+import { isEvaluationAppointment, normalizeEvaluationProcedure, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
+import { enqueueEvaluationGroupNotice, dispatchEvaluationGroupNotice } from '@/lib/whatsapp/evaluation-group-notice';
 
 export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
@@ -47,6 +49,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
+    const unit = guard.createUnit(body.unit);
+    const evaluationProcedure = normalizeEvaluationProcedure(body.evaluationProcedure);
+    if (usesEvaluationProcedure(unit) && isEvaluationAppointment(body.procedimento) && !evaluationProcedure) {
+      return NextResponse.json({ error: 'Informe o procedimento de interesse da nova avaliação' }, { status: 400 });
+    }
 
     // Auto-create profissional if selecting a system user (id starts with "user-")
     let profId = body.profissionalId;
@@ -62,23 +69,29 @@ export async function POST(req: NextRequest) {
       profId = existing.id;
     }
 
-    const agendamento = await prisma.agendamento.create({
-      data: {
-        clientName: body.clientName,
-        clientPhone: body.clientPhone || null,
-        procedimento: body.procedimento,
-        profissionalId: profId,
-        unit: guard.createUnit(body.unit), // UNIT GUARD: Force JWT unit
-        startTime: new Date(body.startTime),
-        endTime: new Date(body.endTime),
-        status: body.status || 'pendente',
-        sala: body.sala || null,
-        sessionNumber: body.sessionNumber || null,
-        totalSessions: body.totalSessions || null,
-        notes: body.notes || null,
-      },
-      include: { profissional: true },
+    const { agendamento, noticeId } = await prisma.$transaction(async (tx) => {
+      const agendamento = await tx.agendamento.create({
+        data: {
+          clientName: body.clientName,
+          clientPhone: body.clientPhone || null,
+          procedimento: body.procedimento,
+          evaluationProcedure,
+          profissionalId: profId,
+          unit,
+          startTime: new Date(body.startTime),
+          endTime: new Date(body.endTime),
+          status: body.status || 'pendente',
+          sala: body.sala || null,
+          sessionNumber: body.sessionNumber || null,
+          totalSessions: body.totalSessions || null,
+          notes: body.notes || null,
+        },
+        include: { profissional: true },
+      });
+      const noticeId = await enqueueEvaluationGroupNotice(tx, { appointment: agendamento, isNew: true });
+      return { agendamento, noticeId };
     });
+    if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
     return NextResponse.json(agendamento);
   } catch (err: any) {
     console.error('Agenda POST error:', err);
@@ -105,6 +118,10 @@ export async function PUT(req: NextRequest) {
     if (body.clientName !== undefined) data.clientName = body.clientName;
     if (body.clientPhone !== undefined) data.clientPhone = body.clientPhone;
     if (body.procedimento !== undefined) data.procedimento = body.procedimento;
+    if (body.evaluationProcedure !== undefined) {
+      const evaluationProcedure = normalizeEvaluationProcedure(body.evaluationProcedure);
+      if (evaluationProcedure) data.evaluationProcedure = evaluationProcedure;
+    }
     if (body.profissionalId !== undefined) {
       let profId = body.profissionalId;
       if (typeof profId === 'string' && profId.startsWith('user-')) {

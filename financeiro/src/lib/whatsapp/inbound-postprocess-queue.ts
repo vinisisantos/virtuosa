@@ -195,15 +195,23 @@ export async function retryInboundPostProcessJob(
 const sqlLiteral = (value: string) => `'${value.replaceAll("'", "''")}'`;
 
 export function inboundPostProcessDispatchCommand(secret: string) {
-  return `SELECT net.http_post(
+  return `WITH group_work AS (
+    SELECT (
+      EXISTS (SELECT 1 FROM public."WhatsAppEvaluationGroupNotice" WHERE state = 'queued' AND "availableAt" <= now() AND attempts < 3)
+      OR EXISTS (SELECT 1 FROM public."WhatsAppEvaluationGroupNotice" WHERE state IN ('processing', 'sending') AND "claimedAt" < now() - interval '2 minutes')
+    ) AS due
+  )
+  SELECT net.http_post(
     url := 'https://clinicasgestao.com.br/api/whatsapp/webhook',
     headers := jsonb_build_object('Content-Type', 'application/json', 'Authorization', ${sqlLiteral(`Bearer ${secret}`)}),
-    body := jsonb_build_object('event', '${INBOUND_POSTPROCESS_EVENT}'), timeout_milliseconds := 55000)
+    body := jsonb_build_object('event', '${INBOUND_POSTPROCESS_EVENT}', 'evaluationGroupNotices', group_work.due), timeout_milliseconds := 55000)
+  FROM group_work
   WHERE (
     EXISTS (SELECT 1 FROM public."WhatsAppInboundPostProcessJob" WHERE status = 'pending' AND "availableAt" <= now() AND attempts < ${INBOUND_POSTPROCESS_MAX_ATTEMPTS})
     OR EXISTS (SELECT 1 FROM public."WhatsAppInboundPostProcessJob" WHERE status = 'processing' AND "claimedAt" < now() - interval '2 minutes')
     OR EXISTS (SELECT 1 FROM public."WhatsAppStatusReceipt" WHERE state = 'pending' AND "availableAt" <= now() AND attempts < ${STATUS_RECEIPT_MAX_ATTEMPTS})
     OR EXISTS (SELECT 1 FROM public."WhatsAppStatusReceipt" WHERE state = 'processing' AND "claimedAt" < now() - interval '2 minutes')
+    OR group_work.due
   )
   AND NOT EXISTS (
     SELECT 1 FROM public."WhatsAppInboundPostProcessJob"

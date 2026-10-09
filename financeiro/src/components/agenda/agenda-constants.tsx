@@ -9,12 +9,14 @@ export interface Agendamento {
   profissionalId: string; unit: string; startTime: string; endTime: string;
   status: string; sala?: string; sessionNumber?: number; totalSessions?: number;
   notes?: string; profissional: Profissional;
+  evaluationProcedure?: string | null;
 }
 
 export interface AgendaForm {
   clientName: string; clientPhone: string; procedimento: string; profissionalId: string;
   startDate: string; startHour: string; startMin: string; endHour: string; endMin: string;
   status: string; sala: string; sessionNumber: string; totalSessions: string; notes: string; unit: string;
+  evaluationProcedure?: string;
 }
 
 export interface ProfForm { name: string; color: string; unit: string; }

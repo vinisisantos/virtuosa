@@ -23,6 +23,8 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DatePicker } from "@/components/ui/date-picker";
 import { MultiProcedureSelector } from "@/components/multi-procedure-selector";
+import { EvaluationProcedureField } from "@/components/evaluation-procedure-field";
+import { normalizeEvaluationProcedure, usesEvaluationProcedure } from "@/lib/evaluation-procedure";
 import type { CatalogService } from "@/components/procedure-selector";
 import { SaleItemsEditor } from "@/components/pipelines/sale-items-editor";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -183,6 +185,7 @@ export default function PipelinePage() {
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("09:00");
   const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
+  const [scheduleProcedure, setScheduleProcedure] = useState("");
   const [scheduleConflict, setScheduleConflict] = useState<ScheduleConflict | null>(null);
   const [isScheduling, setIsScheduling] = useState(false);
 
@@ -204,6 +207,7 @@ export default function PipelinePage() {
   const [editEvaluationDate, setEditEvaluationDate] = useState("");
   const [editEvaluationTime, setEditEvaluationTime] = useState("09:00");
   const [editEvaluationAssigneeUserId, setEditEvaluationAssigneeUserId] = useState("");
+  const [editEvaluationProcedure, setEditEvaluationProcedure] = useState("");
   const [editScheduleConflict, setEditScheduleConflict] = useState<ScheduleConflict | null>(null);
   const [editNotes, setEditNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -218,6 +222,7 @@ export default function PipelinePage() {
   const [addScheduleDate, setAddScheduleDate] = useState("");
   const [addScheduleTime, setAddScheduleTime] = useState("09:00");
   const [addScheduleAssigneeUserId, setAddScheduleAssigneeUserId] = useState("");
+  const [addScheduleProcedure, setAddScheduleProcedure] = useState("");
   const [addScheduleConflict, setAddScheduleConflict] = useState<ScheduleConflict | null>(null);
   const [addScheduleConflictApproved, setAddScheduleConflictApproved] = useState(false);
   const [addNameDuplicates, setAddNameDuplicates] = useState<NameDuplicateCandidate[]>([]);
@@ -397,7 +402,7 @@ export default function PipelinePage() {
     dealId: string,
     stageId: string,
     reason?: string,
-    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number; forceScheduleConflict?: boolean },
+    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number; procedure?: string; forceScheduleConflict?: boolean },
     closedSale?: { saleItems: SaleItemDraft[]; value: number },
   ) => {
     try {
@@ -413,6 +418,7 @@ export default function PipelinePage() {
                 evaluationStartTime: evaluation.startTime,
                 evaluationAssigneeUserId: evaluation.assigneeUserId,
                 evaluationDurationMinutes: evaluation.durationMinutes || 60,
+                evaluationProcedure: evaluation.procedure,
                 forceScheduleConflict: evaluation.forceScheduleConflict === true,
               }
             : {}),
@@ -479,6 +485,7 @@ export default function PipelinePage() {
       setScheduleDate("");
       setScheduleTime("09:00");
       setScheduleAssigneeUserId(defaultAssignee);
+      setScheduleProcedure(deal?.evaluationProcedure || "");
       setScheduleConflict(null);
       setScheduleModalOpen(true);
       return;
@@ -567,6 +574,7 @@ export default function PipelinePage() {
     setScheduleDate("");
     setScheduleTime("09:00");
     setScheduleAssigneeUserId("");
+    setScheduleProcedure("");
     setScheduleConflict(null);
     setIsScheduling(false);
     fetchData();
@@ -583,6 +591,12 @@ export default function PipelinePage() {
       toast.error("Selecione a responsável pela avaliação");
       return;
     }
+    const schedulingDeal = deals.find((deal) => deal.id === dealToSchedule.dealId);
+    if (usesEvaluationProcedure(schedulingDeal?.unit || globalUnit || pipeline?.unit)
+      && !schedulingDeal?.evaluationAppointmentId && !normalizeEvaluationProcedure(scheduleProcedure)) {
+      toast.error("Informe o procedimento de interesse da nova avaliação");
+      return;
+    }
 
     const stage = stages.find((item) => item.id === dealToSchedule.stageId);
     setIsScheduling(true);
@@ -590,6 +604,7 @@ export default function PipelinePage() {
       startTime,
       assigneeUserId: scheduleAssigneeUserId || undefined,
       durationMinutes: 60,
+      procedure: scheduleProcedure,
       forceScheduleConflict,
     });
     setIsScheduling(false);
@@ -615,6 +630,7 @@ export default function PipelinePage() {
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId(defaultAssignee);
+    setAddScheduleProcedure("");
     setAddScheduleConflict(null);
     setAddScheduleConflictApproved(false);
     setAddNameDuplicates([]);
@@ -644,6 +660,7 @@ export default function PipelinePage() {
     setAddScheduleDate("");
     setAddScheduleTime("09:00");
     setAddScheduleAssigneeUserId("");
+    setAddScheduleProcedure("");
     setAddScheduleConflict(null);
     setAddScheduleConflictApproved(false);
     setAddNameDuplicates([]);
@@ -692,6 +709,10 @@ export default function PipelinePage() {
       toast.error("Selecione a responsável pela avaliação");
       return;
     }
+    if (isScheduledStage && usesEvaluationProcedure(globalUnit || pipeline.unit) && !normalizeEvaluationProcedure(addScheduleProcedure)) {
+      toast.error("Informe o procedimento de interesse da nova avaliação");
+      return;
+    }
 
     const params = new URLSearchParams();
     if (targetUserId) params.set("targetUserId", targetUserId);
@@ -730,6 +751,7 @@ export default function PipelinePage() {
                 evaluationStartTime,
                 evaluationAssigneeUserId: addScheduleAssigneeUserId || undefined,
                 evaluationDurationMinutes: 60,
+                evaluationProcedure: addScheduleProcedure,
               }
             : {}),
         }),
@@ -766,6 +788,7 @@ export default function PipelinePage() {
     setEditEvaluationDate(localDateInputValue(deal.evaluationStartTime));
     setEditEvaluationTime(localTimeInputValue(deal.evaluationStartTime));
     setEditEvaluationAssigneeUserId(deal.evaluationAssigneeUserId || pickDefaultAssignee(evaluationAssignees));
+    setEditEvaluationProcedure(deal.evaluationProcedure || "");
     setEditScheduleConflict(null);
     setEditNotes(deal.notes || "");
     setChatLink(null);
@@ -824,6 +847,11 @@ export default function PipelinePage() {
       toast.error("Selecione a responsável pela avaliação");
       return;
     }
+    if (evaluationStartTime && usesEvaluationProcedure(dealToEdit.unit) && !dealToEdit.evaluationAppointmentId
+      && !normalizeEvaluationProcedure(editEvaluationProcedure)) {
+      toast.error("Informe o procedimento de interesse da nova avaliação");
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -845,6 +873,7 @@ export default function PipelinePage() {
             ? {
                 evaluationStartTime,
                 evaluationAssigneeUserId: editEvaluationAssigneeUserId || undefined,
+                evaluationProcedure: editEvaluationProcedure,
                 evaluationDurationMinutes: 60,
                 forceScheduleConflict,
               }
@@ -1443,6 +1472,15 @@ export default function PipelinePage() {
             <p className="text-sm text-muted-foreground">
               Informe quando a avaliação vai acontecer antes de mover o lead para Agendado.
             </p>
+            {usesEvaluationProcedure(deals.find((deal) => deal.id === dealToSchedule?.dealId)?.unit || globalUnit || pipeline?.unit) && (
+              <EvaluationProcedureField
+                value={scheduleProcedure}
+                onChange={setScheduleProcedure}
+                required={!deals.find((deal) => deal.id === dealToSchedule?.dealId)?.evaluationAppointmentId}
+                clientPhone={deals.find((deal) => deal.id === dealToSchedule?.dealId)?.clientPhone}
+                disabled={isScheduling}
+              />
+            )}
             <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
               <div className="grid gap-2">
                 <Label>Data</Label>
@@ -1617,6 +1655,9 @@ export default function PipelinePage() {
                 <div>
                   <Label className="text-sm font-semibold">Avaliação agendada</Label>
                 </div>
+                {usesEvaluationProcedure(globalUnit || pipeline?.unit) && (
+                  <EvaluationProcedureField value={addScheduleProcedure} onChange={setAddScheduleProcedure} required disabled={isAddingDeal} clientPhone={addPhone} />
+                )}
                 <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
                   <div className="grid gap-2">
                     <Label>Data</Label>
@@ -1837,6 +1878,15 @@ export default function PipelinePage() {
                     Esta data alimenta a aba Avaliações.
                   </p>
                 </div>
+                {usesEvaluationProcedure(dealToEdit?.unit) && (
+                  <EvaluationProcedureField
+                    value={editEvaluationProcedure}
+                    onChange={setEditEvaluationProcedure}
+                    required={!dealToEdit?.evaluationAppointmentId}
+                    clientPhone={dealToEdit?.clientPhone}
+                    disabled={isSaving}
+                  />
+                )}
                 <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
                   <div className="grid gap-2">
                     <Label>Data</Label>

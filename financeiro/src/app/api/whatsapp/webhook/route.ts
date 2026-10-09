@@ -72,6 +72,7 @@ import {
   type InboundPostProcessPayload,
 } from "@/lib/whatsapp/inbound-postprocess-queue";
 import { broadcastInboxRealtimeChange } from "@/lib/whatsapp/inbox-realtime";
+import { recoverEvaluationGroupNotices } from "@/lib/whatsapp/evaluation-group-notice";
 import {
   claimStatusReceipt,
   deferStatusReceiptClaims,
@@ -1336,7 +1337,7 @@ async function hydratePersistedMedia(params: {
   return false;
 }
 
-async function processInboundPostProcessJobs() {
+async function processInboundPostProcessJobs(withEvaluationGroupNotices = false) {
   const startedAt = Date.now();
   let completed = 0;
   let failed = 0;
@@ -1422,6 +1423,15 @@ async function processInboundPostProcessJobs() {
     }
   }
 
+  // O banco sinaliza trabalho vencido: não consultar a fila de grupos em todo ACK.
+  // Atendimento e recibos mantêm prioridade e os avisos usam só o orçamento restante.
+  if (withEvaluationGroupNotices && Date.now() < startedAt + 48_000) {
+    try {
+      await recoverEvaluationGroupNotices({ limit: 1, timeBudgetMs: 8_000, deadlineMs: startedAt + 50_000 });
+    } catch {
+      console.error("[WhatsApp Group Notice] Falha na recuperação limitada; nenhum reenvio forçado.");
+    }
+  }
   return { completed, failed, receiptsProcessed, elapsedMs: Date.now() - startedAt };
 }
 
@@ -1518,7 +1528,7 @@ export async function POST(req: Request) {
       if (!isAuthorizedInternalWorker(req)) {
         return NextResponse.json({ success: false }, { status: 401 });
       }
-      return NextResponse.json({ success: true, ...(await processInboundPostProcessJobs()) });
+      return NextResponse.json({ success: true, ...(await processInboundPostProcessJobs(payload.evaluationGroupNotices === true)) });
     }
 
     if (!instanceName && !payload.token) {

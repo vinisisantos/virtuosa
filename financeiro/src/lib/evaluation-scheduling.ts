@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db";
 import { evaluationScheduleMinuteRange } from "@/lib/evaluation-schedule-conflict";
 import { isConfirmedEvaluationStatus } from "@/lib/evaluation-status";
 import { isAdminRole } from "@/lib/role-access";
+import { normalizeEvaluationProcedure, usesEvaluationProcedure } from "@/lib/evaluation-procedure";
+import { enqueueEvaluationGroupNotice } from "@/lib/whatsapp/evaluation-group-notice";
 
 const UNIT_PERMISSION_KEY: Record<string, string> = {
   Osasco: "unitOsasco",
@@ -31,8 +33,9 @@ type PipelineDealLike = {
 
 type EvaluationSchedulingDatabase = Pick<
   Prisma.TransactionClient,
-  "user" | "profissional" | "agendamento"
+  "user" | "profissional" | "agendamento" | "appSetting" | "whatsAppEvaluationGroupNotice"
 >;
+type EvaluationAppointmentTransaction = EvaluationSchedulingDatabase & Pick<Prisma.TransactionClient, "$executeRaw">;
 
 export class EvaluationSchedulingError extends Error {
   constructor(message: string) {
@@ -173,7 +176,9 @@ export async function upsertPipelineEvaluationAppointment(params: {
   startTime: string | Date;
   assigneeUserId?: string | null;
   durationMinutes?: number | null;
-}, database: EvaluationSchedulingDatabase = prisma) {
+  evaluationProcedure?: unknown;
+  sourceInstanceId?: string | null;
+}, database: EvaluationAppointmentTransaction) {
   const startTime = new Date(params.startTime);
   if (Number.isNaN(startTime.getTime())) {
     throw new EvaluationSchedulingError("Data da avaliação inválida");
@@ -197,6 +202,10 @@ export async function upsertPipelineEvaluationAppointment(params: {
   const marker = pipelineEvaluationMarker(params.deal.id);
   const assignedMarker = evaluationAssignedUserMarker(assignee.id);
 
+  if (usesEvaluationProcedure(params.deal.unit, params.sourceInstanceId)) {
+    // A transação mantém o bloqueio até o commit: dois cliques não criam duas avaliações/avisos.
+    await database.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'evaluation-group:' + params.deal.id}))`;
+  }
   const existing = await database.agendamento.findFirst({
     where: {
       unit: params.deal.unit,
@@ -205,6 +214,11 @@ export async function upsertPipelineEvaluationAppointment(params: {
     },
     orderBy: { updatedAt: "desc" },
   });
+
+  const evaluationProcedure = normalizeEvaluationProcedure(params.evaluationProcedure);
+  if (!existing && usesEvaluationProcedure(params.deal.unit, params.sourceInstanceId) && !evaluationProcedure) {
+    throw new EvaluationSchedulingError("Informe o procedimento de interesse da nova avaliação");
+  }
 
   const notes = [
     "Origem: Pipeline CRM",
@@ -217,6 +231,7 @@ export async function upsertPipelineEvaluationAppointment(params: {
     clientName: params.deal.clientName,
     clientPhone: params.clientPhone || null,
     procedimento: "Avaliação",
+    ...(evaluationProcedure ? { evaluationProcedure } : {}),
     profissionalId: profissional.id,
     unit: params.deal.unit,
     startTime,
@@ -226,7 +241,7 @@ export async function upsertPipelineEvaluationAppointment(params: {
 
   if (existing) {
     const scheduleChanged = existing.startTime.getTime() !== startTime.getTime();
-    return database.agendamento.update({
+    const appointment = await database.agendamento.update({
       where: { id: existing.id },
       data: {
         ...data,
@@ -236,15 +251,22 @@ export async function upsertPipelineEvaluationAppointment(params: {
       },
       include: { profissional: true },
     });
+    return { ...appointment, evaluationGroupNoticeId: null };
   }
 
-  return database.agendamento.create({
+  const appointment = await database.agendamento.create({
     data: {
       ...data,
       status: "pendente",
     },
     include: { profissional: true },
   });
+  const evaluationGroupNoticeId = await enqueueEvaluationGroupNotice(database, {
+    appointment,
+    isNew: true,
+    sourceInstanceId: params.sourceInstanceId,
+  });
+  return { ...appointment, evaluationGroupNoticeId };
 }
 
 export async function findEvaluationScheduleConflict(params: {

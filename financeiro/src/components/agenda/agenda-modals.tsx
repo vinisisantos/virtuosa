@@ -3,6 +3,8 @@ import type { Profissional, AgendaForm, ProfForm } from './agenda-constants';
 import { STATUS_COLORS, cardS, btnPrimary } from './agenda-constants';
 import { DatePicker } from '@/components/ui/date-picker';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
+import { EvaluationProcedureField } from '@/components/evaluation-procedure-field';
+import { isEvaluationAppointment, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
 
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; }
@@ -10,7 +12,7 @@ interface ClientPackage { id: string; services: string; totalSessions: number; c
 interface SystemUser { name: string; role: string; }
 
 const H = 46; // uniform input height
-const fieldS: React.CSSProperties = { width: '100%', padding: '0 14px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.88rem', fontFamily: 'inherit', color: 'var(--text-main)', outline: 'none', transition: 'border-color 0.2s', height: H, boxSizing: 'border-box' };
+const fieldS: React.CSSProperties = { width: '100%', minWidth: 0, padding: '0 14px', borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg)', fontSize: '0.88rem', fontFamily: 'inherit', color: 'var(--text-main)', outline: 'none', transition: 'border-color 0.2s', height: H, boxSizing: 'border-box' };
 const labelS: React.CSSProperties = { fontSize: '0.7rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.03em' };
 const dropS: React.CSSProperties = { position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, marginTop: 4, background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 12, maxHeight: 220, overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.25)' };
 const dropItemS: React.CSSProperties = { padding: '10px 14px', cursor: 'pointer', fontSize: '0.82rem', transition: 'background 0.15s', display: 'flex', justifyContent: 'space-between', alignItems: 'center' };
@@ -159,16 +161,16 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 }}
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(6px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 3000, padding: 16 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div style={{ ...cardS, padding: 28, width: '100%', maxWidth: 540, maxHeight: '92vh', overflowY: 'auto', animation: 'fadeInScale 0.25s ease-out' }}>
+      <div role="dialog" aria-modal="true" aria-label={editingId ? 'Editar Agendamento' : 'Novo Agendamento'} className="p-4 sm:p-7" style={{ ...cardS, width: '100%', maxWidth: 540, maxHeight: 'calc(100dvh - 2rem)', overflowY: 'auto', animation: 'fadeInScale 0.25s ease-out' }}>
         <h2 style={{ fontSize: '1.15rem', fontWeight: 900, marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span className="material-symbols-outlined" style={{ fontSize: 24, color: 'var(--primary)' }}>{editingId ? 'edit_calendar' : 'add_circle'}</span>
           {editingId ? 'Editar Agendamento' : 'Novo Agendamento'}
         </h2>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2" style={{ marginBottom: 14 }}>
           {/* ── CLIENTE (full width, smart autocomplete) ── */}
           <div style={{ gridColumn: '1 / -1' }}>
             <PatientAutocomplete
@@ -184,6 +186,17 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
               variant="compact"
             />
           </div>
+
+          {usesEvaluationProcedure(form.unit) && isEvaluationAppointment(form.procedimento) && (
+            <div style={{ gridColumn: '1 / -1', minWidth: 0 }}>
+              <EvaluationProcedureField
+                value={form.evaluationProcedure || ''}
+                onChange={(evaluationProcedure) => setForm({ ...form, evaluationProcedure })}
+                required={!editingId}
+                clientPhone={form.clientPhone}
+              />
+            </div>
+          )}
 
           {/* TELEFONE */}
           <div>
@@ -392,8 +405,8 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={onClose} style={{ ...btnPrimary, background: 'var(--bg)', color: 'var(--text-main)', border: '1px solid var(--border)', padding: '10px 20px' }}>Cancelar</button>
-            <button onClick={onSave} disabled={!form.clientName || !form.procedimento || !form.profissionalId} style={{ ...btnPrimary, padding: '10px 20px', opacity: !form.clientName || !form.procedimento || !form.profissionalId ? 0.5 : 1 }}>
+            <button onClick={onClose} style={{ ...btnPrimary, minHeight: 44, background: 'var(--bg)', color: 'var(--text-main)', border: '1px solid var(--border)', padding: '10px 20px' }}>Cancelar</button>
+            <button onClick={onSave} disabled={!form.clientName || !form.procedimento || !form.profissionalId} style={{ ...btnPrimary, minHeight: 44, padding: '10px 20px', opacity: !form.clientName || !form.procedimento || !form.profissionalId ? 0.5 : 1 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 18 }}>save</span> {editingId ? 'Salvar' : 'Criar'}
             </button>
           </div>
