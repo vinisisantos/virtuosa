@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { isFreshWelcomeEvent } from "@/lib/whatsapp/campaign-welcome-policy";
 import { enqueueWelcome, findWelcomeReception } from "@/lib/whatsapp/campaign-welcome";
@@ -72,6 +72,18 @@ import {
   type InboundPostProcessPayload,
 } from "@/lib/whatsapp/inbound-postprocess-queue";
 import { broadcastInboxRealtimeChange } from "@/lib/whatsapp/inbox-realtime";
+import {
+  claimStatusReceipt,
+  deferStatusReceiptClaims,
+  recoverStaleStatusReceipts,
+  retainStatusReceipts,
+} from "@/lib/whatsapp/status-receipt-queue";
+import {
+  applyObservedMessageStatus,
+  isStatusReceiptPilot,
+  normalizeReceiptJid,
+  processStatusReceipt,
+} from "@/lib/whatsapp/status-receipt-processing";
 import { downloadEvolutionMediaDataUrl } from "@/lib/whatsapp/inbound-media";
 import { needsEvolutionMediaDownload } from "@/lib/whatsapp/inbound-media-policy";
 import {
@@ -1170,7 +1182,28 @@ async function persistIncomingMessageFast(params: {
         dataToUpdate.type = media.type;
       }
       const nextStatus = mergeWhatsAppMessageStatus(persisted.status, params.msg.status);
-      if (persisted.fromMe && nextStatus !== persisted.status) dataToUpdate.status = nextStatus;
+      if (persisted.fromMe && nextStatus !== persisted.status) {
+        if (isStatusReceiptPilot(params.dbInstance)) {
+          const status = normalizeWhatsAppMessageStatus(nextStatus)!;
+          // A late message echo must not overwrite a receipt committed after the read above.
+          const updated = await applyObservedMessageStatus({
+            id: persisted.id,
+            conversationId: params.conversation.id,
+            messageId: params.messageId,
+            instanceId: params.dbInstance.id,
+            status,
+          }, tx);
+          if (updated.count) persisted = { ...persisted, status };
+          else persisted = await tx.whatsAppMessage.findUniqueOrThrow({
+            where: { conversationId_messageId: {
+              conversationId: params.conversation.id,
+              messageId: params.messageId,
+            } },
+          });
+        } else {
+          dataToUpdate.status = nextStatus;
+        }
+      }
       if (Object.keys(dataToUpdate).length > 0) {
         persisted = await tx.whatsAppMessage.update({
           where: { id: persisted.id },
@@ -1307,11 +1340,36 @@ async function processInboundPostProcessJobs() {
   const startedAt = Date.now();
   let completed = 0;
   let failed = 0;
+  let processed = 0;
+  let receiptsProcessed = 0;
+  let preferReceipt = true;
+  let receiptsEmpty = false;
+  let inboundEmpty = false;
   await recoverStaleInboundPostProcessJobs();
+  await recoverStaleStatusReceipts();
 
-  while (completed + failed < 20 && Date.now() - startedAt < 45_000) {
-    const claim = await claimInboundPostProcessJob();
-    if (!claim) break;
+  // Both queues share the original execution budget; neither can starve the other.
+  while (processed < 20 && Date.now() - startedAt < 45_000) {
+    if (!receiptsEmpty && (preferReceipt || inboundEmpty)) {
+      const receiptClaim = await claimStatusReceipt();
+      if (receiptClaim) {
+        await processStatusReceipt(receiptClaim);
+        processed += 1;
+        receiptsProcessed += 1;
+        preferReceipt = false;
+        continue;
+      }
+      receiptsEmpty = true;
+    }
+    const claim = inboundEmpty ? null : await claimInboundPostProcessJob();
+    if (!claim) {
+      inboundEmpty = true;
+      if (receiptsEmpty) break;
+      preferReceipt = true;
+      continue;
+    }
+    processed += 1;
+    preferReceipt = true;
     const payload = claim.job.payload as unknown as InboundPostProcessPayload;
     try {
       if (!payload?.message || !payload?.webhook) throw new Error("Payload de pós-processamento inválido.");
@@ -1364,7 +1422,7 @@ async function processInboundPostProcessJobs() {
     }
   }
 
-  return { completed, failed, elapsedMs: Date.now() - startedAt };
+  return { completed, failed, receiptsProcessed, elapsedMs: Date.now() - startedAt };
 }
 
 async function handleWahaWebhook(payload: any, event: string | undefined, dbInstance: WebhookInstance) {
@@ -1444,6 +1502,7 @@ async function handleWahaWebhook(payload: any, event: string | undefined, dbInst
  * - qrcode.updated     → Novo QR code gerado
  */
 export async function POST(req: Request) {
+  let statusEvent = false;
   try {
     const receivedAt = new Date();
     const payload = await req.json();
@@ -1452,6 +1511,7 @@ export async function POST(req: Request) {
     // WAHA envia: { event, session, payload, ... }
     const rawEvent = payload.event || payload.EventType || payload.action;
     const event = normalizeEvolutionWebhookEvent(rawEvent);
+    statusEvent = event === "messages.update" || event === "messages_update";
     const instanceName = payload.instance || payload.instanceName || payload.session;
 
     if (event === INBOUND_POSTPROCESS_EVENT) {
@@ -1466,15 +1526,21 @@ export async function POST(req: Request) {
     }
 
     // Buscar instância no banco — Evolution identifica por nome, não por token
-    const dbInstance = await prisma.whatsAppInstance.findFirst({
-      where: payload.token
-        ? { token: payload.token }          // fallback Uazapi (compatibilidade)
-        : { name: instanceName },           // Evolution API
-      include: {
-        user: { select: { name: true } },
-        defaultAssignee: { select: { name: true } },
-      },
-    });
+    const instanceWhere = payload.token
+      ? { token: payload.token }
+      : { name: instanceName };
+    const dbInstance: WebhookInstance | null = statusEvent
+      ? await prisma.whatsAppInstance.findFirst({
+        where: instanceWhere,
+        select: { id: true, name: true, unit: true, provider: true },
+      })
+      : await prisma.whatsAppInstance.findFirst({
+        where: instanceWhere,
+        include: {
+          user: { select: { name: true } },
+          defaultAssignee: { select: { name: true } },
+        },
+      });
 
     if (!dbInstance) {
       return NextResponse.json({ success: true });
@@ -1485,6 +1551,33 @@ export async function POST(req: Request) {
       if (await handleWahaWebhook(payload, event, dbInstance)) {
         return NextResponse.json({ success: true });
       }
+      return NextResponse.json({ success: true });
+    }
+
+    if (statusEvent && isStatusReceiptPilot(dbInstance)) {
+      const data = payload.data || payload.message;
+      const updates = Array.isArray(data) ? data : [data];
+      if (updates.length > 200) {
+        return NextResponse.json({ success: false, error: "Lote de confirmações excede o limite." }, { status: 413 });
+      }
+      const receipts = updates.flatMap((value) => {
+        const update = extractEvolutionStatusUpdate(value);
+        if (!update || update.messageId.length > 160) return [];
+        const remoteJid = normalizeReceiptJid(update.remoteJid);
+        return remoteJid ? [{ ...update, messageId: update.messageId.trim(), remoteJid }] : [];
+      });
+      // Only acknowledge after durable retention. No replay can execute inbound automations.
+      const claims = await retainStatusReceipts({ instanceId: dbInstance.id, receipts, receivedAt });
+      after(async () => {
+        for (let index = 0; index < claims.length; index += 1) {
+          if (Date.now() - receivedAt.getTime() > 40_000) {
+            await deferStatusReceiptClaims(claims.slice(index), "inline_budget_exhausted").catch(() => {});
+            break;
+          }
+          await processStatusReceipt(claims[index]);
+        }
+        await ensureCallRejectApplied(dbInstance).catch(() => {});
+      });
       return NextResponse.json({ success: true });
     }
 
@@ -1584,6 +1677,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("[WhatsApp Webhook Error]:", error);
+    if (statusEvent) {
+      return NextResponse.json({ success: false, error: "Confirmação não persistida; tente novamente." }, { status: 503 });
+    }
     return NextResponse.json({ success: false, error: error.message });
   }
 }

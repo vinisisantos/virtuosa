@@ -1322,6 +1322,7 @@ model WhatsAppInstance {
   defaultAssigneeId       String?
   conversations           WhatsAppConversation[]
   inboundPostProcessJobs  WhatsAppInboundPostProcessJob[]
+  statusReceipts          WhatsAppStatusReceipt[]
   members                 WhatsAppInstanceMember[]
   notificationPreferences WhatsAppInstanceNotificationPreference[]
   user                    User?                                    @relation("WhatsAppInstanceOwner", fields: [userId], references: [id])
@@ -1647,6 +1648,30 @@ model WhatsAppInboundPostProcessJob {
   @@index([status, availableAt])
   @@index([instanceId, status, availableAt])
   @@index([conversationId])
+}
+
+model WhatsAppStatusReceipt {
+  id            String           @id @default(uuid())
+  instanceId    String
+  messageId     String
+  remoteJid     String
+  receiptStatus String
+  state         String           @default("pending")
+  attempts      Int              @default(0)
+  availableAt   DateTime         @default(now())
+  claimToken    String?
+  claimedAt     DateTime?
+  completedAt   DateTime?
+  lastError     String?
+  receivedAt    DateTime         @default(now())
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  // O recibo pode chegar antes de existir mensagem ou conversa no CRM.
+  instance      WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@unique([instanceId, messageId, remoteJid, receiptStatus], map: "WhatsAppStatusReceipt_identity_key")
+  @@index([state, availableAt])
+  @@index([state, claimedAt])
 }
 
 model AiLearningObservation {

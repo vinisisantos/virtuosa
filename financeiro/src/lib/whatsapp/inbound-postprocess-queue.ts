@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type WhatsAppInboundPostProcessJob } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { STATUS_RECEIPT_MAX_ATTEMPTS } from "@/lib/whatsapp/status-receipt-queue";
 
 export const INBOUND_POSTPROCESS_CRON_JOB = "whatsapp-inbound-postprocess-every-5-seconds";
 export const INBOUND_POSTPROCESS_EVENT = "internal.whatsapp-postprocess";
@@ -201,9 +202,16 @@ export function inboundPostProcessDispatchCommand(secret: string) {
   WHERE (
     EXISTS (SELECT 1 FROM public."WhatsAppInboundPostProcessJob" WHERE status = 'pending' AND "availableAt" <= now() AND attempts < ${INBOUND_POSTPROCESS_MAX_ATTEMPTS})
     OR EXISTS (SELECT 1 FROM public."WhatsAppInboundPostProcessJob" WHERE status = 'processing' AND "claimedAt" < now() - interval '2 minutes')
+    OR EXISTS (SELECT 1 FROM public."WhatsAppStatusReceipt" WHERE state = 'pending' AND "availableAt" <= now() AND attempts < ${STATUS_RECEIPT_MAX_ATTEMPTS})
+    OR EXISTS (SELECT 1 FROM public."WhatsAppStatusReceipt" WHERE state = 'processing' AND "claimedAt" < now() - interval '2 minutes')
   )
   AND NOT EXISTS (
     SELECT 1 FROM public."WhatsAppInboundPostProcessJob"
     WHERE status = 'processing' AND "claimedAt" >= now() - interval '2 minutes'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM public."WhatsAppStatusReceipt"
+    WHERE state = 'processing' AND "claimToken" LIKE 'worker:%'
+      AND "claimedAt" >= now() - interval '2 minutes'
   );`;
 }
