@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
 
 import {
@@ -41,6 +41,7 @@ import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } fro
 import { suppressWhatsAppCallbacksForClosedPackage } from "@/lib/whatsapp/callback-suppression";
 import { sendEvaluationNoShowNotification } from "@/lib/whatsapp/evaluation-no-show-notification";
 import { sendEvaluationRescheduleNotification } from "@/lib/whatsapp/evaluation-reschedule-notification";
+import { dispatchEvaluationGroupNotice, enqueueEvaluationGroupConfirmation } from "@/lib/whatsapp/evaluation-group-notice";
 
 function monthRange(date = new Date()) {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
@@ -506,37 +507,6 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Informe o motivo da ausência." }, { status: 400 });
     }
 
-    const evaluation = await prisma.agendamento.findUnique({
-      where: { id },
-      include: { profissional: true },
-    });
-
-    if (!evaluation) {
-      return NextResponse.json({ error: "Avaliação não encontrada." }, { status: 404 });
-    }
-
-    const scheduleChanged = Boolean(
-      requestedStartTime
-      && requestedStartTime.getTime() !== evaluation.startTime.getTime()
-    );
-    const shouldResetConfirmation = scheduleChanged
-      && !hasStatus
-      && isConfirmedEvaluationStatus(evaluation.status);
-
-    try {
-      guard.enforceUnit(evaluation.unit);
-    } catch (error) {
-      if (error instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
-      throw error;
-    }
-
-    if (!canManageAllEvaluations(guard) && !isOwnEvaluation(evaluation, { id: guard.userId, name: guard.userName })) {
-      return NextResponse.json(
-        { error: "Você só pode atualizar avaliações atribuídas a você." },
-        { status: 403 },
-      );
-    }
-
     if (hasAssigneeUserId && !canManageAllEvaluations(guard)) {
       return NextResponse.json(
         { error: "Você não tem permissão para alterar a responsável desta avaliação." },
@@ -544,48 +514,46 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    if (
-      editingClosedPackage
-      && (status !== "fechou_pacote" || !isClosedPackageEvaluationStatus(evaluation.status))
-    ) {
-      return NextResponse.json(
-        { error: "Somente um orçamento já fechado pode ser editado por esta ação." },
-        { status: 400 },
-      );
-    }
-
-    const normalizedSale = status === "fechou_pacote" && submittedSaleItems !== undefined
-      ? await normalizeSubmittedSaleItems({
-          database: prisma,
-          unit: evaluation.unit,
-          submittedItems: submittedSaleItems,
-        })
-      : null;
-    if (normalizedSale) {
-      saleValue = normalizedSale.totalValue;
-      procedureNames = normalizedSale.procedureNames;
-      procedureName = formatProcedureNames(procedureNames);
-    }
-
-    if (status === "fechou_pacote" && !procedureName) {
-      return NextResponse.json({ error: "Informe o procedimento fechado." }, { status: 400 });
-    }
-
-    if (status === "fechou_pacote" && (!saleValue || !Number.isFinite(saleValue) || saleValue <= 0)) {
-      return NextResponse.json({ error: "Informe o valor fechado do pacote." }, { status: 400 });
-    }
-
     const persistedStatus = rescheduled ? "pendente" : status;
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const transactionResult = await prisma.$transaction(async (tx) => {
+      // Serialize status transitions so concurrent confirmations share the committed previous status.
+      await tx.$queryRaw`SELECT "id" FROM "Agendamento" WHERE "id" = ${id} FOR UPDATE`;
+      const latest = await tx.agendamento.findUnique({ where: { id }, include: { profissional: true } });
+      if (!latest) return NextResponse.json({ error: "Avaliação não encontrada." }, { status: 404 });
+      guard.enforceUnit(latest.unit);
+      if (!canManageAllEvaluations(guard) && !isOwnEvaluation(latest, { id: guard.userId, name: guard.userName })) {
+        return NextResponse.json({ error: "Você só pode atualizar avaliações atribuídas a você." }, { status: 403 });
+      }
+      if (editingClosedPackage && (status !== "fechou_pacote" || !isClosedPackageEvaluationStatus(latest.status))) {
+        return NextResponse.json({ error: "Somente um orçamento já fechado pode ser editado por esta ação." }, { status: 400 });
+      }
+
+      const normalizedSale = status === "fechou_pacote" && submittedSaleItems !== undefined
+        ? await normalizeSubmittedSaleItems({ database: tx, unit: latest.unit, submittedItems: submittedSaleItems })
+        : null;
+      if (normalizedSale) {
+        saleValue = normalizedSale.totalValue;
+        procedureNames = normalizedSale.procedureNames;
+        procedureName = formatProcedureNames(procedureNames);
+      }
+      if (status === "fechou_pacote" && !procedureName) {
+        return NextResponse.json({ error: "Informe o procedimento fechado." }, { status: 400 });
+      }
+      if (status === "fechou_pacote" && (!saleValue || !Number.isFinite(saleValue) || saleValue <= 0)) {
+        return NextResponse.json({ error: "Informe o valor fechado do pacote." }, { status: 400 });
+      }
+
+      const scheduleChanged = Boolean(requestedStartTime && requestedStartTime.getTime() !== latest.startTime.getTime());
+      const shouldResetConfirmation = scheduleChanged && !hasStatus && isConfirmedEvaluationStatus(latest.status);
       const updateData: Prisma.AgendamentoUpdateInput = {};
 
       let assignedUserName: string | null = null;
       if (hasAssigneeUserId) {
-        const assignee = await resolveEvaluationAssignee(evaluation.unit, assigneeUserId, tx);
-        const professional = await ensureProfessionalForEvaluationUser(assignee, evaluation.unit, tx);
+        const assignee = await resolveEvaluationAssignee(latest.unit, assigneeUserId, tx);
+        const professional = await ensureProfessionalForEvaluationUser(assignee, latest.unit, tx);
         updateData.profissional = { connect: { id: professional.id } };
-        updateData.notes = replaceEvaluationAssignedUserMarker(evaluation.notes, assignee.id);
+        updateData.notes = replaceEvaluationAssignedUserMarker(latest.notes, assignee.id);
         assignedUserName = assignee.name;
       }
 
@@ -595,7 +563,7 @@ export async function PATCH(req: NextRequest) {
         updateData.status = "pendente";
       }
       if (requestedStartTime) {
-        const currentDurationMs = evaluation.endTime.getTime() - evaluation.startTime.getTime();
+        const currentDurationMs = latest.endTime.getTime() - latest.startTime.getTime();
         const durationMs = currentDurationMs > 0 ? currentDurationMs : 60 * 60 * 1000;
         updateData.startTime = requestedStartTime;
         updateData.endTime = new Date(requestedStartTime.getTime() + durationMs);
@@ -605,6 +573,10 @@ export async function PATCH(req: NextRequest) {
         where: { id },
         data: updateData,
         include: { profissional: true },
+      });
+      const noticeId = await enqueueEvaluationGroupConfirmation(tx, {
+        appointment: savedEvaluation,
+        previousStatus: latest.status,
       });
 
       if (hasStatus && isEvaluationStatus(status) && !rescheduled) {
@@ -653,7 +625,7 @@ export async function PATCH(req: NextRequest) {
           unit: savedEvaluation.unit,
           details: JSON.stringify({
             eventType,
-            ...(hasStatus ? { from: evaluation.status, to: savedEvaluation.status, requestedStatus: status } : {}),
+            ...(hasStatus ? { from: latest.status, to: savedEvaluation.status, requestedStatus: status } : {}),
             ...(reason ? { reason } : {}),
             ...(saleValue != null ? { saleValue } : {}),
             ...(procedureName ? { procedureName, procedureNames } : {}),
@@ -661,22 +633,22 @@ export async function PATCH(req: NextRequest) {
             ...(rescheduled ? { rescheduled: true } : {}),
             ...(shouldResetConfirmation ? {
               confirmationReset: true,
-              statusFrom: evaluation.status,
+              statusFrom: latest.status,
               statusTo: "pendente",
             } : {}),
             ...(requestedStartTime
               ? {
-                  startTimeFrom: evaluation.startTime.toISOString(),
+                  startTimeFrom: latest.startTime.toISOString(),
                   startTimeTo: savedEvaluation.startTime.toISOString(),
-                  endTimeFrom: evaluation.endTime.toISOString(),
+                  endTimeFrom: latest.endTime.toISOString(),
                   endTimeTo: savedEvaluation.endTime.toISOString(),
                 }
               : {}),
             ...(hasAssigneeUserId
               ? {
-                  assigneeUserIdFrom: getEvaluationAssignedUserIdFromNotes(evaluation.notes),
+                  assigneeUserIdFrom: getEvaluationAssignedUserIdFromNotes(latest.notes),
                   assigneeUserIdTo: assigneeUserId,
-                  profissionalFrom: evaluation.profissional?.name || null,
+                  profissionalFrom: latest.profissional?.name || null,
                   profissionalTo: assignedUserName,
                 }
               : {}),
@@ -687,14 +659,17 @@ export async function PATCH(req: NextRequest) {
         },
       });
 
-      return savedEvaluation;
+      return { updated: savedEvaluation, previous: latest, noticeId, scheduleChanged };
     });
+    if (transactionResult instanceof NextResponse) return transactionResult;
+    const { updated, previous, noticeId, scheduleChanged } = transactionResult;
+    if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
 
     const noShowNotification = (
       hasStatus
       && status === "nao_compareceu"
       && !rescheduled
-      && !isNoShowEvaluationStatus(evaluation.status)
+      && !isNoShowEvaluationStatus(previous.status)
     )
       ? await sendEvaluationNoShowNotification({
           unit: updated.unit,
@@ -712,7 +687,7 @@ export async function PATCH(req: NextRequest) {
           appointmentId: updated.id,
           clientName: updated.clientName,
           clientPhone: updated.clientPhone,
-          previousStartTime: evaluation.startTime,
+          previousStartTime: previous.startTime,
           startTime: updated.startTime,
           createdBy: guard.userName,
         })
@@ -721,6 +696,7 @@ export async function PATCH(req: NextRequest) {
     const [enriched] = await enrichEvaluationsWithPipelineData([updated]);
     return NextResponse.json({ evaluation: enriched, noShowNotification, rescheduleNotification });
   } catch (error) {
+    if (error instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     if (error instanceof EvaluationSchedulingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

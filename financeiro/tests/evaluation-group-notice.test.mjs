@@ -15,7 +15,7 @@ registerHooks({ resolve(specifier, context, nextResolve) {
 } });
 const {
   buildEvaluationGroupNoticeMessage, dispatchEvaluationGroupNotice,
-  enqueueEvaluationGroupNotice, recoverEvaluationGroupNotices,
+  enqueueEvaluationGroupNotice, enqueueEvaluationGroupConfirmation, recoverEvaluationGroupNotices,
 } = await import("../src/lib/whatsapp/evaluation-group-notice.ts");
 
 // Banco PostgreSQL descartável e HTTP simulado; sem .env, clientes reais ou provedor.
@@ -44,13 +44,19 @@ function database({ beforeFence, failSubmitted = false } = {}) {
     agendamento: { findUnique: async ({ where }) => { operations++; return (await pg.query('SELECT * FROM "Agendamento" WHERE id=$1', [where.id])).rows[0] ?? null; } },
     whatsAppInstance: { findUnique: async ({ where }) => { operations++; return (await pg.query('SELECT * FROM "WhatsAppInstance" WHERE id=$1', [where.id])).rows[0] ?? null; } },
     whatsAppEvaluationGroupNotice: {
+      findUnique: async ({ where }) => {
+        operations++;
+        const key = where.appointmentId_eventKey;
+        return (await pg.query('SELECT * FROM "WhatsAppEvaluationGroupNotice" WHERE "appointmentId"=$1 AND "eventKey"=$2', [key.appointmentId, key.eventKey])).rows[0] ?? null;
+      },
       upsert: async ({ create, where }) => {
         operations++;
         const data = { id: randomUUID(), ...create, updatedAt: now };
         const keys = Object.keys(data);
         const inserted = await query(Prisma.sql`INSERT INTO "WhatsAppEvaluationGroupNotice" (${Prisma.join(keys.map(col))})
-          VALUES (${Prisma.join(keys.map(key => data[key]))}) ON CONFLICT ("appointmentId") DO NOTHING RETURNING id`);
-        return inserted.rows[0] ?? (await pg.query('SELECT id FROM "WhatsAppEvaluationGroupNotice" WHERE "appointmentId"=$1', [where.appointmentId])).rows[0];
+          VALUES (${Prisma.join(keys.map(key => data[key]))}) ON CONFLICT ("appointmentId", "eventKey") DO NOTHING RETURNING id`);
+        const key = where.appointmentId_eventKey;
+        return inserted.rows[0] ?? (await pg.query('SELECT id FROM "WhatsAppEvaluationGroupNotice" WHERE "appointmentId"=$1 AND "eventKey"=$2', [key.appointmentId, key.eventKey])).rows[0];
       },
       updateMany: async ({ where, data }) => {
         operations++;
@@ -88,6 +94,10 @@ before(async () => {
   const migrationSql = await readFile(migration, "utf8");
   await pg.exec(migrationSql);
   await pg.exec(migrationSql);
+  const expansion = await readFile(new URL('../prisma/migrations/20261009120000_evaluation_group_confirmation_events/migration.sql', import.meta.url), 'utf8');
+  await pg.exec(expansion);
+  await pg.exec(expansion);
+  await pg.exec('DROP INDEX IF EXISTS "WhatsAppEvaluationGroupNotice_appointmentId_key"');
 });
 beforeEach(async () => {
   await pg.exec('TRUNCATE "WhatsAppEvaluationGroupNotice", "AppSetting", "WhatsAppInstance", "Agendamento"');
@@ -247,4 +257,123 @@ test("recuperação limita cada limpeza a vinte linhas e não repete HTTP incert
   const states = Object.fromEntries((await pg.query('SELECT state, count(*)::int AS count FROM "WhatsAppEvaluationGroupNotice" GROUP BY state')).rows.map(row => [row.state, row.count]));
   assert.deepEqual(states, { uncertain: 20, cancelled: 20, processing: 1, sending: 1 });
   assert.equal(sent.length, 0);
+});
+
+async function confirm(extra = {}) {
+  appointment.status = 'confirmado';
+  await pg.query('UPDATE "Agendamento" SET status=$1, "startTime"=$2 WHERE id=$3', [appointment.status, appointment.startTime, appointment.id]);
+  return enqueueEvaluationGroupConfirmation(database(), { appointment, previousStatus: 'pendente', ...extra }, now);
+}
+async function enableConfirmations() {
+  config.confirmationsActivatedAt = now.toISOString();
+  await saveConfig();
+}
+const noticeById = async id => (await pg.query('SELECT * FROM "WhatsAppEvaluationGroupNotice" WHERE id=$1', [id])).rows[0];
+
+test('confirmação desligada por padrão, ausente, inválida ou futura não envia', async () => {
+  await enqueue();
+  assert.equal(await confirm(), null);
+  assert.equal(parseEvaluationGroupConfig({ ...config, confirmationsActivatedAt: 'invalid' }), null);
+  config.confirmationsActivatedAt = new Date(now.getTime() + 60_000).toISOString();
+  await saveConfig();
+  assert.equal(await confirm(), null);
+  assert.equal(sent.length, 0);
+});
+test('confirmação exige participação no piloto original e corte/destino correspondentes', async () => {
+  await enableConfirmations();
+  assert.equal(await confirm(), null, 'SBC sem aviso original não comprova a caixa de origem');
+  await enqueue();
+  for (const [column, value] of [['groupJid', '999999999@g.us'], ['configActivatedAt', new Date(0)], ['appointmentCreatedAt', new Date(0)]]) {
+    const saved = await job();
+    await query(Prisma.sql`UPDATE "WhatsAppEvaluationGroupNotice" SET ${col(column)}=${value}`);
+    assert.equal(await confirm(), null);
+    await query(Prisma.sql`UPDATE "WhatsAppEvaluationGroupNotice" SET ${col(column)}=${saved[column]}`);
+  }
+  assert.equal(sent.length, 0);
+});
+test('uma confirmação gera mensagem distinta, nove operações mais trava da rota e um HTTP', async () => {
+  const scheduledId = await enqueue();
+  await dispatch(scheduledId);
+  await enableConfirmations();
+  operations = 0; sent = [];
+  const id = await confirm();
+  assert.notEqual(id, scheduledId);
+  assert.equal((await dispatch(id)).status, 'submitted');
+  assert.equal(operations, 9);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].text, [
+    '✅ *Avaliação confirmada — SBC*', '', 'Nome: Maria Exemplo', 'Telefone: 5511999999999',
+    'Procedimento: Glúteos Perfeitos', 'Data: 15/10/2026', 'Horário: 14:30',
+  ].join('\n'));
+  assert.equal((await noticeById(scheduledId)).state, 'submitted');
+});
+test('repetir confirmado não consulta banco; alternar e reconfirmar a mesma ocorrência não repete', async () => {
+  await enqueue(); await enableConfirmations();
+  const id = await confirm();
+  await dispatch(id);
+  operations = 0;
+  assert.equal(await confirm({ previousStatus: 'confirmado' }), null);
+  assert.equal(operations, 0);
+  assert.equal(await confirm({ previousStatus: 'nao_confirmou' }), id);
+  assert.equal((await dispatch(id)).status, 'skipped');
+  assert.equal(sent.length, 1);
+});
+test('confirmar após remarcação real cria evento novo, mas voltar ao horário antigo não duplica', async () => {
+  await enqueue(); await enableConfirmations();
+  const originalStart = appointment.startTime;
+  const first = await confirm(); await dispatch(first);
+  appointment.startTime = new Date('2026-10-16T18:00:00Z');
+  const second = await confirm(); await dispatch(second);
+  assert.notEqual(first, second);
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].text, /16\/10\/2026\nHorário: 15:00/);
+  appointment.startTime = originalStart;
+  assert.equal(await confirm(), first);
+  assert.equal((await dispatch(first)).status, 'skipped');
+});
+test('dois workers simultâneos enviam só uma confirmação', async () => {
+  await enqueue(); await enableConfirmations();
+  const id = await confirm();
+  assert.equal(await confirm(), id);
+  const results = await Promise.all([dispatch(id), dispatch(id)]);
+  assert.deepEqual(results.map(r => r.status).sort(), ['skipped', 'submitted']);
+  assert.equal(sent.length, 1);
+});
+test('confirmação cancelada ou remarcada antes do envio não é anunciada', async () => {
+  await enqueue(); await enableConfirmations();
+  const first = await confirm();
+  await pg.exec('UPDATE "Agendamento" SET status=\'pendente\'');
+  assert.equal((await dispatch(first)).status, 'cancelled');
+  appointment.startTime = new Date('2026-10-16T18:00:00Z');
+  const second = await confirm();
+  await pg.query('UPDATE "Agendamento" SET "startTime"=$1', [new Date('2026-10-17T18:00:00Z')]);
+  assert.equal((await dispatch(second)).status, 'cancelled');
+  assert.equal(sent.length, 0);
+});
+test('fence impede confirmação se status muda após a leitura', async () => {
+  await enqueue(); await enableConfirmations();
+  const id = await confirm();
+  const result = await dispatch(id, { database: database({ beforeFence: async () => pg.exec('UPDATE "Agendamento" SET status=\'pendente\'') }) });
+  assert.equal(result.status, 'cancelled');
+  assert.equal(sent.length, 0);
+});
+test('desabilitar confirmações cancela só o novo aviso, preservando aviso inicial', async () => {
+  const scheduledId = await enqueue(); await enableConfirmations();
+  const id = await confirm();
+  delete config.confirmationsActivatedAt; await saveConfig();
+  assert.equal((await dispatch(id)).status, 'cancelled');
+  assert.equal((await dispatch(scheduledId)).status, 'submitted');
+  assert.equal(sent.length, 1);
+  assert.match(sent[0].text, /Nova avaliação/);
+});
+test('timeout de confirmação nunca autoriza reenvio ao repetir status ou recuperar fila', async () => {
+  const scheduledId = await enqueue(); await dispatch(scheduledId);
+  sent = []; await enableConfirmations();
+  const id = await confirm();
+  assert.equal((await dispatch(id, { fetcher: async () => { sent.push({}); throw new Error('timeout'); } })).status, 'uncertain');
+  assert.equal(await confirm(), id);
+  assert.equal((await dispatch(id)).status, 'skipped');
+  await recoverEvaluationGroupNotices({ database: database(), fetcher, now: () => new Date(now.getTime() + 5 * 60_000) });
+  assert.equal(sent.length, 1);
+  assert.equal((await noticeById(id)).state, 'uncertain');
 });

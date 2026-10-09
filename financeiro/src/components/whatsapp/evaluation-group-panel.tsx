@@ -10,6 +10,7 @@ import type { EvaluationNoticeGroup } from "@/lib/whatsapp/evaluation-group-dire
 const endpoint = `/api/whatsapp/evaluation-group?targetInstanceId=${EVALUATION_GROUP_INSTANCE_ID}&unit=SBC`;
 type Notice = {
   id: string; clientName: string; clientPhone: string; evaluationProcedure: string;
+  eventType?: "scheduled" | "confirmed";
   startTime: string; state: string; createdAt: string; submittedAt: string | null; lastError: string | null;
 };
 type Snapshot = { config: EvaluationGroupConfig | null; notices: Notice[]; canManage: boolean; connected: boolean };
@@ -70,7 +71,7 @@ export function EvaluationGroupPanel() {
   return <section className="min-w-0 rounded-xl border border-border bg-card" aria-label="Avisos ao grupo de avaliações SBC">
     <button type="button" className="flex min-h-14 w-full items-center gap-3 p-4 text-left" onClick={() => setOpen(value => !value)} aria-expanded={open} aria-controls="evaluation-group-details">
       <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Users className="size-5" /></span>
-      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-foreground">AVALIAÇOES SBC</span><span className="block text-xs text-muted-foreground">Leads - Paloma · Avisos de novas avaliações</span></span>
+      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-foreground">AVALIAÇOES SBC</span><span className="block text-xs text-muted-foreground">Leads - Paloma · Avisos de avaliações</span></span>
       <ChevronDown className={`size-4 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
     </button>
     {open && <div id="evaluation-group-details" className="space-y-4 border-t border-border p-4">
@@ -86,7 +87,12 @@ export function EvaluationGroupPanel() {
         {snapshot?.canManage && <Button type="button" className="min-h-11" onClick={() => { setEditing(true); setGroups(null); setConsent(false); setSelected(""); setEditError(""); }}>Configurar grupo</Button>}
       </div>
       {loading && !snapshot && <p role="status" className="text-sm text-muted-foreground">Carregando os avisos…</p>}
-      {snapshot?.config?.enabled && <p className="text-xs text-muted-foreground">Ativo desde {time(snapshot.config.activatedAt)}. Não inclui avaliações antigas, sessões, remarcações ou cancelamentos.</p>}
+      {snapshot?.config?.enabled && <div className="space-y-2 text-xs text-muted-foreground">
+        <p>Novos agendamentos: avaliações elegíveis desde {time(snapshot.config.activatedAt)}. Sem importação de histórico ou avisos de sessões. Remarcar ou cancelar não gera aviso por si só.</p>
+        {snapshot.config.confirmationsActivatedAt
+          ? <p>Novas confirmações ativas desde {time(snapshot.config.confirmationsActivatedAt)}, somente para avaliações elegíveis do piloto. Um aviso por avaliação e data/horário confirmados. Reconfirmar o mesmo horário não repete; remarcar e confirmar um novo horário permite outro aviso.</p>
+          : <p>Avisos de confirmação ainda não estão ativados.</p>}
+      </div>}
       {snapshot && !snapshot.connected && <p role="status" className="text-sm text-amber-700 dark:text-amber-400">A Leads - Paloma está desconectada. Verifique a conexão antes de aguardar novos avisos.</p>}
       {snapshot && <div className="space-y-2">
         <h3 className="text-sm font-semibold text-foreground">Últimos 20 avisos</h3>
@@ -94,7 +100,10 @@ export function EvaluationGroupPanel() {
         {snapshot.notices.map(notice => <article key={notice.id} className="min-w-0 rounded-lg border border-border p-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <h4 className="min-w-0 break-words font-medium text-foreground">{notice.clientName}</h4>
-            <span className={`rounded-md px-2 py-1 text-xs ${notice.state === "uncertain" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}>{states[notice.state] || notice.state}</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`rounded-md px-2 py-1 text-xs font-medium ${notice.eventType === "confirmed" ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" : "bg-primary/10 text-primary"}`}>{notice.eventType === "confirmed" ? "Confirmada" : "Agendada"}</span>
+              <span className={`rounded-md px-2 py-1 text-xs ${notice.state === "uncertain" ? "bg-amber-500/10 text-amber-700 dark:text-amber-400" : "bg-muted text-muted-foreground"}`}>{states[notice.state] || notice.state}</span>
+            </div>
           </div>
           <p className="mt-1 break-words text-sm text-muted-foreground">{notice.clientPhone} · {notice.evaluationProcedure}</p>
           <p className="mt-2 flex items-center gap-2 text-sm"><CalendarDays className="size-4 shrink-0 text-primary" />{time(notice.startTime)}</p>
@@ -106,7 +115,7 @@ export function EvaluationGroupPanel() {
     </div>}
     <Dialog open={editing} onOpenChange={value => { if (!busy) setEditing(value); }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
-        <DialogHeader><DialogTitle>Avisos ao grupo AVALIAÇOES SBC</DialogTitle><DialogDescription>Somente novas avaliações de SBC. Envio pela Leads - Paloma, após salvar o agendamento.</DialogDescription></DialogHeader>
+        <DialogHeader><DialogTitle>Avisos ao grupo AVALIAÇOES SBC</DialogTitle><DialogDescription>Somente novas avaliações de SBC. Envio pela Leads - Paloma, após salvar o agendamento.{snapshot?.config?.confirmationsActivatedAt && " As novas mudanças para Confirmado dessas avaliações também geram um aviso por data e horário."}</DialogDescription></DialogHeader>
         <div className="min-w-0 space-y-4">
           <Button type="button" variant="outline" className="min-h-11 w-full" disabled={busy || !snapshot?.connected} onClick={() => void discover()}>{busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Users className="mr-2 size-4" />}Conferir grupo na Leads - Paloma</Button>
           {groups?.length === 0 && <p role="status" className="text-sm text-muted-foreground">Nenhum grupo com esse nome foi encontrado. Confirme que a Leads - Paloma participa dele.</p>}

@@ -176,6 +176,20 @@ test("pausa funciona desconectado sem consulta Evolution e preserva destino e co
   assert.equal(calls("audit")[0].args.data.action, "evaluation_group_paused");
 });
 
+test('configurar não pode habilitar confirmação pelo navegador; corte aprovado é preservado', async () => {
+  let result = await (await post({ action: 'configure', enabled: true, confirmTeamAccess: true,
+    groupJid: '120000000000@g.us', confirmationsActivatedAt: '2000-01-01' })).json();
+  assert.equal(result.config.confirmationsActivatedAt, undefined);
+  const cutoff = '2026-10-09T12:00:00.000Z';
+  setting = { value: JSON.stringify(configured({ confirmationsActivatedAt: cutoff })) };
+  result = await (await post({ action: 'configure', enabled: true, confirmTeamAccess: true, groupJid: '120000000000@g.us' })).json();
+  assert.equal(result.config.confirmationsActivatedAt, cutoff);
+  result = await (await post({ action: 'configure', enabled: false })).json();
+  assert.equal(result.config.confirmationsActivatedAt, cutoff);
+  result = await (await post({ action: 'configure', enabled: true, confirmTeamAccess: true, groupJid: '120000000000@g.us' })).json();
+  assert.ok(Date.parse(result.config.confirmationsActivatedAt) > Date.parse(cutoff));
+});
+
 test("pausar configuração ausente não fabrica grupo nem grava histórico", async () => {
   const response = await post({ action: "configure", enabled: false });
   assert.equal(response.status, 200);

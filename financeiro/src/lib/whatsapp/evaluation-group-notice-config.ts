@@ -9,6 +9,7 @@ export type EvaluationGroupConfig = {
   groupName: string;
   activatedAt: string;
   approvedBy: string;
+  confirmationsActivatedAt?: string;
 };
 
 function normalizedKey(value: string) {
@@ -48,6 +49,9 @@ export function parseEvaluationGroupConfig(raw: unknown): EvaluationGroupConfig 
       || !isEvaluationGroupJid(config.groupJid) || !isEvaluationGroupName(config.groupName)
       || typeof config.activatedAt !== "string" || !Number.isFinite(Date.parse(config.activatedAt))
       || !normalizeEvaluationGroupText(config.approvedBy, 200)) return null;
+    if (config.confirmationsActivatedAt !== undefined
+      && (typeof config.confirmationsActivatedAt !== "string"
+        || !Number.isFinite(Date.parse(config.confirmationsActivatedAt)))) return null;
     return {
       enabled: config.enabled,
       instanceId: EVALUATION_GROUP_INSTANCE_ID,
@@ -55,6 +59,7 @@ export function parseEvaluationGroupConfig(raw: unknown): EvaluationGroupConfig 
       groupName: EVALUATION_GROUP_NAME,
       activatedAt: new Date(config.activatedAt).toISOString(),
       approvedBy: config.approvedBy.trim(),
+      ...(config.confirmationsActivatedAt ? { confirmationsActivatedAt: new Date(config.confirmationsActivatedAt).toISOString() } : {}),
     };
   } catch {
     return null;

@@ -1677,7 +1677,9 @@ model WhatsAppStatusReceipt {
 
 model WhatsAppEvaluationGroupNotice {
   id                   String   @id @default(uuid())
-  appointmentId        String   @unique
+  appointmentId        String
+  eventType            String   @default("scheduled")
+  eventKey             String   @default("scheduled")
   instanceId           String
   groupJid             String
   groupName            String
@@ -1699,7 +1701,8 @@ model WhatsAppEvaluationGroupNotice {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  // A auditoria sobrevive à exclusão da agenda; só o evento inicial pode enviar.
+  // A auditoria sobrevive à exclusão da agenda; a ocorrência não é reaberta em retries.
+  @@unique([appointmentId, eventKey])
   @@index([state, availableAt])
   @@index([state, claimedAt])
   @@index([instanceId, createdAt])

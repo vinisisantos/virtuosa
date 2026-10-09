@@ -89,7 +89,8 @@ try {
           if (saveFails) { status = 502; data = { error: "O grupo foi alterado. Consulte novamente antes de ativar." }; }
           else {
             state.config = { enabled: body.enabled, groupJid: body.groupJid || state.config?.groupJid, groupName: "AVALIAÇOES SBC", instanceId,
-              activatedAt: "2026-10-09T10:00:00.000Z", approvedBy: user.id };
+              activatedAt: "2026-10-09T10:00:00.000Z", approvedBy: user.id,
+              confirmationsActivatedAt: state.config?.confirmationsActivatedAt ?? null };
             data = { success: true, config: state.config };
           }
         }
@@ -114,6 +115,8 @@ try {
     await fit(page, `${width} empty-history`);
     await clickButton(page, "Configurar grupo");
     await page.waitForSelector('[role="dialog"]', { visible: true });
+    assert.doesNotMatch(await page.$eval('[role="dialog"]', element => element.innerText), /mudanças para Confirmado/,
+      "primeira ativação não promete confirmação antes da liberação");
     assert.equal(await isDisabled(page, "Ativar para novas avaliações"), true);
     await clickButton(page, "Conferir grupo na Leads - Paloma");
     await page.waitForFunction(() => document.body.innerText.includes("Nenhum grupo com esse nome foi encontrado."));
@@ -148,11 +151,29 @@ try {
     const save = writes.filter(write => write.body?.action === "configure").at(-1);
     assert.deepEqual(save.body, { action: "configure", enabled: true, groupJid: groupB.id, confirmTeamAccess: true });
     assert.equal(state.notices.length, 0, "ativação não cria avisos retroativos");
+    assert.match(await page.$eval(panel, element => element.innerText), /Avisos de confirmação ainda não estão ativados/);
+    assert.doesNotMatch(await page.$eval(panel, element => element.innerText), /Novas confirmações ativas/);
     await fit(page, `${width} activated`);
     await screenshot(page, `${width}-activated`);
 
+    state.config.confirmationsActivatedAt = "2026-10-09T14:00:00.000Z";
+    await clickButton(page, "Atualizar", `${panel} button`);
+    await page.waitForFunction(() => document.body.innerText.includes("Novas confirmações ativas"));
+    assert.match(await page.$eval(panel, element => element.innerText), /Um aviso por avaliação e data\/horário confirmados/);
+    assert.match(await page.$eval(panel, element => element.innerText), /Reconfirmar o mesmo horário não repete/);
+    assert.match(await page.$eval(panel, element => element.innerText), /remarcar e confirmar um novo horário permite outro aviso/);
+    await fit(page, `${width} confirmations-activated`);
+    await screenshot(page, `${width}-confirmations-activated`);
+    await clickButton(page, "Configurar grupo");
+    await page.waitForSelector('[role="dialog"]', { visible: true });
+    assert.match(await page.$eval('[role="dialog"]', element => element.innerText), /mudanças para Confirmado/);
+    await fit(page, `${width} confirmations-dialog`);
+    await clickButton(page, "Cancelar");
+    await page.waitForSelector('[role="dialog"]', { hidden: true });
+
     state.notices = ["queued", "processing", "sending", "submitted", "uncertain", "cancelled"].map((value, index) => ({
       id: `notice-${index}`, clientName: index === 4 ? "NomeMuitoLongoSemEspacos".repeat(6) : `Cliente fictícia ${index}`,
+      eventType: index === 0 ? undefined : index % 2 ? "confirmed" : "scheduled",
       clientPhone: "5511900000000", evaluationProcedure: "Procedimento com descrição extensa para validar a leitura no celular e no computador sem ocultar informações importantes",
       startTime: "2026-11-20T17:30:00.000Z", state: value, createdAt: "2026-10-09T12:00:00.000Z", submittedAt: null, lastError: null,
     }));
@@ -161,6 +182,12 @@ try {
     await fit(page, `${width} long-history`);
     assert.match(await page.$eval(panel, element => element.innerText), /Conferir no WhatsApp/);
     assert.match(await page.$eval(panel, element => element.innerText), /não comprova entrega ou leitura/);
+    const noticeLabels = await page.$$eval(`${panel} article`, articles => articles.map(article => ({
+      scheduled: /\bAgendada\b/.test(article.innerText), confirmed: /\bConfirmada\b/.test(article.innerText),
+    })));
+    assert.deepEqual(noticeLabels, state.notices.map(notice => ({
+      scheduled: notice.eventType !== "confirmed", confirmed: notice.eventType === "confirmed",
+    })), "histórico distingue o evento e preserva avisos legados como Agendada");
     await screenshot(page, `${width}-history`);
     await page.$$eval(`${panel} article`, articles => articles[4].scrollIntoView({ block: "center" }));
     await screenshot(page, `${width}-long-history`);
@@ -175,6 +202,8 @@ try {
     await page.waitForSelector('[role="dialog"]', { hidden: true });
     await page.waitForFunction(() => document.body.innerText.includes("Automação desativada"));
     assert.equal(writes.at(-1).body.enabled, false);
+    assert.doesNotMatch(await page.$eval(panel, element => element.innerText), /Novas confirmações ativas/,
+      "painel pausado não apresenta as confirmações como ativas");
     state.canManage = false;
     await clickButton(page, "Atualizar", `${panel} button`);
     await page.waitForFunction(selector => !document.querySelector(selector)?.innerText.includes("Configurar grupo"), {}, panel);
@@ -183,7 +212,7 @@ try {
     assert.deepEqual(errors, []);
     results.push({ width, requests: calls.filter(call => call.path === "/api/whatsapp/evaluation-group").length,
       writes: writes.length, passed: true });
-    console.log(`PASS ${width}: carregamento/erros/consentimento/homônimos/ativação/histórico/pausa/consulta`);
+    console.log(`PASS ${width}: carregamento/erros/consentimento/homônimos/ativação/liberação de confirmações/histórico tipado/pausa/consulta`);
     await page.close();
   }
   console.log(JSON.stringify({ results, output }));

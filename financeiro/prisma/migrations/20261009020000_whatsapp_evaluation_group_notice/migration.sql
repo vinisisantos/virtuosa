@@ -31,8 +31,19 @@ CREATE TABLE IF NOT EXISTS "WhatsAppEvaluationGroupNotice" (
     CHECK ("instanceId" = 'a6871ee7-8352-4b66-bfb2-b8dba9e4f8e3' AND "groupJid" ~ '^[0-9]+(-[0-9]+)?@g[.]us$')
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS "WhatsAppEvaluationGroupNotice_appointmentId_key"
-  ON "WhatsAppEvaluationGroupNotice"("appointmentId");
+-- O build repete este bootstrap. Depois da expansão por evento, não recriar
+-- a unicidade legada: uma avaliação pode ter criação e confirmações auditadas.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid = '"WhatsAppEvaluationGroupNotice"'::regclass
+      AND attname = 'eventKey' AND NOT attisdropped
+  ) THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS "WhatsAppEvaluationGroupNotice_appointmentId_key"
+      ON "WhatsAppEvaluationGroupNotice"("appointmentId");
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS "WhatsAppEvaluationGroupNotice_state_availableAt_idx"
   ON "WhatsAppEvaluationGroupNotice"("state", "availableAt");
 CREATE INDEX IF NOT EXISTS "WhatsAppEvaluationGroupNotice_state_claimedAt_idx"

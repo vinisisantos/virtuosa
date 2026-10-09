@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireUnitGuard } from '@/lib/unit-guard';
+import { after, NextRequest, NextResponse } from 'next/server';
+import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
+import { dispatchEvaluationGroupNotice, enqueueEvaluationGroupConfirmation } from '@/lib/whatsapp/evaluation-group-notice';
 
 import { prisma } from "@/lib/db";
 
@@ -32,12 +33,28 @@ export async function POST(req: NextRequest) {
 
   // Update agendamento status to confirmed
   try {
-    const updated = await prisma.agendamento.update({
-      where: { id: agendamentoId },
-      data: { status: 'confirmado' },
+    const result = await prisma.$transaction(async (tx) => {
+      const [latest] = await tx.$queryRaw<Array<{ id: string; status: string; unit: string }>>`
+        SELECT "id", "status", "unit" FROM "Agendamento" WHERE "id" = ${agendamentoId} FOR UPDATE
+      `;
+      if (!latest) return null;
+      guard.enforceUnit(latest.unit);
+      const updated = await tx.agendamento.update({
+        where: { id: agendamentoId },
+        data: { status: 'confirmado' },
+      });
+      const noticeId = await enqueueEvaluationGroupConfirmation(tx, {
+        appointment: updated,
+        previousStatus: latest.status,
+      });
+      return { updated, noticeId };
     });
+    if (!result) return NextResponse.json({ error: 'Agendamento not found' }, { status: 404 });
+    const { updated, noticeId } = result;
+    if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
     return NextResponse.json({ success: true, agendamento: updated });
-  } catch {
+  } catch (error) {
+    if (error instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     return NextResponse.json({ error: 'Agendamento not found' }, { status: 404 });
   }
 }

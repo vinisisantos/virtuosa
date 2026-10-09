@@ -66,7 +66,7 @@ export async function enqueueEvaluationGroupNotice(
   if (!config?.enabled || appointment.createdAt < new Date(config.activatedAt)) return null;
 
   const notice = await database.whatsAppEvaluationGroupNotice.upsert({
-    where: { appointmentId: appointment.id },
+    where: { appointmentId_eventKey: { appointmentId: appointment.id, eventKey: "scheduled" } },
     create: {
       appointmentId: appointment.id,
       instanceId: config.instanceId,
@@ -85,15 +85,57 @@ export async function enqueueEvaluationGroupNotice(
   return notice.id;
 }
 
+export async function enqueueEvaluationGroupConfirmation(
+  database: EnqueueDatabase,
+  params: { appointment: EvaluationGroupAppointment; previousStatus: string },
+  now = new Date(),
+): Promise<string | null> {
+  const { appointment, previousStatus } = params;
+  if (previousStatus === "confirmado" || appointment.status !== "confirmado" || !isNewEvaluation(appointment, now)) return null;
+  const snapshot = snapshotOf(appointment);
+  if (!snapshot) return null;
+  const setting = await database.appSetting.findUnique({
+    where: { key: EVALUATION_GROUP_SETTING_KEY }, select: { value: true },
+  });
+  const config = parseEvaluationGroupConfig(setting?.value);
+  if (!config?.enabled || !config.confirmationsActivatedAt || new Date(config.confirmationsActivatedAt) > now
+    || appointment.createdAt < new Date(config.activatedAt)) return null;
+
+  // A agenda não persiste a caixa de origem. O aviso inicial é a prova de elegibilidade
+  // do piloto: filtrar só SBC incluiria avaliações de outras caixas excluídas na criação.
+  const original = await database.whatsAppEvaluationGroupNotice.findUnique({
+    where: { appointmentId_eventKey: { appointmentId: appointment.id, eventKey: "scheduled" } },
+    select: { instanceId: true, groupJid: true, configActivatedAt: true, appointmentCreatedAt: true },
+  });
+  if (!original || original.instanceId !== config.instanceId || original.groupJid !== config.groupJid
+    || original.configActivatedAt.toISOString() !== config.activatedAt
+    || original.appointmentCreatedAt.getTime() !== appointment.createdAt.getTime()) return null;
+
+  const eventKey = `confirmed:${appointment.startTime.toISOString()}`;
+  const notice = await database.whatsAppEvaluationGroupNotice.upsert({
+    where: { appointmentId_eventKey: { appointmentId: appointment.id, eventKey } },
+    create: {
+      appointmentId: appointment.id, eventType: "confirmed", eventKey,
+      instanceId: config.instanceId, groupJid: config.groupJid, groupName: config.groupName,
+      configActivatedAt: new Date(config.activatedAt), ...snapshot,
+      startTime: appointment.startTime, appointmentCreatedAt: appointment.createdAt,
+      availableAt: now, createdAt: now,
+    },
+    // A mesma ocorrência não reabre nem após uma alternância de status ou envio incerto.
+    update: {}, select: { id: true },
+  });
+  return notice.id;
+}
+
 export function buildEvaluationGroupNoticeMessage(notice: {
-  clientName: string; clientPhone: string; evaluationProcedure: string; startTime: Date;
+  clientName: string; clientPhone: string; evaluationProcedure: string; startTime: Date; eventType?: string;
 }) {
   const date = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(notice.startTime);
   const time = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
   }).format(notice.startTime);
   return [
-    "📅 *Nova avaliação — SBC*", "",
+    notice.eventType === "confirmed" ? "✅ *Avaliação confirmada — SBC*" : "📅 *Nova avaliação — SBC*", "",
     `Nome: ${notice.clientName}`,
     `Telefone: ${notice.clientPhone}`,
     `Procedimento: ${notice.evaluationProcedure}`,
@@ -108,6 +150,9 @@ export function evaluationGroupNoticeMatchesAppointment(
   now: Date,
 ) {
   if (!appointment || !isNewEvaluation(appointment, now)) return false;
+  if (notice.eventType === "confirmed") {
+    if (appointment.status !== "confirmado" || notice.eventKey !== `confirmed:${appointment.startTime.toISOString()}`) return false;
+  } else if (notice.eventType !== "scheduled" || notice.eventKey !== "scheduled") return false;
   const snapshot = snapshotOf(appointment);
   return snapshot !== null
     && snapshot.clientName === notice.clientName
@@ -167,6 +212,10 @@ export async function dispatchEvaluationGroupNotice(
       || config.activatedAt !== notice.configActivatedAt.toISOString()) {
       return finish("cancelled", "Configuração desativada ou destino alterado antes do envio.");
     }
+    if (notice.eventType === "confirmed" && (!config.confirmationsActivatedAt
+      || notice.createdAt < new Date(config.confirmationsActivatedAt))) {
+      return finish("cancelled", "Aviso de confirmação fora do período habilitado.");
+    }
     const appointment = await database.agendamento.findUnique({
       where: { id: notice.appointmentId },
       select: { id: true, clientName: true, clientPhone: true, procedimento: true, evaluationProcedure: true,
@@ -204,7 +253,9 @@ export async function dispatchEvaluationGroupNotice(
           AND "clientName" = ${appointment!.clientName} AND "clientPhone" = ${appointment!.clientPhone}
           AND "evaluationProcedure" = ${appointment!.evaluationProcedure}
           AND "startTime" = ${notice.startTime} AND "createdAt" = ${notice.appointmentCreatedAt}
-          AND "status" IN ('pendente', 'confirmado', 'nao_confirmou') AND "startTime" > ${sendAt})
+          AND ((notice."eventType" = 'scheduled' AND "status" IN ('pendente', 'confirmado', 'nao_confirmou'))
+            OR (notice."eventType" = 'confirmed' AND "status" = 'confirmado'))
+          AND "startTime" > ${sendAt})
         AND EXISTS (SELECT 1 FROM "WhatsAppInstance" WHERE "id" = ${EVALUATION_GROUP_INSTANCE_ID}
           AND "name" = ${instance.name} AND "unit" = 'SBC' AND "provider" = 'evolution' AND "status" = 'connected')
     `;

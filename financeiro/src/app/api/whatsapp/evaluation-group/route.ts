@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
       prisma.appSetting.findUnique({ where: { key: EVALUATION_GROUP_SETTING_KEY }, select: { value: true } }),
       prisma.whatsAppEvaluationGroupNotice.findMany({
         where: { instanceId: EVALUATION_GROUP_INSTANCE_ID }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 20,
-        select: { id: true, clientName: true, clientPhone: true, evaluationProcedure: true, startTime: true,
+        select: { id: true, eventType: true, clientName: true, clientPhone: true, evaluationProcedure: true, startTime: true,
           state: true, createdAt: true, submittedAt: true, lastError: true, groupName: true },
       }),
     ]);
@@ -84,6 +84,10 @@ export async function POST(req: NextRequest) {
         enabled: true, instanceId: EVALUATION_GROUP_INSTANCE_ID,
         groupJid: verifiedGroup!.id, groupName: EVALUATION_GROUP_NAME,
         activatedAt: sameActiveDestination ? previous.activatedAt : new Date().toISOString(), approvedBy: allowed.userId,
+        // A habilitação de confirmações só ocorre após o contrato de índices no deploy.
+        ...(previous?.confirmationsActivatedAt ? {
+          confirmationsActivatedAt: sameActiveDestination ? previous.confirmationsActivatedAt : new Date().toISOString(),
+        } : {}),
       } : { ...previous!, enabled: false };
       await tx.appSetting.upsert({ where: { key: EVALUATION_GROUP_SETTING_KEY },
         create: { key: EVALUATION_GROUP_SETTING_KEY, value: JSON.stringify(next) }, update: { value: JSON.stringify(next) } });

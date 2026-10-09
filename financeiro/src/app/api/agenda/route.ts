@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { incrementPackageSession, withSerializableRetry } from '@/lib/agenda/finalization';
 import { isEvaluationAppointment, normalizeEvaluationProcedure, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
-import { enqueueEvaluationGroupNotice, dispatchEvaluationGroupNotice } from '@/lib/whatsapp/evaluation-group-notice';
+import { enqueueEvaluationGroupNotice, enqueueEvaluationGroupConfirmation, dispatchEvaluationGroupNotice } from '@/lib/whatsapp/evaluation-group-notice';
 
 export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
@@ -147,9 +147,10 @@ export async function PUT(req: NextRequest) {
     if (body.totalSessions !== undefined) data.totalSessions = body.totalSessions;
     if (body.notes !== undefined) data.notes = body.notes;
 
-    const updated = await withSerializableRetry(async (tx) => {
+    const { updated, noticeId } = await withSerializableRetry(async (tx) => {
       const latest = await tx.agendamento.findUnique({ where: { id: body.id } });
       if (!latest) throw new Error('Agendamento não encontrado');
+      guard.enforceUnit(latest.unit);
 
       const result = await tx.agendamento.update({
         where: { id: body.id },
@@ -161,11 +162,17 @@ export async function PUT(req: NextRequest) {
         await incrementPackageSession(tx, result);
       }
 
-      return result;
+      const noticeId = await enqueueEvaluationGroupConfirmation(tx, {
+        appointment: result,
+        previousStatus: latest.status,
+      });
+      return { updated: result, noticeId };
     });
 
+    if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
     return NextResponse.json(updated);
   } catch (err: any) {
+    if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     console.error('Agenda PUT error:', err);
     return NextResponse.json({ error: err?.message || 'Erro ao atualizar agendamento' }, { status: 500 });
   }
