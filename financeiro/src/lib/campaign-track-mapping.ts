@@ -10,6 +10,8 @@ export const GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID = "12024976607090000
 export const HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME = "Harmonização de Mamas";
 export const HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID = "120249951529480006";
 export const HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID = "120249648815820109";
+export const COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME = "Combo Barriga Chapada";
+export const BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME = "Botox Dysport 3 Regiões";
 
 export type PrefilledMetaLeadCampaign = {
   campaignName: string;
@@ -55,6 +57,22 @@ export function campaignFromPrefilledMetaLeadMessage(
         osasco: COMBO_HARMONIZACAO_OSASCO_PARENT_CAMPAIGN_ID,
         sbc: COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
       }),
+    };
+  }
+
+  if (/\bvim pelo combo barriga chapada\b/.test(normalizedMessage)) {
+    if (!["osasco", "sbc"].includes(normalizedUnit)) return null;
+    return {
+      campaignName: COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME,
+      campaignTrackId: null,
+    };
+  }
+
+  if (/\bvim pel[oa] (?:botox dysport|dysport)(?: 3)? regioes\b/.test(normalizedMessage)) {
+    if (!["osasco", "sbc"].includes(normalizedUnit)) return null;
+    return {
+      campaignName: BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME,
+      campaignTrackId: null,
     };
   }
 
@@ -188,6 +206,9 @@ const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
   { adId: "120253010502850494", campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME, unit: "Osasco" },
   { adId: "120253025931420494", campaignName: "Emagreça 2 KG", unit: "Osasco" },
   { adId: "120253026004450494", campaignName: "Gordura Localizada", unit: "Osasco" },
+  { adId: "120210860819120077", campaignName: COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME, unit: "SBC" },
+  { adId: "120253142216170494", campaignName: COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME, unit: "Osasco" },
+  { adId: "120253141897820494", campaignName: BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME, unit: "Osasco" },
   { adId: "120249304650490006", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120247237450560077", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120247237187760077", campaignName: "Harmonização de Glúteos", unit: "SBC" },

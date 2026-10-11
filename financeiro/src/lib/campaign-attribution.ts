@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/db";
 import { normalizeCampaignText } from "@/lib/campaign-labels";
-import { FACIAL_FILLER_CAMPAIGN_NAME, GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME, HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME } from "@/lib/campaign-track-mapping";
+import {
+  BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME,
+  COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME,
+  FACIAL_FILLER_CAMPAIGN_NAME,
+  GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
+  HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
+} from "@/lib/campaign-track-mapping";
 
 function wordsOf(value: string) {
   return normalizeCampaignText(value)
@@ -8,9 +14,22 @@ function wordsOf(value: string) {
     .filter((word) => word.length >= 4 && !["clinica", "virtuosa", "santo", "santos", "saude", "estetica", "whatsapp", "facebook", "instagram"].includes(word));
 }
 
-export function inferCampaignByKeywords(signal: string): string | null {
+export function inferCampaignByKeywords(signal: string, unit?: string | null): string | null {
   const normalized = normalizeCampaignText(signal);
   if (!normalized) return null;
+  const normalizedUnit = unit?.trim().toLowerCase();
+  const isRequestedUnit = !normalizedUnit || ["sbc", "osasco"].includes(normalizedUnit);
+
+  // Preserve the new offer as its own campaign instead of collapsing it into
+  // the older broad categories for Botox and Barriga Trincada.
+  if (/\bcombo\b/.test(normalized) && /\bbarriga chapada\b/.test(normalized)) {
+    if (!isRequestedUnit) return null;
+    return COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME;
+  }
+  if (/\b(?:botox dysport|dysport botox|dysport)\b/.test(normalized) && /\b(?:3|tres) regioes\b/.test(normalized)) {
+    if (!isRequestedUnit) return null;
+    return BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME;
+  }
 
   const rules: Array<{ name: string; patterns: RegExp[] }> = [
     { name: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME, patterns: [/\bgluteos? perfeitos? 120 ?ml\b/] },
@@ -120,7 +139,7 @@ export async function inferManagedCampaignName(signal: string, unit?: string | n
 
 export async function inferCampaignNameFromSignal(signal: string, unit?: string | null) {
   const managedCampaignName = await inferManagedCampaignName(signal, unit);
-  const keywordCampaignName = inferCampaignByKeywords(signal);
+  const keywordCampaignName = inferCampaignByKeywords(signal, unit);
   return {
     campaignName: keywordCampaignName || managedCampaignName,
     managedCampaignName,

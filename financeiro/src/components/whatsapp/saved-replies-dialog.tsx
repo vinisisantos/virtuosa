@@ -66,6 +66,8 @@ import {
   savedReplyCampaignKey,
   savedReplyCategoryIdsForCampaign,
   savedReplyIsAvailableInCategory,
+  savedReplySuggestionsForCampaign,
+  type CampaignQuickReplySuggestion,
 } from "@/lib/whatsapp/saved-replies";
 import type {
   SavedReply,
@@ -121,6 +123,7 @@ export function SavedRepliesDialog({
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [categoryTitle, setCategoryTitle] = useState("");
   const [categoryCampaignName, setCategoryCampaignName] = useState("");
+  const [pendingCampaignForReply, setPendingCampaignForReply] = useState<string | null>(null);
   const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(new Set());
   // Respostas globais aparecem em várias pastas, mas só uma ocorrência deve expandir.
   const [expandedReply, setExpandedReply] = useState<{ groupId: string; replyId: string } | null>(null);
@@ -151,6 +154,7 @@ export function SavedRepliesDialog({
     setEditingCategoryId(null);
     setCategoryTitle("");
     setCategoryCampaignName("");
+    setPendingCampaignForReply(null);
     setExpandedReply(null);
     setOrganizing(false);
     setError(null);
@@ -182,6 +186,14 @@ export function SavedRepliesDialog({
     () => savedReplyCategoryIdsForCampaign(campaignName, categories),
     [campaignName, categories],
   );
+
+  const visibleCampaignSuggestions = useMemo(() => {
+    const suggestions = savedReplySuggestionsForCampaign(campaignName);
+    const term = search.trim().toLocaleLowerCase("pt-BR");
+    return term
+      ? suggestions.filter((suggestion) => `${suggestion.title}\n${suggestion.content}`.toLocaleLowerCase("pt-BR").includes(term))
+      : suggestions;
+  }, [campaignName, search]);
 
   const visibleCategories = useMemo(() => {
     if (campaignCategoryIds === null) return categories;
@@ -226,11 +238,13 @@ export function SavedRepliesDialog({
   const beginCreate = (
     nextCategoryId: string | null = null,
     returnMode: "list" | "categories" = "list",
+    initialReply?: Pick<CampaignQuickReplySuggestion, "title" | "content">,
   ) => {
     setEditingId(null);
-    setTitle("");
-    setContent(draftText.trim().slice(0, SAVED_REPLY_CONTENT_MAX_LENGTH));
+    setTitle(initialReply?.title || "");
+    setContent((initialReply?.content || draftText).trim().slice(0, SAVED_REPLY_CONTENT_MAX_LENGTH));
     setCategoryId(nextCategoryId);
+    setPendingCampaignForReply(initialReply ? campaignName?.trim() || null : null);
     setReplyFormReturnMode(returnMode);
     setError(null);
     setMode("form");
@@ -238,6 +252,7 @@ export function SavedRepliesDialog({
 
   const beginEdit = (reply: SavedReply) => {
     setEditingId(reply.id);
+    setPendingCampaignForReply(null);
     setTitle(reply.title);
     setContent(reply.content);
     setCategoryId(reply.categoryId);
@@ -252,12 +267,29 @@ export function SavedRepliesDialog({
     setSaving(true);
     setError(null);
     try {
-      await save({ id: editingId, title, content, categoryId });
+      let nextCategoryId = categoryId;
+      if (!editingId && !nextCategoryId && pendingCampaignForReply) {
+        const campaignKey = savedReplyCampaignKey(pendingCampaignForReply);
+        const matchingCategory = categories.find((category) => (
+          savedReplyCampaignKey(category.campaignName?.trim() || category.title) === campaignKey
+        ));
+        if (matchingCategory) {
+          nextCategoryId = matchingCategory.id;
+        } else {
+          const category = await saveCategory({
+            title: `Respostas - ${pendingCampaignForReply}`,
+            campaignName: pendingCampaignForReply,
+          });
+          nextCategoryId = category.id;
+        }
+      }
+      await save({ id: editingId, title, content, categoryId: nextCategoryId });
       setMode(replyFormReturnMode);
       setEditingId(null);
       setTitle("");
       setContent("");
       setCategoryId(null);
+      setPendingCampaignForReply(null);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Não foi possível salvar a resposta rápida.");
     } finally {
@@ -487,8 +519,38 @@ export function SavedRepliesDialog({
                 <div className="flex min-h-[220px] items-center justify-center text-muted-foreground">
                   <Loader2 className="h-6 w-6 animate-spin" />
                 </div>
-              ) : groupedReplies.length > 0 ? (
+              ) : groupedReplies.length > 0 || visibleCampaignSuggestions.length > 0 ? (
                 <div className="space-y-3">
+                  {visibleCampaignSuggestions.map((suggestion) => (
+                    <section key={suggestion.id} className="overflow-hidden rounded-2xl border border-primary/30 bg-primary/5">
+                      <div className="flex items-start gap-3 p-3 sm:p-4">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <MessageSquareText className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-foreground">{suggestion.title}</p>
+                          <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">{suggestion.content}</p>
+                          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <button
+                              type="button"
+                              onClick={() => onSelect(suggestion.content)}
+                              className="inline-flex min-h-10 items-center justify-center rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                            >
+                              Usar resposta
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => beginCreate(campaignCategoryIds?.[0] || null, "list", suggestion)}
+                              disabled={replies.length >= SAVED_REPLY_MAX_PER_USER}
+                              className="inline-flex min-h-10 items-center justify-center rounded-lg border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+                            >
+                              Personalizar e salvar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  ))}
                   {groupedReplies.map((group) => {
                     const collapsed = collapsedCategoryIds.has(group.id);
                     return (

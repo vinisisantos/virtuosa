@@ -2210,9 +2210,9 @@ async function processMessage(
     || !!adReply
     || !!directFormLeadName
     || !!prefilledMetaCampaign;
-  const keywordCampaignName = canCaptureLead && hasCampaignSignal ? inferCampaignByKeywords(adSignal) : null;
+  const keywordCampaignName = canCaptureLead && hasCampaignSignal ? inferCampaignByKeywords(adSignal, leadUnit) : null;
   const messageKeywordCampaignName = canCaptureLead
-    ? inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "))
+    ? inferCampaignByKeywords([messageBody, textBody].filter(Boolean).join(" "), leadUnit)
     : null;
 
   const exactSourceCampaignName = campaignNameFromExactMetaSourceUrl(adSourceUrl, leadUnit);
@@ -2245,7 +2245,7 @@ async function processMessage(
   const campaignName: string | null = canCaptureLead && hasCampaignSignal
     ? explicitCampaignName
       || managedCampaignName
-      || inferCampaignByKeywords(resolvedCampaignName || "")
+      || inferCampaignByKeywords(resolvedCampaignName || "", leadUnit)
       || resolvedCampaignName
       || fallbackCampaignName
     : null;

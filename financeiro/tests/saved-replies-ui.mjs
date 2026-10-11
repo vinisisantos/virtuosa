@@ -11,6 +11,11 @@ console.log(JSON.stringify({ output }));
 const browser = await puppeteer.launch({ headless: true });
 const cases = ['SCS', 'SBC', 'Osasco'].flatMap(unit => [390, 430, 1440].map(width => ({ unit, width })));
 cases.push(
+  { unit: 'SBC', width: 390, campaignName: 'Combo Barriga Chapada', suggestionAction: 'use' },
+  { unit: 'Osasco', width: 430, campaignName: 'Botox Dysport 3 Regiões', suggestionAction: 'use' },
+  { unit: 'SBC', width: 1440, campaignName: 'Combo Barriga Chapada', suggestionAction: 'save' },
+);
+cases.push(
   { unit: 'SCS', width: 390, unclassified: true },
   { unit: 'SBC', width: 1440, light: true },
   { unit: 'Osasco', width: 430, empty: true },
@@ -50,7 +55,7 @@ const searchFor = async (page, term) => {
 
 try {
   for (const config of selectedCases) {
-    const { unit, width, unclassified, light, empty, error } = config;
+    const { unit, width, unclassified, light, empty, error, campaignName, suggestionAction } = config;
     const page = await browser.newPage();
     const errors = [], calls = [], writes = [];
     let failReorder = false;
@@ -70,7 +75,7 @@ try {
     ].map((reply, position) => ({ ...reply, position, createdAt: now, updatedAt: now }));
     const conv = { id: 'chat', instanceId: instance.id, instance, status: 'open', assignedTo: user.id, unreadCount: 0,
       contact: { id: 'contact', name: 'Mariana Teste', phone: '5511900000000', unit },
-      campaignName: unclassified ? null : 'Glúteo Perfeito', lastMessage: 'Olá', lastMessageAt: now };
+      campaignName: unclassified ? null : campaignName || 'Glúteo Perfeito', lastMessage: 'Olá', lastMessageAt: now };
     await page.setViewport({ width, height: width === 430 ? 932 : 844, isMobile: width < 600, hasTouch: width < 600 });
     await page.evaluateOnNewDocument(u => localStorage.setItem('virtuosa_user', JSON.stringify(u)), user);
     await page.setRequestInterception(true);
@@ -101,9 +106,12 @@ try {
       }
       else if (url.pathname.startsWith('/api/whatsapp/saved-replies/categories')) {
         const input = JSON.parse(req.postData() || '{}');
-        const id = url.pathname.split('/').at(-1);
-        const category = { ...categories.find(item => item.id === id), ...input };
-        categories = categories.map(item => item.id === id ? category : item);
+        const existingId = url.pathname.split('/').at(-1);
+        const id = req.method() === 'POST' ? `campaign-category-${categories.length + 1}` : existingId;
+        const category = { ...categories.find(item => item.id === id), ...input, id };
+        categories = req.method() === 'POST'
+          ? [...categories, category]
+          : categories.map(item => item.id === id ? category : item);
         data = { category };
       }
       else if (url.pathname.startsWith('/api/whatsapp/saved-replies')) {
@@ -119,7 +127,7 @@ try {
       else if (url.pathname === '/api/users') data = [];
       await req.respond({ status, contentType: 'application/json', body: JSON.stringify(data) });
     });
-    const label = `${unit}-${width}-${unclassified ? 'global-duplicada' : light ? 'claro' : empty ? 'vazia' : error ? 'erro' : 'completa'}`;
+    const label = `${unit}-${width}-${campaignName || (unclassified ? 'global-duplicada' : light ? 'claro' : empty ? 'vazia' : error ? 'erro' : 'completa')}`;
     try {
       await page.goto(`${origin}/crm/inbox`, { waitUntil: 'networkidle0' });
       await page.waitForSelector('[data-conversation-id="chat"]');
@@ -149,6 +157,33 @@ try {
         await page.type('#saved-reply-content', 'Mensagem criada em teste.');
         await clickText(page, 'Salvar resposta');
         await page.waitForSelector(row('created'));
+      } else if (campaignName) {
+        const suggestionTitle = campaignName === 'Combo Barriga Chapada'
+          ? 'Combo Barriga Chapada — apresentação'
+          : 'Botox Dysport — apresentação';
+        await visibleElement(page, `${root} p`, suggestionTitle);
+        assert.equal((await page.$$('button')).length > 0, true);
+        assert.equal((await page.$$(`${root} section`)).length >= 1, true, 'sugestão de campanha aparece');
+        await fit(page);
+        await page.screenshot({ path: join(output, `${label}-sugestao.png`) });
+        if (suggestionAction === 'save') {
+          await clickText(page, 'Personalizar e salvar');
+          await page.waitForSelector('#saved-reply-title');
+          assert.equal(await page.$eval('#saved-reply-title', el => el.value), suggestionTitle);
+          await clickText(page, 'Salvar resposta');
+          await page.waitForFunction(() => document.querySelector('.saved-replies-list[aria-busy="false"]'));
+          await page.waitForSelector(row('created'));
+          assert.ok(replies.some(reply => reply.title === suggestionTitle && reply.categoryId === 'campaign-category-3'));
+          assert.ok(categories.some(category => category.id === 'campaign-category-3' && category.campaignName === campaignName));
+          assert.deepEqual(writes.map(write => write.path), ['/api/whatsapp/saved-replies/categories', '/api/whatsapp/saved-replies']);
+          await fit(page);
+        } else {
+          await clickText(page, 'Usar resposta');
+          await page.waitForSelector(root, { hidden: true });
+          const draft = await page.$eval('textarea[placeholder="Digite uma mensagem"]', el => el.value);
+          assert.match(draft, /Combo Barriga Chapada|Botox Dysport/);
+          assert.equal(writes.length, 0, 'usar modelo não persiste nem envia');
+        }
       } else {
         assert.equal((await page.$$(`${root} [role="region"]`)).length, 0, 'começa totalmente recolhida');
         assert.equal((await page.$$(`${root} [aria-label^="Editar "]`)).length, 0, 'sem ações poluindo títulos');

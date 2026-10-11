@@ -5,6 +5,28 @@ export const SAVED_REPLY_CATEGORY_TITLE_MAX_LENGTH = 60;
 export const SAVED_REPLY_CATEGORY_CAMPAIGN_NAME_MAX_LENGTH = 120;
 export const SAVED_REPLY_CATEGORY_MAX_PER_USER = 30;
 
+export type CampaignQuickReplySuggestion = {
+  campaignName: string;
+  id: string;
+  title: string;
+  content: string;
+};
+
+const CAMPAIGN_QUICK_REPLY_SUGGESTIONS: CampaignQuickReplySuggestion[] = [
+  {
+    id: "combo-barriga-chapada-intro",
+    campaignName: "Combo Barriga Chapada",
+    title: "Combo Barriga Chapada — apresentação",
+    content: "Oi! Vi que você se interessou pelo Combo Barriga Chapada 😊 O anúncio informa 30 sessões de procedimentos estéticos + 10 enzimas de TCC Power por R$ 170,00 ao mês. Posso ajudar a agendar uma avaliação para a equipe explicar as condições e verificar o que é indicado para você.",
+  },
+  {
+    id: "botox-dysport-3-regioes-intro",
+    campaignName: "Botox Dysport 3 Regiões",
+    title: "Botox Dysport — apresentação",
+    content: "Oi! Vi que você se interessou pelo Botox Dysport para 3 regiões: testa, glabela e pés de galinha 😊 O anúncio informa o valor de R$ 499,00. Posso ajudar a agendar uma avaliação para a equipe explicar as condições e confirmar a indicação para você.",
+  },
+];
+
 export function validateSavedReplyOrderInput(input: unknown) {
   const record = input && typeof input === "object" ? input as Record<string, unknown> : {};
   const ids = Array.isArray(record.ids)
@@ -66,6 +88,12 @@ export function savedReplyCampaignKey(value: string) {
   if (/\bgluteos?\b/.test(normalized) && /\bperfeit[oa]s?\b/.test(normalized) && /\b120\s*ml\b/.test(normalized)) {
     return "gluteos-perfeito-120ml";
   }
+  if (/\bcombo\b/.test(normalized) && /\bbarriga\b/.test(normalized) && /\bchapada\b/.test(normalized)) {
+    return "combo-barriga-chapada";
+  }
+  if (/\bbotox\b/.test(normalized) && /\bdysport\b/.test(normalized) && /\b3\s*regioes\b/.test(normalized)) {
+    return "botox-dysport-3-regioes";
+  }
   if (/\bcombo\b/.test(normalized) && /\bharmonizacao\b/.test(normalized)) {
     return "combo-harmonizacao";
   }
@@ -94,6 +122,14 @@ export function savedReplyCampaignKey(value: string) {
   if (/\bmonji\s*fast\b/.test(normalized)) return "monjifast";
 
   return normalized;
+}
+
+export function savedReplySuggestionsForCampaign(campaignName: string | null | undefined) {
+  if (!campaignName?.trim()) return [];
+  const campaignKey = savedReplyCampaignKey(campaignName);
+  return CAMPAIGN_QUICK_REPLY_SUGGESTIONS.filter(
+    (suggestion) => savedReplyCampaignKey(suggestion.campaignName) === campaignKey,
+  );
 }
 
 export function savedReplyCategoryIdsForCampaign(

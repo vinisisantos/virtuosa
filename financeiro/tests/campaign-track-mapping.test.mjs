@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
   ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
+  BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME,
+  COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME,
   COMBO_HARMONIZACAO_CAMPAIGN_NAME,
   COMBO_HARMONIZACAO_OSASCO_PARENT_CAMPAIGN_ID,
   COMBO_HARMONIZACAO_PARENT_CAMPAIGN_ID,
@@ -37,6 +39,9 @@ const exactAdCases = [
   ["Osasco", "120253010502850494", GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME],
   ["Osasco", "120253025931420494", "Emagreça 2 KG"],
   ["Osasco", "120253026004450494", "Gordura Localizada"],
+  ["SBC", "120210860819120077", COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME],
+  ["Osasco", "120253142216170494", COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME],
+  ["Osasco", "120253141897820494", BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME],
   ["SBC", "120249304650490006", "Glúteo Perfeito"],
   ["SBC", "120247237450560077", "Glúteo Perfeito"],
   ["SBC", "120247237187760077", "Harmonização de Glúteos"],
@@ -117,6 +122,32 @@ test("novos anúncios corporais de Osasco prevalecem sobre nome genérico da cam
     }
   }
   assert.equal(campaignNameFromMetaSignals("120250320730490006", null, "Osasco"), null);
+});
+
+test("classifica as campanhas novas somente na unidade confirmada", () => {
+  for (const [unit, adId, campaignName] of [
+    ["SBC", "120210860819120077", COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME],
+    ["Osasco", "120253142216170494", COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME],
+    ["Osasco", "120253141897820494", BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME],
+  ]) {
+    for (const otherUnit of ["SBC", "Osasco", "SCS"].filter((candidate) => candidate !== unit)) {
+      assert.equal(campaignNameFromMetaSignals(adId, null, otherUnit), null, `${otherUnit}: ${adId}`);
+    }
+    assert.equal(campaignNameFromMetaSignals(adId, null, unit), campaignName);
+  }
+});
+
+test("recupera as novas campanhas por texto CTWA sem inventar IDs", () => {
+  assert.deepEqual(
+    campaignFromPrefilledMetaLeadMessage("Olá! Vim pelo COMBO BARRIGA CHAPADA, posso saber mais?", "SBC"),
+    { campaignName: COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME, campaignTrackId: null },
+  );
+  assert.deepEqual(
+    campaignFromPrefilledMetaLeadMessage("Oi! Vim pelo Botox Dysport 3 regiões, posso saber mais?", "Osasco"),
+    { campaignName: BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME, campaignTrackId: null },
+  );
+  assert.equal(campaignFromPrefilledMetaLeadMessage("Vim pelo COMBO BARRIGA CHAPADA", "SCS"), null);
+  assert.equal(campaignFromPrefilledMetaLeadMessage("Vim pelo BOTOX DYSPORT 3 REGIÕES", "SCS"), null);
 });
 
 test("IDs novos não são inventados quando a entrada contém somente texto", () => {

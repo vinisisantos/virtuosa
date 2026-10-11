@@ -35,6 +35,16 @@ test('não inventa campanha, dosagem ou origem para frases vagas e citações',(
   assert.equal(inferCampaignByKeywords('preenchimento do bumbum'),null);
   assert.equal(inferCampaignByKeywords('GLÚTEOS PERFEITOS 200ML'),null);
 });
+test('limita as duas novas campanhas às unidades SBC e Osasco',()=>{
+  for (const unit of ['SBC','Osasco']) {
+    assert.equal(inferCampaignByKeywords('COMBO BARRIGA CHAPADA 30 SESSÕES',unit),'Combo Barriga Chapada');
+    assert.equal(inferCampaignByKeywords('BOTOX DYSPORT 3 REGIÕES',unit),'Botox Dysport 3 Regiões');
+    assert.equal(campaignFromPrefilledMetaLeadMessage('Vim pelo COMBO BARRIGA CHAPADA',unit)?.campaignName,'Combo Barriga Chapada');
+    assert.equal(campaignFromPrefilledMetaLeadMessage('Vim pelo BOTOX DYSPORT 3 REGIÕES',unit)?.campaignName,'Botox Dysport 3 Regiões');
+  }
+  assert.equal(inferCampaignByKeywords('COMBO BARRIGA CHAPADA', 'SCS'),null);
+  assert.equal(inferCampaignByKeywords('BOTOX DYSPORT 3 REGIÕES', 'SCS'),null);
+});
 test('nome gerenciado exige termos completos e não escolhe entre campanhas distintas',()=>{
   const campaigns = ['Harmonização Mamas','Harmonização de Glúteos','Harmonização de Mamas','Botox'].map(name=>({name}));
   assert.equal(matchManagedCampaignName('harmonização',campaigns),null);

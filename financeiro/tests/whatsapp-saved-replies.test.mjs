@@ -8,6 +8,7 @@ import {
   normalizeSavedReplyCategoryTitle,
   reorderSavedRepliesByVisibleIds,
   savedReplyCategoryIdsForCampaign,
+  savedReplySuggestionsForCampaign,
   savedReplyIsAvailableInCategory,
   validateSavedReplyCategoryInput,
   validateSavedReplyInput,
@@ -141,6 +142,8 @@ test("conecta as duas novas campanhas às categorias exclusivas de respostas rá
   const categories = [
     { id: "combo", title: "Combo Harmonização" },
     { id: "rosto", title: "Adeus Rosto Cansado" },
+    { id: "barriga-chapada", title: "Modelos Combo", campaignName: "Combo Barriga Chapada" },
+    { id: "botox-dysport", title: "Modelos Botox", campaignName: "Botox Dysport 3 Regiões" },
   ];
 
   assert.deepEqual(
@@ -151,6 +154,19 @@ test("conecta as duas novas campanhas às categorias exclusivas de respostas rá
     savedReplyCategoryIdsForCampaign("Adeus Rosto Cansado", categories),
     ["rosto"],
   );
+  assert.deepEqual(savedReplyCategoryIdsForCampaign("Combo Barriga Chapada", categories), ["barriga-chapada"]);
+  assert.deepEqual(savedReplyCategoryIdsForCampaign("Botox Dysport 3 Regiões", categories), ["botox-dysport"]);
+});
+
+test("oferece uma resposta modelo somente para cada nova campanha", () => {
+  assert.deepEqual(savedReplySuggestionsForCampaign("Combo Barriga Chapada").map(({ title }) => title), [
+    "Combo Barriga Chapada — apresentação",
+  ]);
+  assert.deepEqual(savedReplySuggestionsForCampaign("Botox Dysport 3 Regiões").map(({ title }) => title), [
+    "Botox Dysport — apresentação",
+  ]);
+  assert.deepEqual(savedReplySuggestionsForCampaign("Botox"), []);
+  assert.deepEqual(savedReplySuggestionsForCampaign(null), []);
 });
 
 test("associa explicitamente uma pasta com nome livre à campanha escolhida", () => {
