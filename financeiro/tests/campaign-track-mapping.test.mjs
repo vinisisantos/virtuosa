@@ -150,6 +150,44 @@ test("recupera as novas campanhas por texto CTWA sem inventar IDs", () => {
   assert.equal(campaignFromPrefilledMetaLeadMessage("Vim pelo BOTOX DYSPORT 3 REGIÕES", "SCS"), null);
 });
 
+test("reconhece o texto e os criativos Barriga Chapada de SBC sem generalizar o ID pai", () => {
+  assert.deepEqual(
+    campaignFromPrefilledMetaLeadMessage("Olá! Vim pela BARRIGA CHAPADA, posso ter mais informações sobre isso?", "SBC"),
+    { campaignName: COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME, campaignTrackId: null },
+  );
+  assert.equal(campaignFromPrefilledMetaLeadMessage("Olá! Vim pela BARRIGA CHAPADA, posso saber mais?", "Osasco"), null);
+  assert.equal(campaignFromPrefilledMetaLeadMessage("A paciente comentou sobre barriga chapada", "SBC"), null);
+
+  for (const sourceUrl of [
+    "https://www.instagram.com/p/DeVTrB0AqTM/",
+    "https://www.instagram.com/p/DeVTq__Ah9m/",
+    "https://fb.me/8zIE36xaY",
+    "https://fb.me/8b8ZEURJV",
+    "https://fb.me/bgoLKov7O",
+    "https://www.facebook.com/story.php?story_fbid=1148637547512217",
+    "https://www.facebook.com/story.php?story_fbid=1148637537512218",
+  ]) {
+    assert.equal(campaignNameFromMetaSignals("120250431049830006", sourceUrl, "SBC"), COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME);
+    assert.equal(campaignNameFromMetaSignals("120250431049830006", sourceUrl, "Osasco"), null);
+  }
+  assert.equal(campaignNameFromMetaSignals("120250431049830006", null, "SBC"), null);
+});
+
+test("identifica o criativo Botox Dysport 3 Regiões de SBC sem generalizar o ID pai", () => {
+  for (const sourceUrl of [
+    "https://www.instagram.com/p/DeVT_gugJTc/",
+    "https://www.instagram.com/p/DeVT_vrgbQL/",
+    "https://fb.me/59AcTCtOv",
+    "https://fb.me/26MrPzJbyj",
+    "https://www.facebook.com/story.php?story_fbid=1148639904178648",
+    "https://www.facebook.com/story.php?story_fbid=1148639884178650",
+  ]) {
+    assert.equal(campaignNameFromMetaSignals("120250430919180006", sourceUrl, "SBC"), BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME);
+    assert.equal(campaignNameFromMetaSignals("120250430919180006", sourceUrl, "Osasco"), null);
+  }
+  assert.equal(campaignNameFromMetaSignals("120250430919180006", null, "SBC"), null);
+});
+
 test("IDs novos não são inventados quando a entrada contém somente texto", () => {
   assert.deepEqual(campaignFromPrefilledMetaLeadMessage("Vim pela harmonização de mamas", "SBC"), {
     campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,

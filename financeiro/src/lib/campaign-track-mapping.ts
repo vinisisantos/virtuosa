@@ -68,6 +68,14 @@ export function campaignFromPrefilledMetaLeadMessage(
     };
   }
 
+  // O criativo de SBC usa "Vim pela BARRIGA CHAPADA", sem a palavra "combo".
+  if (normalizedUnit === "sbc" && /\bvim pela barriga chapada\b/.test(normalizedMessage)) {
+    return {
+      campaignName: COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME,
+      campaignTrackId: null,
+    };
+  }
+
   if (/\bvim pel[oa] (?:botox dysport|dysport)(?: 3)? regioes\b/.test(normalizedMessage)) {
     if (!["osasco", "sbc"].includes(normalizedUnit)) return null;
     return {
@@ -143,6 +151,31 @@ type CampaignSourceUrlRule = {
 // A Meta pode reutilizar o mesmo sourceId em criativos diferentes. Quando o
 // post/reel foi confirmado, o link do criativo é o sinal mais específico.
 const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
+  {
+    campaignName: BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME,
+    sourceMarkers: [
+      "DeVT_gugJTc",
+      "DeVT_vrgbQL",
+      "59AcTCtOv",
+      "26MrPzJbyj",
+      "1148639904178648",
+      "1148639884178650",
+    ],
+    units: ["SBC"],
+  },
+  {
+    campaignName: COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME,
+    sourceMarkers: [
+      "DeVTrB0AqTM",
+      "DeVTq__Ah9m",
+      "8zIE36xaY",
+      "8b8ZEURJV",
+      "bgoLKov7O",
+      "1148637547512217",
+      "1148637537512218",
+    ],
+    units: ["SBC"],
+  },
   {
     campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
     sourceMarkers: ["Dc2YOMms4wI"],
