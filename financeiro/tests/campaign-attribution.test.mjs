@@ -26,6 +26,13 @@ for(const unit of ['SBC','SCS','Osasco']) {
     assert.equal(campaignFromPrefilledMetaLeadMessage(openings[0][0],unit).campaignTrackId,null);
   });
 }
+test('não atribui Botox Terço Superior fora de SBC',()=>{
+  assert.equal(inferCampaignByKeywords('BOTOX TERÇO SUPERIOR', 'SBC'), 'Botox Terço Superior');
+  assert.equal(inferCampaignByKeywords('BOTOX TERÇO SUPERIOR', 'Osasco'), null);
+  assert.equal(inferCampaignByKeywords('BOTOX TERÇO SUPERIOR', 'SCS'), null);
+  assert.equal(campaignFromPrefilledMetaLeadMessage('Vim pelo Botox Terço Superior', 'SBC')?.campaignName, 'Botox Terço Superior');
+  assert.equal(campaignFromPrefilledMetaLeadMessage('Vim pelo Botox Terço Superior', 'Osasco'), null);
+});
 test('não inventa campanha, dosagem ou origem para frases vagas e citações',()=>{
   for(const text of ['Oi, tudo bem?', 'Qual o preço?', 'Quero harmonização', 'Vim pelo GLÚTEOS PERFEITOS 200ML', 'Ela disse: vim pelo GLÚTEOS PERFEITOS', 'Não vim pelo GLÚTEOS PERFEITOS']) {
     assert.equal(campaignFromPrefilledMetaLeadMessage(text,'SBC'),null,text);

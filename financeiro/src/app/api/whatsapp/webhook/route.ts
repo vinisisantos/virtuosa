@@ -4,6 +4,7 @@ import { isFreshWelcomeEvent } from "@/lib/whatsapp/campaign-welcome-policy";
 import { enqueueWelcome, findWelcomeReception } from "@/lib/whatsapp/campaign-welcome";
 
 import { prisma } from "@/lib/db";
+import { addClientTag } from "@/lib/client-tags";
 import { pickLeadClientForUnit } from "@/lib/whatsapp/lead-client-selection";
 import { resolveDefaultPipelineForUnit } from "@/lib/pipeline/default-pipeline";
 import {
@@ -19,6 +20,7 @@ import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-pr
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
 import { campaignNameFromAccountTrackId } from "@/lib/campaign-account-origin";
 import {
+  BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME,
   campaignFromPrefilledMetaLeadMessage,
   campaignNameFromExactMetaAdId,
   campaignNameFromExactMetaSourceUrl,
@@ -2337,6 +2339,7 @@ async function processMessage(
           source: true,
           fbclid: true,
           campaignName: true,
+          tags: true,
           campaignId: true,
           campaignAttribution: true,
           unit: true,
@@ -2357,6 +2360,9 @@ async function processMessage(
             campaignName: campaignName || messageKeywordCampaignName || undefined,
             campaignId: campaignTrackId || undefined,
             campaignAttribution: hasCampaignSignal ? "automatic_meta" : undefined,
+            ...(campaignName === BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME
+              ? { tags: BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME }
+              : {}),
             fbclid: adSourceUrl || undefined,
             stage: "entrada",
             arrivedAt: timestamp,
@@ -2406,6 +2412,9 @@ async function processMessage(
                   campaignId: campaignTrackId || undefined,
                   ...(hasCampaignSignal ? { campaignAttribution: "automatic_meta" } : {}),
                   fbclid: adSourceUrl || undefined,
+                  ...(campaignNameForUpdate === BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME
+                    ? { tags: addClientTag(client.tags, BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME) }
+                    : {}),
                 }
               : hasCampaignSignal
                 ? {
@@ -2413,8 +2422,14 @@ async function processMessage(
                     campaignId: campaignTrackId || undefined,
                     campaignAttribution: "automatic_meta",
                     ...(adSourceUrl && !client.fbclid ? { fbclid: adSourceUrl } : {}),
+                    ...(campaignName === BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME
+                      ? { tags: addClientTag(client.tags, BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME) }
+                      : {}),
                   }
                 : {}),
+            ...(!shouldSetCampaign && campaignNameForUpdate === BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME
+              ? { tags: addClientTag(client.tags, BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME) }
+              : {}),
             // só corrige a unidade se a atual for inválida/oculta — não bagunça
             // um cliente que já está numa unidade visível correta.
             ...(!client.unit || !commercialLeadUnit(client.unit) ? { unit: leadUnit } : {}),

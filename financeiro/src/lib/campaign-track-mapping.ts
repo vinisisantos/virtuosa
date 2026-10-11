@@ -12,6 +12,7 @@ export const HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID = "1202499515294800
 export const HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID = "120249648815820109";
 export const COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME = "Combo Barriga Chapada";
 export const BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME = "Botox Dysport 3 Regiões";
+export const BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME = "Botox Terço Superior";
 
 export type PrefilledMetaLeadCampaign = {
   campaignName: string;
@@ -72,6 +73,14 @@ export function campaignFromPrefilledMetaLeadMessage(
   if (normalizedUnit === "sbc" && /\bvim pela barriga chapada\b/.test(normalizedMessage)) {
     return {
       campaignName: COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME,
+      campaignTrackId: null,
+    };
+  }
+
+  if (/\bvim pel[oa] botox terc[o] superior\b/.test(normalizedMessage)) {
+    if (normalizedUnit !== "sbc") return null;
+    return {
+      campaignName: BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME,
       campaignTrackId: null,
     };
   }
@@ -152,7 +161,7 @@ type CampaignSourceUrlRule = {
 // post/reel foi confirmado, o link do criativo é o sinal mais específico.
 const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
   {
-    campaignName: BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME,
+    campaignName: BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME,
     sourceMarkers: [
       "DeVT_gugJTc",
       "DeVT_vrgbQL",
@@ -221,6 +230,7 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
 ];
 
 const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
+  { adId: "120250430919180006", campaignName: BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME, unit: "SBC" },
   { adId: "120250178920860006", campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME, unit: "SBC" },
   { adId: "120250180063610006", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120250180269700006", campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME, unit: "SBC" },

@@ -25,6 +25,12 @@ const CAMPAIGN_QUICK_REPLY_SUGGESTIONS: CampaignQuickReplySuggestion[] = [
     title: "Botox Dysport — apresentação",
     content: "Oi! Vi que você se interessou pelo Botox Dysport para 3 regiões: testa, glabela e pés de galinha 😊 O anúncio informa o valor de R$ 499,00. Posso ajudar a agendar uma avaliação para a equipe explicar as condições e confirmar a indicação para você.",
   },
+  {
+    id: "botox-terco-superior-intro",
+    campaignName: "Botox Terço Superior",
+    title: "Botox Terço Superior — apresentação",
+    content: "Olá! Vi que você se interessou pelo Botox Terço Superior 😊 Posso ajudar a agendar uma avaliação para a equipe explicar o procedimento, as condições e confirmar a indicação para você.",
+  },
 ];
 
 export function validateSavedReplyOrderInput(input: unknown) {
@@ -90,6 +96,9 @@ export function savedReplyCampaignKey(value: string) {
   }
   if (/\bcombo\b/.test(normalized) && /\bbarriga\b/.test(normalized) && /\bchapada\b/.test(normalized)) {
     return "combo-barriga-chapada";
+  }
+  if (/\bbotox\b/.test(normalized) && /\bterco superior\b/.test(normalized)) {
+    return "botox-terco-superior";
   }
   if (/\bbotox\b/.test(normalized) && /\bdysport\b/.test(normalized) && /\b3\s*regioes\b/.test(normalized)) {
     return "botox-dysport-3-regioes";

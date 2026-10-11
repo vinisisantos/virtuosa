@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { normalizeCampaignText } from "@/lib/campaign-labels";
 import {
   BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME,
+  BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME,
   COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME,
   FACIAL_FILLER_CAMPAIGN_NAME,
   GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
@@ -29,6 +30,9 @@ export function inferCampaignByKeywords(signal: string, unit?: string | null): s
   if (/\b(?:botox dysport|dysport botox|dysport)\b/.test(normalized) && /\b(?:3|tres) regioes\b/.test(normalized)) {
     if (!isRequestedUnit) return null;
     return BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME;
+  }
+  if (/\bbotox\b/.test(normalized) && /\bterco superior\b/.test(normalized)) {
+    return normalizedUnit === "sbc" ? BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME : null;
   }
 
   const rules: Array<{ name: string; patterns: RegExp[] }> = [

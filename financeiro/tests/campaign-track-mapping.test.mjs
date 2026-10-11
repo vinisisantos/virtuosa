@@ -5,6 +5,7 @@ import {
   ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME,
   ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID,
   BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME,
+  BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME,
   COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME,
   COMBO_HARMONIZACAO_CAMPAIGN_NAME,
   COMBO_HARMONIZACAO_OSASCO_PARENT_CAMPAIGN_ID,
@@ -173,7 +174,10 @@ test("reconhece o texto e os criativos Barriga Chapada de SBC sem generalizar o 
   assert.equal(campaignNameFromMetaSignals("120250431049830006", null, "SBC"), null);
 });
 
-test("identifica o criativo Botox Dysport 3 Regiões de SBC sem generalizar o ID pai", () => {
+test("identifica o anúncio Botox Terço Superior somente em SBC", () => {
+  assert.equal(campaignNameFromMetaSignals("120250430919180006", null, "SBC"), BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME);
+  assert.equal(campaignNameFromMetaSignals("120250430919180006", null, "Osasco"), null);
+  assert.equal(campaignNameFromMetaSignals("120250430919180006", null, "SCS"), null);
   for (const sourceUrl of [
     "https://www.instagram.com/p/DeVT_gugJTc/",
     "https://www.instagram.com/p/DeVT_vrgbQL/",
@@ -182,10 +186,10 @@ test("identifica o criativo Botox Dysport 3 Regiões de SBC sem generalizar o ID
     "https://www.facebook.com/story.php?story_fbid=1148639904178648",
     "https://www.facebook.com/story.php?story_fbid=1148639884178650",
   ]) {
-    assert.equal(campaignNameFromMetaSignals("120250430919180006", sourceUrl, "SBC"), BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME);
+    assert.equal(campaignNameFromMetaSignals("120250430919180006", sourceUrl, "SBC"), BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME);
     assert.equal(campaignNameFromMetaSignals("120250430919180006", sourceUrl, "Osasco"), null);
   }
-  assert.equal(campaignNameFromMetaSignals("120250430919180006", null, "SBC"), null);
+  assert.equal(campaignNameFromMetaSignals("120250430919180006", null, "SBC"), BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME);
 });
 
 test("IDs novos não são inventados quando a entrada contém somente texto", () => {
@@ -197,6 +201,11 @@ test("IDs novos não são inventados quando a entrada contém somente texto", ()
     campaignName: "Glúteo Perfeito",
     campaignTrackId: null,
   });
+  assert.deepEqual(campaignFromPrefilledMetaLeadMessage("Olá! Vim pelo Botox Terço Superior, posso saber mais?", "SBC"), {
+    campaignName: BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME,
+    campaignTrackId: null,
+  });
+  assert.equal(campaignFromPrefilledMetaLeadMessage("Vim pelo Botox Terço Superior", "Osasco"), null);
 });
 
 test("preserva o reconhecimento legado por marcador do link", () => {

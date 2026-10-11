@@ -156,6 +156,10 @@ test("conecta as duas novas campanhas às categorias exclusivas de respostas rá
   );
   assert.deepEqual(savedReplyCategoryIdsForCampaign("Combo Barriga Chapada", categories), ["barriga-chapada"]);
   assert.deepEqual(savedReplyCategoryIdsForCampaign("Botox Dysport 3 Regiões", categories), ["botox-dysport"]);
+  assert.deepEqual(savedReplyCategoryIdsForCampaign("Botox Terço Superior", [
+    { id: "botox-terco", title: "Botox Terço Superior" },
+    { id: "botox-dysport", title: "Botox Dysport 3 Regiões" },
+  ]), ["botox-terco"]);
 });
 
 test("oferece uma resposta modelo somente para cada nova campanha", () => {
@@ -164,6 +168,9 @@ test("oferece uma resposta modelo somente para cada nova campanha", () => {
   ]);
   assert.deepEqual(savedReplySuggestionsForCampaign("Botox Dysport 3 Regiões").map(({ title }) => title), [
     "Botox Dysport — apresentação",
+  ]);
+  assert.deepEqual(savedReplySuggestionsForCampaign("Botox Terço Superior").map(({ title }) => title), [
+    "Botox Terço Superior — apresentação",
   ]);
   assert.deepEqual(savedReplySuggestionsForCampaign("Botox"), []);
   assert.deepEqual(savedReplySuggestionsForCampaign(null), []);
