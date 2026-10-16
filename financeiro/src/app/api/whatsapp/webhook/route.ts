@@ -18,6 +18,7 @@ import {
 } from "@/lib/whatsapp/contact-name";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
+import { lipoLaserCampaignFromAdId } from "@/lib/lipo-laser-campaigns";
 import { campaignNameFromAccountTrackId } from "@/lib/campaign-account-origin";
 import {
   BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME,
@@ -2219,7 +2220,8 @@ async function processMessage(
 
   const exactSourceCampaignName = campaignNameFromExactMetaSourceUrl(adSourceUrl, leadUnit);
   const exactAdCampaignName = campaignNameFromExactMetaAdId(adId, leadUnit);
-  const canonicalAdCampaignName = exactSourceCampaignName || exactAdCampaignName;
+  const confirmedLipoLaserCampaign = lipoLaserCampaignFromAdId(adId, leadUnit);
+  const canonicalAdCampaignName = confirmedLipoLaserCampaign || exactSourceCampaignName || exactAdCampaignName;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = canCaptureLead
     ? (resolvedCampaignId || adId || prefilledMetaCampaign?.campaignTrackId || null)
@@ -2236,7 +2238,7 @@ async function processMessage(
   const accountCampaignName = campaignNameFromAccountTrackId(campaignTrackId, leadUnit);
   // Texto explícito e criativo identificado dispensam a busca aproximada.
   // O nome da campanha pai não deve contaminar a descrição do anúncio filho.
-  const explicitCampaignName = prefilledMetaCampaign?.campaignName
+  const explicitCampaignName = confirmedLipoLaserCampaign || prefilledMetaCampaign?.campaignName
     || exactSourceCampaignName || exactAdCampaignName || accountCampaignName
     || trackedCampaignName || keywordCampaignName || messageKeywordCampaignName;
   const managedCampaignName = canCaptureLead && hasCampaignSignal && !explicitCampaignName

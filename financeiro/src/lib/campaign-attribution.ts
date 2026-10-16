@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { normalizeCampaignText } from "@/lib/campaign-labels";
+import { isLipoLaserCampaignName, lipoLaserCampaignFromOfferSignal } from "@/lib/lipo-laser-campaigns";
 import {
   BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME,
   BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME,
@@ -18,6 +19,8 @@ function wordsOf(value: string) {
 export function inferCampaignByKeywords(signal: string, unit?: string | null): string | null {
   const normalized = normalizeCampaignText(signal);
   if (!normalized) return null;
+  const lipoLaserCampaign = lipoLaserCampaignFromOfferSignal(signal, unit);
+  if (lipoLaserCampaign) return lipoLaserCampaign;
   const normalizedUnit = unit?.trim().toLowerCase();
   const isRequestedUnit = !normalizedUnit || ["sbc", "osasco"].includes(normalizedUnit);
 
@@ -118,6 +121,8 @@ export function inferCampaignByKeywords(signal: string, unit?: string | null): s
 export function matchManagedCampaignName(signal: string, campaigns: Array<{ name: string }>) {
   const signalWords = new Set(normalizeCampaignText(signal).split(" "));
   const matches = campaigns.filter(campaign => {
+    // O "2" diferencia ofertas; a busca aproximada descarta tokens curtos.
+    if (isLipoLaserCampaignName(campaign.name)) return false;
     const terms = wordsOf(campaign.name);
     return terms.length > 0 && terms.every(term => signalWords.has(term));
   });

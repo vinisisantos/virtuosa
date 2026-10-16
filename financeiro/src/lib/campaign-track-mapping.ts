@@ -1,3 +1,5 @@
+import { lipoLaserCampaignFromAdId, lipoLaserCampaignFromPrefilledMessage } from "./lipo-laser-campaigns.ts";
+
 export const FACIAL_FILLER_CAMPAIGN_NAME = "Preenchimento Facial";
 export const ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME = "Adeus Rosto Cansado";
 export const ADEUS_ROSTO_CANSADO_PARENT_CAMPAIGN_ID = "120249763378230006";
@@ -49,6 +51,8 @@ export function campaignFromPrefilledMetaLeadMessage(
   const normalizedMessage = normalizePrefilledMetaLeadMessage(message);
 
   if (!normalizedUnit || !ACTIVE_CAMPAIGN_UNITS.has(normalizedUnit)) return null;
+  const lipoLaserCampaign = lipoLaserCampaignFromPrefilledMessage(message, unit);
+  if (lipoLaserCampaign) return { campaignName: lipoLaserCampaign, campaignTrackId: null };
   if (!/^(?:(?:ola|oi) )?(?:eu )?vim pel[oa] /.test(normalizedMessage)) return null;
 
   if (/\bvim pelo combo harmonizacao\b/.test(normalizedMessage)) {
@@ -266,6 +270,8 @@ export function campaignNameFromExactMetaAdId(
   unit?: string | null,
 ) {
   if (!adId) return null;
+  const lipoLaserCampaign = lipoLaserCampaignFromAdId(adId, unit);
+  if (lipoLaserCampaign) return lipoLaserCampaign;
   const normalizedUnit = unit?.trim().toLowerCase();
   return CAMPAIGN_AD_ID_RULES.find((candidate) => (
     candidate.adId === adId
@@ -343,6 +349,8 @@ export function campaignNameFromMetaSignals(
   sourceUrl?: string | null,
   unit?: string | null,
 ) {
+  const lipoLaserCampaign = lipoLaserCampaignFromAdId(trackId, unit);
+  if (lipoLaserCampaign) return lipoLaserCampaign;
   const exactSourceCampaignName = campaignNameFromExactMetaSourceUrl(sourceUrl, unit);
   if (exactSourceCampaignName) return exactSourceCampaignName;
   if (!trackId) return null;
