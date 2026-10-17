@@ -11,6 +11,7 @@ const replacements = {
   '@/lib/db': 'export const prisma = globalThis.confirmationRoutes.database;',
   '@/lib/whatsapp/evaluation-group-notice': `
     export async function enqueueEvaluationGroupConfirmation(tx, params) { return globalThis.confirmationRoutes.enqueue(tx, params); }
+    export async function enqueueEvaluationGroupStatusNotice(tx, params) { return globalThis.confirmationRoutes.enqueue(tx, params); }
     export async function enqueueEvaluationGroupNotice(tx, params) { globalThis.confirmationRoutes.events.push({ kind: 'creation-notice', params }); return null; }
     export async function dispatchEvaluationGroupNotice(id) { return globalThis.confirmationRoutes.dispatch(id); }`,
   '@/lib/whatsapp/evaluation-no-show-notification': `export async function sendEvaluationNoShowNotification(params) {
@@ -50,7 +51,10 @@ const tx = {
   auditLog: { create: async ({ data }) => { state.events.push({ kind: 'audit', data }); return data; } },
 };
 state.database = {
-  agendamento: { findUnique: async () => { state.events.push({ kind: 'initial-read' }); return copy(state.appointment); } },
+  agendamento: {
+    findUnique: async () => { state.events.push({ kind: 'initial-read' }); return copy(state.appointment); },
+    delete: async () => { state.events.push({ kind: 'delete' }); state.appointment = null; },
+  },
   auditLog: { findMany: async () => [] },
   $transaction: async (operation, options) => {
     const waiting = transactionTail;
@@ -86,12 +90,13 @@ state.enqueue = async (database, params) => {
   assert.equal(database, tx);
   assert.equal(state.inTransaction, true);
   state.events.push({ kind: 'enqueue', params: copy(params) });
-  if (params.appointment.status !== 'confirmado') return { status: 'skipped', reason: 'not_confirmation' };
-  if (params.previousStatus === 'confirmado') return { status: 'skipped', reason: 'unchanged' };
+  const cancelled = ['desmarcou', 'cancelado'].includes(params.appointment.status);
+  if (!cancelled && params.appointment.status !== 'confirmado') return { status: 'skipped', reason: 'not_confirmation' };
+  if (cancelled ? ['desmarcou', 'cancelado'].includes(params.previousStatus) : params.previousStatus === 'confirmado') return { status: 'skipped', reason: 'unchanged' };
   if (params.appointment.unit !== 'SBC' || params.appointment.procedimento !== 'Avaliação') return { status: 'skipped', reason: 'not_future_evaluation' };
   if (state.blockedReason) return { status: 'skipped', reason: state.blockedReason };
   if (!params.appointment.evaluationProcedure) return { status: 'skipped', reason: 'missing_procedure' };
-  const key = `${params.appointment.id}:${params.appointment.startTime.toISOString()}`;
+  const key = `${params.appointment.id}:${cancelled ? 'cancelled:' : ''}${params.appointment.startTime.toISOString()}`;
   if (state.notices.includes(key)) return { status: 'already_recorded', noticeId: key, state: 'submitted' };
   state.notices.push(key);
   return { status: 'queued', noticeId: key, state: 'queued' };
@@ -104,7 +109,7 @@ state.dispatch = async id => {
 globalThis.fetch = async () => { throw new Error('Network forbidden in route tests'); };
 
 const { PATCH } = await import('../src/app/api/crm/evaluations/route.ts');
-const { PUT, POST: createAppointment } = await import('../src/app/api/agenda/route.ts');
+const { PUT, DELETE: deleteAppointment, POST: createAppointment } = await import('../src/app/api/agenda/route.ts');
 const { POST: checkin } = await import('../src/app/api/checkin/route.ts');
 const routes = [
   { name: 'evaluations PATCH', handler: PATCH, method: 'PATCH', body: { id: 'appointment', status: 'confirmado' } },
@@ -336,4 +341,52 @@ test('aviso já registrado não agenda novo despacho mesmo em outra transição'
     assert.equal(state.callbacks.length, 0);
     assert.equal(state.notices.length, 1);
   }
+});
+
+test('Desmarcou nas duas rotas salva aviso na transação, despacha após commit e não duplica', async () => {
+  const cancellationRoutes = routes.slice(0, 2).map(route => ({ ...route, body: { id: 'appointment', status: 'desmarcou' } }));
+  for (const route of cancellationRoutes) {
+    reset();
+    const response = await route.handler(request(route));
+    assert.equal(response.status, 200, route.name);
+    assert.equal((await response.json()).groupNotice.status, 'queued');
+    assert.equal(state.appointment.status, 'desmarcou');
+    assert.equal(events('enqueue')[0].params.previousStatus, 'pendente');
+    assert.equal(state.notices.length, 1);
+    assert.equal(events('dispatch').length, 0);
+    assert.ok(state.events.findIndex(e => e.kind === 'enqueue') < state.events.findIndex(e => e.kind === 'commit'));
+    await state.callbacks[0]();
+    assert.equal(events('dispatch').length, 1);
+    assert.equal((await (await route.handler(request(route))).json()).groupNotice.reason, 'unchanged');
+    assert.equal(state.callbacks.length, 1);
+  }
+  reset();
+  const responses = await Promise.all(cancellationRoutes.map(route => route.handler(request(route))));
+  assert.deepEqual(responses.map(r => r.status), [200, 200]);
+  assert.equal(state.notices.length, 1);
+  assert.equal(state.callbacks.length, 1);
+});
+
+test('cancelamento incompleto é salvo sem aviso; rollback não envia; exclusão não gera aviso', async t => {
+  t.mock.method(console, 'error', () => {});
+  for (const route of routes.slice(0, 2).map(route => ({ ...route, body: { id: 'appointment', status: 'desmarcou' } }))) {
+    reset(); state.appointment.evaluationProcedure = null;
+    const response = await route.handler(request(route));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).groupNotice.reason, 'missing_procedure');
+    assert.equal(state.appointment.status, 'desmarcou');
+    assert.equal(state.callbacks.length, 0);
+    reset(); state.failCommit = true;
+    assert.ok((await route.handler(request(route))).status >= 400);
+    assert.equal(state.appointment.status, 'pendente');
+    assert.equal(state.notices.length, 0);
+    assert.equal(state.callbacks.length, 0);
+  }
+  reset();
+  assert.equal((await deleteAppointment(new NextRequest('http://localhost/api/agenda?id=appointment', {
+    method: 'DELETE', headers: { 'x-user-id': 'operator', 'x-user-unit': 'SBC', 'x-user-role': 'ADMINISTRADOR' },
+  }))).status, 200);
+  assert.equal(events('delete').length, 1);
+  assert.equal(events('enqueue').length, 0);
+  assert.equal(state.callbacks.length, 0);
 });

@@ -27,9 +27,9 @@ async function click(page, element) {
   assert.ok(await element.evaluate((target) => target.getBoundingClientRect().height >= 44), 'touch target');
   await element.click();
 }
-async function clickStatus(page) {
-  const element = await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"] button')].find((item) =>
-    item.textContent.includes('Cliente confirmou presença na avaliação.')));
+async function clickStatus(page, cancelled = false) {
+  const element = await page.waitForFunction((text) => [...document.querySelectorAll('[role="dialog"] button')].find((item) =>
+    item.textContent.includes(text)), {}, cancelled ? 'Cliente cancelou a avaliação antes do horário agendado.' : 'Cliente confirmou presença na avaliação.');
   await click(page, element.asElement());
 }
 async function assertFit(page, width) {
@@ -152,6 +152,21 @@ try {
       await page.$eval('[data-testid="evaluation-group-feedback"]', (panel) => panel.scrollIntoView({ block: 'center' }));
       await assertFit(page, width);
       await page.screenshot({ path: join(output, `${width}-${scenario}.png`) });
+    }
+    for (const scenario of ['queued', 'blocked', 'existing']) {
+      mode = scenario;
+      await clickStatus(page, true);
+      await page.waitForSelector('[data-testid="evaluation-group-feedback"]');
+      await page.waitForFunction(() => ![...document.querySelectorAll('[role="dialog"] button')].some(item => item.disabled && item.textContent.includes('Cliente cancelou')));
+      assert.equal(appointment.status, 'desmarcou');
+      assert.equal(writes.at(-1).status, 'desmarcou');
+      assert.equal(await page.$('[data-testid="evaluation-confirmation-procedure"]'), null);
+      const feedback = await page.$eval('[data-testid="evaluation-group-feedback"]', panel => panel.textContent);
+      assert.match(feedback, scenario === 'queued' ? /Cancelamento salvo.*Aviso incluído na fila/
+        : scenario === 'blocked' ? /não foi possível comprovar o vínculo/ : /Nenhum reenvio automático/);
+      await page.$eval('[data-testid="evaluation-group-feedback"]', panel => panel.scrollIntoView({ block: 'center' }));
+      await assertFit(page, width);
+      await page.screenshot({ path: join(output, `${width}-cancellation-${scenario}.png`) });
     }
     assert.deepEqual(errors, [], `JS errors at ${width}px`);
     console.log(`PASS ${width}px: cancel, explicit procedure, error/retry, queued, blocked and uncertain feedback; ${writes.length} intercepted writes.`);

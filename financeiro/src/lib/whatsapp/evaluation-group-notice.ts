@@ -6,48 +6,23 @@ import {
   EVALUATION_GROUP_INSTANCE_ID,
   EVALUATION_GROUP_SETTING_KEY,
   isEvaluationGroupJid,
-  normalizeEvaluationGroupPhone,
-  normalizeEvaluationGroupProcedure,
-  normalizeEvaluationGroupText,
   parseEvaluationGroupConfig,
 } from "@/lib/whatsapp/evaluation-group-notice-config";
 
+import { evaluationGroupSnapshot as snapshotOf, isActiveGroupEvaluation as isNewEvaluation,
+  isFutureGroupEvaluation, isGroupEvaluationCancelled, type EvaluationGroupAppointment,
+} from "@/lib/whatsapp/evaluation-group-snapshot";
+
 const LEASE_MS = 2 * 60_000;
 const MAX_PRE_SEND_ATTEMPTS = 3;
-const ACTIVE_STATUSES = ["pendente", "confirmado", "nao_confirmou"];
 
 type EnqueueDatabase = Pick<Prisma.TransactionClient, "appSetting" | "whatsAppEvaluationGroupNotice">;
 type DispatchDatabase = Pick<Prisma.TransactionClient,
   "appSetting" | "whatsAppEvaluationGroupNotice" | "agendamento" | "whatsAppInstance" | "$queryRaw" | "$executeRaw">;
 
-export type EvaluationGroupAppointment = {
-  id: string;
-  clientName: string;
-  clientPhone: string | null;
-  procedimento: string;
-  evaluationProcedure?: string | null;
-  unit: string;
-  startTime: Date;
-  createdAt: Date;
-  status: string;
-};
-
-function snapshotOf(appointment: EvaluationGroupAppointment) {
-  const clientName = normalizeEvaluationGroupText(appointment.clientName, 200);
-  const clientPhone = normalizeEvaluationGroupPhone(appointment.clientPhone);
-  const evaluationProcedure = normalizeEvaluationGroupProcedure(appointment.evaluationProcedure);
-  if (!clientName || !clientPhone || !evaluationProcedure) return null;
-  return { clientName, clientPhone, evaluationProcedure };
-}
-
-function isNewEvaluation(appointment: EvaluationGroupAppointment, now: Date) {
-  return appointment.unit === "SBC"
-    && appointment.procedimento.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase() === "avaliacao"
-    && ACTIVE_STATUSES.includes(appointment.status)
-    && Number.isFinite(appointment.createdAt.getTime())
-    && appointment.createdAt <= now
-    && appointment.startTime > now;
-}
+export type { EvaluationGroupAppointment } from "@/lib/whatsapp/evaluation-group-snapshot";
+export { enqueueEvaluationGroupConfirmation, enqueueEvaluationGroupCancellation, enqueueEvaluationGroupStatusNotice } from "@/lib/whatsapp/evaluation-group-status-notice";
+export type { EvaluationGroupConfirmationResult, EvaluationGroupConfirmationSkipReason } from "@/lib/whatsapp/evaluation-group-status-notice";
 
 export async function enqueueEvaluationGroupNotice(
   database: EnqueueDatabase,
@@ -86,64 +61,6 @@ export async function enqueueEvaluationGroupNotice(
   return notice.id;
 }
 
-export type EvaluationGroupConfirmationSkipReason = "unchanged" | "not_confirmation" | "not_future_evaluation"
-  | "disabled" | "unverified_source" | "missing_name" | "invalid_phone" | "missing_procedure";
-export type EvaluationGroupConfirmationResult = {
-  status: "queued" | "already_recorded" | "skipped";
-  reason?: EvaluationGroupConfirmationSkipReason;
-  noticeId?: string;
-  state?: string;
-};
-
-export async function enqueueEvaluationGroupConfirmation(
-  database: EnqueueDatabase & Pick<Prisma.TransactionClient, "$queryRaw">,
-  params: { appointment: EvaluationGroupAppointment; previousStatus: string; recoverMissingNotice?: boolean },
-  now = new Date(),
-): Promise<EvaluationGroupConfirmationResult> {
-  const { appointment, previousStatus } = params;
-  const skip = (reason: EvaluationGroupConfirmationSkipReason): EvaluationGroupConfirmationResult => ({ status: "skipped", reason });
-  if (previousStatus === "confirmado" && !params.recoverMissingNotice) return skip("unchanged");
-  if (appointment.status !== "confirmado") return skip("not_confirmation");
-  if (!isNewEvaluation(appointment, now)) return skip("not_future_evaluation");
-  const setting = await database.appSetting.findUnique({
-    where: { key: EVALUATION_GROUP_SETTING_KEY }, select: { value: true },
-  });
-  const config = parseEvaluationGroupConfig(setting?.value);
-  if (!config?.enabled || !config.confirmationsActivatedAt || new Date(config.confirmationsActivatedAt) > now) return skip("disabled");
-  const source = await database.$queryRaw<{ eligible: boolean }[]>(Prisma.sql`SELECT ${evaluationGroupConfirmationSourcePredicate({
-    appointmentId: appointment.id, startTime: appointment.startTime, appointmentCreatedAt: appointment.createdAt,
-    clientPhone: appointment.clientPhone, config,
-  })} AS eligible`);
-  if (!source[0]?.eligible) return skip("unverified_source");
-
-  const eventKey = `confirmed:${appointment.startTime.toISOString()}`;
-  const existing = await database.whatsAppEvaluationGroupNotice.findUnique({
-    where: { appointmentId_eventKey: { appointmentId: appointment.id, eventKey } },
-    select: { id: true, state: true },
-  });
-  if (existing) return { status: "already_recorded", noticeId: existing.id, state: existing.state };
-  const clientName = normalizeEvaluationGroupText(appointment.clientName, 200);
-  const clientPhone = normalizeEvaluationGroupPhone(appointment.clientPhone);
-  const evaluationProcedure = normalizeEvaluationGroupProcedure(appointment.evaluationProcedure);
-  if (!clientName) return skip("missing_name");
-  if (!clientPhone) return skip("invalid_phone");
-  if (!evaluationProcedure) return skip("missing_procedure");
-  const id = randomUUID();
-  const notice = await database.whatsAppEvaluationGroupNotice.upsert({
-    where: { appointmentId_eventKey: { appointmentId: appointment.id, eventKey } },
-    create: {
-      id, appointmentId: appointment.id, eventType: "confirmed", eventKey,
-      instanceId: config.instanceId, groupJid: config.groupJid, groupName: config.groupName,
-      configActivatedAt: new Date(config.activatedAt), clientName, clientPhone, evaluationProcedure,
-      startTime: appointment.startTime, appointmentCreatedAt: appointment.createdAt,
-      availableAt: now, createdAt: now,
-    },
-    // A mesma ocorrência não reabre nem após uma alternância de status ou envio incerto.
-    update: {}, select: { id: true, state: true },
-  });
-  return { status: notice.id === id ? "queued" : "already_recorded", noticeId: notice.id, state: notice.state };
-}
-
 export function buildEvaluationGroupNoticeMessage(notice: {
   clientName: string; clientPhone: string; evaluationProcedure: string; startTime: Date; eventType?: string;
 }) {
@@ -152,7 +69,8 @@ export function buildEvaluationGroupNoticeMessage(notice: {
     timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
   }).format(notice.startTime);
   return [
-    notice.eventType === "confirmed" ? "✅ *Avaliação confirmada — SBC*" : "📅 *Nova avaliação — SBC*", "",
+    notice.eventType === "cancelled" ? "❌ *Avaliação desmarcada — SBC*"
+      : notice.eventType === "confirmed" ? "✅ *Avaliação confirmada — SBC*" : "📅 *Nova avaliação — SBC*", "",
     `Nome: ${notice.clientName}`,
     `Telefone: ${notice.clientPhone}`,
     `Procedimento: ${notice.evaluationProcedure}`,
@@ -166,10 +84,14 @@ export function evaluationGroupNoticeMatchesAppointment(
   appointment: EvaluationGroupAppointment | null,
   now: Date,
 ) {
-  if (!appointment || !isNewEvaluation(appointment, now)) return false;
+  if (!appointment) return false;
+  if (notice.eventType === "cancelled") {
+    if (!isFutureGroupEvaluation(appointment, now) || !isGroupEvaluationCancelled(appointment.status)
+      || notice.eventKey !== `cancelled:${appointment.startTime.toISOString()}`) return false;
+  } else if (!isNewEvaluation(appointment, now)) return false;
   if (notice.eventType === "confirmed") {
     if (appointment.status !== "confirmado" || notice.eventKey !== `confirmed:${appointment.startTime.toISOString()}`) return false;
-  } else if (notice.eventType !== "scheduled" || notice.eventKey !== "scheduled") return false;
+  } else if (notice.eventType !== "cancelled" && (notice.eventType !== "scheduled" || notice.eventKey !== "scheduled")) return false;
   const snapshot = snapshotOf(appointment);
   return snapshot !== null
     && snapshot.clientName === notice.clientName
@@ -233,6 +155,10 @@ export async function dispatchEvaluationGroupNotice(
       || notice.createdAt < new Date(config.confirmationsActivatedAt))) {
       return finish("cancelled", "Aviso de confirmação fora do período habilitado.");
     }
+    if (notice.eventType === "cancelled" && (!config.cancellationsActivatedAt
+      || notice.createdAt < new Date(config.cancellationsActivatedAt))) {
+      return finish("cancelled", "Aviso de cancelamento fora do período habilitado.");
+    }
     const appointment = await database.agendamento.findUnique({
       where: { id: notice.appointmentId },
       select: { id: true, clientName: true, clientPhone: true, procedimento: true, evaluationProcedure: true,
@@ -271,11 +197,12 @@ export async function dispatchEvaluationGroupNotice(
           AND "evaluationProcedure" = ${appointment!.evaluationProcedure}
           AND "startTime" = ${notice.startTime} AND "createdAt" = ${notice.appointmentCreatedAt}
           AND ((notice."eventType" = 'scheduled' AND "status" IN ('pendente', 'confirmado', 'nao_confirmou'))
-            OR (notice."eventType" = 'confirmed' AND "status" = 'confirmado'))
+            OR (notice."eventType" = 'confirmed' AND "status" = 'confirmado')
+            OR (notice."eventType" = 'cancelled' AND "status" = ${appointment!.status}))
           AND "startTime" > ${sendAt})
         AND EXISTS (SELECT 1 FROM "WhatsAppInstance" WHERE "id" = ${EVALUATION_GROUP_INSTANCE_ID}
           AND "name" = ${instance.name} AND "unit" = 'SBC' AND "provider" = 'evolution' AND "status" = 'connected')
-        AND ${notice.eventType === "confirmed" ? evaluationGroupConfirmationSourcePredicate({
+        AND ${notice.eventType === "confirmed" || notice.eventType === "cancelled" ? evaluationGroupConfirmationSourcePredicate({
           appointmentId: notice.appointmentId, startTime: notice.startTime,
           appointmentCreatedAt: notice.appointmentCreatedAt, clientPhone: appointment!.clientPhone, config,
         }) : Prisma.sql`true`}

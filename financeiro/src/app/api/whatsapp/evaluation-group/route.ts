@@ -88,6 +88,9 @@ export async function POST(req: NextRequest) {
         ...(previous?.confirmationsActivatedAt ? {
           confirmationsActivatedAt: sameActiveDestination ? previous.confirmationsActivatedAt : new Date().toISOString(),
         } : {}),
+        ...(previous?.cancellationsActivatedAt ? {
+          cancellationsActivatedAt: sameActiveDestination ? previous.cancellationsActivatedAt : new Date().toISOString(),
+        } : {}),
       } : { ...previous!, enabled: false };
       await tx.appSetting.upsert({ where: { key: EVALUATION_GROUP_SETTING_KEY },
         create: { key: EVALUATION_GROUP_SETTING_KEY, value: JSON.stringify(next) }, update: { value: JSON.stringify(next) } });

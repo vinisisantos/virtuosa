@@ -41,7 +41,7 @@ import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } fro
 import { suppressWhatsAppCallbacksForClosedPackage } from "@/lib/whatsapp/callback-suppression";
 import { sendEvaluationNoShowNotification } from "@/lib/whatsapp/evaluation-no-show-notification";
 import { sendEvaluationRescheduleNotification } from "@/lib/whatsapp/evaluation-reschedule-notification";
-import { dispatchEvaluationGroupNotice, enqueueEvaluationGroupConfirmation } from "@/lib/whatsapp/evaluation-group-notice";
+import { dispatchEvaluationGroupNotice, enqueueEvaluationGroupStatusNotice } from "@/lib/whatsapp/evaluation-group-notice";
 import { normalizeEvaluationProcedure } from "@/lib/evaluation-procedure";
 
 class EvaluationProcedureRequiredError extends Error {}
@@ -589,11 +589,11 @@ export async function PATCH(req: NextRequest) {
         data: updateData,
         include: { profissional: true },
       });
-      const groupNotice = await enqueueEvaluationGroupConfirmation(tx, {
+      const groupNotice = await enqueueEvaluationGroupStatusNotice(tx, {
         appointment: savedEvaluation,
         previousStatus: latest.status,
       });
-      if (groupNotice.status === "skipped" && groupNotice.reason === "missing_procedure") {
+      if (savedEvaluation.status === "confirmado" && groupNotice.status === "skipped" && groupNotice.reason === "missing_procedure") {
         // Throw instead of returning a response so the attempted status update is rolled back.
         throw new EvaluationProcedureRequiredError("Confirme o procedimento de interesse antes de salvar a confirmação e gerar o aviso ao grupo.");
       }

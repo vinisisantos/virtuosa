@@ -3,7 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { incrementPackageSession, withSerializableRetry } from '@/lib/agenda/finalization';
 import { isEvaluationAppointment, normalizeEvaluationProcedure, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
-import { enqueueEvaluationGroupNotice, enqueueEvaluationGroupConfirmation, dispatchEvaluationGroupNotice } from '@/lib/whatsapp/evaluation-group-notice';
+import { enqueueEvaluationGroupNotice, enqueueEvaluationGroupStatusNotice, dispatchEvaluationGroupNotice } from '@/lib/whatsapp/evaluation-group-notice';
 
 export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req, { requestedUnit: new URL(req.url).searchParams.get('unit') });
@@ -162,7 +162,7 @@ export async function PUT(req: NextRequest) {
         await incrementPackageSession(tx, result);
       }
 
-      const groupNotice = await enqueueEvaluationGroupConfirmation(tx, {
+      const groupNotice = await enqueueEvaluationGroupStatusNotice(tx, {
         appointment: result,
         previousStatus: latest.status,
       });

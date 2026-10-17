@@ -198,6 +198,20 @@ test("pausar configuração ausente não fabrica grupo nem grava histórico", as
   assert.equal(calls("audit").length, 0);
 });
 
+test('navegador não habilita cancelamentos; salvar e pausar preservam corte e reativação renova', async () => {
+  let result = await (await post({ action: 'configure', enabled: true, confirmTeamAccess: true,
+    groupJid: '120000000000@g.us', cancellationsActivatedAt: '2000-01-01' })).json();
+  assert.equal(result.config.cancellationsActivatedAt, undefined);
+  const cutoff = '2026-10-09T12:00:00.000Z';
+  setting = { value: JSON.stringify(configured({ cancellationsActivatedAt: cutoff })) };
+  result = await (await post({ action: 'configure', enabled: true, confirmTeamAccess: true, groupJid: '120000000000@g.us' })).json();
+  assert.equal(result.config.cancellationsActivatedAt, cutoff);
+  result = await (await post({ action: 'configure', enabled: false })).json();
+  assert.equal(result.config.cancellationsActivatedAt, cutoff);
+  result = await (await post({ action: 'configure', enabled: true, confirmTeamAccess: true, groupJid: '120000000000@g.us' })).json();
+  assert.ok(Date.parse(result.config.cancellationsActivatedAt) > Date.parse(cutoff));
+});
+
 test("falha inesperada é sanitizada e não altera configuração existente", async () => {
   const original = JSON.stringify(configured());
   setting = { value: original };

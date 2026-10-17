@@ -90,7 +90,8 @@ try {
           else {
             state.config = { enabled: body.enabled, groupJid: body.groupJid || state.config?.groupJid, groupName: "AVALIAÇOES SBC", instanceId,
               activatedAt: "2026-10-09T10:00:00.000Z", approvedBy: user.id,
-              confirmationsActivatedAt: state.config?.confirmationsActivatedAt ?? null };
+              confirmationsActivatedAt: state.config?.confirmationsActivatedAt ?? null,
+              cancellationsActivatedAt: state.config?.cancellationsActivatedAt ?? null };
             data = { success: true, config: state.config };
           }
         }
@@ -171,9 +172,22 @@ try {
     await clickButton(page, "Cancelar");
     await page.waitForSelector('[role="dialog"]', { hidden: true });
 
+    assert.match(await page.$eval(panel, element => element.innerText), /Avisos de cancelamento ainda não estão ativados/);
+    state.config.cancellationsActivatedAt = "2026-10-17T14:00:00.000Z";
+    await clickButton(page, "Atualizar", `${panel} button`);
+    await page.waitForFunction(() => document.body.innerText.includes("Cancelamentos ativos desde"));
+    assert.match(await page.$eval(panel, element => element.innerText), /Sem avisos retroativos ou disparos por exclusão/);
+    await clickButton(page, "Configurar grupo");
+    await page.waitForSelector('[role="dialog"]', { visible: true });
+    assert.match(await page.$eval('[role="dialog"]', element => element.innerText), /Novas mudanças para Desmarcou/);
+    await fit(page, `${width} cancellations-dialog`);
+    await screenshot(page, `${width}-cancellations-dialog`);
+    await clickButton(page, "Cancelar");
+    await page.waitForSelector('[role="dialog"]', { hidden: true });
+
     state.notices = ["queued", "processing", "sending", "submitted", "uncertain", "cancelled"].map((value, index) => ({
       id: `notice-${index}`, clientName: index === 4 ? "NomeMuitoLongoSemEspacos".repeat(6) : `Cliente fictícia ${index}`,
-      eventType: index === 0 ? undefined : index % 2 ? "confirmed" : "scheduled",
+      eventType: index === 0 ? undefined : index === 5 ? "cancelled" : index % 2 ? "confirmed" : "scheduled",
       clientPhone: "5511900000000", evaluationProcedure: "Procedimento com descrição extensa para validar a leitura no celular e no computador sem ocultar informações importantes",
       startTime: "2026-11-20T17:30:00.000Z", state: value, createdAt: "2026-10-09T12:00:00.000Z", submittedAt: null, lastError: null,
     }));
@@ -184,9 +198,11 @@ try {
     assert.match(await page.$eval(panel, element => element.innerText), /não comprova entrega ou leitura/);
     const noticeLabels = await page.$$eval(`${panel} article`, articles => articles.map(article => ({
       scheduled: /\bAgendada\b/.test(article.innerText), confirmed: /\bConfirmada\b/.test(article.innerText),
+      cancelled: /\bDesmarcada\b/.test(article.innerText),
     })));
     assert.deepEqual(noticeLabels, state.notices.map(notice => ({
-      scheduled: notice.eventType !== "confirmed", confirmed: notice.eventType === "confirmed",
+      scheduled: !["confirmed", "cancelled"].includes(notice.eventType), confirmed: notice.eventType === "confirmed",
+      cancelled: notice.eventType === "cancelled",
     })), "histórico distingue o evento e preserva avisos legados como Agendada");
     await screenshot(page, `${width}-history`);
     await page.$$eval(`${panel} article`, articles => articles[4].scrollIntoView({ block: "center" }));

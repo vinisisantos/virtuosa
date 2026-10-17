@@ -62,7 +62,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { formatCurrency } from "@/lib/currency";
 import { normalizeEvaluationProcedure } from "@/lib/evaluation-procedure";
-import type { EvaluationGroupConfirmationResult } from "@/lib/whatsapp/evaluation-group-notice";
+import { groupNoticeFeedback } from "@/lib/whatsapp/evaluation-group-feedback";
 import { millisecondsUntilNextSaoPauloDay, saoPauloDateKey } from "@/lib/date-filter";
 import {
   saleItemDraftsFromCampaignOffer,
@@ -173,34 +173,6 @@ type OutcomeFlow =
   | "no_show_reason"
   | null;
 
-function groupNoticeFeedback(notice?: EvaluationGroupConfirmationResult): { message: string; warning: boolean } {
-  if (notice?.status === "queued") {
-    return { message: "Confirmação salva. Aviso incluído na fila do grupo AVALIAÇÕES SBC. A entrega ainda não está confirmada; acompanhe em Automações.", warning: false };
-  }
-  if (notice?.status === "already_recorded") {
-    if (notice.state === "submitted") {
-      return { message: "Já existe um aviso aceito pelo provedor para esta data e horário. Nenhum reenvio foi feito. O aceite não comprova entrega; confira o histórico em Automações.", warning: false };
-    }
-    if (notice.state === "queued" || notice.state === "processing") {
-      return { message: "Já existe um aviso na fila para esta data e horário. Nenhum aviso duplicado foi criado; acompanhe em Automações.", warning: false };
-    }
-    return { message: "Já existe um aviso para esta data e horário que precisa de conferência no histórico de Automações. Nenhum reenvio automático foi feito.", warning: true };
-  }
-  const reasons: Record<string, string> = {
-    unchanged: "A avaliação já estava confirmada. Nenhum novo aviso ao grupo foi criado.",
-    not_confirmation: "Status salvo. Esta alteração não gera um aviso de confirmação ao grupo.",
-    not_future_evaluation: "Status salvo, mas o aviso ao grupo exige uma avaliação de SBC com data e horário futuros.",
-    disabled: "Status salvo, mas os avisos de confirmação ao grupo estão desativados ou ainda não foram liberados.",
-    unverified_source: "Status salvo, mas não foi possível comprovar o vínculo desta avaliação com Leads - Paloma. Nenhum aviso ao grupo foi criado.",
-    missing_name: "Status salvo, mas falta um nome válido no cadastro da avaliação. Nenhum aviso ao grupo foi criado.",
-    invalid_phone: "Status salvo, mas falta um telefone válido no cadastro da avaliação. Nenhum aviso ao grupo foi criado.",
-    missing_procedure: "Confirme o procedimento de interesse para salvar a confirmação e gerar o aviso ao grupo.",
-  };
-  return {
-    message: reasons[notice?.reason || ""] || "Status salvo, mas o resultado do aviso ao grupo não foi informado. Confira o histórico em Automações antes de tentar novamente.",
-    warning: notice?.reason !== "unchanged" && notice?.reason !== "not_confirmation",
-  };
-}
 
 const STATUS_UI: Record<EvaluationStatus, StatusUiConfig> = {
   pendente: {
@@ -1362,7 +1334,8 @@ export default function AvaliacoesAgendaPage() {
       if (selectedEvaluationIdRef.current !== submittingId) return;
       setOutcomeFlow(null);
       setConfirmationProcedure("");
-      setConfirmationGroupFeedback(status === "confirmado" ? groupNoticeFeedback(data.groupNotice) : null);
+      setConfirmationGroupFeedback(status === "confirmado" || status === "desmarcou"
+        ? groupNoticeFeedback(data.groupNotice, status === "desmarcou") : null);
       setEditingClosedPackage(false);
       setOutcomeReason("");
       setOutcomeDetails("");
