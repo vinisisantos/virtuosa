@@ -58,3 +58,17 @@ export function evaluationGroupConfirmationSourcePredicate(params: {
       AND automation.unit = 'SBC'
   ) END`;
 }
+
+export function evaluationGroupRescheduleSourcePredicate(params: Parameters<typeof evaluationGroupConfirmationSourcePredicate>[0]) {
+  // Sem aviso inicial, uma remarcação já validada mantém a cadeia de origem da agenda legada.
+  // Um aviso inicial incompatível nunca pode ser contornado por essa continuidade.
+  return Prisma.sql`(${evaluationGroupConfirmationSourcePredicate(params)} OR (
+    NOT EXISTS (SELECT 1 FROM "WhatsAppEvaluationGroupNotice" original
+      WHERE original."appointmentId"=${params.appointmentId} AND original."eventKey"='scheduled')
+    AND EXISTS (SELECT 1 FROM "WhatsAppEvaluationGroupNotice" previous
+      WHERE previous."appointmentId"=${params.appointmentId} AND previous."eventType"='rescheduled'
+        AND previous."startTime"=${params.startTime} AND previous."appointmentCreatedAt"=${params.appointmentCreatedAt}
+        AND previous."instanceId"=${params.config.instanceId} AND previous."groupJid"=${params.config.groupJid}
+        AND previous."configActivatedAt"=${new Date(params.config.activatedAt)})
+  ))`;
+}

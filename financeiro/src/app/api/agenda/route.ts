@@ -165,6 +165,7 @@ export async function PUT(req: NextRequest) {
       const groupNotice = await enqueueEvaluationGroupStatusNotice(tx, {
         appointment: result,
         previousStatus: latest.status,
+        previousStartTime: latest.startTime,
       });
       return { updated: result, groupNotice };
     });

@@ -91,12 +91,13 @@ state.enqueue = async (database, params) => {
   assert.equal(state.inTransaction, true);
   state.events.push({ kind: 'enqueue', params: copy(params) });
   const cancelled = ['desmarcou', 'cancelado'].includes(params.appointment.status);
-  if (!cancelled && params.appointment.status !== 'confirmado') return { status: 'skipped', reason: 'not_confirmation' };
-  if (cancelled ? ['desmarcou', 'cancelado'].includes(params.previousStatus) : params.previousStatus === 'confirmado') return { status: 'skipped', reason: 'unchanged' };
+  const rescheduled = !cancelled && params.previousStartTime && +params.previousStartTime !== +params.appointment.startTime;
+  if (!cancelled && !rescheduled && params.appointment.status !== 'confirmado') return { status: 'skipped', reason: 'not_confirmation' };
+  if (!rescheduled && (cancelled ? ['desmarcou', 'cancelado'].includes(params.previousStatus) : params.previousStatus === 'confirmado')) return { status: 'skipped', reason: 'unchanged' };
   if (params.appointment.unit !== 'SBC' || params.appointment.procedimento !== 'Avaliação') return { status: 'skipped', reason: 'not_future_evaluation' };
   if (state.blockedReason) return { status: 'skipped', reason: state.blockedReason };
   if (!params.appointment.evaluationProcedure) return { status: 'skipped', reason: 'missing_procedure' };
-  const key = `${params.appointment.id}:${cancelled ? 'cancelled:' : ''}${params.appointment.startTime.toISOString()}`;
+  const key = `${params.appointment.id}:${rescheduled ? 'rescheduled:' : cancelled ? 'cancelled:' : ''}${params.appointment.startTime.toISOString()}`;
   if (state.notices.includes(key)) return { status: 'already_recorded', noticeId: key, state: 'submitted' };
   state.notices.push(key);
   return { status: 'queued', noticeId: key, state: 'queued' };
@@ -245,7 +246,7 @@ test('Avaliações revalida a responsável depois do lock, preservando permissã
   assert.equal((await PATCH(request(routes[0], { permissions: { crmEvaluationsAll: true } }))).status, 200);
 });
 
-test('reagendamento usa último horário e reseta confirmação sem criar aviso de confirmado', async () => {
+test('reagendamento usa último horário, reseta confirmação e cria somente aviso de remarcação', async () => {
   state.beforeTransaction = () => {
     state.appointment.status = 'confirmado';
     state.appointment.startTime = new Date('2026-10-11T15:00:00Z');
@@ -256,7 +257,8 @@ test('reagendamento usa último horário e reseta confirmação sem criar aviso 
   assert.equal(state.appointment.endTime.toISOString(), '2026-10-12T15:30:00.000Z');
   assert.equal(events('reschedule')[0].params.previousStartTime.toISOString(), '2026-10-11T15:00:00.000Z');
   assert.equal(JSON.parse(events('audit')[0].data.details).confirmationReset, true);
-  assert.equal(state.notices.length, 0);
+  assert.equal(state.notices.length, 1);
+  assert.match(state.notices[0], /rescheduled:/);
 });
 
 test('criação já confirmada mantém somente o gatilho de criação', async () => {
@@ -389,4 +391,16 @@ test('cancelamento incompleto é salvo sem aviso; rollback não envia; exclusão
   assert.equal(events('delete').length, 1);
   assert.equal(events('enqueue').length, 0);
   assert.equal(state.callbacks.length, 0);
+});
+
+test('reagendamento nas duas rotas captura o horário transacional e despacha só depois do commit',async()=>{
+  for(const route of routes.slice(0,2)){
+    reset();
+    const response=await route.handler(request(route,{body:{id:'appointment',startTime:'2026-10-12T15:00:00Z'}}));
+    assert.equal(response.status,200);assert.equal((await response.json()).groupNotice.status,'queued');
+    assert.equal(events('enqueue')[0].params.previousStartTime.toISOString(),'2026-10-10T15:00:00.000Z');
+    assert.equal(state.callbacks.length,1);assert.equal(events('dispatch').length,0);
+    await state.callbacks[0]();assert.equal(events('dispatch').length,1);
+    assert.equal(state.notices.length,1);
+  }
 });

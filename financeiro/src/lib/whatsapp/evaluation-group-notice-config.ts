@@ -11,6 +11,7 @@ export type EvaluationGroupConfig = {
   approvedBy: string;
   confirmationsActivatedAt?: string;
   cancellationsActivatedAt?: string;
+  reschedulesActivatedAt?: string;
 };
 
 function normalizedKey(value: string) {
@@ -56,6 +57,9 @@ export function parseEvaluationGroupConfig(raw: unknown): EvaluationGroupConfig 
     if (config.cancellationsActivatedAt !== undefined
       && (typeof config.cancellationsActivatedAt !== "string"
         || !Number.isFinite(Date.parse(config.cancellationsActivatedAt)))) return null;
+    if (config.reschedulesActivatedAt !== undefined
+      && (typeof config.reschedulesActivatedAt !== "string"
+        || !Number.isFinite(Date.parse(config.reschedulesActivatedAt)))) return null;
     return {
       enabled: config.enabled,
       instanceId: EVALUATION_GROUP_INSTANCE_ID,
@@ -65,6 +69,7 @@ export function parseEvaluationGroupConfig(raw: unknown): EvaluationGroupConfig 
       approvedBy: config.approvedBy.trim(),
       ...(config.confirmationsActivatedAt ? { confirmationsActivatedAt: new Date(config.confirmationsActivatedAt).toISOString() } : {}),
       ...(config.cancellationsActivatedAt ? { cancellationsActivatedAt: new Date(config.cancellationsActivatedAt).toISOString() } : {}),
+      ...(config.reschedulesActivatedAt ? { reschedulesActivatedAt: new Date(config.reschedulesActivatedAt).toISOString() } : {}),
     };
   } catch {
     return null;

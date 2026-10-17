@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { enqueueEvaluationGroupReschedule } from "@/lib/whatsapp/evaluation-group-reschedule";
 import { Prisma } from "@prisma/client";
 import { evaluationGroupConfirmationSourcePredicate } from "@/lib/whatsapp/evaluation-group-confirmation-source";
 import {
@@ -11,8 +12,9 @@ import {
 } from "@/lib/whatsapp/evaluation-group-snapshot";
 
 type Database = Pick<Prisma.TransactionClient, "appSetting" | "whatsAppEvaluationGroupNotice" | "$queryRaw">;
-type Params = { appointment: EvaluationGroupAppointment; previousStatus: string; recoverMissingNotice?: boolean };
+type Params = { appointment: EvaluationGroupAppointment; previousStatus: string; previousStartTime?: Date; recoverMissingNotice?: boolean };
 export type EvaluationGroupConfirmationSkipReason = "unchanged" | "not_confirmation" | "not_cancellation"
+  | "not_reschedule" | "invalid_change"
   | "not_future_evaluation" | "disabled" | "unverified_source" | "missing_name" | "invalid_phone" | "missing_procedure";
 export type EvaluationGroupConfirmationResult = {
   status: "queued" | "already_recorded" | "skipped";
@@ -77,6 +79,10 @@ export function enqueueEvaluationGroupCancellation(database: Database, params: P
 }
 
 export function enqueueEvaluationGroupStatusNotice(database: Database, params: Params, now = new Date()) {
+  if (params.previousStartTime && params.previousStartTime.getTime() !== params.appointment.startTime.getTime()
+    && !isGroupEvaluationCancelled(params.appointment.status)) {
+    return enqueueEvaluationGroupReschedule(database, { appointment: params.appointment, previousStartTime: params.previousStartTime }, now);
+  }
   return isGroupEvaluationCancelled(params.appointment.status)
     ? enqueueEvaluationGroupCancellation(database, params, now)
     : enqueueEvaluationGroupConfirmation(database, params, now);

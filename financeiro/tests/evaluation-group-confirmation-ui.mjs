@@ -70,19 +70,20 @@ try {
       else if (url.pathname === '/api/crm/evaluations' && request.method() === 'PATCH') {
         const payload = JSON.parse(request.postData()); writes.push(payload);
         await new Promise((resolve) => setTimeout(resolve, 350));
-        if (mode === 'missing' && !payload.evaluationProcedure) {
+        if (mode === 'missing' && payload.status==='confirmado' && !payload.evaluationProcedure) {
           status = 422; data = { code: 'EVALUATION_PROCEDURE_REQUIRED', error: 'Confirme o procedimento.' };
         } else if (failOnce) {
           failOnce = false; status = 500; data = { error: 'Falha sintética. Tente novamente.' };
         } else {
-          appointment.status = payload.status;
+          if(payload.status)appointment.status=payload.status;
+          if(payload.startTime){appointment.startTime=payload.startTime;appointment.status='pendente';}
           if (payload.evaluationProcedure) appointment.evaluationProcedure = payload.evaluationProcedure;
           const groupNotice = mode === 'blocked'
             ? { status: 'skipped', reason: 'unverified_source' }
             : mode === 'existing'
               ? { status: 'already_recorded', noticeId: 'existing', state: 'uncertain' }
               : { status: 'queued', noticeId: 'synthetic-notice', state: 'queued' };
-          data = { evaluation: appointment, groupNotice };
+          data = { evaluation: appointment, groupNotice, rescheduleNotification: payload.startTime?{status:'sent'}:null };
         }
       } else if (url.pathname === '/api/crm/evaluations') {
         data = { evaluations: [appointment], professionals: [professional], canViewAll: true, unit: 'SBC', newEvaluationsToday: 0 };
@@ -169,6 +170,22 @@ try {
       await page.screenshot({ path: join(output, `${width}-cancellation-${scenario}.png`) });
     }
     assert.deepEqual(errors, [], `JS errors at ${width}px`);
+    mode='queued';
+    const pending=await page.waitForFunction(()=>[...document.querySelectorAll('[role="dialog"] button')]
+      .find(item=>item.textContent.includes('Ainda aguardando avaliação ou desfecho.')));
+    await click(page,pending.asElement());
+    await page.waitForFunction(()=>[...document.querySelectorAll('[role="dialog"] button')]
+      .some(item=>item.textContent.includes('Salvar agendamento')&&!item.disabled));
+    await page.$eval('[role="dialog"] input[type="time"]',input=>{
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'22:30');
+      input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));
+    });
+    await click(page,await button(page,'Salvar agendamento'));
+    await page.waitForFunction(()=>document.querySelector('[data-testid="evaluation-group-feedback"]')?.textContent.includes('Reagendamento salvo'));
+    assert.ok(writes.at(-1).startTime);
+    await page.$eval('[data-testid="evaluation-group-feedback"]',p=>p.scrollIntoView({block:'center'}));
+    await assertFit(page,width);await page.screenshot({path:join(output,`${width}-rescheduled.png`)});
+    assert.deepEqual(errors,[]);
     console.log(`PASS ${width}px: cancel, explicit procedure, error/retry, queued, blocked and uncertain feedback; ${writes.length} intercepted writes.`);
     await page.close();
   }

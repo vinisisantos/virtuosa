@@ -12,6 +12,7 @@ export type EvaluationGroupAppointment = {
   unit: string;
   startTime: Date;
   createdAt: Date;
+  updatedAt?: Date;
   status: string;
 };
 

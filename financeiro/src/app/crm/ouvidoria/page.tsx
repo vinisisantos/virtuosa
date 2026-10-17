@@ -1226,6 +1226,10 @@ export default function AvaliacoesAgendaPage() {
       } else {
         toast.success(assigneeUserId ? "Agendamento atualizado" : "Avaliação reagendada");
       }
+      if (selectedEvaluationIdRef.current === evaluationId && selectedEvaluation
+        && new Date(selectedEvaluation.startTime).getTime() !== startTime.getTime()) {
+        setConfirmationGroupFeedback(groupNoticeFeedback(data.groupNotice, false, true));
+      }
       return updated;
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Erro ao reagendar avaliação");
@@ -1334,8 +1338,8 @@ export default function AvaliacoesAgendaPage() {
       if (selectedEvaluationIdRef.current !== submittingId) return;
       setOutcomeFlow(null);
       setConfirmationProcedure("");
-      setConfirmationGroupFeedback(status === "confirmado" || status === "desmarcou"
-        ? groupNoticeFeedback(data.groupNotice, status === "desmarcou") : null);
+      setConfirmationGroupFeedback(payload.rescheduled === true || status === "confirmado" || status === "desmarcou"
+        ? groupNoticeFeedback(data.groupNotice, status === "desmarcou", payload.rescheduled === true) : null);
       setEditingClosedPackage(false);
       setOutcomeReason("");
       setOutcomeDetails("");
@@ -2204,7 +2208,7 @@ export default function AvaliacoesAgendaPage() {
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
                     <Button
                       type="button"
-                      className="w-full sm:w-auto"
+                      className="min-h-11 w-full sm:w-auto"
                       onClick={saveSelectedEvaluationSchedule}
                       disabled={savingSchedule || !!updatingStatus}
                     >

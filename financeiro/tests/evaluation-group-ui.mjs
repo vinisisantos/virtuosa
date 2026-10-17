@@ -91,7 +91,8 @@ try {
             state.config = { enabled: body.enabled, groupJid: body.groupJid || state.config?.groupJid, groupName: "AVALIAÇOES SBC", instanceId,
               activatedAt: "2026-10-09T10:00:00.000Z", approvedBy: user.id,
               confirmationsActivatedAt: state.config?.confirmationsActivatedAt ?? null,
-              cancellationsActivatedAt: state.config?.cancellationsActivatedAt ?? null };
+              cancellationsActivatedAt: state.config?.cancellationsActivatedAt ?? null,
+              reschedulesActivatedAt: state.config?.reschedulesActivatedAt ?? null };
             data = { success: true, config: state.config };
           }
         }
@@ -185,9 +186,14 @@ try {
     await clickButton(page, "Cancelar");
     await page.waitForSelector('[role="dialog"]', { hidden: true });
 
-    state.notices = ["queued", "processing", "sending", "submitted", "uncertain", "cancelled"].map((value, index) => ({
+    assert.match(await page.$eval(panel,element=>element.innerText),/Avisos de reagendamento ainda não estão ativados/);
+    state.config.reschedulesActivatedAt="2026-10-17T15:00:00.000Z";
+    await clickButton(page,"Atualizar",`${panel} button`);
+    await page.waitForFunction(()=>document.body.innerText.includes("Reagendamentos ativos desde"));
+    state.notices = ["queued", "processing", "sending", "submitted", "uncertain", "cancelled", "submitted"].map((value, index) => ({
       id: `notice-${index}`, clientName: index === 4 ? "NomeMuitoLongoSemEspacos".repeat(6) : `Cliente fictícia ${index}`,
-      eventType: index === 0 ? undefined : index === 5 ? "cancelled" : index % 2 ? "confirmed" : "scheduled",
+      eventType: index === 6 ? "rescheduled" : index === 0 ? undefined : index === 5 ? "cancelled" : index % 2 ? "confirmed" : "scheduled",
+      previousStartTime: index===6 ? "2026-11-18T13:00:00.000Z" : null,
       clientPhone: "5511900000000", evaluationProcedure: "Procedimento com descrição extensa para validar a leitura no celular e no computador sem ocultar informações importantes",
       startTime: "2026-11-20T17:30:00.000Z", state: value, createdAt: "2026-10-09T12:00:00.000Z", submittedAt: null, lastError: null,
     }));
@@ -199,14 +205,20 @@ try {
     const noticeLabels = await page.$$eval(`${panel} article`, articles => articles.map(article => ({
       scheduled: /\bAgendada\b/.test(article.innerText), confirmed: /\bConfirmada\b/.test(article.innerText),
       cancelled: /\bDesmarcada\b/.test(article.innerText),
+      rescheduled: /\bReagendada\b/.test(article.innerText),
     })));
     assert.deepEqual(noticeLabels, state.notices.map(notice => ({
-      scheduled: !["confirmed", "cancelled"].includes(notice.eventType), confirmed: notice.eventType === "confirmed",
+      scheduled: !["confirmed", "cancelled", "rescheduled"].includes(notice.eventType), confirmed: notice.eventType === "confirmed",
       cancelled: notice.eventType === "cancelled",
+      rescheduled: notice.eventType === "rescheduled",
     })), "histórico distingue o evento e preserva avisos legados como Agendada");
     await screenshot(page, `${width}-history`);
     await page.$$eval(`${panel} article`, articles => articles[4].scrollIntoView({ block: "center" }));
     await screenshot(page, `${width}-long-history`);
+    await page.$$eval(`${panel} article`,articles=>articles[6].scrollIntoView({block:"center"}));
+    assert.match(await page.$eval(`${panel} article:last-of-type`,el=>el.innerText),/Anterior: 18\/11\/2026, 10:00/);
+    await fit(page,`${width} reschedule-history`);
+    await screenshot(page,`${width}-reschedule-history`);
 
     state.connected = false;
     await clickButton(page, "Atualizar", `${panel} button`);

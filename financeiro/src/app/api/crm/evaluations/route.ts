@@ -592,6 +592,7 @@ export async function PATCH(req: NextRequest) {
       const groupNotice = await enqueueEvaluationGroupStatusNotice(tx, {
         appointment: savedEvaluation,
         previousStatus: latest.status,
+        previousStartTime: latest.startTime,
       });
       if (savedEvaluation.status === "confirmado" && groupNotice.status === "skipped" && groupNotice.reason === "missing_procedure") {
         // Throw instead of returning a response so the attempted status update is rolled back.

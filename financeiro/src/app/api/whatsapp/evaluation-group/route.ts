@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
       prisma.appSetting.findUnique({ where: { key: EVALUATION_GROUP_SETTING_KEY }, select: { value: true } }),
       prisma.whatsAppEvaluationGroupNotice.findMany({
         where: { instanceId: EVALUATION_GROUP_INSTANCE_ID }, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 20,
-        select: { id: true, eventType: true, clientName: true, clientPhone: true, evaluationProcedure: true, startTime: true,
+        select: { id: true, eventType: true, clientName: true, clientPhone: true, evaluationProcedure: true, startTime: true, previousStartTime: true,
           state: true, createdAt: true, submittedAt: true, lastError: true, groupName: true },
       }),
     ]);
@@ -90,6 +90,9 @@ export async function POST(req: NextRequest) {
         } : {}),
         ...(previous?.cancellationsActivatedAt ? {
           cancellationsActivatedAt: sameActiveDestination ? previous.cancellationsActivatedAt : new Date().toISOString(),
+        } : {}),
+        ...(previous?.reschedulesActivatedAt ? {
+          reschedulesActivatedAt: sameActiveDestination ? previous.reschedulesActivatedAt : new Date().toISOString(),
         } : {}),
       } : { ...previous!, enabled: false };
       await tx.appSetting.upsert({ where: { key: EVALUATION_GROUP_SETTING_KEY },

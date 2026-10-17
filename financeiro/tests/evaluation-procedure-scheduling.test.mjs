@@ -9,6 +9,7 @@ const { EVALUATION_GROUP_INSTANCE_ID } = await import('../src/lib/whatsapp/evalu
 function database(unit = 'SBC') {
   return {
     $executeRaw: async () => { locked = true; return 1; },
+    $queryRaw: async () => existing ? [{ ...existing, unit }] : [],
     user: { findFirst: async () => ({ id: 'operator', name: 'Operadora', unit, permissions: { crm: true } }) },
     profissional: { findFirst: async () => ({ id: 'professional', name: 'Operadora', unit }) },
     agendamento: {
@@ -53,15 +54,15 @@ test('persiste procedimento sem mudar tipo Avaliação e não envia com configur
   assert.equal(settingsReads, 1);
 });
 
-test('editar ou reagendar avaliação antiga não exige campo e não enfileira aviso', async () => {
-  existing = { id: 'old', evaluationProcedure: 'Tratamento anterior', startTime: new Date(0), status: 'confirmado' };
+test('editar ou reagendar avaliação antiga com gate desligado não exige campo nem enfileira aviso', async () => {
+  existing = { id: 'old', createdAt: new Date(0), updatedAt: new Date(), unit:'SBC', evaluationProcedure: 'Tratamento anterior', startTime: new Date(0), status: 'confirmado' };
   const appointment = await upsertPipelineEvaluationAppointment(request({ evaluationProcedure: '' }), database());
   assert.equal(appointment.evaluationProcedure, 'Tratamento anterior');
   assert.equal(appointment.status, 'pendente');
   assert.equal(appointment.evaluationGroupNoticeId, null);
   assert.equal(updated.length, 1);
   assert.equal(created.length, 0);
-  assert.equal(settingsReads, 0);
+  assert.equal(settingsReads, 1);
 });
 
 test('outra caixa SBC e outras unidades preservam criação sem procedimento adicional', async () => {

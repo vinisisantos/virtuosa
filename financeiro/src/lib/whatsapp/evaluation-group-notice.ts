@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma, type WhatsAppEvaluationGroupNotice } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { evaluationGroupConfirmationSourcePredicate } from "@/lib/whatsapp/evaluation-group-confirmation-source";
+import { evaluationGroupConfirmationSourcePredicate, evaluationGroupRescheduleSourcePredicate } from "@/lib/whatsapp/evaluation-group-confirmation-source";
 import {
   EVALUATION_GROUP_INSTANCE_ID,
   EVALUATION_GROUP_SETTING_KEY,
@@ -22,6 +22,7 @@ type DispatchDatabase = Pick<Prisma.TransactionClient,
 
 export type { EvaluationGroupAppointment } from "@/lib/whatsapp/evaluation-group-snapshot";
 export { enqueueEvaluationGroupConfirmation, enqueueEvaluationGroupCancellation, enqueueEvaluationGroupStatusNotice } from "@/lib/whatsapp/evaluation-group-status-notice";
+export { enqueueEvaluationGroupReschedule } from "@/lib/whatsapp/evaluation-group-reschedule";
 export type { EvaluationGroupConfirmationResult, EvaluationGroupConfirmationSkipReason } from "@/lib/whatsapp/evaluation-group-status-notice";
 
 export async function enqueueEvaluationGroupNotice(
@@ -62,19 +63,22 @@ export async function enqueueEvaluationGroupNotice(
 }
 
 export function buildEvaluationGroupNoticeMessage(notice: {
-  clientName: string; clientPhone: string; evaluationProcedure: string; startTime: Date; eventType?: string;
+  clientName: string; clientPhone: string; evaluationProcedure: string; startTime: Date; eventType?: string; previousStartTime?: Date | null;
 }) {
   const date = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(notice.startTime);
   const time = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
   }).format(notice.startTime);
   return [
-    notice.eventType === "cancelled" ? "❌ *Avaliação desmarcada — SBC*"
+    notice.eventType === "rescheduled" ? "🔄 *Avaliação reagendada — SBC*" : notice.eventType === "cancelled" ? "❌ *Avaliação desmarcada — SBC*"
       : notice.eventType === "confirmed" ? "✅ *Avaliação confirmada — SBC*" : "📅 *Nova avaliação — SBC*", "",
     `Nome: ${notice.clientName}`,
     `Telefone: ${notice.clientPhone}`,
     `Procedimento: ${notice.evaluationProcedure}`,
-    `Data: ${date}`,
+    ...(notice.eventType === "rescheduled" && notice.previousStartTime ? [
+      `Anterior: ${new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "short", timeStyle: "short" }).format(notice.previousStartTime)}`,
+    ] : []),
+    `${notice.eventType === "rescheduled" ? "Nova data" : "Data"}: ${date}`,
     `Horário: ${time}`,
   ].join("\n");
 }
@@ -89,7 +93,10 @@ export function evaluationGroupNoticeMatchesAppointment(
     if (!isFutureGroupEvaluation(appointment, now) || !isGroupEvaluationCancelled(appointment.status)
       || notice.eventKey !== `cancelled:${appointment.startTime.toISOString()}`) return false;
   } else if (!isNewEvaluation(appointment, now)) return false;
-  if (notice.eventType === "confirmed") {
+  if (notice.eventType === "rescheduled") {
+    if (!notice.previousStartTime || !Number.isFinite(notice.previousStartTime.getTime())
+      || notice.previousStartTime.getTime() === notice.startTime.getTime() || !notice.eventKey.startsWith("rescheduled:")) return false;
+  } else if (notice.eventType === "confirmed") {
     if (appointment.status !== "confirmado" || notice.eventKey !== `confirmed:${appointment.startTime.toISOString()}`) return false;
   } else if (notice.eventType !== "cancelled" && (notice.eventType !== "scheduled" || notice.eventKey !== "scheduled")) return false;
   const snapshot = snapshotOf(appointment);
@@ -159,6 +166,10 @@ export async function dispatchEvaluationGroupNotice(
       || notice.createdAt < new Date(config.cancellationsActivatedAt))) {
       return finish("cancelled", "Aviso de cancelamento fora do período habilitado.");
     }
+    if (notice.eventType === "rescheduled" && (!config.reschedulesActivatedAt
+      || notice.createdAt < new Date(config.reschedulesActivatedAt))) {
+      return finish("cancelled", "Aviso de reagendamento fora do período habilitado.");
+    }
     const appointment = await database.agendamento.findUnique({
       where: { id: notice.appointmentId },
       select: { id: true, clientName: true, clientPhone: true, procedimento: true, evaluationProcedure: true,
@@ -197,13 +208,15 @@ export async function dispatchEvaluationGroupNotice(
           AND "evaluationProcedure" = ${appointment!.evaluationProcedure}
           AND "startTime" = ${notice.startTime} AND "createdAt" = ${notice.appointmentCreatedAt}
           AND ((notice."eventType" = 'scheduled' AND "status" IN ('pendente', 'confirmado', 'nao_confirmou'))
+            OR (notice."eventType" = 'rescheduled' AND "status" IN ('pendente', 'confirmado', 'nao_confirmou'))
             OR (notice."eventType" = 'confirmed' AND "status" = 'confirmado')
             OR (notice."eventType" = 'cancelled' AND "status" = ${appointment!.status}))
           AND "startTime" > ${sendAt})
         AND EXISTS (SELECT 1 FROM "WhatsAppInstance" WHERE "id" = ${EVALUATION_GROUP_INSTANCE_ID}
           AND "name" = ${instance.name} AND "unit" = 'SBC' AND "provider" = 'evolution' AND "status" = 'connected')
-        AND ${notice.eventType === "confirmed" || notice.eventType === "cancelled" ? evaluationGroupConfirmationSourcePredicate({
-          appointmentId: notice.appointmentId, startTime: notice.startTime,
+        AND ${["confirmed", "cancelled", "rescheduled"].includes(notice.eventType) ? (notice.eventType === "rescheduled"
+          ? evaluationGroupRescheduleSourcePredicate : evaluationGroupConfirmationSourcePredicate)({
+          appointmentId: notice.appointmentId, startTime: notice.eventType === "rescheduled" ? notice.previousStartTime! : notice.startTime,
           appointmentCreatedAt: notice.appointmentCreatedAt, clientPhone: appointment!.clientPhone, config,
         }) : Prisma.sql`true`}
     `;

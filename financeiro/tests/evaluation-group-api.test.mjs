@@ -212,6 +212,18 @@ test('navegador não habilita cancelamentos; salvar e pausar preservam corte e r
   assert.ok(Date.parse(result.config.cancellationsActivatedAt) > Date.parse(cutoff));
 });
 
+test('navegador não habilita reagendamentos; salvar/pausar preservam corte e reativação renova', async () => {
+  let result = await (await post({ action:'configure', enabled:true, confirmTeamAccess:true, groupJid:'120000000000@g.us', reschedulesActivatedAt:'2000-01-01' })).json();
+  assert.equal(result.config.reschedulesActivatedAt, undefined);
+  const cutoff='2026-10-09T12:00:00.000Z';
+  setting={value:JSON.stringify(configured({reschedulesActivatedAt:cutoff}))};
+  result=await (await post({action:'configure',enabled:true,confirmTeamAccess:true,groupJid:'120000000000@g.us'})).json();
+  assert.equal(result.config.reschedulesActivatedAt,cutoff);
+  result=await (await post({action:'configure',enabled:false})).json();assert.equal(result.config.reschedulesActivatedAt,cutoff);
+  result=await (await post({action:'configure',enabled:true,confirmTeamAccess:true,groupJid:'120000000000@g.us'})).json();
+  assert.ok(Date.parse(result.config.reschedulesActivatedAt)>Date.parse(cutoff));
+});
+
 test("falha inesperada é sanitizada e não altera configuração existente", async () => {
   const original = JSON.stringify(configured());
   setting = { value: original };

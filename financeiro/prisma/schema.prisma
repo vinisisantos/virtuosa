@@ -1688,6 +1688,7 @@ model WhatsAppEvaluationGroupNotice {
   clientPhone          String
   evaluationProcedure  String
   startTime            DateTime
+  previousStartTime    DateTime?
   appointmentCreatedAt DateTime
   state                String   @default("queued")
   attempts             Int      @default(0)

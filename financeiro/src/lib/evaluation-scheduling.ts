@@ -4,7 +4,7 @@ import { evaluationScheduleMinuteRange } from "@/lib/evaluation-schedule-conflic
 import { isConfirmedEvaluationStatus } from "@/lib/evaluation-status";
 import { isAdminRole } from "@/lib/role-access";
 import { normalizeEvaluationProcedure, usesEvaluationProcedure } from "@/lib/evaluation-procedure";
-import { enqueueEvaluationGroupNotice } from "@/lib/whatsapp/evaluation-group-notice";
+import { enqueueEvaluationGroupNotice, enqueueEvaluationGroupStatusNotice } from "@/lib/whatsapp/evaluation-group-notice";
 
 const UNIT_PERMISSION_KEY: Record<string, string> = {
   Osasco: "unitOsasco",
@@ -35,7 +35,7 @@ type EvaluationSchedulingDatabase = Pick<
   Prisma.TransactionClient,
   "user" | "profissional" | "agendamento" | "appSetting" | "whatsAppEvaluationGroupNotice"
 >;
-type EvaluationAppointmentTransaction = EvaluationSchedulingDatabase & Pick<Prisma.TransactionClient, "$executeRaw">;
+type EvaluationAppointmentTransaction = EvaluationSchedulingDatabase & Pick<Prisma.TransactionClient, "$executeRaw" | "$queryRaw">;
 
 export class EvaluationSchedulingError extends Error {
   constructor(message: string) {
@@ -206,7 +206,7 @@ export async function upsertPipelineEvaluationAppointment(params: {
     // A transação mantém o bloqueio até o commit: dois cliques não criam duas avaliações/avisos.
     await database.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'evaluation-group:' + params.deal.id}))`;
   }
-  const existing = await database.agendamento.findFirst({
+  let existing = await database.agendamento.findFirst({
     where: {
       unit: params.deal.unit,
       procedimento: { contains: "avalia", mode: "insensitive" },
@@ -240,6 +240,13 @@ export async function upsertPipelineEvaluationAppointment(params: {
   };
 
   if (existing) {
+    if (params.deal.unit === "SBC") {
+      // O lock por negócio não cobre edições concorrentes feitas diretamente na Agenda.
+      const rows = await database.$queryRaw<Pick<typeof existing, "id" | "unit" | "startTime" | "status" | "updatedAt">[]>`
+        SELECT id, unit, "startTime", status, "updatedAt" FROM "Agendamento" WHERE id = ${existing.id} FOR UPDATE`;
+      if (!rows[0] || rows[0].unit !== params.deal.unit) throw new EvaluationSchedulingError("Avaliação alterada; atualize a agenda antes de tentar novamente");
+      existing = { ...existing, ...rows[0] };
+    }
     const scheduleChanged = existing.startTime.getTime() !== startTime.getTime();
     const appointment = await database.agendamento.update({
       where: { id: existing.id },
@@ -251,7 +258,10 @@ export async function upsertPipelineEvaluationAppointment(params: {
       },
       include: { profissional: true },
     });
-    return { ...appointment, evaluationGroupNoticeId: null };
+    const groupNotice = scheduleChanged ? await enqueueEvaluationGroupStatusNotice(database, {
+      appointment, previousStatus: existing.status, previousStartTime: existing.startTime,
+    }) : null;
+    return { ...appointment, evaluationGroupNoticeId: groupNotice?.status === "queued" ? groupNotice.noticeId : null };
   }
 
   const appointment = await database.agendamento.create({
