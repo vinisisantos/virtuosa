@@ -18,7 +18,7 @@ import {
 } from "@/lib/whatsapp/contact-name";
 import { extractAdIdFromSourceUrl, resolveCampaignFromAdId } from "@/lib/lead-processor";
 import { inferCampaignByKeywords, inferManagedCampaignName } from "@/lib/campaign-attribution";
-import { lipoLaserCampaignFromAdId } from "@/lib/lipo-laser-campaigns";
+import { lipoLaserCampaignFromAdId, lipoLaserCampaignFromSourceUrl } from "@/lib/lipo-laser-campaigns";
 import { campaignNameFromAccountTrackId } from "@/lib/campaign-account-origin";
 import {
   BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME,
@@ -2220,7 +2220,8 @@ async function processMessage(
 
   const exactSourceCampaignName = campaignNameFromExactMetaSourceUrl(adSourceUrl, leadUnit);
   const exactAdCampaignName = campaignNameFromExactMetaAdId(adId, leadUnit);
-  const confirmedLipoLaserCampaign = lipoLaserCampaignFromAdId(adId, leadUnit);
+  const confirmedLipoLaserCampaign = lipoLaserCampaignFromAdId(adId, leadUnit)
+    || lipoLaserCampaignFromSourceUrl(adSourceUrl, leadUnit);
   const canonicalAdCampaignName = confirmedLipoLaserCampaign || exactSourceCampaignName || exactAdCampaignName;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = canCaptureLead

@@ -7,6 +7,8 @@ import { LIPO_LASER_SAVED_REPLIES } from '../src/lib/whatsapp/lipo-laser-saved-r
 
 // Todas as APIs são simuladas; nenhuma chamada externa ou envio alcança produção.
 const origin = process.env.TEST_ORIGIN || 'http://127.0.0.1:3210';
+const unit = process.env.TEST_UNIT || 'SBC';
+assert.ok(['SBC', 'Osasco'].includes(unit));
 const output = await mkdtemp(join(tmpdir(), 'virtuosa-lipo-laser-ui-'));
 console.log(JSON.stringify({ output }));
 const browser = await puppeteer.launch({ headless: true });
@@ -14,9 +16,9 @@ const now = new Date().toISOString();
 const categories = [{ id: 'standard', title: 'LIPO LASER', campaignName: 'LIPO LASER' }, { id: 'pack', title: 'LIPO LASER 2', campaignName: 'LIPO LASER 2' }];
 const replies = LIPO_LASER_SAVED_REPLIES.map((reply, index) => ({ ...reply, id: `reply-${index}`, categoryId: index < 3 ? 'standard' : 'pack', position: index, createdAt: now, updatedAt: now }));
 replies.push({ id: 'global', categoryId: null, title: 'LOCALIZAÇÃO', content: 'Nossa localização é {{endereco}}.', position: 6, createdAt: now, updatedAt: now });
-const user = { id: 'operator', name: 'Operadora Teste', role: 'ADMINISTRADOR', unit: 'SBC', permissions: { crm: true } };
-const instance = { id: 'instance', unit: 'SBC', name: 'Comercial Teste', instanceName: 'Comercial Teste', userId: user.id, ownerId: user.id, canReply: true, status: 'connected' };
-const conversations = categories.map(category => ({ id: `chat-${category.id}`, instanceId: instance.id, instance, status: 'open', assignedTo: user.id, unreadCount: 0, contact: { id: `contact-${category.id}`, name: 'Cliente Teste', phone: '5511900000000', unit: 'SBC' }, campaignName: category.campaignName, lastMessage: 'Olá', lastMessageAt: now }));
+const user = { id: 'operator', name: 'Operadora Teste', role: 'ADMINISTRADOR', unit, permissions: { crm: true } };
+const instance = { id: 'instance', unit, name: 'Comercial Teste', instanceName: 'Comercial Teste', userId: user.id, ownerId: user.id, canReply: true, status: 'connected' };
+const conversations = categories.map(category => ({ id: `chat-${category.id}`, instanceId: instance.id, instance, status: 'open', assignedTo: user.id, unreadCount: 0, contact: { id: `contact-${category.id}`, name: 'Cliente Teste', phone: '5511900000000', unit }, campaignName: category.campaignName, lastMessage: 'Olá', lastMessageAt: now }));
 async function clickVisible(page, selector) {
   const handle = await page.waitForFunction(selector => [...document.querySelectorAll(selector)].find(element => { const rect = element.getBoundingClientRect(); return element.getClientRects().length && rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.left < innerWidth; }), {}, selector);
   await handle.asElement().click();
@@ -45,7 +47,7 @@ try {
       else if (url.pathname === '/api/whatsapp/saved-replies') {
         libraryCalls++;
         await new Promise(resolve => setTimeout(resolve, 500));
-        data = { replies, categories, campaignOptions: categories.map(category => ({ name: category.campaignName, units: ['SBC'] })) };
+        data = { replies, categories, campaignOptions: categories.map(category => ({ name: category.campaignName, units: [unit] })) };
       } else if (url.pathname === '/api/users') data = [];
       await request.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
     });
@@ -77,7 +79,7 @@ try {
     }
     assert.equal(libraryCalls, 1, 'Uma única carga da biblioteca, sem polling');
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ width, offer: category.id, manualInsertion: true, sends: sends.length, libraryCalls, noOverflow: true }));
+    console.log(JSON.stringify({ width, unit, offer: category.id, manualInsertion: true, sends: sends.length, libraryCalls, noOverflow: true }));
     await page.close();
   }
   console.log(JSON.stringify({ output }));

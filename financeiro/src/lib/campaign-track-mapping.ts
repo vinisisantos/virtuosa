@@ -1,4 +1,4 @@
-import { lipoLaserCampaignFromAdId, lipoLaserCampaignFromPrefilledMessage } from "./lipo-laser-campaigns.ts";
+import { lipoLaserCampaignFromAdId, lipoLaserCampaignFromPrefilledMessage, lipoLaserCampaignFromSourceUrl } from "./lipo-laser-campaigns.ts";
 
 export const FACIAL_FILLER_CAMPAIGN_NAME = "Preenchimento Facial";
 export const ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME = "Adeus Rosto Cansado";
@@ -284,6 +284,8 @@ export function campaignNameFromExactMetaSourceUrl(
   unit?: string | null,
 ) {
   if (!sourceUrl) return null;
+  const lipoLaserCampaign = lipoLaserCampaignFromSourceUrl(sourceUrl, unit);
+  if (lipoLaserCampaign) return lipoLaserCampaign;
   const normalizedUnit = unit?.trim().toLowerCase();
   return CAMPAIGN_SOURCE_URL_RULES.find((candidate) => (
     (!candidate.units || candidate.units.some((allowedUnit) => allowedUnit.toLowerCase() === normalizedUnit))

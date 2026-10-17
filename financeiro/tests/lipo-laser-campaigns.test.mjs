@@ -30,7 +30,8 @@ test('recupera as duas aberturas exatas, incluindo pelas, sem inventar ID', () =
   for (const [message, name] of openings) {
     assert.equal(lipoLaserCampaignFromPrefilledMessage(message, 'SBC'), name);
     assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, 'SBC'), { campaignName: name, campaignTrackId: null });
-    for (const unit of ['Osasco', 'SCS', 'Todas', null]) assert.equal(campaignFromPrefilledMetaLeadMessage(message, unit), null);
+    for (const unit of ['SCS', 'Todas', null]) assert.equal(campaignFromPrefilledMetaLeadMessage(message, unit), null);
+    assert.equal(campaignFromPrefilledMetaLeadMessage(message, 'Osasco')?.campaignName ?? null, name === pack ? pack : null);
   }
   assert.equal(campaignFromPrefilledMetaLeadMessage('Oi! Eu vim pela Emagreça 2 KG, gostaria de saber mais', 'SBC')?.campaignName, standard);
 });
@@ -45,7 +46,8 @@ test('distingue os preços com a tecnologia explícita, antes de gordura localiz
   for (const [signal, expected] of [['LIPO LASER | Gordura localizada | R$ 699,00', standard], ['LIPO LASER 5 sessões + 5 drenagens R$ 2.999,00', pack], ['Lipo Laser por 2999', pack]]) {
     assert.equal(lipoLaserCampaignFromOfferSignal(signal, 'SBC'), expected);
     assert.equal(inferCampaignByKeywords(signal, 'SBC'), expected);
-    assert.equal(lipoLaserCampaignFromOfferSignal(signal, 'Osasco'), null);
+    assert.equal(lipoLaserCampaignFromOfferSignal(signal, 'Osasco'), expected);
+    assert.equal(lipoLaserCampaignFromOfferSignal(signal, 'SCS'), null);
   }
   for (const signal of ['Lipo Laser', 'Lipo Laser R$ 699,00 ou R$ 2.999,00', 'Botox R$ 699,00', 'Lipo Laser R$ 1699,00', 'Lipo Laser R$ 2.699,00', 'Lipo Laser R$ 12.999,00', 'Lipo Laser R$ 699,90']) assert.equal(lipoLaserCampaignFromOfferSignal(signal, 'SBC'), null, signal);
 });
