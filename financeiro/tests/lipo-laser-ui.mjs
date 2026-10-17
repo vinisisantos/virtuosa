@@ -25,7 +25,8 @@ async function clickVisible(page, selector) {
   await handle.dispose();
 }
 try {
-  for (const { width, category } of [390, 430, 1440].flatMap(width => categories.map(category => ({ width, category })))) {
+  const activeCategories = unit === 'Osasco' ? categories.filter(category => category.id === 'standard') : categories;
+  for (const { width, category } of [390, 430, 1440].flatMap(width => activeCategories.map(category => ({ width, category })))) {
     const page = await browser.newPage();
     const sends = [], errors = [];
     let libraryCalls = 0;

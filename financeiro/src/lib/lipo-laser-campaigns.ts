@@ -4,6 +4,7 @@ export const LIPO_LASER_CAMPAIGN_NAME = "LIPO LASER";
 export const LIPO_LASER_2_CAMPAIGN_NAME = "LIPO LASER 2";
 export const LIPO_LASER_AD_ID = "120250557434650006";
 export const LIPO_LASER_2_AD_ID = "120250557635720006";
+export const OSASCO_LIPO_LASER_AD_ID = "120253281469150494";
 
 function isLipoLaserUnit(unit?: string | null) {
   return ["sbc", "osasco"].includes(unit?.trim().toLowerCase() || "");
@@ -22,6 +23,9 @@ export function isLipoLaserCampaignName(name?: string | null) {
 }
 
 export function lipoLaserCampaignFromAdId(adId?: string | null, unit?: string | null) {
+  if (unit?.trim().toLowerCase() === "osasco") {
+    return adId === OSASCO_LIPO_LASER_AD_ID ? LIPO_LASER_CAMPAIGN_NAME : null;
+  }
   if (unit?.trim().toLowerCase() !== "sbc") return null;
   if (adId === LIPO_LASER_AD_ID) return LIPO_LASER_CAMPAIGN_NAME;
   if (adId === LIPO_LASER_2_AD_ID) return LIPO_LASER_2_CAMPAIGN_NAME;
@@ -48,10 +52,12 @@ export function lipoLaserCampaignFromSourceUrl(sourceUrl?: string | null, unit?:
 export function lipoLaserCampaignFromPrefilledMessage(message?: string | null, unit?: string | null) {
   if (!isLipoLaserUnit(unit)) return null;
   const normalized = normalizeCampaignText(message);
+  if (unit?.trim().toLowerCase() === "osasco") {
+    return normalized === "quero saber mais sobre o lipo laser" ? LIPO_LASER_CAMPAIGN_NAME : null;
+  }
   const opening = "^(?:(?:ola|oi) )?(?:eu )?vim ";
   const continuation = "(?= (?:posso|gostaria|quero|tenho)|$)";
-  // Osasco já tem outra oferta Emagreça 2 KG: o texto sozinho não identifica Lipo Laser.
-  if (unit?.trim().toLowerCase() === "sbc" && new RegExp(`${opening}pela emagreca 2 ?kg${continuation}`).test(normalized)) {
+  if (new RegExp(`${opening}pela emagreca 2 ?kg${continuation}`).test(normalized)) {
     return LIPO_LASER_CAMPAIGN_NAME;
   }
   if (new RegExp(`${opening}pelas 5 sessoes de lipo laser${continuation}`).test(normalized)) {
@@ -66,5 +72,6 @@ export function lipoLaserCampaignFromOfferSignal(signal?: string | null, unit?: 
   const standardOffer = /(?<![\d.,])699(?:[,.]00)?(?!\d|[.,]\d)/.test(raw);
   const packageOffer = /(?<![\d.,])2[.\s]?999(?:[,.]00)?(?!\d|[.,]\d)/.test(raw);
   if (standardOffer === packageOffer) return null;
+  if (packageOffer && unit?.trim().toLowerCase() !== "sbc") return null;
   return packageOffer ? LIPO_LASER_2_CAMPAIGN_NAME : LIPO_LASER_CAMPAIGN_NAME;
 }
