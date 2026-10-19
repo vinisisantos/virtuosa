@@ -100,6 +100,7 @@ beforeEach(() => {
     members: [
       { userId: 'operator', role: 'AGENT', isActive: true },
       { userId: 'second-operator', role: 'AGENT', isActive: true },
+      { userId: 'shared-operator', role: 'AGENT_SHARED', isActive: true },
       { userId: 'manager', role: 'MANAGER', isActive: true },
       { userId: 'viewer', role: 'VIEWER', isActive: true },
       { userId: 'inactive', role: 'AGENT', isActive: false },
@@ -158,6 +159,48 @@ test('Atendente não toma atendimento ativo de outro operador', async () => {
   const response = await start();
   assert.equal(response.status, 409);
   assert.match((await response.json()).error, /atendimento por/);
+  assertNoEffects();
+});
+
+test('Atendente compartilhado assume atendimento ativo sem poderes de gerente', async () => {
+  conversation.status = 'open';
+  const response = await start({ userId: 'shared-operator', userName: 'Atendente compartilhada' });
+  assert.equal(response.status, 200);
+  assert.equal(conversation.assignedTo, 'shared-operator');
+  assert.equal(conversation.assignedToName, 'Atendente compartilhada');
+  assert.deepEqual(claimFilters, [{ id: 'chat', instanceId: 'instance-osasco' }]);
+  assert.deepEqual(effects, { claims: 1, pipelineReads: 0, deals: 0, clients: 0, auditUsers: [] });
+});
+
+test('mudança concorrente de responsável e status não trava o Atendente compartilhado', async () => {
+  conversation.status = 'open';
+  beforeClaim = () => {
+    conversation.assignedTo = 'second-operator';
+    conversation.status = 'closed';
+  };
+  assert.equal((await start({ userId: 'shared-operator' })).status, 200);
+  assert.equal(conversation.assignedTo, 'shared-operator');
+  assert.equal(conversation.status, 'open');
+  assert.equal(effects.claims, 1);
+  assert.equal(effects.pipelineReads, 0);
+  assert.deepEqual(claimFilters, [{ id: 'chat', instanceId: 'instance-osasco' }]);
+});
+
+test('capacidade forjada no corpo não libera tomada por Atendente comum', async () => {
+  conversation.status = 'open';
+  const response = await start({ body: {
+    assignedTo: 'operator', startService: true, canReplyAcrossAssignments: true,
+  } });
+  assert.equal(response.status, 409);
+  assertNoEffects();
+});
+
+test('Atendente compartilhado continua restrito à associação, unidade e conversa autorizadas', async () => {
+  for (const request of [{ unit: 'SBC' }, { instanceId: 'instance-sbc' }, { id: 'other-chat' }]) {
+    assert.ok([403, 404].includes((await start({ userId: 'shared-operator', ...request })).status));
+  }
+  instances[0].members.find((member) => member.userId === 'shared-operator').isActive = false;
+  assert.ok([403, 404].includes((await start({ userId: 'shared-operator' })).status));
   assertNoEffects();
 });
 

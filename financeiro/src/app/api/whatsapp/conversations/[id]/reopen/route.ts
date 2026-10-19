@@ -27,10 +27,12 @@ export async function PATCH(
     const isStartingPendingService = startService === true
       && assignedTo === userId
       && conversation.status === "waiting_response";
+    const sharedReply = conversation.authorizedInstance?.canReplyAcrossAssignments === true;
     if (
       conversation.assignedTo &&
       conversation.assignedTo !== userId &&
       conversation.authorizedInstance?.canManage !== true &&
+      !sharedReply &&
       !isStartingPendingService
     ) {
       return NextResponse.json({
@@ -62,8 +64,10 @@ export async function PATCH(
         where: {
           id,
           instanceId: conversation.instanceId,
-          assignedTo: conversation.assignedTo,
-          status: conversation.status,
+          ...(sharedReply ? {} : {
+            assignedTo: conversation.assignedTo,
+            status: conversation.status,
+          }),
         },
         data: dataUpdate,
       });

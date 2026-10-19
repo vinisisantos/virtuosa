@@ -50,7 +50,7 @@ export async function routeAliceHandoff(params: {
       defaultAssigneeId: true,
       user: { select: { id: true, name: true, role: true, unit: true, permissions: true, isActive: true } },
       members: {
-        where: { isActive: true, role: { in: ["MANAGER", "AGENT"] }, user: { isActive: true } },
+        where: { isActive: true, role: { in: ["MANAGER", "AGENT", "AGENT_SHARED"] }, user: { isActive: true } },
         select: { userId: true, role: true, user: { select: { id: true, name: true, role: true, unit: true, permissions: true, isActive: true } } },
       },
     },

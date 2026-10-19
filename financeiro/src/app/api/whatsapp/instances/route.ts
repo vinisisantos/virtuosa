@@ -31,6 +31,7 @@ export async function GET(req: Request) {
         channel: presentation.channels[instance.id] || "whatsapp",
         accessRole: instance.accessRole || "VIEWER",
         canReply: instance.canReply === true,
+        canReplyAcrossAssignments: instance.canReplyAcrossAssignments === true,
         canManage: instance.canManage === true,
         canReconnect: instance.canReconnect === true,
         isShared: instance.isShared === true,

@@ -11,12 +11,13 @@ import {
   selectSingleDefaultInboxInstance,
 } from "@/lib/whatsapp/instance-scope";
 
-export type WhatsAppInstanceAccessRole = "OWNER" | "MANAGER" | "AGENT" | "VIEWER" | "ADMIN";
+export type WhatsAppInstanceAccessRole = "OWNER" | "MANAGER" | "AGENT" | "AGENT_SHARED" | "VIEWER" | "ADMIN";
 
 export type WhatsAppInstanceAccess = {
   accessRole: WhatsAppInstanceAccessRole;
   canView: boolean;
   canReply: boolean;
+  canReplyAcrossAssignments: boolean;
   canManage: boolean;
   canReconnect: boolean;
   isShared: boolean;
@@ -24,11 +25,13 @@ export type WhatsAppInstanceAccess = {
 
 function accessForRole(role: WhatsAppInstanceAccessRole, isShared: boolean): WhatsAppInstanceAccess {
   const canManage = role === "OWNER" || role === "MANAGER" || role === "ADMIN";
-  const canReply = canManage || role === "AGENT";
+  const canReplyAcrossAssignments = role === "AGENT_SHARED";
+  const canReply = canManage || role === "AGENT" || canReplyAcrossAssignments;
   return {
     accessRole: role,
     canView: true,
     canReply,
+    canReplyAcrossAssignments,
     canManage,
     canReconnect: canManage,
     isShared,
@@ -44,7 +47,7 @@ function activeMembership(instance: any, userId?: string | null) {
 
 function memberRole(value?: string | null): WhatsAppInstanceAccessRole {
   const role = (value || "").trim().toUpperCase();
-  if (role === "MANAGER" || role === "AGENT" || role === "VIEWER") return role;
+  if (role === "MANAGER" || role === "AGENT" || role === "AGENT_SHARED" || role === "VIEWER") return role;
   return role === "OWNER" ? "OWNER" : "VIEWER";
 }
 

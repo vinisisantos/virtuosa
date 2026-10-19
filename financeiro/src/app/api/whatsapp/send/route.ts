@@ -385,7 +385,8 @@ export async function POST(req: Request) {
 
     if (userId) {
       const previousAssignee = conversation.assignedTo;
-      const mayTakeOver = dbInstance.canManage === true;
+      const sharedReply = dbInstance.canReplyAcrossAssignments === true;
+      const mayTakeOver = dbInstance.canManage === true || sharedReply;
       if (previousAssignee && previousAssignee !== userId && !mayTakeOver) {
         return NextResponse.json({
           error: `Esta conversa está em atendimento por ${conversation.assignedToName || "outro operador"}.`,
@@ -395,7 +396,9 @@ export async function POST(req: Request) {
       const claimed = await prisma.whatsAppConversation.updateMany({
         where: {
           id: conversation.id,
-          assignedTo: previousAssignee,
+          instanceId: dbInstance.id,
+          // Neste papel a atribuição identifica o operador, sem reservar o chat.
+          ...(sharedReply ? {} : { assignedTo: previousAssignee }),
         },
         data: {
           assignedTo: userId,
@@ -404,6 +407,9 @@ export async function POST(req: Request) {
         },
       });
       if (claimed.count !== 1) {
+        if (sharedReply) {
+          return NextResponse.json({ error: "Conversa não encontrada para este WhatsApp." }, { status: 404 });
+        }
         return NextResponse.json({
           error: "A conversa foi assumida por outra pessoa. Atualize a tela antes de responder.",
         }, { status: 409 });
@@ -417,13 +423,16 @@ export async function POST(req: Request) {
             action: previousAssignee ? "whatsapp_conversation_transferred" : "whatsapp_conversation_claimed",
             entityType: "WhatsAppConversation",
             entityId: conversation.id,
-            description: previousAssignee
+            description: sharedReply
+              ? `Resposta compartilhada iniciada por ${userName || "Operador"}`
+              : previousAssignee
               ? `Atendimento transferido de ${conversation.assignedToName || "outro operador"} para ${userName || "Operador"}`
               : `Atendimento assumido por ${userName || "Operador"}`,
             metadata: JSON.stringify({
               instanceId: dbInstance.id,
               previousAssignee: previousAssignee || null,
               nextAssignee: userId,
+              ...(sharedReply ? { sharedReply: true } : {}),
             }),
             unit: dbInstance.unit || null,
           },

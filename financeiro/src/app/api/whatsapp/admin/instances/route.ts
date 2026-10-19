@@ -374,7 +374,7 @@ export async function PATCH(req: Request) {
     }
 
     if (hasMembers) {
-      const allowedRoles = new Set(['OWNER', 'MANAGER', 'AGENT', 'VIEWER']);
+      const allowedRoles = new Set(['OWNER', 'MANAGER', 'AGENT', 'AGENT_SHARED', 'VIEWER']);
       if (!Array.isArray(members)) {
         return NextResponse.json({ error: 'Lista de membros inválida' }, { status: 400 });
       }
@@ -432,7 +432,7 @@ export async function PATCH(req: Request) {
         return NextResponse.json({ error: 'Selecione um responsável padrão que faça parte da equipe' }, { status: 400 });
       }
       const defaultMember = normalizedMembers.find((member: any) => member.userId === defaultAssigneeId);
-      if (defaultMember && !['OWNER', 'MANAGER', 'AGENT'].includes(defaultMember.role)) {
+      if (defaultMember && !['OWNER', 'MANAGER', 'AGENT', 'AGENT_SHARED'].includes(defaultMember.role)) {
         return NextResponse.json({ error: 'O responsável padrão precisa ter permissão para responder' }, { status: 400 });
       }
 

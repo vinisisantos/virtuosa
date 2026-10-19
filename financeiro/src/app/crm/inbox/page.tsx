@@ -185,8 +185,9 @@ interface CollaboratorInstance {
   unit: string;
   status: string;
   phone?: string | null;
-  accessRole?: "OWNER" | "MANAGER" | "AGENT" | "VIEWER" | "ADMIN";
+  accessRole?: "OWNER" | "MANAGER" | "AGENT" | "AGENT_SHARED" | "VIEWER" | "ADMIN";
   canReply?: boolean;
+  canReplyAcrossAssignments?: boolean;
   canManage?: boolean;
   canReconnect?: boolean;
   isShared?: boolean;

@@ -38,14 +38,14 @@ interface CollaboratorInstance {
   defaultAssigneeName?: string | null;
   members?: Array<{
     userId: string;
-    role: "OWNER" | "MANAGER" | "AGENT" | "VIEWER";
+    role: "OWNER" | "MANAGER" | "AGENT" | "AGENT_SHARED" | "VIEWER";
     userName: string;
     userEmail?: string;
     userUnit?: string;
   }>;
 }
 
-type TeamMemberRole = "OWNER" | "MANAGER" | "AGENT" | "VIEWER";
+type TeamMemberRole = "OWNER" | "MANAGER" | "AGENT" | "AGENT_SHARED" | "VIEWER";
 type TeamDraftMember = { userId: string; role: TeamMemberRole };
 
 interface WhatsAppStatusInstance extends CollaboratorInstance {
@@ -946,7 +946,7 @@ export default function WhatsAppSettingsPage() {
                               return (
                                 <div
                                   key={member.userId}
-                                  className="grid gap-2 rounded-lg border border-border bg-background p-3 sm:grid-cols-[minmax(0,1fr)_150px_auto] sm:items-center"
+                                  className="grid gap-2 rounded-lg border border-border bg-background p-3 sm:grid-cols-[minmax(0,1fr)_272px_auto] sm:items-center"
                                 >
                                   <div className="min-w-0">
                                     <p className="truncate text-sm font-medium text-foreground">{user?.name || "Usuário"}</p>
@@ -959,10 +959,11 @@ export default function WhatsAppSettingsPage() {
                                         ? { ...item, role: event.target.value as TeamMemberRole }
                                         : item
                                     )))}
-                                    className="h-10 rounded-lg border border-input bg-background px-3 text-sm"
+                                    className="h-10 min-w-0 w-full rounded-lg border border-input bg-background px-3 text-sm"
                                   >
                                     <option value="MANAGER">Gerente</option>
                                     <option value="AGENT">Atendente</option>
+                                    <option value="AGENT_SHARED">Atendente (todos os chats)</option>
                                     <option value="VIEWER">Somente visualização</option>
                                     {member.role === "OWNER" && <option value="OWNER">Proprietário técnico</option>}
                                   </select>
