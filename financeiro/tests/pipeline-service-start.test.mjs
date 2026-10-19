@@ -79,3 +79,87 @@ test("vincula o funil-base e move negócio legado sem pipeline para Em Atendimen
   assert.equal(clientUpdate.data.stage, "em_andamento");
   assert.equal(auditEntry.data.entityId, "deal-1");
 });
+
+test("iniciar na caixa Osasco preserva seu funil mesmo com contato global de SCS", async () => {
+  const clients = [
+    { id: "client-osasco", unit: "Osasco" },
+    { id: "client-scs", unit: "SCS" },
+  ];
+  const deals = clients.map((client) => ({
+    id: `deal-${client.id}`,
+    clientId: client.id,
+    clientName: "Mesmo telefone em duas unidades",
+    unit: client.unit,
+    pipelineId: `pipeline-${client.id}`,
+    stage: "novo_lead",
+    stageId: null,
+  }));
+  const operations = [];
+  const database = {
+    client: {
+      findMany: async ({ where }) => {
+        operations.push({ kind: "client-read", unit: where.unit });
+        return clients.filter((client) => client.unit === where.unit);
+      },
+      updateMany: async ({ where, data }) => {
+        const client = clients.find((candidate) => candidate.id === where.id);
+        operations.push({ kind: "client-update", unit: client?.unit });
+        assert.equal(data.stage, "em_andamento");
+        return { count: 1 };
+      },
+    },
+    salesPipeline: {
+      findMany: async ({ where }) => {
+        operations.push({ kind: "deal-read", unit: where.unit });
+        return deals.filter((deal) => deal.unit === where.unit && where.clientId.in.includes(deal.clientId));
+      },
+      updateMany: async ({ where, data }) => {
+        const deal = deals.find((candidate) => candidate.id === where.id);
+        operations.push({ kind: "deal-update", unit: deal?.unit });
+        assert.equal(data.stage, "em_atendimento");
+        return { count: 1 };
+      },
+    },
+    pipelineStage: {
+      findMany: async ({ where }) => {
+        const deal = deals.find((candidate) => candidate.pipelineId === where.pipelineId);
+        operations.push({ kind: "stage-read", unit: deal?.unit });
+        return [
+          { id: `stage-new-${deal.unit}`, name: "Novo Lead", position: 0 },
+          { id: `stage-service-${deal.unit}`, name: "Em Atendimento", position: 1 },
+        ];
+      },
+    },
+    pipeline: { findFirst: async () => { throw new Error("O negócio já possui funil"); } },
+    auditLog: {
+      create: async ({ data }) => {
+        operations.push({ kind: "audit-create", unit: data.unit });
+        return { id: "audit-osasco" };
+      },
+    },
+  };
+
+  const result = await advanceNewLeadToServiceStage({
+    database,
+    phone: "5511999999999",
+    contactUnit: "SCS",
+    instanceUnit: "Osasco",
+    userName: "Atendente Osasco",
+  });
+
+  assert.deepEqual(result, {
+    status: "moved",
+    dealId: "deal-client-osasco",
+    stageId: "stage-service-Osasco",
+    stageName: "Em Atendimento",
+    unit: "Osasco",
+  });
+  assert.deepEqual(operations, [
+    { kind: "client-read", unit: "Osasco" },
+    { kind: "deal-read", unit: "Osasco" },
+    { kind: "stage-read", unit: "Osasco" },
+    { kind: "deal-update", unit: "Osasco" },
+    { kind: "client-update", unit: "Osasco" },
+    { kind: "audit-create", unit: "Osasco" },
+  ]);
+});

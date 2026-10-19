@@ -21,7 +21,8 @@ export function resolveServiceStartUnit(
   contactUnit?: string | null,
   instanceUnit?: string | null,
 ) {
-  for (const value of [contactUnit, instanceUnit]) {
+  // O contato é global e pode manter a unidade histórica de outra caixa.
+  for (const value of [instanceUnit, contactUnit]) {
     const canonicalUnit = COMMERCIAL_UNITS.get((value || "").trim().toLocaleLowerCase("pt-BR"));
     if (canonicalUnit) return canonicalUnit;
   }

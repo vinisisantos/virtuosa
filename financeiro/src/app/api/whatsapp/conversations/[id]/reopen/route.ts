@@ -18,14 +18,20 @@ export async function PATCH(
     }
 
     const body = await req.json().catch(() => ({}));
+    const { assignedTo, startService } = body;
     const conversation = await findAuthorizedConversation(req, id, "reply");
     if (!conversation) {
       return NextResponse.json({ error: "Conversa não encontrada ou sem permissão" }, { status: 404 });
     }
+    // A distribuição pode indicar um responsável antes de alguém iniciar.
+    const isStartingPendingService = startService === true
+      && assignedTo === userId
+      && conversation.status === "waiting_response";
     if (
       conversation.assignedTo &&
       conversation.assignedTo !== userId &&
-      conversation.authorizedInstance?.canManage !== true
+      conversation.authorizedInstance?.canManage !== true &&
+      !isStartingPendingService
     ) {
       return NextResponse.json({
         error: `Esta conversa está em atendimento por ${conversation.assignedToName || "outro operador"}.`,
@@ -33,7 +39,6 @@ export async function PATCH(
     }
 
     const userName = req.headers.get("x-user-name") || "Operador";
-    const { assignedTo, startService } = body;
     if (assignedTo && assignedTo !== userId) {
       return NextResponse.json({ error: "Não é permitido atribuir a conversa em nome de outra pessoa" }, { status: 403 });
     }
@@ -54,7 +59,12 @@ export async function PATCH(
       && (conversation.status === "waiting_response" || !conversation.assignedTo);
     const result = await prisma.$transaction(async (tx) => {
       const updated = await tx.whatsAppConversation.update({
-        where: { id },
+        where: {
+          id,
+          instanceId: conversation.instanceId,
+          assignedTo: conversation.assignedTo,
+          status: conversation.status,
+        },
         data: dataUpdate,
       });
       const pipelineTransition = shouldAdvancePipeline
@@ -75,6 +85,11 @@ export async function PATCH(
       pipelineTransition: result.pipelineTransition,
     });
   } catch (error: any) {
+    if (error?.code === "P2025") {
+      return NextResponse.json({
+        error: "A conversa foi atualizada por outra pessoa. Atualize a tela antes de iniciar o atendimento.",
+      }, { status: 409 });
+    }
     console.error('[Reopen API Error]:', error);
     return NextResponse.json({ error: 'Erro interno', details: error.message }, { status: 500 });
   }

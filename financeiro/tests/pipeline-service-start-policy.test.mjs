@@ -19,9 +19,16 @@ test("normaliza o nome canônico da etapa de atendimento", () => {
   assert.equal(normalizedPipelineStageName("Em Atendimento"), "em_atendimento");
 });
 
-test("prioriza a unidade do contato e usa a instância como fallback", () => {
-  assert.equal(resolveServiceStartUnit("SCS", "Osasco"), "SCS");
+test("prioriza a unidade canônica da instância sobre o contato global", () => {
+  assert.equal(resolveServiceStartUnit("SCS", "Osasco"), "Osasco");
+  assert.equal(resolveServiceStartUnit("Osasco", " sbc "), "SBC");
   assert.equal(resolveServiceStartUnit(null, "SBC"), "SBC");
+});
+
+test("usa o contato somente quando a instância não identifica uma unidade comercial", () => {
+  assert.equal(resolveServiceStartUnit("SCS", null), "SCS");
+  assert.equal(resolveServiceStartUnit(" osasco ", "Todas"), "Osasco");
+  assert.equal(resolveServiceStartUnit("SBC", "Barueri"), "SBC");
   assert.equal(resolveServiceStartUnit(null, "Todas"), null);
   assert.equal(resolveServiceStartUnit("Barueri", "Todas"), null);
 });
