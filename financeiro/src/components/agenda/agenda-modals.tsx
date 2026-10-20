@@ -4,10 +4,12 @@ import { STATUS_COLORS, cardS, btnPrimary } from './agenda-constants';
 import { DatePicker } from '@/components/ui/date-picker';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 import { EvaluationProcedureField } from '@/components/evaluation-procedure-field';
+import { evaluationProcedureDraft } from '@/lib/evaluation-procedure-draft';
+import { normalizeAppointmentClientName } from '@/lib/appointment-client-name';
 import { isEvaluationAppointment, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
 
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
-interface CrmClient { id: string; name: string; phone: string | null; }
+interface CrmClient { id: string; name: string; phone: string | null; campaignName?: string | null; unit?: string; }
 interface ClientPackage { id: string; services: string; totalSessions: number; completedSessions: number; status: string; }
 interface SystemUser { name: string; role: string; }
 
@@ -34,6 +36,7 @@ interface AppointmentModalProps {
 export function AppointmentModal({ editingId, form, setForm, profissionais, canMultiUnit, catalogServices, crmClients, onSave, onDelete, onDarBaixa, canDarBaixa, canExcluirFinalizado, onClose }: AppointmentModalProps) {
   /* ── Autocomplete state ── */
   const [clientOpen, setClientOpen] = useState(false);
+  const procedureEditedRef = useRef(false);
   const [procOpen, setProcOpen] = useState(false);
   const [clientPkgs, setClientPkgs] = useState<ClientPackage[]>([]);
   const [loadingPkgs, setLoadingPkgs] = useState(false);
@@ -174,8 +177,15 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
           {/* ── CLIENTE (full width, smart autocomplete) ── */}
           <div style={{ gridColumn: '1 / -1' }}>
             <PatientAutocomplete
+              nameValue={form.clientName}
+              requireAppointmentName
+              unit={form.unit}
               onSelect={(patient: PatientData) => {
-                setForm({ ...form, clientName: patient.name, clientPhone: patient.phone || '' });
+                const client = crmClients.find((candidate) => candidate.id === patient.id && (!candidate.unit || candidate.unit === form.unit));
+                const draft = !procedureEditedRef.current && !form.evaluationProcedure
+                  ? evaluationProcedureDraft({ campaignName: patient.unit === form.unit ? patient.campaignName || client?.campaignName : null })
+                  : form.evaluationProcedure;
+                setForm({ ...form, clientName: patient.name, clientPhone: patient.phone || '', evaluationProcedure: draft });
                 fetchClientPkgs(patient.name);
               }}
               onClear={() => { setForm({ ...form, clientName: '', clientPhone: '' }); setClientPkgs([]); }}
@@ -187,11 +197,14 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
             />
           </div>
 
+          {form.clientName && !normalizeAppointmentClientName(form.clientName) && (
+            <p role="status" className="col-span-full break-words text-xs text-amber-700 dark:text-amber-300">Informe o nome da pessoa. O telefone não pode ser usado como nome.</p>
+          )}
           {usesEvaluationProcedure(form.unit) && isEvaluationAppointment(form.procedimento) && (
             <div style={{ gridColumn: '1 / -1', minWidth: 0 }}>
               <EvaluationProcedureField
                 value={form.evaluationProcedure || ''}
-                onChange={(evaluationProcedure) => setForm({ ...form, evaluationProcedure })}
+                onChange={(evaluationProcedure) => { procedureEditedRef.current = true; setForm({ ...form, evaluationProcedure }); }}
                 required={!editingId}
                 clientPhone={form.clientPhone}
               />

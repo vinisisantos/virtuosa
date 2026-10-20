@@ -16,6 +16,8 @@ import {
   isNoShowEvaluationStatus,
   type EvaluationStatus,
 } from "@/lib/evaluation-status";
+import { AppointmentClientNameError, requireAppointmentClientName } from "@/lib/appointment-client-name";
+import { syncEvaluationClientName } from "@/lib/evaluation-client-name-sync";
 import { prisma } from "@/lib/db";
 import { canManageAllEvaluations, isOwnEvaluation } from "@/lib/evaluation-access";
 import { saoPauloDayRange } from "@/lib/date-filter";
@@ -470,6 +472,8 @@ export async function PATCH(req: NextRequest) {
     const submittedSaleItems = body.saleItems;
     const editingClosedPackage = body.editClosedPackage === true;
     const rescheduled = body.rescheduled === true;
+    const hasEvaluationClientName = Object.hasOwn(body, "evaluationClientName");
+    const evaluationClientName = hasEvaluationClientName ? requireAppointmentClientName(body.evaluationClientName) : null;
     const hasEvaluationProcedure = Object.hasOwn(body, "evaluationProcedure");
     const evaluationProcedure = normalizeEvaluationProcedure(body.evaluationProcedure);
 
@@ -477,7 +481,7 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Informe a avaliação." }, { status: 400 });
     }
 
-    if (!hasStatus && !hasStartTime && !hasAssigneeUserId) {
+    if (!hasStatus && !hasStartTime && !hasAssigneeUserId && !hasEvaluationClientName && !hasEvaluationProcedure) {
       return NextResponse.json(
         { error: "Informe o status, a nova data ou a responsável pela avaliação." },
         { status: 400 },
@@ -492,9 +496,9 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Status de avaliação inválido." }, { status: 400 });
     }
 
-    if (hasEvaluationProcedure && (status !== "confirmado" || !evaluationProcedure)) {
+    if (hasEvaluationProcedure && !evaluationProcedure) {
       return NextResponse.json(
-        { error: "Informe o tratamento de interesse ao confirmar a avaliação (até 160 caracteres)." },
+        { error: "Informe o tratamento de interesse da avaliação (até 160 caracteres)." },
         { status: 400 },
       );
     }
@@ -557,8 +561,10 @@ export async function PATCH(req: NextRequest) {
       }
 
       const scheduleChanged = Boolean(requestedStartTime && requestedStartTime.getTime() !== latest.startTime.getTime());
+      if (scheduleChanged) requireAppointmentClientName(evaluationClientName ?? latest.clientName);
       const shouldResetConfirmation = scheduleChanged && !hasStatus && isConfirmedEvaluationStatus(latest.status);
       const updateData: Prisma.AgendamentoUpdateInput = {};
+      if (evaluationClientName) updateData.clientName = evaluationClientName;
 
       let assignedUserName: string | null = null;
       if (hasAssigneeUserId) {
@@ -589,12 +595,16 @@ export async function PATCH(req: NextRequest) {
         data: updateData,
         include: { profissional: true },
       });
+      if (evaluationClientName && evaluationClientName !== latest.clientName) {
+        await syncEvaluationClientName(tx, { dealId: getPipelineDealIdFromEvaluationNotes(latest.notes),
+          unit: latest.unit, clientName: evaluationClientName });
+      }
       const groupNotice = await enqueueEvaluationGroupStatusNotice(tx, {
         appointment: savedEvaluation,
         previousStatus: latest.status,
         previousStartTime: latest.startTime,
       });
-      if (savedEvaluation.status === "confirmado" && groupNotice.status === "skipped" && groupNotice.reason === "missing_procedure") {
+      if (hasStatus && status === "confirmado" && savedEvaluation.status === "confirmado" && groupNotice.status === "skipped" && groupNotice.reason === "missing_procedure") {
         // Throw instead of returning a response so the attempted status update is rolled back.
         throw new EvaluationProcedureRequiredError("Confirme o procedimento de interesse antes de salvar a confirmação e gerar o aviso ao grupo.");
       }
@@ -616,7 +626,9 @@ export async function PATCH(req: NextRequest) {
         });
       }
 
-      const eventType = hasAssigneeUserId && !hasStatus && !hasStartTime
+      const eventType = !hasStatus && !hasStartTime && !hasAssigneeUserId
+        ? "details_changed"
+        : hasAssigneeUserId && !hasStatus && !hasStartTime
         ? "assignee_changed"
         : rescheduled
         ? "no_show_rescheduled"
@@ -646,6 +658,7 @@ export async function PATCH(req: NextRequest) {
           details: JSON.stringify({
             eventType,
             ...(hasStatus ? { from: latest.status, to: savedEvaluation.status, requestedStatus: status } : {}),
+            ...(hasEvaluationClientName ? { clientNameFrom: latest.clientName, clientNameTo: savedEvaluation.clientName } : {}),
             ...(hasEvaluationProcedure ? {
               evaluationProcedureFrom: latest.evaluationProcedure || null,
               evaluationProcedureTo: savedEvaluation.evaluationProcedure,
@@ -723,6 +736,7 @@ export async function PATCH(req: NextRequest) {
     const [enriched] = await enrichEvaluationsWithPipelineData([updated]);
     return NextResponse.json({ evaluation: enriched, noShowNotification, rescheduleNotification, groupNotice });
   } catch (error) {
+    if (error instanceof AppointmentClientNameError) return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     if (error instanceof EvaluationProcedureRequiredError) {
       return NextResponse.json(
         { error: error.message, code: "EVALUATION_PROCEDURE_REQUIRED" },

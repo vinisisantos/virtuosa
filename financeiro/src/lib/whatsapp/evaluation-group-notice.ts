@@ -3,8 +3,9 @@ import { Prisma, type WhatsAppEvaluationGroupNotice } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { evaluationGroupConfirmationSourcePredicate, evaluationGroupRescheduleSourcePredicate } from "@/lib/whatsapp/evaluation-group-confirmation-source";
 import {
-  EVALUATION_GROUP_INSTANCE_ID,
-  EVALUATION_GROUP_SETTING_KEY,
+  EVALUATION_GROUP_UNIT_CONFIGS,
+  getEvaluationGroupUnitConfig,
+  getEvaluationGroupUnitConfigByInstance,
   isEvaluationGroupJid,
   parseEvaluationGroupConfig,
 } from "@/lib/whatsapp/evaluation-group-notice-config";
@@ -15,6 +16,7 @@ import { evaluationGroupSnapshot as snapshotOf, isActiveGroupEvaluation as isNew
 
 const LEASE_MS = 2 * 60_000;
 const MAX_PRE_SEND_ATTEMPTS = 3;
+const INSTANCE_IDS = EVALUATION_GROUP_UNIT_CONFIGS.map(scope => scope.instanceId);
 
 type EnqueueDatabase = Pick<Prisma.TransactionClient, "appSetting" | "whatsAppEvaluationGroupNotice">;
 type DispatchDatabase = Pick<Prisma.TransactionClient,
@@ -31,15 +33,16 @@ export async function enqueueEvaluationGroupNotice(
   now = new Date(),
 ): Promise<string | null> {
   const { appointment } = params;
-  if (!params.isNew || (params.sourceInstanceId && params.sourceInstanceId !== EVALUATION_GROUP_INSTANCE_ID)
+  const scope = getEvaluationGroupUnitConfig(appointment.unit);
+  if (!scope || !params.isNew || (params.sourceInstanceId && params.sourceInstanceId !== scope.instanceId)
     || !isNewEvaluation(appointment, now)) return null;
   const snapshot = snapshotOf(appointment);
   if (!snapshot) return null;
 
   const setting = await database.appSetting.findUnique({
-    where: { key: EVALUATION_GROUP_SETTING_KEY }, select: { value: true },
+    where: { key: scope.settingKey }, select: { value: true },
   });
-  const config = parseEvaluationGroupConfig(setting?.value);
+  const config = parseEvaluationGroupConfig(setting?.value, scope.unit);
   if (!config?.enabled || appointment.createdAt < new Date(config.activatedAt)) return null;
 
   const notice = await database.whatsAppEvaluationGroupNotice.upsert({
@@ -63,15 +66,16 @@ export async function enqueueEvaluationGroupNotice(
 }
 
 export function buildEvaluationGroupNoticeMessage(notice: {
-  clientName: string; clientPhone: string; evaluationProcedure: string; startTime: Date; eventType?: string; previousStartTime?: Date | null;
+  clientName: string; clientPhone: string; evaluationProcedure: string; startTime: Date; eventType?: string; previousStartTime?: Date | null; instanceId?: string;
 }) {
+  const unit = getEvaluationGroupUnitConfigByInstance(notice.instanceId)?.unit ?? "SBC";
   const date = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(notice.startTime);
   const time = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
   }).format(notice.startTime);
   return [
-    notice.eventType === "rescheduled" ? "🔄 *Avaliação reagendada — SBC*" : notice.eventType === "cancelled" ? "❌ *Avaliação desmarcada — SBC*"
-      : notice.eventType === "confirmed" ? "✅ *Avaliação confirmada — SBC*" : "📅 *Nova avaliação — SBC*", "",
+    notice.eventType === "rescheduled" ? `🔄 *Avaliação reagendada — ${unit}*` : notice.eventType === "cancelled" ? `❌ *Avaliação desmarcada — ${unit}*`
+      : notice.eventType === "confirmed" ? `✅ *Avaliação confirmada — ${unit}*` : `📅 *Nova avaliação — ${unit}*`, "",
     `Nome: ${notice.clientName}`,
     `Telefone: ${notice.clientPhone}`,
     `Procedimento: ${notice.evaluationProcedure}`,
@@ -89,6 +93,8 @@ export function evaluationGroupNoticeMatchesAppointment(
   now: Date,
 ) {
   if (!appointment) return false;
+  const scope = getEvaluationGroupUnitConfigByInstance(notice.instanceId);
+  if (!scope || scope.unit !== appointment.unit) return false;
   if (notice.eventType === "cancelled") {
     if (!isFutureGroupEvaluation(appointment, now) || !isGroupEvaluationCancelled(appointment.status)
       || notice.eventKey !== `cancelled:${appointment.startTime.toISOString()}`) return false;
@@ -132,7 +138,7 @@ export async function dispatchEvaluationGroupNotice(
     UPDATE "WhatsAppEvaluationGroupNotice"
     SET "state" = 'processing', "claimToken" = ${claimToken}, "claimedAt" = ${now},
         "attempts" = "attempts" + 1, "updatedAt" = ${now}
-    WHERE "id" = ${id} AND "instanceId" = ${EVALUATION_GROUP_INSTANCE_ID}
+    WHERE "id" = ${id} AND "instanceId" IN (${Prisma.join(INSTANCE_IDS)})
       AND "sendStartedAt" IS NULL AND "attempts" < ${MAX_PRE_SEND_ATTEMPTS}
       AND (("state" = 'queued' AND "availableAt" <= ${now})
         OR ("state" = 'processing' AND "claimedAt" < ${stale}))
@@ -150,10 +156,12 @@ export async function dispatchEvaluationGroupNotice(
   };
 
   try {
+    const scope = getEvaluationGroupUnitConfigByInstance(notice.instanceId);
+    if (!scope) return finish("cancelled", "Instância fora do escopo aprovado.");
     const setting = await database.appSetting.findUnique({
-      where: { key: EVALUATION_GROUP_SETTING_KEY }, select: { value: true },
+      where: { key: scope.settingKey }, select: { value: true },
     });
-    const config = parseEvaluationGroupConfig(setting?.value);
+    const config = parseEvaluationGroupConfig(setting?.value, scope.unit);
     if (!config?.enabled || config.instanceId !== notice.instanceId || config.groupJid !== notice.groupJid
       || config.activatedAt !== notice.configActivatedAt.toISOString()) {
       return finish("cancelled", "Configuração desativada ou destino alterado antes do envio.");
@@ -179,10 +187,10 @@ export async function dispatchEvaluationGroupNotice(
       return finish("cancelled", "Avaliação excluída, alterada, encerrada ou remarcada antes do envio.");
     }
     const instance = await database.whatsAppInstance.findUnique({
-      where: { id: EVALUATION_GROUP_INSTANCE_ID },
+      where: { id: scope.instanceId },
       select: { id: true, name: true, unit: true, status: true, provider: true },
     });
-    if (!instance || instance.unit !== "SBC" || instance.provider !== "evolution") {
+    if (!instance || instance.unit !== scope.unit || instance.provider !== "evolution") {
       return finish("cancelled", "Instância fora do escopo aprovado.");
     }
     if (instance.status !== "connected") throw new Error("PRE_SEND_UNAVAILABLE");
@@ -200,10 +208,10 @@ export async function dispatchEvaluationGroupNotice(
       SET "state" = 'sending', "sendStartedAt" = ${sendAt}, "updatedAt" = ${sendAt}
       WHERE notice."id" = ${id} AND notice."state" = 'processing'
         AND notice."claimToken" = ${claimToken} AND notice."sendStartedAt" IS NULL
-        AND EXISTS (SELECT 1 FROM "AppSetting" WHERE "key" = ${EVALUATION_GROUP_SETTING_KEY}
+        AND EXISTS (SELECT 1 FROM "AppSetting" WHERE "key" = ${scope.settingKey}
           AND "value" = ${setting!.value})
         AND EXISTS (SELECT 1 FROM "Agendamento" WHERE "id" = ${notice.appointmentId}
-          AND "unit" = 'SBC' AND "procedimento" = ${appointment!.procedimento}
+          AND "unit" = ${scope.unit} AND "procedimento" = ${appointment!.procedimento}
           AND "clientName" = ${appointment!.clientName} AND "clientPhone" = ${appointment!.clientPhone}
           AND "evaluationProcedure" = ${appointment!.evaluationProcedure}
           AND "startTime" = ${notice.startTime} AND "createdAt" = ${notice.appointmentCreatedAt}
@@ -212,8 +220,8 @@ export async function dispatchEvaluationGroupNotice(
             OR (notice."eventType" = 'confirmed' AND "status" = 'confirmado')
             OR (notice."eventType" = 'cancelled' AND "status" = ${appointment!.status}))
           AND "startTime" > ${sendAt})
-        AND EXISTS (SELECT 1 FROM "WhatsAppInstance" WHERE "id" = ${EVALUATION_GROUP_INSTANCE_ID}
-          AND "name" = ${instance.name} AND "unit" = 'SBC' AND "provider" = 'evolution' AND "status" = 'connected')
+        AND EXISTS (SELECT 1 FROM "WhatsAppInstance" WHERE "id" = ${scope.instanceId}
+          AND "name" = ${instance.name} AND "unit" = ${scope.unit} AND "provider" = 'evolution' AND "status" = 'connected')
         AND ${["confirmed", "cancelled", "rescheduled"].includes(notice.eventType) ? (notice.eventType === "rescheduled"
           ? evaluationGroupRescheduleSourcePredicate : evaluationGroupConfirmationSourcePredicate)({
           appointmentId: notice.appointmentId, startTime: notice.eventType === "rescheduled" ? notice.previousStartTime! : notice.startTime,
@@ -270,7 +278,7 @@ export async function recoverEvaluationGroupNotices(
   await database.$executeRaw`
     WITH stale AS (
       SELECT id FROM "WhatsAppEvaluationGroupNotice"
-      WHERE "instanceId" = ${EVALUATION_GROUP_INSTANCE_ID} AND "state" = 'sending'
+      WHERE "instanceId" IN (${Prisma.join(INSTANCE_IDS)}) AND "state" = 'sending'
         AND "sendStartedAt" < ${stale} AND "claimedAt" < ${stale}
       ORDER BY "claimedAt" ASC FOR UPDATE SKIP LOCKED LIMIT 20
     )
@@ -282,7 +290,7 @@ export async function recoverEvaluationGroupNotices(
   await database.$executeRaw`
     WITH stale AS (
       SELECT id FROM "WhatsAppEvaluationGroupNotice"
-      WHERE "instanceId" = ${EVALUATION_GROUP_INSTANCE_ID} AND "state" = 'processing'
+      WHERE "instanceId" IN (${Prisma.join(INSTANCE_IDS)}) AND "state" = 'processing'
         AND "claimedAt" < ${stale} AND "sendStartedAt" IS NULL AND "attempts" >= ${MAX_PRE_SEND_ATTEMPTS}
       ORDER BY "claimedAt" ASC FOR UPDATE SKIP LOCKED LIMIT 20
     )
@@ -292,7 +300,7 @@ export async function recoverEvaluationGroupNotices(
     FROM stale WHERE notice.id = stale.id
   `;
   const notices = await database.whatsAppEvaluationGroupNotice.findMany({
-    where: { instanceId: EVALUATION_GROUP_INSTANCE_ID, sendStartedAt: null, attempts: { lt: MAX_PRE_SEND_ATTEMPTS },
+    where: { instanceId: { in: INSTANCE_IDS }, sendStartedAt: null, attempts: { lt: MAX_PRE_SEND_ATTEMPTS },
       OR: [{ state: "queued", availableAt: { lte: now } }, { state: "processing", claimedAt: { lt: stale } }] },
     orderBy: { createdAt: "asc" }, take: Math.max(1, Math.min(params.limit ?? 2, 3)), select: { id: true },
   });

@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { enqueueEvaluationGroupReschedule } from "@/lib/whatsapp/evaluation-group-reschedule";
 import { Prisma } from "@prisma/client";
+import { normalizeAppointmentClientName } from "@/lib/appointment-client-name";
 import { evaluationGroupConfirmationSourcePredicate } from "@/lib/whatsapp/evaluation-group-confirmation-source";
 import {
-  EVALUATION_GROUP_SETTING_KEY, normalizeEvaluationGroupPhone, normalizeEvaluationGroupProcedure,
-  normalizeEvaluationGroupText, parseEvaluationGroupConfig,
+  getEvaluationGroupUnitConfig, normalizeEvaluationGroupPhone, normalizeEvaluationGroupProcedure, parseEvaluationGroupConfig,
 } from "@/lib/whatsapp/evaluation-group-notice-config";
 import {
   isActiveGroupEvaluation, isFutureGroupEvaluation, isGroupEvaluationCancelled,
@@ -26,6 +26,8 @@ export type EvaluationGroupConfirmationResult = {
 async function enqueueStatusNotice(database: Database, params: Params, eventType: "confirmed" | "cancelled", now: Date) {
   const { appointment, previousStatus } = params;
   const skip = (reason: EvaluationGroupConfirmationSkipReason): EvaluationGroupConfirmationResult => ({ status: "skipped", reason });
+  const scope = getEvaluationGroupUnitConfig(appointment.unit);
+  if (!scope) return skip("not_future_evaluation");
   if (eventType === "confirmed") {
     if (previousStatus === "confirmado" && !params.recoverMissingNotice) return skip("unchanged");
     if (appointment.status !== "confirmado") return skip("not_confirmation");
@@ -36,9 +38,9 @@ async function enqueueStatusNotice(database: Database, params: Params, eventType
     if (!isFutureGroupEvaluation(appointment, now)) return skip("not_future_evaluation");
   }
   const setting = await database.appSetting.findUnique({
-    where: { key: EVALUATION_GROUP_SETTING_KEY }, select: { value: true },
+    where: { key: scope.settingKey }, select: { value: true },
   });
-  const config = parseEvaluationGroupConfig(setting?.value);
+  const config = parseEvaluationGroupConfig(setting?.value, scope.unit);
   const activatedAt = eventType === "confirmed" ? config?.confirmationsActivatedAt : config?.cancellationsActivatedAt;
   if (!config?.enabled || !activatedAt || new Date(activatedAt) > now) return skip("disabled");
   const source = await database.$queryRaw<{ eligible: boolean }[]>(Prisma.sql`SELECT ${evaluationGroupConfirmationSourcePredicate({
@@ -51,7 +53,7 @@ async function enqueueStatusNotice(database: Database, params: Params, eventType
     where: { appointmentId_eventKey: { appointmentId: appointment.id, eventKey } }, select: { id: true, state: true },
   });
   if (existing) return { status: "already_recorded", noticeId: existing.id, state: existing.state } satisfies EvaluationGroupConfirmationResult;
-  const clientName = normalizeEvaluationGroupText(appointment.clientName, 200);
+  const clientName = normalizeAppointmentClientName(appointment.clientName);
   const clientPhone = normalizeEvaluationGroupPhone(appointment.clientPhone);
   const evaluationProcedure = normalizeEvaluationGroupProcedure(appointment.evaluationProcedure);
   if (!clientName) return skip("missing_name");

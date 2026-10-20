@@ -5,13 +5,16 @@ import {
   normalizeEvaluationProcedure,
   usesEvaluationProcedure,
 } from '../src/lib/evaluation-procedure.ts';
-import { EVALUATION_GROUP_INSTANCE_ID } from '../src/lib/whatsapp/evaluation-group-notice-config.ts';
+import { EVALUATION_GROUP_INSTANCE_ID, getEvaluationGroupUnitConfig } from '../src/lib/whatsapp/evaluation-group-notice-config.ts';
 
-test('procedimento adicional fica restrito a SBC manual e Leads - Paloma', () => {
+test('procedimento adicional fica restrito às unidades e caixas autorizadas', () => {
   assert.equal(usesEvaluationProcedure('SBC'), true);
   assert.equal(usesEvaluationProcedure('SBC', EVALUATION_GROUP_INSTANCE_ID), true);
   assert.equal(usesEvaluationProcedure('SBC', 'outra-caixa'), false);
   assert.equal(usesEvaluationProcedure('Osasco', EVALUATION_GROUP_INSTANCE_ID), false);
+  assert.equal(usesEvaluationProcedure('Osasco'), true);
+  assert.equal(usesEvaluationProcedure('Osasco', getEvaluationGroupUnitConfig('Osasco').instanceId), true);
+  assert.equal(usesEvaluationProcedure('SBC', getEvaluationGroupUnitConfig('Osasco').instanceId), false);
   assert.equal(usesEvaluationProcedure('SCS'), false);
 });
 

@@ -2,13 +2,13 @@ import { isEvaluationGroupJid, isEvaluationGroupName } from "./evaluation-group-
 
 export type EvaluationNoticeGroup = { id: string; name: string; size: number | null; announce: boolean };
 
-export function evaluationNoticeGroups(payload: unknown): EvaluationNoticeGroup[] {
+export function evaluationNoticeGroups(payload: unknown, unit: string = "SBC"): EvaluationNoticeGroup[] {
   if (!Array.isArray(payload)) throw new Error("Resposta inválida ao consultar o grupo na Evolution.");
   const groups = new Map<string, EvaluationNoticeGroup>();
   for (const value of payload) {
     if (!value || typeof value !== "object") continue;
     const group = value as Record<string, unknown>;
-    if (!isEvaluationGroupJid(group.id) || !isEvaluationGroupName(group.subject)) continue;
+    if (!isEvaluationGroupJid(group.id) || !isEvaluationGroupName(group.subject, unit)) continue;
     // Outros grupos, descrições e participantes nunca são expostos ao navegador.
     groups.set(group.id, {
       id: group.id, name: group.subject.trim(),
@@ -19,7 +19,7 @@ export function evaluationNoticeGroups(payload: unknown): EvaluationNoticeGroup[
   return [...groups.values()];
 }
 
-export async function fetchEvaluationNoticeGroups(instanceName: string, fetcher = fetch) {
+export async function fetchEvaluationNoticeGroups(instanceName: string, fetcher = fetch, unit: string = "SBC") {
   const url = process.env.EVOLUTION_API_URL?.replace(/\/+$/, "");
   const apiKey = process.env.EVOLUTION_API_KEY;
   if (!url || !apiKey) throw new Error("A conexão com a Evolution não está configurada neste ambiente.");
@@ -29,8 +29,8 @@ export async function fetchEvaluationNoticeGroups(instanceName: string, fetcher 
       headers: { apikey: apiKey }, cache: "no-store", signal: AbortSignal.timeout(12000),
     });
   } catch {
-    throw new Error("Não foi possível consultar o grupo agora. Verifique a conexão da Leads - Paloma e tente novamente.");
+    throw new Error("Não foi possível consultar o grupo agora. Verifique a conexão da caixa e tente novamente.");
   }
   if (!response.ok) throw new Error("A Evolution não confirmou a consulta do grupo. Nenhuma configuração foi alterada.");
-  return evaluationNoticeGroups(await response.json());
+  return evaluationNoticeGroups(await response.json(), unit);
 }

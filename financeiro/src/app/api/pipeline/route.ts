@@ -1,5 +1,6 @@
 import { after, NextRequest, NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
+import { AppointmentClientNameError, requireAppointmentClientName } from '@/lib/appointment-client-name';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { parseDateTimeRange } from '@/lib/date-filter';
@@ -48,7 +49,7 @@ import { suppressWhatsAppCallbacksForClosedPackage } from '@/lib/whatsapp/callba
 import { CommercialError, refreshCommercialPauses, saveCommercialClassification } from '@/lib/pipeline/commercial-service';
 import { pausesCommercialCallbacks } from '@/lib/pipeline/commercial-status';
 import { dispatchEvaluationGroupNotice } from '@/lib/whatsapp/evaluation-group-notice';
-import { EVALUATION_GROUP_INSTANCE_ID } from '@/lib/whatsapp/evaluation-group-notice-config';
+import { getEvaluationGroupUnitConfig } from '@/lib/whatsapp/evaluation-group-notice-config';
 import { getInstancesForRequest } from '@/lib/whatsapp/instance-resolver';
 
 async function resolveEvaluationGroupSource(params: {
@@ -59,8 +60,9 @@ async function resolveEvaluationGroupSource(params: {
   clientPhone?: string | null;
 }) {
   const instanceId = typeof params.instanceId === 'string' ? params.instanceId : null;
-  if (params.unit !== 'SBC') return instanceId;
-  if (instanceId !== EVALUATION_GROUP_INSTANCE_ID) {
+  const scope = getEvaluationGroupUnitConfig(params.unit);
+  if (!scope) return instanceId;
+  if (instanceId !== scope.instanceId) {
     if (params.conversationId && !instanceId) {
       throw new EvaluationSchedulingError('Informe a caixa de origem do agendamento');
     }
@@ -365,6 +367,7 @@ export async function POST(req: NextRequest) {
       evaluationStartTime,
       evaluationAssigneeUserId,
       evaluationDurationMinutes,
+      evaluationClientName,
       evaluationProcedure,
       whatsappConversationId,
       whatsappInstanceId,
@@ -373,7 +376,11 @@ export async function POST(req: NextRequest) {
       forceScheduleConflict,
     } = body;
 
-    const resolvedClientName = typeof clientName === 'string' ? clientName.trim() : '';
+    const requestedEvaluationClientName = Object.hasOwn(body, 'evaluationClientName')
+      ? requireAppointmentClientName(evaluationClientName) : null;
+    const resolvedClientName = evaluationStartTime
+      ? requireAppointmentClientName(requestedEvaluationClientName ?? clientName)
+      : typeof clientName === 'string' ? clientName.trim() : '';
     if (!resolvedClientName) {
       return NextResponse.json({ error: 'Informe o nome do negócio' }, { status: 400 });
     }
@@ -565,7 +572,7 @@ export async function POST(req: NextRequest) {
         const saved = await tx.salesPipeline.update({
           where: { id: existingEntry.id },
           data: {
-            clientName: existingEntry.clientName || resolvedClientName,
+            clientName: evaluationStartTime ? resolvedClientName : existingEntry.clientName || resolvedClientName,
             stage: effectiveStage,
             stageId: placement.stageId,
             pipelineId: placement.pipelineId,
@@ -584,6 +591,9 @@ export async function POST(req: NextRequest) {
             } : {}),
           },
         });
+        if (evaluationStartTime && saved.clientName !== existingEntry.clientName && saved.clientId) {
+          await tx.client.updateMany({ where: { id: saved.clientId, unit: saved.unit }, data: { name: saved.clientName } });
+        }
         if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
         const appointment = evaluationStartTime
           ? await upsertPipelineEvaluationAppointment({
@@ -786,6 +796,7 @@ export async function POST(req: NextRequest) {
       rescheduleNotification: { status: 'not_applicable' as const },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof AppointmentClientNameError) return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     if (error instanceof EvaluationSchedulingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
@@ -821,6 +832,7 @@ export async function PUT(req: NextRequest) {
       evaluationStartTime,
       evaluationAssigneeUserId,
       evaluationDurationMinutes,
+      evaluationClientName,
       evaluationProcedure,
       contactPhone,
       whatsappConversationId,
@@ -848,6 +860,9 @@ export async function PUT(req: NextRequest) {
     if (!(await canAccessPipelineDeal(existing, ownerScope))) {
       return unitAccessDeniedResponse();
     }
+    const requestedEvaluationClientName = Object.hasOwn(body, 'evaluationClientName')
+      ? requireAppointmentClientName(evaluationClientName) : null;
+    if (evaluationStartTime) requireAppointmentClientName(requestedEvaluationClientName ?? existing.clientName);
     const evaluationSourceInstanceId = evaluationStartTime
       ? await resolveEvaluationGroupSource({
           request: req, unit: existing.unit, instanceId: whatsappInstanceId,
@@ -943,7 +958,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const shouldLoadExistingAppointment = Boolean(
-      evaluationStartTime || (isClosing && targetStage === 'fechado' && !closedAt),
+      evaluationStartTime || requestedEvaluationClientName || (isClosing && targetStage === 'fechado' && !closedAt),
     );
     const existingAppointment = shouldLoadExistingAppointment
       ? (await getPipelineEvaluationAppointments([existing.id])).get(existing.id) || null
@@ -953,6 +968,7 @@ export async function PUT(req: NextRequest) {
       : null;
 
     const data: Record<string, unknown> = {};
+    if (requestedEvaluationClientName) data.clientName = requestedEvaluationClientName;
     if (effectiveStage !== undefined) {
       data.stage = effectiveStage;
       if (existing.commercialStatus === 'no_response' && effectiveStage !== existing.stage && !isDiscard) {
@@ -997,7 +1013,14 @@ export async function PUT(req: NextRequest) {
 
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.salesPipeline.update({ where: { id }, data });
+      if (requestedEvaluationClientName && requestedEvaluationClientName !== existing.clientName && saved.clientId) {
+        await tx.client.updateMany({ where: { id: saved.clientId, unit: saved.unit }, data: { name: requestedEvaluationClientName } });
+      }
       if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
+      if (requestedEvaluationClientName && !evaluationStartTime && existingAppointment) {
+        await tx.agendamento.updateMany({ where: { id: existingAppointment.id, unit: saved.unit },
+          data: { clientName: requestedEvaluationClientName } });
+      }
       const appointment = evaluationStartTime
         ? await upsertPipelineEvaluationAppointment({
           deal: {
@@ -1110,6 +1133,7 @@ export async function PUT(req: NextRequest) {
       rescheduleNotification,
     });
   } catch (error) {
+    if (error instanceof AppointmentClientNameError) return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     if (error instanceof CommercialError) return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof EvaluationSchedulingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

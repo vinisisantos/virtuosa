@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { beforeEach } from "node:test";
 import { registerHooks } from "node:module";
 import { NextRequest } from "next/server.js";
-import { EVALUATION_GROUP_INSTANCE_ID, EVALUATION_GROUP_SETTING_KEY } from "../src/lib/whatsapp/evaluation-group-notice-config.ts";
+import { EVALUATION_GROUP_INSTANCE_ID, EVALUATION_GROUP_SETTING_KEY, getEvaluationGroupUnitConfig } from "../src/lib/whatsapp/evaluation-group-notice-config.ts";
 
 const substitutes = {
   "@/lib/whatsapp/instance-resolver": "export async function getInstancesForRequest(req) { globalThis.groupApiCalls.push({ kind: 'access', url: req.url }); return { instances: globalThis.groupApiInstances }; }",
@@ -46,6 +46,60 @@ function request(method = "GET", body, options = {}) {
 }
 const post = (body, options) => POST(request("POST", body, options));
 const calls = kind => globalThis.groupApiCalls.filter(call => call.kind === kind);
+
+const osasco = getEvaluationGroupUnitConfig("Osasco");
+function useOsasco() {
+  globalThis.groupApiInstances = [{ ...globalThis.groupApiInstances[0], id: osasco.instanceId, unit: "Osasco", name: "synthetic-osasco" }];
+  globalThis.groupApiGroups = [{ id: "120000000009@g.us", name: "Lead Osasco", size: 4, announce: false }];
+  return { query: `?unit=Osasco&targetInstanceId=${osasco.instanceId}` };
+}
+
+test("Osasco tem acesso e histórico isolados; SCS e caixas cruzadas são recusadas", async () => {
+  const options = useOsasco();
+  const response = await GET(request("GET", undefined, options));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).config, null, "sem configuração permanece desativado");
+  assert.equal(calls("setting-read")[0].args.where.key, osasco.settingKey);
+  assert.deepEqual(calls("history")[0].args.where, { instanceId: osasco.instanceId });
+  assert.equal(calls("provider").length, 0);
+  for (const query of [`?unit=SBC&targetInstanceId=${osasco.instanceId}`, `?unit=Osasco&targetInstanceId=${EVALUATION_GROUP_INSTANCE_ID}`, `?unit=SCS&targetInstanceId=${osasco.instanceId}`]) {
+    assert.equal((await GET(request("GET", undefined, { query }))).status, 403);
+  }
+});
+
+test("ativação explícita Osasco cria quatro cortes iguais sem aceitar datas do navegador", async () => {
+  const options = useOsasco();
+  const response = await post({ action: "configure", enabled: true, groupJid: globalThis.groupApiGroups[0].id,
+    confirmTeamAccess: true, confirmationsActivatedAt: "2000-01-01", cancellationsActivatedAt: "2000-01-01", reschedulesActivatedAt: "2000-01-01" }, options);
+  assert.equal(response.status, 200);
+  const { config } = await response.json();
+  assert.equal(config.instanceId, osasco.instanceId);
+  assert.equal(config.groupName, "Lead Osasco");
+  assert.equal(config.confirmationsActivatedAt, config.activatedAt);
+  assert.equal(config.cancellationsActivatedAt, config.activatedAt);
+  assert.equal(config.reschedulesActivatedAt, config.activatedAt);
+  assert.notEqual(config.activatedAt, "2000-01-01");
+  assert.equal(calls("setting-write")[0].args.where.key, osasco.settingKey);
+  assert.equal(calls("audit")[0].args.data.unit, "Osasco");
+  const persisted = setting.value;
+  await post({ action: "configure", enabled: true, groupJid: config.groupJid, confirmTeamAccess: true }, options);
+  assert.equal(setting.value, persisted, "salvar o mesmo destino mantém os quatro cortes");
+});
+
+test("Osasco exige admin, caixa conectada e grupo exato capaz de enviar antes de configurar", async () => {
+  const options = useOsasco();
+  assert.equal((await post({ action: "discover" }, { ...options, headers: { "x-user-role": "CONSULTORA" } })).status, 403);
+  globalThis.groupApiGroups[0].name = "AVALIAÇOES SBC";
+  const body = { action: "configure", enabled: true, groupJid: globalThis.groupApiGroups[0].id, confirmTeamAccess: true };
+  assert.equal((await post(body, options)).status, 409);
+  globalThis.groupApiGroups[0].name = "Lead Osasco";
+  globalThis.groupApiGroups[0].announce = true;
+  assert.equal((await post(body, options)).status, 409);
+  assert.equal(calls("setting-write").length, 0);
+  assert.equal(calls("transaction").length, 0);
+  globalThis.groupApiInstances[0].status = "disconnected";
+  assert.equal((await post(body, options)).status, 409);
+});
 
 test("GET exige autenticação, seleção explícita SBC/Paloma e acesso real à instância", async () => {
   for (const options of [{ headers: { "x-user-id": null } }, { query: "?unit=SBC" },

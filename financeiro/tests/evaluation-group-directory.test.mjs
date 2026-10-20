@@ -45,6 +45,22 @@ test("acentos/capitalização não alteram o nome e homônimos preservam seus JI
   assert.equal(groups[0].announce, true);
 });
 
+test("Osasco aceita somente Lead Osasco, normaliza espaços e não expõe grupos de SBC ou outras unidades", async () => {
+  const payload = [
+    { id: "120000000000@g.us", subject: "  léad   OSASCO ", size: 4, announce: false, participants: ["private"] },
+    { id: "120000000001@g.us", subject: "Leads Osasco" },
+    { id: "120000000002@g.us", subject: "AVALIAÇOES SBC" },
+  ];
+  assert.deepEqual(evaluationNoticeGroups(payload, "Osasco"), [
+    { id: "120000000000@g.us", name: "léad   OSASCO", size: 4, announce: false },
+  ]);
+  assert.deepEqual(evaluationNoticeGroups(payload, "SCS"), []);
+  let calls = 0;
+  const groups = await fetchEvaluationNoticeGroups("synthetic-osasco", async () => { calls++; return Response.json(payload); }, "Osasco");
+  assert.equal(calls, 1);
+  assert.equal(groups.length, 1);
+});
+
 test("não aceita payload envelopado, caminho forjado ou metadados inválidos", () => {
   for (const payload of [null, {}, { groups: [] }, "[]"]) {
     assert.throws(() => evaluationNoticeGroups(payload), /Resposta inválida/);

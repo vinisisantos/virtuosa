@@ -10,7 +10,7 @@ test('salvar igual não consulta, gate ausente/futuro e outra unidade não notif
   assert.equal((await change('2026-10-21T13:00:00Z')).reason,'disabled');
   state.config.reschedulesActivatedAt='2030-01-01T00:00:00Z';await saveConfig();
   assert.equal((await change('2026-10-22T13:00:00Z')).reason,'disabled');
-  assert.equal((await enqueue({appointment:{...state.appointment,unit:'Osasco'},previousStartTime:new Date(0)})).reason,'not_reschedule');
+  assert.equal((await enqueue({appointment:{...state.appointment,unit:'SCS'},previousStartTime:new Date(0)})).reason,'not_reschedule');
   assert.equal(state.sent.length,0);
 });
 test('agenda existente usa onze operações, um HTTP e mensagem com os dois horários',async()=>{

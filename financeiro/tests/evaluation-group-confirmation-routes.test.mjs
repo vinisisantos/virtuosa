@@ -305,15 +305,22 @@ test('procedimento explícito normalizado é salvo com status, aviso e auditoria
   assert.equal(state.callbacks.length, 1);
 });
 
-test('procedimento genérico, vazio, longo ou fora da ação Confirmado não produz alterações', async () => {
+test('procedimento genérico, vazio ou longo não produz alterações', async () => {
   for (const evaluationProcedure of [null, 17, '', 'Avaliação', 'AVALIAÇÃO GRATUITA', 'a'.repeat(161)]) {
     reset();
     assert.equal((await PATCH(request(routes[0], { body: { ...routes[0].body, evaluationProcedure } }))).status, 400);
     assert.equal(events('update').length, 0);
     assert.equal(state.callbacks.length, 0);
   }
-  assert.equal((await PATCH(request(routes[0], { body: { ...routes[0].body, status: 'pendente', evaluationProcedure: 'Tratamento explícito' } }))).status, 400);
-  assert.equal(events('update').length, 0);
+});
+
+test('procedimento pode ser corrigido sem confirmar ou gerar transição ao grupo', async () => {
+  const response = await PATCH(request(routes[0], { body: { id: 'appointment', evaluationProcedure: 'Tratamento explícito' } }));
+  assert.equal(response.status, 200);
+  assert.equal(state.appointment.status, 'pendente');
+  assert.equal(state.appointment.evaluationProcedure, 'Tratamento explícito');
+  assert.equal(state.callbacks.length, 0);
+  assert.equal(state.notices.length, 0);
 });
 
 test('aviso bloqueado informa o motivo sem desfazer status ou iniciar despacho', async () => {

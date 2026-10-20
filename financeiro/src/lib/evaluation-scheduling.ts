@@ -2,6 +2,8 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { evaluationScheduleMinuteRange } from "@/lib/evaluation-schedule-conflict";
 import { isConfirmedEvaluationStatus } from "@/lib/evaluation-status";
+import { requireAppointmentClientName } from "@/lib/appointment-client-name";
+import { getEvaluationGroupUnitConfig } from "@/lib/whatsapp/evaluation-group-notice-config";
 import { isAdminRole } from "@/lib/role-access";
 import { normalizeEvaluationProcedure, usesEvaluationProcedure } from "@/lib/evaluation-procedure";
 import { enqueueEvaluationGroupNotice, enqueueEvaluationGroupStatusNotice } from "@/lib/whatsapp/evaluation-group-notice";
@@ -215,6 +217,11 @@ export async function upsertPipelineEvaluationAppointment(params: {
     orderBy: { updatedAt: "desc" },
   });
 
+  const scheduleChanged = !existing || existing.startTime.getTime() !== startTime.getTime();
+  const nameChanged = existing && params.deal.clientName !== existing.clientName;
+  const clientName = scheduleChanged || nameChanged
+    ? requireAppointmentClientName(params.deal.clientName)
+    : params.deal.clientName;
   const evaluationProcedure = normalizeEvaluationProcedure(params.evaluationProcedure);
   if (!existing && usesEvaluationProcedure(params.deal.unit, params.sourceInstanceId) && !evaluationProcedure) {
     throw new EvaluationSchedulingError("Informe o procedimento de interesse da nova avaliação");
@@ -228,7 +235,7 @@ export async function upsertPipelineEvaluationAppointment(params: {
   ].filter(Boolean).join("\n");
 
   const data = {
-    clientName: params.deal.clientName,
+    clientName,
     clientPhone: params.clientPhone || null,
     procedimento: "Avaliação",
     ...(evaluationProcedure ? { evaluationProcedure } : {}),
@@ -240,14 +247,17 @@ export async function upsertPipelineEvaluationAppointment(params: {
   };
 
   if (existing) {
-    if (params.deal.unit === "SBC") {
+    if (getEvaluationGroupUnitConfig(params.deal.unit)) {
       // O lock por negócio não cobre edições concorrentes feitas diretamente na Agenda.
-      const rows = await database.$queryRaw<Pick<typeof existing, "id" | "unit" | "startTime" | "status" | "updatedAt">[]>`
-        SELECT id, unit, "startTime", status, "updatedAt" FROM "Agendamento" WHERE id = ${existing.id} FOR UPDATE`;
+      const rows = await database.$queryRaw<Pick<typeof existing, "id" | "unit" | "clientName" | "startTime" | "status" | "updatedAt">[]>`
+        SELECT id, unit, "clientName", "startTime", status, "updatedAt" FROM "Agendamento" WHERE id = ${existing.id} FOR UPDATE`;
       if (!rows[0] || rows[0].unit !== params.deal.unit) throw new EvaluationSchedulingError("Avaliação alterada; atualize a agenda antes de tentar novamente");
       existing = { ...existing, ...rows[0] };
     }
     const scheduleChanged = existing.startTime.getTime() !== startTime.getTime();
+    if (scheduleChanged || params.deal.clientName !== existing.clientName) {
+      data.clientName = requireAppointmentClientName(params.deal.clientName);
+    }
     const appointment = await database.agendamento.update({
       where: { id: existing.id },
       data: {

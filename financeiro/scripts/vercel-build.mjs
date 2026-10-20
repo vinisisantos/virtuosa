@@ -56,6 +56,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20261009120000_evaluation_group_confirmation_events/migration.sql",
     "prisma/migrations/20261017120000_evaluation_group_cancellation_events/migration.sql",
     "prisma/migrations/20261017150000_evaluation_group_reschedule_events/migration.sql",
+    "prisma/migrations/20261020120000_evaluation_group_osasco_destination/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {

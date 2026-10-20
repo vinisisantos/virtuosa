@@ -1204,7 +1204,7 @@ export default function AutomationsPage() {
       </div>
 
       {selectedCategory === "general" && <CallBlockAutomationPanel />}
-      {selectedCategory === "SBC" && <EvaluationGroupPanel />}
+      {(selectedCategory === "SBC" || selectedCategory === "Osasco") && <EvaluationGroupPanel key={selectedCategory} unit={selectedCategory} />}
 
       {/* Quick-start templates */}
       {showTemplates && (

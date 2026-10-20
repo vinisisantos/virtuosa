@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { normalizeAppointmentClientName } from "@/lib/appointment-client-name";
 import { evaluationGroupRescheduleSourcePredicate } from "@/lib/whatsapp/evaluation-group-confirmation-source";
-import { EVALUATION_GROUP_SETTING_KEY, normalizeEvaluationGroupPhone, normalizeEvaluationGroupText, parseEvaluationGroupConfig } from "@/lib/whatsapp/evaluation-group-notice-config";
+import { getEvaluationGroupUnitConfig, normalizeEvaluationGroupPhone, parseEvaluationGroupConfig } from "@/lib/whatsapp/evaluation-group-notice-config";
 import { evaluationGroupSnapshot, isActiveGroupEvaluation, type EvaluationGroupAppointment } from "@/lib/whatsapp/evaluation-group-snapshot";
 import type { EvaluationGroupConfirmationResult } from "@/lib/whatsapp/evaluation-group-status-notice";
 
@@ -12,10 +13,11 @@ type Params = { appointment: EvaluationGroupAppointment; previousStartTime: Date
 export async function enqueueEvaluationGroupReschedule(database: Database, params: Params, now = new Date()): Promise<EvaluationGroupConfirmationResult> {
   const { appointment, previousStartTime } = params;
   const skip = (reason: EvaluationGroupConfirmationResult["reason"]): EvaluationGroupConfirmationResult => ({ status: "skipped", reason });
-  if (appointment.unit !== "SBC" || !Number.isFinite(previousStartTime.getTime())
+  const scope = getEvaluationGroupUnitConfig(appointment.unit);
+  if (!scope || !Number.isFinite(previousStartTime.getTime())
     || previousStartTime.getTime() === appointment.startTime.getTime()) return skip("not_reschedule");
-  const setting = await database.appSetting.findUnique({ where: { key: EVALUATION_GROUP_SETTING_KEY }, select: { value: true } });
-  const config = parseEvaluationGroupConfig(setting?.value);
+  const setting = await database.appSetting.findUnique({ where: { key: scope.settingKey }, select: { value: true } });
+  const config = parseEvaluationGroupConfig(setting?.value, scope.unit);
   if (!config?.enabled || !config.reschedulesActivatedAt || new Date(config.reschedulesActivatedAt) > now) return skip("disabled");
   const changeId = params.changeId ?? appointment.updatedAt?.toISOString();
   if (!changeId || !/^[a-zA-Z0-9_.:-]{1,150}$/.test(changeId)) return skip("invalid_change");
@@ -38,7 +40,7 @@ export async function enqueueEvaluationGroupReschedule(database: Database, param
   });
   if (existing) return { status: "already_recorded", noticeId: existing.id, state: existing.state };
   const snapshot = evaluationGroupSnapshot(appointment);
-  if (!snapshot) return skip(!normalizeEvaluationGroupText(appointment.clientName, 200) ? "missing_name"
+  if (!snapshot) return skip(!normalizeAppointmentClientName(appointment.clientName) ? "missing_name"
     : !normalizeEvaluationGroupPhone(appointment.clientPhone) ? "invalid_phone" : "missing_procedure");
   const id = randomUUID();
   const notice = await database.whatsAppEvaluationGroupNotice.upsert({

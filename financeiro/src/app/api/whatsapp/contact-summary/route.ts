@@ -1,3 +1,4 @@
+import { AppointmentClientNameError, requireAppointmentClientName } from "@/lib/appointment-client-name";
 import { NextRequest, NextResponse } from "next/server";
 import { pickCampaignClientForUnit } from "@/lib/whatsapp/lead-client-selection";
 import { prisma } from "@/lib/db";
@@ -72,7 +73,7 @@ export async function PATCH(req: NextRequest) {
   try {
     const body = await req.json();
     const conversationId = typeof body.conversationId === "string" ? body.conversationId : "";
-    const name = typeof body.name === "string" ? body.name.trim().replace(/\s+/g, " ") : "";
+    const name = requireAppointmentClientName(body.name);
 
     if (!conversationId) {
       return NextResponse.json({ error: "conversationId obrigatório" }, { status: 400 });
@@ -117,6 +118,7 @@ export async function PATCH(req: NextRequest) {
 
     return NextResponse.json({ success: true, ...result });
   } catch (error) {
+    if (error instanceof AppointmentClientNameError) return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     console.error("[PATCH /api/whatsapp/contact-summary]", error);
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }

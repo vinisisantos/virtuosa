@@ -2,7 +2,7 @@ import { Prisma } from "@prisma/client";
 import { phoneLookupKey } from "@/lib/phone";
 import { normalizedPhoneKeySql } from "@/lib/whatsapp/phone-sql";
 import { EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
-import type { EvaluationGroupConfig } from "@/lib/whatsapp/evaluation-group-notice-config";
+import { getEvaluationGroupUnitConfigByInstance, type EvaluationGroupConfig } from "@/lib/whatsapp/evaluation-group-notice-config";
 
 export function evaluationGroupConfirmationSourcePredicate(params: {
   appointmentId: string;
@@ -12,6 +12,8 @@ export function evaluationGroupConfirmationSourcePredicate(params: {
   config: EvaluationGroupConfig;
 }) {
   const { config } = params;
+  const scope = getEvaluationGroupUnitConfigByInstance(config.instanceId);
+  if (!scope) return Prisma.sql`false`;
   const startTime = params.startTime.toISOString();
   const phoneKey = params.clientPhone && /^[+\d ().-]+$/.test(params.clientPhone)
     && /^(55)?[1-9]\d{9,10}$/.test(params.clientPhone.replace(/\D/g, ""))
@@ -36,7 +38,7 @@ export function evaluationGroupConfirmationSourcePredicate(params: {
       AND source."triggerData"->>'action' = ${EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER}
       AND source."triggerData"->>'appointmentId' = ${params.appointmentId}
       AND source."triggerData"->>'startTime' = ${startTime}
-      AND source."triggerData"->>'unit' = 'SBC'
+      AND source."triggerData"->>'unit' = ${scope.unit}
       AND source."triggerData"->>'instanceId' = ${config.instanceId}
       AND conversation."instanceId" = ${config.instanceId}
       AND contact.phone !~ '[^0-9+ ().-]'
@@ -55,7 +57,7 @@ export function evaluationGroupConfirmationSourcePredicate(params: {
     LEFT JOIN "WhatsAppConversation" conversation ON conversation.id = source."triggerData"->>'conversationId'
     LEFT JOIN "WhatsAppContact" contact ON contact.id = conversation."contactId"
     WHERE automation."triggerType" = ${EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER}
-      AND automation.unit = 'SBC'
+      AND automation.unit = ${scope.unit}
   ) END`;
 }
 

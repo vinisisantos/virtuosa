@@ -44,6 +44,9 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { AppointmentClientNameField } from "@/components/appointment-client-name-field";
+import { normalizeAppointmentClientName, APPOINTMENT_CLIENT_NAME_ERROR } from "@/lib/appointment-client-name";
+import { evaluationProcedureDraft } from "@/lib/evaluation-procedure-draft";
 import { EvaluationProcedureField } from "@/components/evaluation-procedure-field";
 import { SaleItemsEditor } from "@/components/pipelines/sale-items-editor";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -61,7 +64,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useGlobalUnit } from "@/contexts/UnitContext";
 import { formatCurrency } from "@/lib/currency";
-import { normalizeEvaluationProcedure } from "@/lib/evaluation-procedure";
+import { normalizeEvaluationProcedure, usesEvaluationProcedure } from "@/lib/evaluation-procedure";
 import { groupNoticeFeedback } from "@/lib/whatsapp/evaluation-group-feedback";
 import { millisecondsUntilNextSaoPauloDay, saoPauloDateKey } from "@/lib/date-filter";
 import {
@@ -127,6 +130,12 @@ type Evaluation = {
   assignedUserId?: string | null;
   isInstagramSource?: boolean;
 };
+
+function evaluationProcedureLabel(evaluation: Evaluation) {
+  return normalizeEvaluationProcedure(evaluation.evaluationProcedure)
+    || evaluation.campaignProcedureName
+    || "Sem procedimento categorizado";
+}
 
 type ChatLinkState = {
   loading: boolean;
@@ -553,10 +562,10 @@ function EvaluationCardButton({
           </span>
           <span
             className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-foreground/80"
-            title={evaluation.campaignProcedureName || "Sem procedimento categorizado"}
+            title={evaluationProcedureLabel(evaluation)}
           >
             <Tag className="h-3 w-3 shrink-0 text-primary" />
-            <span className="truncate">{evaluation.campaignProcedureName || "Sem procedimento categorizado"}</span>
+            <span className="truncate">{evaluationProcedureLabel(evaluation)}</span>
           </span>
           <span className="mt-1 flex min-w-0 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
             <UserRound className="h-3 w-3 shrink-0" />
@@ -610,10 +619,10 @@ function EvaluationCardButton({
       </div>
       <div
         className="mt-1 flex min-w-0 items-center gap-1.5 text-[11px] text-foreground/80"
-        title={evaluation.campaignProcedureName || "Sem procedimento categorizado"}
+        title={evaluationProcedureLabel(evaluation)}
       >
         <Tag className="h-3 w-3 shrink-0 text-primary" />
-        <span className="truncate">{evaluation.campaignProcedureName || "Sem procedimento categorizado"}</span>
+        <span className="truncate">{evaluationProcedureLabel(evaluation)}</span>
       </div>
       <div className="mt-1 flex items-center justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] text-muted-foreground">
@@ -760,6 +769,9 @@ export default function AvaliacoesAgendaPage() {
     evaluationId: string;
     targetDayKey: string;
   } | null>(null);
+  const [scheduleClientName, setScheduleClientName] = useState("");
+  const [scheduleProcedure, setScheduleProcedure] = useState("");
+  const scheduleDraftIdRef = useRef<string | null>(null);
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
   const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
@@ -917,7 +929,13 @@ export default function AvaliacoesAgendaPage() {
   }, [selectedEvaluationId]);
 
   useEffect(() => {
-    if (!selectedEvaluation) return;
+    if (!selectedEvaluation) { scheduleDraftIdRef.current = null; return; }
+    if (scheduleDraftIdRef.current === selectedEvaluation.id) return;
+    scheduleDraftIdRef.current = selectedEvaluation.id;
+    setScheduleClientName(selectedEvaluation.clientName);
+    setScheduleProcedure(evaluationProcedureDraft({ evaluationProcedure: selectedEvaluation.evaluationProcedure,
+      procedureNames: selectedEvaluation.pipelineProcedureNames, procedureName: selectedEvaluation.pipelineProcedureName,
+      campaignName: selectedEvaluation.campaignProcedureName }));
     setScheduleDate(dateKey(selectedEvaluation.startTime));
     setScheduleTime(timeInputValue(selectedEvaluation.startTime));
     setScheduleAssigneeUserId(selectedEvaluation.assignedUserId || "");
@@ -1190,6 +1208,7 @@ export default function AvaliacoesAgendaPage() {
     evaluationId: string,
     startTime: Date,
     assigneeUserId?: string,
+    details?: { evaluationClientName?: string; evaluationProcedure?: string },
   ) => {
     setSavingSchedule(true);
     try {
@@ -1200,6 +1219,7 @@ export default function AvaliacoesAgendaPage() {
           id: evaluationId,
           startTime: startTime.toISOString(),
           ...(assigneeUserId ? { assigneeUserId } : {}),
+          ...details,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -1228,7 +1248,7 @@ export default function AvaliacoesAgendaPage() {
       }
       if (selectedEvaluationIdRef.current === evaluationId && selectedEvaluation
         && new Date(selectedEvaluation.startTime).getTime() !== startTime.getTime()) {
-        setConfirmationGroupFeedback(groupNoticeFeedback(data.groupNotice, false, true));
+        setConfirmationGroupFeedback(groupNoticeFeedback(data.groupNotice, false, true, updated.unit));
       }
       return updated;
     } catch (error) {
@@ -1289,10 +1309,20 @@ export default function AvaliacoesAgendaPage() {
       return;
     }
 
+    const nameChanged = scheduleClientName.trim() !== selectedEvaluation.clientName.trim();
+    const dateChanged = startTime.getTime() !== new Date(selectedEvaluation.startTime).getTime();
+    const evaluationClientName = normalizeAppointmentClientName(scheduleClientName);
+    if ((nameChanged || dateChanged) && !evaluationClientName) { toast.error(APPOINTMENT_CLIENT_NAME_ERROR); return; }
+    const evaluationProcedure = normalizeEvaluationProcedure(scheduleProcedure);
+    if (usesEvaluationProcedure(selectedEvaluation.unit) && !evaluationProcedure) {
+      toast.error("Informe o procedimento de interesse da avaliação"); return;
+    }
     const updated = await updateEvaluationSchedule(
       selectedEvaluation.id,
       startTime,
       canViewAll ? scheduleAssigneeUserId : undefined,
+      { ...((nameChanged || dateChanged) && evaluationClientName ? { evaluationClientName } : {}),
+        ...(usesEvaluationProcedure(selectedEvaluation.unit) && evaluationProcedure ? { evaluationProcedure } : {}) },
     );
     if (!updated) return;
 
@@ -1309,18 +1339,21 @@ export default function AvaliacoesAgendaPage() {
   ) => {
     if (!selectedEvaluation) return;
     const submittingId = selectedEvaluation.id;
+    const nameChanged = scheduleClientName.trim() !== selectedEvaluation.clientName.trim();
+    const evaluationClientName = normalizeAppointmentClientName(scheduleClientName);
+    if (nameChanged && !evaluationClientName) { toast.error(APPOINTMENT_CLIENT_NAME_ERROR); return; }
     setUpdatingStatus(status);
     setConfirmationProcedureError("");
     try {
       const res = await fetch("/api/crm/evaluations", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: submittingId, status, ...payload }),
+        body: JSON.stringify({ id: submittingId, status, ...(nameChanged ? { evaluationClientName } : {}), ...payload }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 422 && data.code === "EVALUATION_PROCEDURE_REQUIRED") {
         if (selectedEvaluationIdRef.current === submittingId) {
-          setConfirmationProcedure(typeof payload.evaluationProcedure === "string" ? payload.evaluationProcedure : "");
+          setConfirmationProcedure(typeof payload.evaluationProcedure === "string" ? payload.evaluationProcedure : scheduleProcedure);
           setOutcomeFlow("confirmation_procedure");
           setConfirmationGroupFeedback(null);
         }
@@ -1339,7 +1372,7 @@ export default function AvaliacoesAgendaPage() {
       setOutcomeFlow(null);
       setConfirmationProcedure("");
       setConfirmationGroupFeedback(payload.rescheduled === true || status === "confirmado" || status === "desmarcou"
-        ? groupNoticeFeedback(data.groupNotice, status === "desmarcou", payload.rescheduled === true) : null);
+        ? groupNoticeFeedback(data.groupNotice, status === "desmarcou", payload.rescheduled === true, updated.unit) : null);
       setEditingClosedPackage(false);
       setOutcomeReason("");
       setOutcomeDetails("");
@@ -1638,6 +1671,8 @@ export default function AvaliacoesAgendaPage() {
     selectedEvaluation && (
       scheduleDate !== dateKey(selectedEvaluation.startTime)
       || scheduleTime !== timeInputValue(selectedEvaluation.startTime)
+      || scheduleClientName.trim() !== selectedEvaluation.clientName.trim()
+      || scheduleProcedure !== (selectedEvaluation.evaluationProcedure || "")
       || (canViewAll && scheduleAssigneeUserId !== (selectedEvaluation.assignedUserId || ""))
     ),
   );
@@ -2072,7 +2107,7 @@ export default function AvaliacoesAgendaPage() {
                     <div>
                       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Procedimento</div>
                       <div className="mt-1 font-semibold text-foreground">
-                        {selectedEvaluation.campaignProcedureName || "Sem procedimento categorizado"}
+                        {evaluationProcedureLabel(selectedEvaluation)}
                       </div>
                     </div>
                     <div>
@@ -2160,6 +2195,10 @@ export default function AvaliacoesAgendaPage() {
                   <div className="mb-3 flex items-center gap-2">
                     <CalendarClock className="h-4 w-4 text-primary" />
                     <div className="text-sm font-semibold text-foreground">Agendamento</div>
+                  </div>
+                  <div className="mb-3 grid min-w-0 gap-3">
+                    <AppointmentClientNameField value={scheduleClientName} onChange={setScheduleClientName} disabled={savingSchedule || !!updatingStatus} />
+                    {usesEvaluationProcedure(selectedEvaluation.unit) && <EvaluationProcedureField value={scheduleProcedure} onChange={setScheduleProcedure} clientPhone={selectedEvaluation.clientPhone} disabled={savingSchedule || !!updatingStatus} />}
                   </div>
                   <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
                     <div className="grid gap-2">
@@ -2383,7 +2422,7 @@ export default function AvaliacoesAgendaPage() {
                             </p>
                             {selectedEvaluation.campaignProcedureName && (
                               <p className="mt-2 break-words text-xs text-muted-foreground">
-                                Categoria da campanha: {selectedEvaluation.campaignProcedureName}. É apenas uma referência; informe abaixo o tratamento confirmado com a pessoa.
+                                Categoria da campanha: {selectedEvaluation.campaignProcedureName}. Confira a sugestão abaixo e ajuste o tratamento confirmado com a pessoa.
                               </p>
                             )}
                           </div>

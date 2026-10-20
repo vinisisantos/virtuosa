@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from '@/components/toast';
+import { normalizeAppointmentClientName, APPOINTMENT_CLIENT_NAME_ERROR } from '@/lib/appointment-client-name';
 
 /* ──────────────────────────────────────────────────────────────
    PatientAutocomplete — Reusable smart patient picker
@@ -27,6 +28,7 @@ export interface PatientData {
   numero?: string | null;
   complemento?: string | null;
   pais?: string | null;
+  campaignName?: string | null;
 }
 
 interface PatientAutocompleteProps {
@@ -46,6 +48,9 @@ interface PatientAutocompleteProps {
   allowCreate?: boolean;
   /** If true, only return name (no full binding) */
   nameOnly?: boolean;
+  /** Name controlled without requiring a complete selected patient. */
+  nameValue?: string;
+  requireAppointmentName?: boolean;
   /** Optional callback for name-only changes */
   onNameChange?: (name: string) => void;
   /** Label text */
@@ -89,12 +94,15 @@ export function PatientAutocomplete({
   variant = 'default',
   allowCreate = true,
   nameOnly = false,
+  nameValue,
+  requireAppointmentName = false,
   onNameChange,
   label,
   required = false,
   units = [ 'Osasco', 'SBC', 'SCS'],
 }: PatientAutocompleteProps) {
-  const [query, setQuery] = useState(value?.name || '');
+  const [internalQuery, setQuery] = useState(value?.name || '');
+  const query = nameValue ?? internalQuery;
   const [results, setResults] = useState<PatientData[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -159,13 +167,12 @@ export function PatientAutocomplete({
 
   const handleInputChange = (text: string) => {
     setQuery(text);
-    if (onNameChange) onNameChange(text);
-
     // If was selected, clear selection
     if (selected) {
       setSelected(null);
       if (onClear) onClear();
     }
+    if (onNameChange) onNameChange(text);
 
     // Debounced search
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -205,6 +212,10 @@ export function PatientAutocomplete({
   const handleCreatePatient = async (forceCreate = false) => {
     if (!createForm.name.trim()) {
       toast('Nome obrigatório', 'error');
+      return;
+    }
+    if (requireAppointmentName && !normalizeAppointmentClientName(createForm.name)) {
+      toast(APPOINTMENT_CLIENT_NAME_ERROR, 'error');
       return;
     }
     setCreating(true);

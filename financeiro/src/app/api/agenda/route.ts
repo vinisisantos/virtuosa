@@ -1,4 +1,7 @@
 import { after, NextRequest, NextResponse } from 'next/server';
+import { AppointmentClientNameError, requireAppointmentClientName } from '@/lib/appointment-client-name';
+import { getPipelineDealIdFromEvaluationNotes } from '@/lib/evaluation-scheduling';
+import { syncEvaluationClientName } from '@/lib/evaluation-client-name-sync';
 import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { incrementPackageSession, withSerializableRetry } from '@/lib/agenda/finalization';
@@ -50,6 +53,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const unit = guard.createUnit(body.unit);
+    const clientName = requireAppointmentClientName(body.clientName);
     const evaluationProcedure = normalizeEvaluationProcedure(body.evaluationProcedure);
     if (usesEvaluationProcedure(unit) && isEvaluationAppointment(body.procedimento) && !evaluationProcedure) {
       return NextResponse.json({ error: 'Informe o procedimento de interesse da nova avaliação' }, { status: 400 });
@@ -72,7 +76,7 @@ export async function POST(req: NextRequest) {
     const { agendamento, noticeId } = await prisma.$transaction(async (tx) => {
       const agendamento = await tx.agendamento.create({
         data: {
-          clientName: body.clientName,
+          clientName,
           clientPhone: body.clientPhone || null,
           procedimento: body.procedimento,
           evaluationProcedure,
@@ -93,9 +97,10 @@ export async function POST(req: NextRequest) {
     });
     if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
     return NextResponse.json(agendamento);
-  } catch (err: any) {
+  } catch (err) {
+    if (err instanceof AppointmentClientNameError) return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
     console.error('Agenda POST error:', err);
-    return NextResponse.json({ error: err?.message || 'Erro ao criar agendamento' }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Erro ao criar agendamento' }, { status: 500 });
   }
 }
 
@@ -115,7 +120,11 @@ export async function PUT(req: NextRequest) {
     }
 
     const data: Record<string, unknown> = {};
-    if (body.clientName !== undefined) data.clientName = body.clientName;
+    if (body.clientName !== undefined) data.clientName = body.clientName === currentAg.clientName
+      ? body.clientName : requireAppointmentClientName(body.clientName);
+    if (body.startTime !== undefined && new Date(body.startTime).getTime() !== currentAg.startTime.getTime()) {
+      data.clientName = requireAppointmentClientName(data.clientName ?? currentAg.clientName);
+    }
     if (body.clientPhone !== undefined) data.clientPhone = body.clientPhone;
     if (body.procedimento !== undefined) data.procedimento = body.procedimento;
     if (body.evaluationProcedure !== undefined) {
@@ -151,12 +160,21 @@ export async function PUT(req: NextRequest) {
       const latest = await tx.agendamento.findUnique({ where: { id: body.id } });
       if (!latest) throw new Error('Agendamento não encontrado');
       guard.enforceUnit(latest.unit);
+      const scheduleChanged = data.startTime instanceof Date && data.startTime.getTime() !== latest.startTime.getTime();
+      if (scheduleChanged || (data.clientName !== undefined && data.clientName !== latest.clientName)) {
+        data.clientName = requireAppointmentClientName(data.clientName ?? latest.clientName);
+      }
 
       const result = await tx.agendamento.update({
         where: { id: body.id },
         data,
         include: { profissional: true },
       });
+
+      if (data.clientName && data.clientName !== latest.clientName) {
+        await syncEvaluationClientName(tx, { dealId: getPipelineDealIdFromEvaluationNotes(latest.notes),
+          unit: result.unit, clientName: String(data.clientName) });
+      }
 
       if (body.status === 'finalizado' && latest.status !== 'finalizado') {
         await incrementPackageSession(tx, result);
@@ -173,10 +191,11 @@ export async function PUT(req: NextRequest) {
     const noticeId = groupNotice.status === 'queued' ? groupNotice.noticeId : null;
     if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
     return NextResponse.json({ ...updated, groupNotice });
-  } catch (err: any) {
+  } catch (err) {
+    if (err instanceof AppointmentClientNameError) return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
     if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     console.error('Agenda PUT error:', err);
-    return NextResponse.json({ error: err?.message || 'Erro ao atualizar agendamento' }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Erro ao atualizar agendamento' }, { status: 500 });
   }
 }
 
@@ -227,8 +246,8 @@ export async function DELETE(req: NextRequest) {
 
     await prisma.agendamento.delete({ where: { id } });
     return NextResponse.json({ ok: true, deleted: agendamento });
-  } catch (err: any) {
+  } catch (err) {
     console.error('Agenda DELETE error:', err);
-    return NextResponse.json({ error: err?.message || 'Erro ao excluir agendamento' }, { status: 500 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Erro ao excluir agendamento' }, { status: 500 });
   }
 }

@@ -105,3 +105,26 @@ test('concorrência por negócio encontra avaliação criada pela transação an
   assert.equal(settingsReads, 1);
   assert.equal(results[0].id, results[1].id);
 });
+
+test('novo agendamento rejeita telefone como nome em todas as unidades', async () => {
+  for (const unit of ['SBC', 'Osasco', 'SCS']) {
+    await assert.rejects(upsertPipelineEvaluationAppointment(request({
+      deal: { id: 'deal', clientName: '(11) 99999-9999', unit },
+      evaluationProcedure: 'Tratamento corporal',
+    }), database(unit)), { code: 'EVALUATION_CLIENT_NAME_REQUIRED' });
+  }
+  assert.equal(created.length, 0);
+  assert.equal(updated.length, 0);
+});
+
+test('releitura protegida impede request antigo de substituir nome corrigido por telefone', async () => {
+  const startTime = new Date(Date.now() + 86400000);
+  existing = { id: 'old', createdAt: new Date(0), clientName: '(11) 99999-9999', unit: 'SBC', startTime, status: 'pendente' };
+  const db = database();
+  db.$queryRaw = async () => [{ ...existing, clientName: 'Ana' }];
+  await assert.rejects(upsertPipelineEvaluationAppointment(request({
+    deal: { id: 'deal', clientName: '(11) 99999-9999', unit: 'SBC' }, startTime,
+  }), db), { code: 'EVALUATION_CLIENT_NAME_REQUIRED' });
+  assert.equal(created.length, 0);
+  assert.equal(updated.length, 0);
+});

@@ -1,12 +1,13 @@
 import {
-  EVALUATION_GROUP_INSTANCE_ID,
+  getEvaluationGroupUnitConfig,
   normalizeEvaluationGroupProcedure,
 } from "@/lib/whatsapp/evaluation-group-notice-config";
 
 export { normalizeEvaluationGroupProcedure as normalizeEvaluationProcedure };
 
 export function usesEvaluationProcedure(unit?: string | null, sourceInstanceId?: string | null) {
-  return unit === "SBC" && (!sourceInstanceId || sourceInstanceId === EVALUATION_GROUP_INSTANCE_ID);
+  const scope = getEvaluationGroupUnitConfig(unit);
+  return !!scope && (!sourceInstanceId || sourceInstanceId === scope.instanceId);
 }
 
 export function isEvaluationAppointment(procedure: unknown) {

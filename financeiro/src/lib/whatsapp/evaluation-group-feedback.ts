@@ -1,8 +1,12 @@
 import type { EvaluationGroupConfirmationResult } from "@/lib/whatsapp/evaluation-group-status-notice";
+import { getEvaluationGroupUnitConfig } from "@/lib/whatsapp/evaluation-group-notice-config";
 
-export function groupNoticeFeedback(notice?: EvaluationGroupConfirmationResult, cancelled = false, rescheduled = false): { message: string; warning: boolean } {
+export function groupNoticeFeedback(notice?: EvaluationGroupConfirmationResult, cancelled = false, rescheduled = false, unit: string = "SBC"): { message: string; warning: boolean } {
+  const scope = getEvaluationGroupUnitConfig(unit);
+  const groupName = scope?.unit === "SBC" ? "AVALIAÇÕES SBC" : scope?.groupName ?? "de avaliações";
+  const instanceName = scope?.instanceDisplayName ?? "a caixa de origem";
   if (notice?.status === "queued") {
-    return { message: `${rescheduled ? "Reagendamento salvo" : cancelled ? "Cancelamento salvo" : "Confirmação salva"}. Aviso incluído na fila do grupo AVALIAÇÕES SBC. A entrega ainda não está confirmada; acompanhe em Automações.`, warning: false };
+    return { message: `${rescheduled ? "Reagendamento salvo" : cancelled ? "Cancelamento salvo" : "Confirmação salva"}. Aviso incluído na fila do grupo ${groupName}. A entrega ainda não está confirmada; acompanhe em Automações.`, warning: false };
   }
   if (notice?.status === "already_recorded") {
     if (notice.state === "submitted") return { message: "Já existe um aviso aceito pelo provedor para esta data e horário. Nenhum reenvio foi feito. O aceite não comprova entrega; confira o histórico em Automações.", warning: false };
@@ -15,9 +19,9 @@ export function groupNoticeFeedback(notice?: EvaluationGroupConfirmationResult, 
     not_cancellation: "Status salvo. Esta alteração não gera um aviso de cancelamento ao grupo.",
     not_reschedule: "Agendamento salvo sem alteração de data ou horário. Nenhum aviso de reagendamento foi criado.",
     invalid_change: "Agendamento salvo, mas não foi possível identificar a versão da alteração. Confira o histórico antes de tentar novamente.",
-    not_future_evaluation: "Status salvo, mas o aviso ao grupo exige uma avaliação de SBC com data e horário futuros.",
+    not_future_evaluation: `Status salvo, mas o aviso ao grupo exige uma avaliação de ${scope?.unit ?? "unidade autorizada"} com data e horário futuros.`,
     disabled: `Status salvo, mas os avisos de ${rescheduled ? "reagendamento" : cancelled ? "cancelamento" : "confirmação"} ao grupo estão desativados ou ainda não foram liberados.`,
-    unverified_source: "Status salvo, mas não foi possível comprovar o vínculo desta avaliação com Leads - Paloma. Nenhum aviso ao grupo foi criado.",
+    unverified_source: `Status salvo, mas não foi possível comprovar o vínculo desta avaliação com ${instanceName}. Nenhum aviso ao grupo foi criado.`,
     missing_name: "Status salvo, mas falta um nome válido no cadastro da avaliação. Nenhum aviso ao grupo foi criado.",
     invalid_phone: "Status salvo, mas falta um telefone válido no cadastro da avaliação. Nenhum aviso ao grupo foi criado.",
     missing_procedure: cancelled || rescheduled

@@ -29,7 +29,7 @@ export function EvaluationProcedureField({ value, onChange, required = false, di
         className="h-11 w-full min-w-0 rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 disabled:opacity-60"
       />
       <p id={`${id}-help`} className="break-words text-xs text-muted-foreground">
-        Confirme com a pessoa o tratamento de interesse. O tipo do agendamento continua sendo Avaliação.
+        Confira o tratamento sugerido, ajuste ou acrescente outros procedimentos antes de salvar. Confirme o interesse com a pessoa.
       </p>
       {required && !normalizeEvaluationGroupPhone(clientPhone) && (
         <p role="status" className="break-words text-xs text-amber-700 dark:text-amber-300">

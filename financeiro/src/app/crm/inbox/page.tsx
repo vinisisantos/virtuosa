@@ -11,6 +11,9 @@ import { setBrowserChromeSurface } from "@/lib/color-mode";
 import { NewConversationDialog } from "@/components/whatsapp/new-conversation-dialog";
 import { SavedRepliesDialog } from "@/components/whatsapp/saved-replies-dialog";
 import { EvaluationAvailabilityDialog } from "@/components/whatsapp/evaluation-availability-dialog";
+import { AppointmentClientNameField } from "@/components/appointment-client-name-field";
+import { normalizeAppointmentClientName, APPOINTMENT_CLIENT_NAME_ERROR } from "@/lib/appointment-client-name";
+import { evaluationProcedureDraft } from "@/lib/evaluation-procedure-draft";
 import { EvaluationProcedureField } from "@/components/evaluation-procedure-field";
 import { normalizeEvaluationProcedure, usesEvaluationProcedure } from "@/lib/evaluation-procedure";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
@@ -805,6 +808,7 @@ function formatScheduleConflictDateTime(value: string) {
 function PipelineStageSelector({
   contactPhone,
   contactName,
+  campaignName,
   unit,
   whatsappConversationId,
   whatsappInstanceId,
@@ -817,6 +821,7 @@ function PipelineStageSelector({
 }: {
   contactPhone: string;
   contactName?: string;
+  campaignName?: string | null;
   unit?: string | null;
   whatsappConversationId?: string | null;
   whatsappInstanceId?: string | null;
@@ -845,6 +850,8 @@ function PipelineStageSelector({
   const [scheduleTime, setScheduleTime] = useState("09:00");
   const [scheduleAssigneeUserId, setScheduleAssigneeUserId] = useState("");
   const [scheduleProcedure, setScheduleProcedure] = useState("");
+  const [scheduleClientName, setScheduleClientName] = useState("");
+  const scheduleDraftActiveRef = useRef(false);
   const [evaluationAssignees, setEvaluationAssignees] = useState<EvaluationAssignee[]>([]);
   const [loadingAssignees, setLoadingAssignees] = useState(false);
   const [isScheduling, setIsScheduling] = useState(false);
@@ -933,7 +940,7 @@ function PipelineStageSelector({
             : deals[0];
           setDeal(clientDeal || null);
           setEvolutionNotes(clientDeal?.notes || "");
-          if (layout === "schedule") {
+          if (layout === "schedule" && !scheduleDraftActiveRef.current) {
             const schedulePipeline = clientDeal?.pipelineId
               ? pipes.find((pipe: any) => pipe.id === clientDeal.pipelineId)
               : defaultPipeline;
@@ -942,8 +949,10 @@ function PipelineStageSelector({
             setStages(schedulePipeline.stages || []);
             const scheduledStage = schedulePipeline.stages?.find((stage: any) => isScheduledPipelineStageName(stage.name));
             if (!scheduledStage) throw new Error("A unidade não possui a etapa Agendado configurada.");
+            scheduleDraftActiveRef.current = true;
             setPendingScheduledStageId(scheduledStage.id);
-            setScheduleProcedure(clientDeal?.evaluationProcedure || "");
+            setScheduleProcedure(evaluationProcedureDraft({ ...clientDeal, campaignName: clientDeal?.campaignNameSnapshot || client?.campaignName || campaignName }));
+            setScheduleClientName(clientDeal?.clientName || client?.name || contactName || "");
             setScheduleModalOpen(true);
           }
         } else if (layout === "schedule") {
@@ -957,7 +966,7 @@ function PipelineStageSelector({
     }
     load();
     return () => controller.abort();
-  }, [contactPhone, refreshTrigger, unit, whatsappInstanceId, layout]);
+  }, [contactPhone, contactName, campaignName, refreshTrigger, unit, whatsappInstanceId, layout]);
 
   // Abre a modal de evolução quando o menu "⋯" do header dispara o sinal.
   useEffect(() => {
@@ -996,6 +1005,7 @@ function PipelineStageSelector({
   }, [effectiveUnit, pickDefaultAssignee, scheduleModalOpen]);
 
   const closeScheduleModal = () => {
+    scheduleDraftActiveRef.current = false;
     setScheduleModalOpen(false);
     setPendingScheduledStageId(null);
     setScheduleDate("");
@@ -1009,7 +1019,7 @@ function PipelineStageSelector({
 
   const updateStage = async (
     newStageId: string,
-    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number; procedure?: string; forceScheduleConflict?: boolean },
+    evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number; procedure?: string; clientName?: string; forceScheduleConflict?: boolean },
   ): Promise<boolean> => {
     if (!newStageId) return false;
 
@@ -1020,7 +1030,8 @@ function PipelineStageSelector({
       setScheduleDate("");
       setScheduleTime("09:00");
       setScheduleAssigneeUserId(defaultAssignee);
-      setScheduleProcedure(deal?.evaluationProcedure || "");
+      setScheduleProcedure(evaluationProcedureDraft({ ...deal, campaignName: deal?.campaignNameSnapshot || clientData?.campaignName || campaignName }));
+      setScheduleClientName(deal?.clientName || clientData?.name || contactName || "");
       setScheduleConflict(null);
       setScheduleModalOpen(true);
       return false;
@@ -1030,7 +1041,7 @@ function PipelineStageSelector({
       if (!pipelineId) return false;
       // CREATE DEAL
       let targetClientId = clientData?.id;
-      let targetClientName = clientData?.name || contactName || contactPhone;
+      const targetClientName = evaluation?.clientName || clientData?.name || contactName || contactPhone;
 
       try {
         if (!targetClientId) {
@@ -1067,6 +1078,7 @@ function PipelineStageSelector({
                   evaluationAssigneeUserId: evaluation.assigneeUserId,
                   evaluationDurationMinutes: evaluation.durationMinutes || 60,
                   evaluationProcedure: evaluation.procedure,
+                evaluationClientName: evaluation.clientName,
                   forceScheduleConflict: evaluation.forceScheduleConflict === true,
                   whatsappConversationId,
                   whatsappInstanceId,
@@ -1119,6 +1131,7 @@ function PipelineStageSelector({
                 evaluationAssigneeUserId: evaluation.assigneeUserId,
                 evaluationDurationMinutes: evaluation.durationMinutes || 60,
                 evaluationProcedure: evaluation.procedure,
+                  evaluationClientName: evaluation.clientName,
                 forceScheduleConflict: evaluation.forceScheduleConflict === true,
                 contactPhone,
                 whatsappConversationId,
@@ -1174,12 +1187,16 @@ function PipelineStageSelector({
       return;
     }
 
+    const clientName = normalizeAppointmentClientName(scheduleClientName);
+    if (!clientName) { toast(APPOINTMENT_CLIENT_NAME_ERROR, "error"); return; }
+
     setIsScheduling(true);
     const ok = await updateStage(pendingScheduledStageId, {
       startTime,
       assigneeUserId: scheduleAssigneeUserId || undefined,
       durationMinutes: 60,
       procedure: showEvaluationProcedure ? scheduleProcedure : undefined,
+      clientName,
       forceScheduleConflict,
     });
     setIsScheduling(false);
@@ -1272,6 +1289,7 @@ function PipelineStageSelector({
         </div>
 
         <div className="grid gap-4">
+          <AppointmentClientNameField value={scheduleClientName} onChange={setScheduleClientName} disabled={isScheduling} />
           {showEvaluationProcedure && (
             <EvaluationProcedureField
               value={scheduleProcedure}
@@ -1884,6 +1902,7 @@ function ContactSidebar({
           <PipelineStageSelector
             contactPhone={contact.phone}
             contactName={contact.name || undefined}
+            campaignName={conversation.campaignName}
             unit={operationalUnit}
             whatsappConversationId={conversation.id}
             whatsappInstanceId={conversation.instanceId}
@@ -9469,6 +9488,7 @@ export default function InboxPage() {
           key={`schedule:${selectedConv.id}:${selectedConversationUnit}`}
           contactPhone={selectedConv.contact.phone}
           contactName={displayContactName(selectedConv.contact)}
+          campaignName={selectedConv.campaignName}
           unit={selectedConversationUnit}
           whatsappConversationId={selectedConv.id}
           whatsappInstanceId={selectedConv.instanceId}

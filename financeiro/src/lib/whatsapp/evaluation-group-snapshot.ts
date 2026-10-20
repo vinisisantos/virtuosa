@@ -1,6 +1,7 @@
 import { normalizeEvaluationStatus } from "@/lib/evaluation-status";
+import { normalizeAppointmentClientName } from "@/lib/appointment-client-name";
 import {
-  normalizeEvaluationGroupPhone, normalizeEvaluationGroupProcedure, normalizeEvaluationGroupText,
+  getEvaluationGroupUnitConfig, normalizeEvaluationGroupPhone, normalizeEvaluationGroupProcedure,
 } from "@/lib/whatsapp/evaluation-group-notice-config";
 
 export type EvaluationGroupAppointment = {
@@ -17,14 +18,14 @@ export type EvaluationGroupAppointment = {
 };
 
 export function evaluationGroupSnapshot(appointment: EvaluationGroupAppointment) {
-  const clientName = normalizeEvaluationGroupText(appointment.clientName, 200);
+  const clientName = normalizeAppointmentClientName(appointment.clientName);
   const clientPhone = normalizeEvaluationGroupPhone(appointment.clientPhone);
   const evaluationProcedure = normalizeEvaluationGroupProcedure(appointment.evaluationProcedure);
   return clientName && clientPhone && evaluationProcedure ? { clientName, clientPhone, evaluationProcedure } : null;
 }
 
 export function isFutureGroupEvaluation(appointment: EvaluationGroupAppointment, now: Date) {
-  return appointment.unit === "SBC"
+  return !!getEvaluationGroupUnitConfig(appointment.unit)
     && appointment.procedimento.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase() === "avaliacao"
     && Number.isFinite(appointment.createdAt.getTime()) && appointment.createdAt <= now
     && appointment.startTime > now;

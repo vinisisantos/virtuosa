@@ -31,6 +31,7 @@ function whereSql(where) {
     if (value === null) return Prisma.sql`${col(key)} IS NULL`;
     if (value && typeof value === "object" && !(value instanceof Date)) {
       const [operator, operand] = Object.entries(value)[0];
+      if (operator === "in") return Prisma.sql`${col(key)} IN (${Prisma.join(operand)})`;
       return Prisma.sql`${col(key)} ${Prisma.raw({ lt: "<", lte: "<=", gte: ">=", gt: ">" }[operator])} ${operand}`;
     }
     return Prisma.sql`${col(key)} = ${value}`;

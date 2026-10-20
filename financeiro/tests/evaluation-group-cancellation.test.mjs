@@ -31,6 +31,7 @@ function whereSql(where) {
     if (value === null) return Prisma.sql`${col(key)} IS NULL`;
     if (value && typeof value === "object" && !(value instanceof Date)) {
       const [operator, operand] = Object.entries(value)[0];
+      if (operator === "in") return Prisma.sql`${col(key)} IN (${Prisma.join(operand)})`;
       return Prisma.sql`${col(key)} ${Prisma.raw({ lt: "<", lte: "<=", gte: ">=", gt: ">" }[operator])} ${operand}`;
     }
     return Prisma.sql`${col(key)} = ${value}`;
@@ -165,7 +166,7 @@ test('sem prova da caixa, outra unidade, sessão ou horário passado não enfile
   assert.equal((await cancel()).reason,'unverified_source');
   await pg.exec('UPDATE "Agendamento" SET status=\'pendente\''); appointment.status='pendente';
   await enqueue();
-  for(const patch of [{unit:'Osasco'},{procedimento:'Sessão'},{startTime:now}]) {
+  for(const patch of [{unit:'SCS'},{procedimento:'Sessão'},{startTime:now}]) {
     const result=await enqueueEvaluationGroupCancellation(database(),{appointment:{...appointment,status:'desmarcou',...patch},previousStatus:'pendente'},now);
     assert.equal(result.reason,'not_future_evaluation');
   }

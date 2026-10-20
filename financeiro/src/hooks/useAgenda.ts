@@ -4,10 +4,11 @@ import { dateKey, addDays, startOfWeek, getMonthDays } from '@/components/agenda
 import { useNotification } from '@/components/ui/notifications';
 import { useGlobalUnit } from '@/contexts/UnitContext';
 import { logActivity } from '@/lib/activity-logger';
+import { normalizeAppointmentClientName, APPOINTMENT_CLIENT_NAME_ERROR } from '@/lib/appointment-client-name';
 import { isEvaluationAppointment, normalizeEvaluationProcedure, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
 
 interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
-interface CrmClient { id: string; name: string; phone: string | null; }
+interface CrmClient { id: string; name: string; phone: string | null; campaignName?: string | null; unit?: string; }
 
 export function useAgenda() {
   const { toast, confirm: showConfirm } = useNotification();
@@ -175,7 +176,7 @@ export function useAgenda() {
   useEffect(() => {
     fetch('/api/catalog').then(r => r.json()).then(data => setCatalogServices(data.services || [])).catch(() => {});
     const clientUrl = filterUnit ? `/api/clients?limit=1000&unit=${encodeURIComponent(filterUnit)}` : '/api/clients?limit=1000';
-    fetch(clientUrl).then(r => r.json()).then(data => setCrmClients((data.clients || []).map((c: any) => ({ id: c.id, name: c.name, phone: c.phone })))).catch(() => {});
+    fetch(clientUrl).then(r => r.json()).then(data => setCrmClients((data.clients || []).map((c: any) => ({ id: c.id, name: c.name, phone: c.phone, campaignName: c.campaignName, unit: c.unit })))).catch(() => {});
   }, [filterUnit]);
 
   // Scroll to current hour on mount
@@ -241,6 +242,14 @@ export function useAgenda() {
 
   const saveAgendamento = async () => {
     try {
+      const previous = editingId ? agendamentos.find((appointment) => appointment.id === editingId) : null;
+      const submittedStart = new Date(`${form.startDate}T${form.startHour}:${form.startMin}:00`).getTime();
+      const nameChanged = previous && form.clientName.trim() !== previous.clientName.trim();
+      const scheduleChanged = previous && submittedStart !== new Date(previous.startTime).getTime();
+      if ((!editingId || nameChanged || scheduleChanged) && !normalizeAppointmentClientName(form.clientName)) {
+        toast(APPOINTMENT_CLIENT_NAME_ERROR, 'error');
+        return;
+      }
       if (!editingId && usesEvaluationProcedure(form.unit) && isEvaluationAppointment(form.procedimento)
         && !normalizeEvaluationProcedure(form.evaluationProcedure)) {
         toast('Informe o procedimento de interesse da nova avaliação', 'error');

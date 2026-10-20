@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 
+import { requireAppointmentClientName } from "@/lib/appointment-client-name";
 import { prisma } from "@/lib/db";
 import { pipelineEvaluationMarker } from "@/lib/evaluation-scheduling";
 
@@ -14,10 +15,11 @@ export async function syncLeadNameAcrossCrm(params: {
   phone?: string | null;
   unit?: string | null;
 }) {
+  const name = requireAppointmentClientName(params.name);
   return prisma.$transaction(async (tx) => {
     const contact = await tx.whatsAppContact.update({
       where: { id: params.contactId },
-      data: { name: params.name },
+      data: { name },
       select: {
         id: true,
         phone: true,
@@ -63,18 +65,18 @@ export async function syncLeadNameAcrossCrm(params: {
     const [updatedClients, updatedDeals, updatedEvaluations] = await Promise.all([
       tx.client.updateMany({
         where: { id: { in: clientIds } },
-        data: { name: params.name },
+        data: { name },
       }),
       tx.salesPipeline.updateMany({
         where: { clientId: { in: clientIds } },
-        data: { clientName: params.name },
+        data: { clientName: name },
       }),
       evaluationMarkers.length > 0
         ? tx.agendamento.updateMany({
             where: {
               OR: evaluationMarkers.map((marker) => ({ notes: { contains: marker } })),
             },
-            data: { clientName: params.name },
+            data: { clientName: name },
           })
         : Promise.resolve({ count: 0 }),
     ]);

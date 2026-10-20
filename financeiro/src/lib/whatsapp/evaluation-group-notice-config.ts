@@ -2,6 +2,23 @@ export const EVALUATION_GROUP_SETTING_KEY = "whatsapp_evaluation_group_sbc_v1";
 export const EVALUATION_GROUP_INSTANCE_ID = "a6871ee7-8352-4b66-bfb2-b8dba9e4f8e3";
 export const EVALUATION_GROUP_NAME = "AVALIAÇOES SBC";
 
+export type EvaluationGroupUnit = "SBC" | "Osasco";
+export const EVALUATION_GROUP_UNIT_CONFIGS = [
+  { unit: "SBC", settingKey: EVALUATION_GROUP_SETTING_KEY, instanceId: EVALUATION_GROUP_INSTANCE_ID,
+    instanceDisplayName: "Leads - Paloma", groupName: EVALUATION_GROUP_NAME },
+  { unit: "Osasco", settingKey: "whatsapp_evaluation_group_osasco_v1", instanceId: "d1385a2c-e4e9-4822-8125-c693edf9ef3d",
+    instanceDisplayName: "Leads Osasco", groupName: "Lead Osasco" },
+] as const;
+export type EvaluationGroupUnitConfig = (typeof EVALUATION_GROUP_UNIT_CONFIGS)[number];
+
+export function getEvaluationGroupUnitConfig(unit?: string | null): EvaluationGroupUnitConfig | null {
+  return EVALUATION_GROUP_UNIT_CONFIGS.find(config => config.unit === unit) ?? null;
+}
+
+export function getEvaluationGroupUnitConfigByInstance(instanceId?: string | null): EvaluationGroupUnitConfig | null {
+  return EVALUATION_GROUP_UNIT_CONFIGS.find(config => config.instanceId === instanceId) ?? null;
+}
+
 export type EvaluationGroupConfig = {
   enabled: boolean;
   instanceId: string;
@@ -15,11 +32,12 @@ export type EvaluationGroupConfig = {
 };
 
 function normalizedKey(value: string) {
-  return value.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  return value.trim().replace(/\s+/g, " ").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 }
 
-export function isEvaluationGroupName(value: unknown): value is string {
-  return typeof value === "string" && normalizedKey(value) === normalizedKey(EVALUATION_GROUP_NAME);
+export function isEvaluationGroupName(value: unknown, unit: string = "SBC"): value is string {
+  const scope = getEvaluationGroupUnitConfig(unit);
+  return !!scope && typeof value === "string" && normalizedKey(value) === normalizedKey(scope.groupName);
 }
 
 export function isEvaluationGroupJid(value: unknown): value is string {
@@ -43,12 +61,14 @@ export function normalizeEvaluationGroupPhone(value: unknown): string | null {
   return /^\d{10,15}$/.test(digits) ? digits : null;
 }
 
-export function parseEvaluationGroupConfig(raw: unknown): EvaluationGroupConfig | null {
+export function parseEvaluationGroupConfig(raw: unknown, unit: string = "SBC"): EvaluationGroupConfig | null {
   try {
+    const scope = getEvaluationGroupUnitConfig(unit);
+    if (!scope) return null;
     const config = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (!config || typeof config !== "object" || Array.isArray(config)) return null;
-    if (typeof config.enabled !== "boolean" || config.instanceId !== EVALUATION_GROUP_INSTANCE_ID
-      || !isEvaluationGroupJid(config.groupJid) || !isEvaluationGroupName(config.groupName)
+    if (typeof config.enabled !== "boolean" || config.instanceId !== scope.instanceId
+      || !isEvaluationGroupJid(config.groupJid) || !isEvaluationGroupName(config.groupName, scope.unit)
       || typeof config.activatedAt !== "string" || !Number.isFinite(Date.parse(config.activatedAt))
       || !normalizeEvaluationGroupText(config.approvedBy, 200)) return null;
     if (config.confirmationsActivatedAt !== undefined
@@ -62,9 +82,9 @@ export function parseEvaluationGroupConfig(raw: unknown): EvaluationGroupConfig 
         || !Number.isFinite(Date.parse(config.reschedulesActivatedAt)))) return null;
     return {
       enabled: config.enabled,
-      instanceId: EVALUATION_GROUP_INSTANCE_ID,
+      instanceId: scope.instanceId,
       groupJid: config.groupJid,
-      groupName: EVALUATION_GROUP_NAME,
+      groupName: scope.groupName,
       activatedAt: new Date(config.activatedAt).toISOString(),
       approvedBy: config.approvedBy.trim(),
       ...(config.confirmationsActivatedAt ? { confirmationsActivatedAt: new Date(config.confirmationsActivatedAt).toISOString() } : {}),
