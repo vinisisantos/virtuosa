@@ -6,7 +6,7 @@ import { EVALUATION_GROUP_INSTANCE_ID, EVALUATION_GROUP_SETTING_KEY, getEvaluati
 
 const substitutes = {
   "@/lib/whatsapp/instance-resolver": "export async function getInstancesForRequest(req) { globalThis.groupApiCalls.push({ kind: 'access', url: req.url }); return { instances: globalThis.groupApiInstances }; }",
-  "@/lib/whatsapp/evaluation-group-directory": "export async function fetchEvaluationNoticeGroups(name) { globalThis.groupApiCalls.push({ kind: 'provider', name }); if (globalThis.groupApiProviderError) throw globalThis.groupApiProviderError; return globalThis.groupApiGroups; }",
+  "@/lib/whatsapp/evaluation-group-directory": "export async function fetchEvaluationNoticeGroups(name) { globalThis.groupApiCalls.push({ kind: 'provider', name }); if (globalThis.groupApiProviderError) throw globalThis.groupApiProviderError; return globalThis.groupApiGroups; } export async function discoverEvaluationNoticeGroups(name,fetcher,unit) { globalThis.groupApiCalls.push({ kind: 'discovery', name, unit }); if (globalThis.groupApiProviderError) throw globalThis.groupApiProviderError; return {groups:globalThis.groupApiGroups,diagnostics:globalThis.groupApiDiagnostics}; }",
 };
 registerHooks({ resolve(specifier, context, next) {
   if (substitutes[specifier]) return { url: `data:text/javascript,${encodeURIComponent(substitutes[specifier])}`, shortCircuit: true };
@@ -33,6 +33,7 @@ beforeEach(() => {
   setting = null; notices = [];
   globalThis.groupApiCalls = [];
   globalThis.groupApiProviderError = null;
+  globalThis.groupApiDiagnostics = { connectedPhone: '11987654321', totalGroups: 9, groupsWithoutName: 1, relatedGroups: [] };
   globalThis.groupApiInstances = [{ id: EVALUATION_GROUP_INSTANCE_ID, unit: "SBC", name: "synthetic-paloma", canView: true, canReply: true, status: "connected", provider: "evolution" }];
   globalThis.groupApiGroups = [{ id: "120000000000@g.us", name: "AVALIAÇOES SBC", size: 8, announce: false }];
 });
@@ -65,6 +66,35 @@ test("Osasco tem acesso e histórico isolados; SCS e caixas cruzadas são recusa
   for (const query of [`?unit=SBC&targetInstanceId=${osasco.instanceId}`, `?unit=Osasco&targetInstanceId=${EVALUATION_GROUP_INSTANCE_ID}`, `?unit=SCS&targetInstanceId=${osasco.instanceId}`]) {
     assert.equal((await GET(request("GET", undefined, { query }))).status, 403);
   }
+});
+
+test("diagnóstico Osasco é descoberta administrativa explícita, no-store e sem escrita", async () => {
+  const options = useOsasco();
+  globalThis.groupApiDiagnostics.relatedGroups = [{ id: '120000000008@g.us', name: 'Leads Osasco', size: 4, announce: false }];
+  const response = await post({ action: 'discover' }, options);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+  assert.deepEqual(await response.json(), { groups: globalThis.groupApiGroups, diagnostics: globalThis.groupApiDiagnostics });
+  assert.deepEqual(calls('discovery'), [{ kind: 'discovery', name: 'synthetic-osasco', unit: 'Osasco' }]);
+  assert.equal(calls('provider').length, 0);
+  assert.equal(calls('transaction').length, 0);
+  assert.equal(calls('setting-write').length, 0);
+  assert.equal((await post({ action: 'configure', enabled: true, groupJid: '120000000008@g.us', confirmTeamAccess: true }, options)).status, 409);
+  assert.equal(calls('provider').length, 1, 'configuração revalida somente a lista estrita');
+  assert.equal(calls('discovery').length, 1, 'configuração não consulta diagnóstico ou telefone');
+  assert.equal(calls('setting-write').length, 0, 'uma pista de nome não vira destino de ativação');
+});
+
+test("diagnóstico Osasco não é acessível por viewer, caixa sem resposta ou seleção cruzada", async () => {
+  const options = useOsasco();
+  assert.equal((await post({ action: 'discover' }, { ...options, headers: { 'x-user-role': 'CONSULTORA' } })).status, 403);
+  assert.equal((await post({ action: 'discover' }, { ...options, headers: { 'x-user-id': null } })).status, 401);
+  assert.equal((await post({ action: 'discover' }, { query: `?unit=Osasco&targetInstanceId=${EVALUATION_GROUP_INSTANCE_ID}` })).status, 403);
+  globalThis.groupApiInstances[0].canReply = false;
+  assert.equal((await post({ action: 'discover' }, options)).status, 403);
+  assert.equal(calls('discovery').length, 0);
+  assert.equal(calls('provider').length, 0);
+  assert.equal(calls('setting-write').length, 0);
 });
 
 test("ativação explícita Osasco cria quatro cortes iguais sem aceitar datas do navegador", async () => {

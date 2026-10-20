@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { isAdminRole } from "@/lib/role-access";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
-import { fetchEvaluationNoticeGroups } from "@/lib/whatsapp/evaluation-group-directory";
+import { discoverEvaluationNoticeGroups, fetchEvaluationNoticeGroups } from "@/lib/whatsapp/evaluation-group-directory";
 import {
   getEvaluationGroupUnitConfig, isEvaluationGroupJid, isEvaluationGroupName, parseEvaluationGroupConfig,
 } from "@/lib/whatsapp/evaluation-group-notice-config";
@@ -60,8 +60,10 @@ export async function POST(req: NextRequest) {
       }
     }
     if (body.action === "discover") {
-      const groups = await fetchEvaluationNoticeGroups(allowed.instance.name, undefined, scope.unit);
-      return NextResponse.json({ groups }, { headers: { "Cache-Control": "private, no-store" } });
+      const discovery = scope.unit === "Osasco"
+        ? await discoverEvaluationNoticeGroups(allowed.instance.name, undefined, scope.unit)
+        : { groups: await fetchEvaluationNoticeGroups(allowed.instance.name, undefined, scope.unit) };
+      return NextResponse.json(discovery, { headers: { "Cache-Control": "private, no-store" } });
     }
     if (typeof body.enabled !== "boolean") return NextResponse.json({ error: "Informe se deseja ativar ou pausar." }, { status: 400 });
     let verifiedGroup: { id: string; name: string } | null = null;

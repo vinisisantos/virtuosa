@@ -5,7 +5,8 @@ import { AlertCircle, CalendarDays, ChevronDown, Loader2, RefreshCw, Users } fro
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { getEvaluationGroupUnitConfig, type EvaluationGroupUnit, type EvaluationGroupConfig } from "@/lib/whatsapp/evaluation-group-notice-config";
-import type { EvaluationNoticeGroup } from "@/lib/whatsapp/evaluation-group-directory";
+import { formatBrazilianPhone } from "@/lib/phone";
+import type { EvaluationNoticeGroup, EvaluationGroupDiscoveryDiagnostics, EvaluationGroupDiscoveryResult } from "@/lib/whatsapp/evaluation-group-directory";
 
 type Notice = {
   id: string; clientName: string; clientPhone: string; evaluationProcedure: string;
@@ -41,6 +42,8 @@ export function EvaluationGroupPanel({ unit = "SBC" }: { unit?: EvaluationGroupU
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [groups, setGroups] = useState<EvaluationNoticeGroup[] | null>(null);
+  const [diagnostics, setDiagnostics] = useState<{ unit: EvaluationGroupUnit; data: EvaluationGroupDiscoveryDiagnostics } | null>(null);
+  const discoveryDiagnostics = unit === "Osasco" && diagnostics?.unit === unit ? diagnostics.data : null;
   const [selected, setSelected] = useState("");
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -54,10 +57,11 @@ export function EvaluationGroupPanel({ unit = "SBC" }: { unit?: EvaluationGroupU
   useEffect(() => { if (open) void load(); }, [open, load]);
 
   const discover = async () => {
-    setBusy(true); setEditError(""); setGroups(null); setSelected(""); setConsent(false);
+    setBusy(true); setEditError(""); setGroups(null); setDiagnostics(null); setSelected(""); setConsent(false);
     try {
-      const data = await request<{ groups: EvaluationNoticeGroup[] }>(endpoint, { action: "discover" });
+      const data = await request<EvaluationGroupDiscoveryResult>(endpoint, { action: "discover" });
       setGroups(data.groups);
+      if (unit === "Osasco" && data.diagnostics) setDiagnostics({ unit, data: data.diagnostics });
       if (data.groups.length === 1 && !(unit === "Osasco" && data.groups[0].announce)) setSelected(data.groups[0].id);
     } catch (reason) { setEditError(reason instanceof Error ? reason.message : "Falha ao consultar o grupo."); }
     finally { setBusy(false); }
@@ -66,7 +70,7 @@ export function EvaluationGroupPanel({ unit = "SBC" }: { unit?: EvaluationGroupU
     setBusy(true); setEditError("");
     try {
       await request(endpoint, { action: "configure", enabled, groupJid: selected, confirmTeamAccess: consent });
-      setEditing(false); await load();
+      setEditing(false); setDiagnostics(null); await load();
     } catch (reason) { setEditError(reason instanceof Error ? reason.message : "Falha ao salvar."); }
     finally { setBusy(false); }
   };
@@ -87,7 +91,7 @@ export function EvaluationGroupPanel({ unit = "SBC" }: { unit?: EvaluationGroupU
         <Button type="button" variant="outline" className="min-h-11" disabled={loading} onClick={() => void load()}>
           {loading ? <Loader2 className="mr-2 size-4 animate-spin" /> : <RefreshCw className="mr-2 size-4" />}Atualizar
         </Button>
-        {snapshot?.canManage && <Button type="button" className="min-h-11" onClick={() => { setEditing(true); setGroups(null); setConsent(false); setSelected(""); setEditError(""); }}>Configurar grupo</Button>}
+        {snapshot?.canManage && <Button type="button" className="min-h-11" onClick={() => { setEditing(true); setGroups(null); setDiagnostics(null); setConsent(false); setSelected(""); setEditError(""); }}>Configurar grupo</Button>}
       </div>
       {loading && !snapshot && <p role="status" className="text-sm text-muted-foreground">Carregando os avisos…</p>}
       {snapshot?.config?.enabled && <div className="space-y-2 text-xs text-muted-foreground">
@@ -123,12 +127,30 @@ export function EvaluationGroupPanel({ unit = "SBC" }: { unit?: EvaluationGroupU
         <p className="text-xs text-muted-foreground">“Aceito pela Evolution” não comprova entrega ou leitura pelos integrantes do grupo.</p>
       </div>}
     </div>}
-    <Dialog open={editing} onOpenChange={value => { if (!busy) setEditing(value); }}>
+    <Dialog open={editing} onOpenChange={value => { if (!busy) { setEditing(value); setDiagnostics(null); } }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
         <DialogHeader><DialogTitle>Avisos ao grupo {scope.groupName}</DialogTitle><DialogDescription>Somente avaliações elegíveis de {unit}. Envio pela {scope.instanceDisplayName}, após salvar a alteração.{snapshot?.config?.confirmationsActivatedAt && " Novas mudanças para Confirmado geram um aviso por data e horário."}{snapshot?.config?.cancellationsActivatedAt && " Novas mudanças para Desmarcou também geram aviso; sem retroativos ou exclusões."}{snapshot?.config?.reschedulesActivatedAt && " Reagendar informa o horário anterior e o novo; salvar igual não repete."}</DialogDescription></DialogHeader>
         <div className="min-w-0 space-y-4">
           <Button type="button" variant="outline" className="min-h-11 w-full" disabled={busy || !snapshot?.connected} onClick={() => void discover()}>{busy ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Users className="mr-2 size-4" />}Conferir grupo na {scope.instanceDisplayName}</Button>
-          {groups?.length === 0 && <p role="status" className="text-sm text-muted-foreground">Nenhum grupo com esse nome foi encontrado. Confirme que a {scope.instanceDisplayName} participa dele.</p>}
+          {discoveryDiagnostics && <div className="min-w-0 space-y-2 rounded-lg border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+            <p className="break-words"><span className="font-medium text-foreground">Número conectado:</span> {discoveryDiagnostics.connectedPhone ? formatBrazilianPhone(discoveryDiagnostics.connectedPhone) : discoveryDiagnostics.phoneUnavailable ? "Não foi possível consultar o número." : "Não informado pela integração."}</p>
+            {groups?.length === 0
+              ? <p role="status" className="break-words">Nenhum grupo chamado <span className="font-medium text-foreground">{scope.groupName}</span> encontrado entre {discoveryDiagnostics.totalGroups} {discoveryDiagnostics.totalGroups === 1 ? "grupo" : "grupos"} deste número.</p>
+              : <p>{discoveryDiagnostics.totalGroups} {discoveryDiagnostics.totalGroups === 1 ? "grupo consultado" : "grupos consultados"} neste número.</p>}
+            {discoveryDiagnostics.groupsWithoutName > 0 && <p className="break-words">A integração não informou o nome de {discoveryDiagnostics.groupsWithoutName} {discoveryDiagnostics.groupsWithoutName === 1 ? "grupo" : "grupos"}.</p>}
+          </div>}
+          {groups?.length === 0 && !discoveryDiagnostics && <p role="status" className="text-sm text-muted-foreground">Nenhum grupo com esse nome foi encontrado. Confirme que a {scope.instanceDisplayName} participa dele.</p>}
+          {groups?.length === 0 && discoveryDiagnostics && discoveryDiagnostics.relatedGroups.length > 0 && <div className="min-w-0 space-y-2">
+            <h3 className="text-sm font-semibold text-foreground">Nomes semelhantes encontrados</h3>
+            <p className="break-words text-xs text-muted-foreground">Estes resultados precisam ser conferidos antes da ativação e não podem ser selecionados aqui.</p>
+            <ul className="min-w-0 space-y-2">
+              {discoveryDiagnostics.relatedGroups.map(group => <li key={group.id} className="min-w-0 rounded-lg border border-border p-3 text-sm">
+                <span className="block break-words font-medium text-foreground">{group.name}</span>
+                <span className="block break-all text-xs text-muted-foreground">{group.id}</span>
+                <span className="block break-words text-xs text-muted-foreground">{group.size === null ? "Integrantes não informados" : `${group.size} integrantes`}{group.announce ? " · Somente administradores podem enviar" : ""}</span>
+              </li>)}
+            </ul>
+          </div>}
           {groups && groups.length > 1 && <p className="text-sm text-amber-700 dark:text-amber-400">Há grupos com o mesmo nome. Confira o identificador antes de selecionar.</p>}
           {groups?.map(group => <label key={group.id} className="flex min-h-14 cursor-pointer items-start gap-3 rounded-lg border border-border p-3">
             <input type="radio" name={`evaluation-group-${unit}`} checked={selected === group.id} onChange={() => { setSelected(group.id); setConsent(false); }} disabled={busy || (unit === "Osasco" && group.announce)} className="mt-1 size-4 shrink-0 accent-primary" />
@@ -141,7 +163,7 @@ export function EvaluationGroupPanel({ unit = "SBC" }: { unit?: EvaluationGroupU
         </div>
         <DialogFooter className="gap-2">
           {snapshot?.config?.enabled && <Button type="button" variant="outline" className="min-h-11" disabled={busy} onClick={() => void save(false)}>Pausar avisos</Button>}
-          <Button type="button" variant="outline" className="min-h-11" disabled={busy} onClick={() => setEditing(false)}>Cancelar</Button>
+          <Button type="button" variant="outline" className="min-h-11" disabled={busy} onClick={() => { setEditing(false); setDiagnostics(null); }}>Cancelar</Button>
           <Button type="button" className="min-h-11" disabled={busy || !selected || !consent} onClick={() => void save(true)}>{unit === "Osasco" ? "Ativar avisos de avaliações" : "Ativar para novas avaliações"}</Button>
         </DialogFooter>
       </DialogContent>
