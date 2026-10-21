@@ -1494,6 +1494,7 @@ export default function PipelinePage() {
             <AppointmentClientNameField value={scheduleClientName} onChange={setScheduleClientName} disabled={isScheduling} />
             {usesEvaluationProcedure(deals.find((deal) => deal.id === dealToSchedule?.dealId)?.unit || globalUnit || pipeline?.unit) && (
               <EvaluationProcedureField
+                services={catalogServices}
                 value={scheduleProcedure}
                 onChange={setScheduleProcedure}
                 required={!deals.find((deal) => deal.id === dealToSchedule?.dealId)?.evaluationAppointmentId}
@@ -1676,7 +1677,7 @@ export default function PipelinePage() {
                   <Label className="text-sm font-semibold">Avaliação agendada</Label>
                 </div>
                 {usesEvaluationProcedure(globalUnit || pipeline?.unit) && (
-                  <EvaluationProcedureField value={addScheduleProcedure} onChange={setAddScheduleProcedure} required disabled={isAddingDeal} clientPhone={addPhone} />
+                  <EvaluationProcedureField services={catalogServices} value={addScheduleProcedure} onChange={setAddScheduleProcedure} required disabled={isAddingDeal} clientPhone={addPhone} />
                 )}
                 <div className="grid gap-2 sm:grid-cols-[1fr_130px]">
                   <div className="grid gap-2">
@@ -1901,6 +1902,7 @@ export default function PipelinePage() {
                 <AppointmentClientNameField value={editEvaluationClientName} onChange={setEditEvaluationClientName} disabled={isSaving} />
                 {usesEvaluationProcedure(dealToEdit?.unit) && (
                   <EvaluationProcedureField
+                    services={catalogServices}
                     value={editEvaluationProcedure}
                     onChange={setEditEvaluationProcedure}
                     required={!dealToEdit?.evaluationAppointmentId}

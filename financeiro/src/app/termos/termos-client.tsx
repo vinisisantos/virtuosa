@@ -65,6 +65,7 @@ export function TermosClient() {
   const [genData, setGenData] = useState<Record<string, string>>({});
   const [genHtml, setGenHtml] = useState('');
   const [genUnidade, setGenUnidade] = useState('SCS');
+  const [procedureSuggestions, setProcedureSuggestions] = useState<{ unit: string; names: string[] } | null>(null);
   const [showVars, setShowVars] = useState(false);
   const [showTablePicker, setShowTablePicker] = useState(false);
   const [tableHover, setTableHover] = useState<[number, number]>([0, 0]);
@@ -148,6 +149,19 @@ export function TermosClient() {
   const [signStep, setSignStep] = useState('');
   const [hasDrawn, setHasDrawn] = useState(false);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`/api/procedimentos?unit=${encodeURIComponent(genUnidade)}`, { signal: controller.signal })
+      .then(async response => {
+        if (!response.ok) throw new Error('Procedimentos indisponíveis');
+        const list = await response.json();
+        if (!controller.signal.aborted && Array.isArray(list)) {
+          setProcedureSuggestions({ unit: genUnidade, names: list });
+        }
+      }).catch(() => {});
+    return () => controller.abort();
+  }, [genUnidade]);
+
   // Load
   useEffect(() => {
     // Check admin role
@@ -155,12 +169,6 @@ export function TermosClient() {
       if (u?.role === 'ADMINISTRADOR' || u?.permissions?.admin === true) setIsAdmin(true);
     }).catch(() => {});
 
-    // Fetch procedure suggestions
-    fetch('/api/procedimentos').then(r => r.json()).then(list => {
-      if (Array.isArray(list)) {
-        setGenData(prev => ({ ...prev, _procSuggestions: JSON.stringify(list) }));
-      }
-    }).catch(() => {});
     async function loadTemplates() {
       // 1. Fetch from Database
       let networkTemplates: DocTemplate[] = [];
@@ -1721,7 +1729,7 @@ export function TermosClient() {
 
               {/* Datalist sugestões */}
               <datalist id="proc-suggestions">
-                {(JSON.parse(genData._procSuggestions || '[]') as string[]).map((s, i) => <option key={i} value={s} />)}
+                {(procedureSuggestions?.unit === genUnidade ? procedureSuggestions.names : []).map(s => <option key={s} value={s} />)}
               </datalist>
 
               {/* Cards de procedimento (mobile-first) */}

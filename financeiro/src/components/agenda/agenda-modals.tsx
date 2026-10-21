@@ -4,6 +4,7 @@ import { STATUS_COLORS, cardS, btnPrimary } from './agenda-constants';
 import { DatePicker } from '@/components/ui/date-picker';
 import { PatientAutocomplete, PatientData } from '@/components/patient-autocomplete';
 import { EvaluationProcedureField } from '@/components/evaluation-procedure-field';
+import { catalogEndTime } from '@/lib/catalog-duration';
 import { evaluationProcedureDraft } from '@/lib/evaluation-procedure-draft';
 import { normalizeAppointmentClientName } from '@/lib/appointment-client-name';
 import { isEvaluationAppointment, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
@@ -115,8 +116,9 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
     return svc?.duration ?? 60;
   };
 
-  // Calculate end hour/min from start + duration, snapping to 15min intervals
+  // SBC follows the approved catalog exactly, including durations below 15 minutes.
   const calcEndTime = (startH: number, startM: number, durMin: number) => {
+    if (form.unit === 'SBC') return catalogEndTime(startH, startM, durMin) || { endH: form.endHour, endM: form.endMin };
     const totalMin = startH * 60 + startM + durMin;
     const endH = String(Math.min(21, Math.floor(totalMin / 60))).padStart(2, '0');
     // Snap to nearest 15-minute mark
@@ -203,6 +205,7 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
           {usesEvaluationProcedure(form.unit) && isEvaluationAppointment(form.procedimento) && (
             <div style={{ gridColumn: '1 / -1', minWidth: 0 }}>
               <EvaluationProcedureField
+                services={catalogServices}
                 value={form.evaluationProcedure || ''}
                 onChange={(evaluationProcedure) => { procedureEditedRef.current = true; setForm({ ...form, evaluationProcedure }); }}
                 required={!editingId}
@@ -228,7 +231,7 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
               placeholder="Ex: Laser, Botox..."
               autoComplete="off"
             />
-            {procOpen && pkgGroups.length > 0 && (
+            {procOpen && (
               <div style={dropS}>
                 {pkgGroups.map((group, gi) => {
                   const filteredSvcs = procQuery
@@ -270,13 +273,20 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
                     </div>
                   );
                 })}
-              </div>
-            )}
-            {procOpen && pkgGroups.length === 0 && form.clientName.trim().length > 0 && (
-              <div style={dropS}>
-                <div style={{ padding: '16px 14px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                  Nenhum pacote encontrado para este cliente
-                </div>
+                {pkgGroups.length === 0 && form.clientName.trim().length > 0 && (
+                  <p className="break-words px-3 py-2 text-xs text-muted-foreground">Nenhum pacote encontrado para este cliente</p>
+                )}
+                <div className="border-t border-border px-3 py-2 text-xs font-semibold text-muted-foreground">Catálogo da unidade</div>
+                {filteredProcs.slice(0, 60).map(service => (
+                  <button key={service.id} type="button" onClick={() => selectProcedure(service.name, service.duration)}
+                    className="flex min-h-11 w-full min-w-0 items-center justify-between gap-3 border-b border-border px-3 py-2 text-left text-sm hover:bg-muted"
+                  >
+                    <span className="min-w-0 break-words">{service.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{service.duration > 0 ? `${service.duration} min` : 'Sem tempo'}</span>
+                  </button>
+                ))}
+                {filteredProcs.length > 60 && <p className="px-3 py-2 text-xs text-muted-foreground">Digite parte do nome para encontrar outros procedimentos.</p>}
+                {filteredProcs.length === 0 && <p className="px-3 py-2 text-xs text-muted-foreground">Nenhum procedimento encontrado no catálogo. Você pode informar o nome manualmente.</p>}
               </div>
             )}
           </div>
@@ -315,7 +325,7 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
                 {Array.from({ length: 15 }, (_, i) => i + 7).map(h => <option key={h} value={String(h).padStart(2, '0')}>{String(h).padStart(2, '0')}h</option>)}
               </select>
               <select value={form.startMin} onChange={e => handleStartChange(undefined, e.target.value)} style={{ ...fieldS, flex: 1, cursor: 'pointer' }}>
-                {['00', '15', '30', '45'].map(m => <option key={m} value={m}>{m}min</option>)}
+                {Array.from(new Set(['00', '15', '30', '45', form.startMin])).sort().map(m => <option key={m} value={m}>{m}min</option>)}
               </select>
             </div>
           </div>
@@ -328,7 +338,7 @@ export function AppointmentModal({ editingId, form, setForm, profissionais, canM
                 {Array.from({ length: 15 }, (_, i) => i + 7).map(h => <option key={h} value={String(h).padStart(2, '0')}>{String(h).padStart(2, '0')}h</option>)}
               </select>
               <select value={form.endMin} onChange={e => setForm({ ...form, endMin: e.target.value })} style={{ ...fieldS, flex: 1, cursor: 'pointer' }}>
-                {['00', '15', '30', '45'].map(m => <option key={m} value={m}>{m}min</option>)}
+                {Array.from(new Set(['00', '15', '30', '45', form.endMin])).sort().map(m => <option key={m} value={m}>{m}min</option>)}
               </select>
             </div>
           </div>

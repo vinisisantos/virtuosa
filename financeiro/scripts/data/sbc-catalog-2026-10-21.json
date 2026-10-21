@@ -1,0 +1,6290 @@
+{
+  "sourceSha256": "c4650aa27a1f8a9c64f0a0a8ea5fc9e729bdcbadc635e3910d2df005dae3c270",
+  "sourceTotalRows": 505,
+  "sourceTotalCents": 44507489,
+  "inserts": [
+    {
+      "id": "0a86d8f2-d278-55cd-9dac-142f13f87df1",
+      "code": "0011",
+      "name": "Botox (Retorno)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0011 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "1a3a7455-e8ec-5030-a8b9-e0b7d938df62",
+      "code": "0029",
+      "name": "Consulta Nutricionista Retorno",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0029 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "67610c93-5e10-59b4-af53-8801e4700568",
+      "code": "0066",
+      "name": "Detox Cortesia",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0066 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "fd4bea51-6064-5865-85a6-71114055dc61",
+      "code": "0079",
+      "name": "Secagem de Vasinhos ( Retorno )",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0079 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "291b184c-b853-546e-b6ae-649449f1aeb8",
+      "code": "0094",
+      "name": "Heccus CORTESIA",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0094 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c010ccee-833d-527f-bc83-873867826264",
+      "code": "0116",
+      "name": "Lipo sem Corte CORTESIA",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0116 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7ae9ac8c-f5cc-5d15-85c0-6f3d45372100",
+      "code": "0166",
+      "name": "Retorno Botox Face",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0166 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "de51f270-2670-5c8b-8a96-9ee0d295e7fe",
+      "code": "00005",
+      "name": "Retorno Botox Região",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 00005 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a771eb85-1ff7-56d6-be47-abfa4554dfbf",
+      "code": "0169",
+      "name": "Retorno Preenchimento",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0169 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "31b7f63c-b876-5e07-aea5-93d226f45122",
+      "code": "0170",
+      "name": "Retorno Skinbooster",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0170 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e682ba46-d703-59b1-8d0e-e9807b6c2655",
+      "code": "0203",
+      "name": "Pós Crio Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0203 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8daa915d-7fd6-5430-9f9c-5f2f209ba472",
+      "code": "0231",
+      "name": "Detox Pré Crio Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0231 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "dbf5bdcf-3831-5dd1-81b3-8654547c15b5",
+      "code": "0207",
+      "name": "Avaliação Inicial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0207 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9c69d352-a881-5374-8dec-da7de32935ec",
+      "code": "0208",
+      "name": "Avaliação Final",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0208 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "1de8d623-ae39-5a39-a386-49278ac7d942",
+      "code": "0343",
+      "name": "Reavaliação de Laser",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0343 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e0439dae-d9b7-5530-acba-c6380c9e39cc",
+      "code": "9028",
+      "name": "Tônico Adstringente",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 9028 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 99,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a7fa09f6-02e8-5b26-a045-c680730fe83d",
+      "code": "9026",
+      "name": "Tônico Facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 9026 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 69,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8df3e655-9b50-5164-abf2-a031a7a108ab",
+      "code": "0338",
+      "name": "Luva massageadora - Bumbum Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0338 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 54,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "cab0ccf8-c146-585e-b55c-4904f4f6d05b",
+      "code": "0359",
+      "name": "Retorno Biomestimulador",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0359 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "24337b18-3d71-5c1f-a93f-25f88fde7676",
+      "code": "0352",
+      "name": "Shake Lipo Force - Morango",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0352 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 270,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "0e81c85f-ada9-566f-a384-be69732205a3",
+      "code": "0353",
+      "name": "Shake Lipo Force - Chocolate",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0353 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 270,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6f65d69b-832c-5d4d-8a38-214c34afedde",
+      "code": "0354",
+      "name": "Solúvel Chá Verde - Lipo Force",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0354 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 200,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8e9cb59c-de8d-543c-976f-23ce57b70443",
+      "code": "0355",
+      "name": "Solúvel Frutas Negras - Lipo Force",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0355 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 170,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8cfc1c03-c838-5a41-ac03-0b6593ccca30",
+      "code": "0362",
+      "name": "Retorno Striort",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0362 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "adcb4094-55fd-5b40-ac67-34ccd148edd5",
+      "code": "0364",
+      "name": "Cápsula Lipo Force",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0364 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 84,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "724cb225-c2a5-516e-967a-d8390a241151",
+      "code": "0365",
+      "name": "Leite Facial de Quinoa",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0365 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 110,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8cfd17c3-b00d-5752-a975-f550ab6655c9",
+      "code": "0219",
+      "name": "Colágeno Flacifast 2.0",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0219 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 110,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f75e247e-7fdc-5f40-a92b-e1970a92b79e",
+      "code": "0358",
+      "name": "Ácido Hialurônico - Flaci Fast 2.0",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0358 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 69,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "bd0475f3-53b6-5c3b-a821-68f994c272b8",
+      "code": "0366",
+      "name": "Serum Antioleosidade Tea Tree - Facial - Home Care - 30g",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0366 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 180,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a78257cf-6cd2-5037-b3be-89e8d9598f80",
+      "code": "0006",
+      "name": "Avaliação Corporal e Facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0006 · Página 1 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 15,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b95b0355-9fca-5f91-b207-161f184fbc20",
+      "code": "0370",
+      "name": "Retorno Microfocado",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0370 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b1e0fb90-9d28-562c-8d80-418cd1ce0506",
+      "code": "0220",
+      "name": "Necessaire Lipo Fast 2.0",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0220 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 59,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "babeee71-50af-50b5-8127-9361df56dbeb",
+      "code": "03585",
+      "name": "Laser Lavieen - Pescoço",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 03585 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8efb5c73-76bc-58b0-a6f0-b0d1700ff1cd",
+      "code": "0391",
+      "name": "Laser Lavieen - Pescoço Rejuvenescimento",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0391 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 999,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5b5e9d21-b61c-5ca1-98d6-582ea18f9f6f",
+      "code": "0392",
+      "name": "Laser Lavieen - Colo Rejuvenescimento",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0392 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 999,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "26c1d732-2e3a-5372-80cd-2ebfeef21778",
+      "code": "0398",
+      "name": "Harmonização Bumbum Radiesse",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0398 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 4500,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ab124c50-c7a3-5682-b6c7-c9d8238ce01d",
+      "code": "0404",
+      "name": "Pison Hiperpigmentação (cód. 0404)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0404 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 400,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6e2d3d37-afab-52c1-b609-a0865d5e711d",
+      "code": "0405",
+      "name": "Pison Hiperpigmentação (cód. 0405)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0405 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 520,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b6c26d05-f166-5f11-90f7-b47b63553c04",
+      "code": "0406",
+      "name": "Pison Olheiras (cód. 0406)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0406 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 600,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "baca832d-5ffb-5ffe-aebd-ce25e488fea9",
+      "code": "0407",
+      "name": "Pison Olheiras (cód. 0407)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0407 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 780,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5bc990f7-ea04-5e06-a345-67e9a56a546f",
+      "code": "0409",
+      "name": "Pison Clareamento Virilha (cód. 0409)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0409 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 715,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "357a9a9d-eaaf-561e-b015-be8a69f63615",
+      "code": "0411",
+      "name": "Lavien Clareamento Axila",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0411 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 585,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6bd53edf-3ed5-57bd-81d0-4f69d165cfc7",
+      "code": "0413",
+      "name": "Pison Melanose + Textura (cód. 0413)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0413 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 650,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7d0ec78a-1728-578c-8d40-1b87c248df44",
+      "code": "0415",
+      "name": "Pison Poros Dilatados + Textura (cód. 0415)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0415 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 650,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b7d0581c-595f-594a-a3a0-9a594010b6ee",
+      "code": "0419",
+      "name": "Pison Linhas Finas (cód. 0419)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0419 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 580,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ee42bfcc-d6ef-5756-9da6-0aa166b492bf",
+      "code": "0421",
+      "name": "Pison Resurfacing Interno (cód. 0421)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0421 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 1560,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ce699370-599b-54eb-b9f4-30c89c3cff1b",
+      "code": "0423",
+      "name": "Pison Resurfacing Moderado (cód. 0423)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0423 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 1040,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "71989da1-ea86-5995-a03a-bf6bd9da6067",
+      "code": "0425",
+      "name": "Pison BB Laser (cód. 0425)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0425 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 910,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "690e7678-b488-5a11-a752-ca6c3e044237",
+      "code": "0427",
+      "name": "Pison Clareamento Coporal - Colo (cód. 0427)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0427 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 910,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ebf10b11-7ffe-5a62-93c5-77ade1780255",
+      "code": "0432",
+      "name": "Pison Clareamento Coporal - Perna (cód. 0432)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0432 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 1300,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "fbddc1ee-5403-5452-8fc0-97fe492a6797",
+      "code": "0439",
+      "name": "Lavieen Estria",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0439 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 699,
+      "cost": 0,
+      "duration": 15,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6d19611a-35e9-57c7-a1d0-7724a610d579",
+      "code": "0442",
+      "name": "Retirada de Produto",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0442 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 1200,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "0247e68a-eec7-5147-93bf-3fa01d54a338",
+      "code": "0443",
+      "name": "Retorno de retirada de Produto",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0443 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ccd06ddd-86ba-535f-b75d-85a9fa17b8f3",
+      "code": "0460",
+      "name": "PDRN Facial PHD 8ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0460 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 1200,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e007213a-039b-554c-b1da-0036e5f4a395",
+      "code": "0474",
+      "name": "Club Depilação Basic",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0474 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 1558.8,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "4d0e0449-fd9d-58bb-9ff0-1dbeec19e8fc",
+      "code": "0475",
+      "name": "Club Depilação Confort",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0475 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 2158.8,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2a338b49-f13b-5d4f-b194-a24f6b76bea1",
+      "code": "0476",
+      "name": "Club Beleza Essencial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0476 · Página 2 do PDF.",
+      "category": "Estética",
+      "price": 1918.8,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f6d2822c-e9e3-52de-a329-11efa7cfa50a",
+      "code": "0478",
+      "name": "Club Beleza Radiante",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0478 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 2998.8,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9a88604b-e9e9-5c7e-904f-61adfa78d033",
+      "code": "0375",
+      "name": "Botox - 1 Unidade",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0375 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 19.9,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "28390c80-9ef0-597f-a878-b8a163d87dfd",
+      "code": "0450",
+      "name": "Retorno Bioestimulador Íntimo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0450 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 45,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "dabdde49-91ae-568a-94ae-3488980bf865",
+      "code": "0452",
+      "name": "Retorno Preenchimento Íntimo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0452 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "520f2fb7-c574-5a4a-b34f-dc23151e25e1",
+      "code": "0453",
+      "name": "Retorno Microfocado Íntimo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0453 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "81a463a2-c364-51ca-a70f-52251ff4a5d5",
+      "code": "0495",
+      "name": "Velaryan estimulo drenagem local 10 min",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0495 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "1075091d-3748-5fd4-8ddb-702587149189",
+      "code": "0507",
+      "name": "Serum retinol",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0507 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 89,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "3ad4663c-7612-5245-9227-f7b63ef053ec",
+      "code": "0512",
+      "name": "Bronze fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0512 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 119.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "de03682a-dcc9-5229-917a-5629989a0881",
+      "code": "0514",
+      "name": "1 enzimas ozifast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0514 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 180,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "0ada1a46-b56e-5d54-82cb-cbda8e5aaed0",
+      "code": "0516",
+      "name": "Hidratante facial Magic Pink",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0516 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 155,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "43c138a9-8537-5258-9499-81db5f017c68",
+      "code": "0517",
+      "name": "Hidrolipo 25ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0517 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 399.9,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "df9f3d3d-d8e5-5dbf-b7bc-2ba1a57ce950",
+      "code": "0518",
+      "name": "Black Mask",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0518 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 59.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "330a1111-8c0f-5292-950b-3e6b8b11dc1e",
+      "code": "0519",
+      "name": "Melan Ice Gel Creme",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0519 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 199.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "81cb121b-a11d-5676-815c-f80bbf4a6d19",
+      "code": "0520",
+      "name": "Agua Micelar",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0520 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 149.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7b129ef4-0585-568f-901a-6b684bd5765d",
+      "code": "0521",
+      "name": "Glyco Pure",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0521 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 189.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "07db389b-566e-5742-a116-4cbaa5dc9e93",
+      "code": "0522",
+      "name": "Drenagem Pós cirúrgica LIPO PAPADA",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0522 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 120,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "62f8b67d-cde0-5f43-a81a-9163b729d64f",
+      "code": "0523",
+      "name": "Drenagem Pós cirúrgica ABDOMINOPLASTIA",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0523 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 235,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c2111afe-ad2f-5997-95a8-88e92e4dc897",
+      "code": "0524",
+      "name": "Drenagem Pós cirúrgica LIPO ESCULTURA",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0524 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 285,
+      "cost": 0,
+      "duration": 120,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "95564378-a7c7-5796-8ec6-81555552bdd1",
+      "code": "0525",
+      "name": "Drenagem Pós cirúrgica LIPO CORPO TODO",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0525 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 350,
+      "cost": 0,
+      "duration": 120,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "156c79d4-33f8-57d8-9ef8-32f758e2538a",
+      "code": "0526",
+      "name": "Drenagem Pós cirúrgica LIPO ABDOMEN FLANCOS",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0526 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 250,
+      "cost": 0,
+      "duration": 120,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "20ae4a48-1efe-502e-aa8c-d9d3305915a2",
+      "code": "0527",
+      "name": "Drenagem Pós cirúrgica LIPO PERNA CULOTE",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0527 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 200,
+      "cost": 0,
+      "duration": 120,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c083fe06-8768-575b-8ff6-c960004f91e8",
+      "code": "0528",
+      "name": "Drenagem Pós cirúrgica LIPO BRAÇO",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0528 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 140,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a364a151-36e6-5ad3-aae0-3e2e3df8d31f",
+      "code": "0529",
+      "name": "Dermaplaning facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0529 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a3d3581a-e62b-5067-9da3-b2420807e605",
+      "code": "0534",
+      "name": "Liberação miofascial local",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0534 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 99,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "19f321fc-9ea4-561d-8ba2-9023c7d9949e",
+      "code": "0533",
+      "name": "Velaryan manutenção lipedema 20min",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0533 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 180,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8b5cf52f-d187-54ef-966a-8aea3e579365",
+      "code": "0501",
+      "name": "Velaryan estimulo anti inflamatório 10 min associação com procedimentos AN ESTIMULO ANTI INFLAMATORI",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0501 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 90,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "03d06eb8-c1e0-5d0c-8c5a-40ff16da030b",
+      "code": "0499",
+      "name": "Velaryan Celulite 15 min",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0499 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 120,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "265069f9-7a08-58fd-9152-766a8af3c425",
+      "code": "0496",
+      "name": "Velaryan reparo tecidual estrias 10 min em uma região )",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0496 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 90,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7f904f19-4af1-52c2-b23a-bdbfb2cddf09",
+      "code": "0494",
+      "name": "Velaryan estimulo de drenagem corpo todo 10 min costas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0494 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "78299bb8-df74-513b-b0cc-befd98fdd112",
+      "code": "0544",
+      "name": "DrenoDetox",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0544 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 200,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5cc72b17-fcc2-5425-a891-2d065455a0b3",
+      "code": "0542",
+      "name": "Mounjaro",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0542 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ceafb783-5d93-57f2-9e1e-39ce09ac932a",
+      "code": "0489",
+      "name": "Gordura Localizada PHD (mini lipo)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0489 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 200,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "34455b48-7ccf-5306-afc9-f1e347998a16",
+      "code": "0546",
+      "name": "Procedimento uma hora",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0546 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8f7c2a6c-3d6f-51c8-bdac-7370452d35df",
+      "code": "0549",
+      "name": "Radiofrequência Papada",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0549 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a96c9835-cc87-5ccf-84b6-5bbd33a93239",
+      "code": "0548",
+      "name": "Hidratação Pós-Peeling",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0548 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "43e60d51-4bb0-55a9-b99a-407bc612d779",
+      "code": "0550",
+      "name": "Rennova Diamond Intense",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0550 · Página 3 do PDF.",
+      "category": "Estética",
+      "price": 2200,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6d41d74b-5755-5d83-81ce-85c6ad9168bc",
+      "code": "0559",
+      "name": "Magni Degustação",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0559 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "50e7d496-9657-598b-8602-b39b1f6b7fd7",
+      "code": "0557",
+      "name": "Magni Regenerador",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0557 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 299,
+      "cost": 0,
+      "duration": 45,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "24a5573f-7789-540b-b373-dcd52bd0cc7f",
+      "code": "0556",
+      "name": "Magni Gordura do sutiã",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0556 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 120,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c26fd64c-4bb8-5e15-9512-99d88510505c",
+      "code": "0555",
+      "name": "Magni Lifithing Facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0555 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 79.9,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "841a8bb3-d888-5b71-a16a-60d94de0ce6d",
+      "code": "0554",
+      "name": "Magni Gluteos+pernas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0554 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 129.9,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "91df62c0-153b-5c3d-b31f-11fa44b2cad8",
+      "code": "0553",
+      "name": "Magni Coxas Frente",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0553 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 120,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ce19d14a-daa6-521f-9771-48c5e3308b1e",
+      "code": "0552",
+      "name": "Magni Braços",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0552 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 89.9,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f6fa5b08-8700-53c0-8227-96e0c5c6b821",
+      "code": "0551",
+      "name": "Magni Abdomen e Flancos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0551 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 119,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "66627199-00e8-512c-aa9a-1f59825db31a",
+      "code": "0560",
+      "name": "Hidrolipo Plus",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0560 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 1000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "764ef6a5-d4e8-5d6a-87c6-f2d3d7e8121c",
+      "code": "0561",
+      "name": "Vapor de ozônio",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0561 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 150,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "dfd3133b-377f-593e-8d4c-465382112f00",
+      "code": "0562",
+      "name": "Plano Mensal",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0562 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 478,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "44bf06bc-024e-5d31-b57f-42b3cf567cc4",
+      "code": "537",
+      "name": "Banho de Lua",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 537 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 180,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f73ffc39-e51d-5265-b76f-d4b5a1d56e04",
+      "code": "0010",
+      "name": "Bioestimulador Sculptra",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0010 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 3905,
+      "cost": 0,
+      "duration": 90,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "67e26e7e-d485-591a-83fb-515f5e7c73d1",
+      "code": "105",
+      "name": "Botox Face - 50 UI",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 105 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 1696.2,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "aebaa225-f322-5254-90ca-5d5d0f7f1bcd",
+      "code": "0018",
+      "name": "Capsula LipoFast 2.0",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0018 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 79,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "60aa29b5-a503-59f7-b69a-2b19982220ed",
+      "code": "0019",
+      "name": "Capsula MMI",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0019 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 89,
+      "cost": 0,
+      "duration": 2,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "db85a89a-32de-5ab6-995f-df8ca7ab9ffc",
+      "code": "0026",
+      "name": "Chá LipoFast 2.0",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0026 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 135,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "0720b1bf-83dd-5ee9-a08a-3ead799ade2c",
+      "code": "0027",
+      "name": "Chá MMI",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0027 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 128,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b2eedcd7-abbd-51fc-a35c-e228714d5ed8",
+      "code": "324",
+      "name": "Depilação a Laser Nuca",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 324 · Página 4 do PDF.",
+      "category": "Estética",
+      "price": 55,
+      "cost": 0,
+      "duration": 5,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "85edb0d9-43f1-5287-b853-b4bdd6edfcd5",
+      "code": "327",
+      "name": "Depilação Orelha",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 327 · Página 5 do PDF.",
+      "category": "Estética",
+      "price": 49,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6ee6ee46-82b1-5121-92ce-93597d6731e3",
+      "code": "534",
+      "name": "Esfoliação corporal",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 534 · Página 5 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6db8e526-47e6-5f64-9774-264cbc9e1c91",
+      "code": "0087",
+      "name": "Garrafa LipoFast 2.0",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0087 · Página 5 do PDF.",
+      "category": "Estética",
+      "price": 69,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8557ea6c-2ed7-5337-948c-3e61f377dd2a",
+      "code": "538",
+      "name": "Hidratação Corporal",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 538 · Página 5 do PDF.",
+      "category": "Estética",
+      "price": 120,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "945d18dd-efb4-59f2-8ffe-269598dd8bc2",
+      "code": "0103",
+      "name": "Kit Home Care Striort",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0103 · Página 5 do PDF.",
+      "category": "Estética",
+      "price": 305,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ac6699ea-d125-5c2a-98ff-4c937e014b0b",
+      "code": "0124",
+      "name": "Mascara Rejuvenecedora",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0124 · Página 5 do PDF.",
+      "category": "Estética",
+      "price": 130,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "084eb443-9e03-5278-9a59-137f27acbffd",
+      "code": "0129",
+      "name": "Massagem Revitalizante Facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0129 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 105,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5879a888-0a0b-5a62-8352-e61c6723eb4f",
+      "code": "531",
+      "name": "New Striort avulso",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 531 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 460,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2313a748-f8b5-5245-b376-95fd25a1cfa1",
+      "code": "0135",
+      "name": "New Striort Home Car",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0135 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 528,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2fbfafe0-6529-5145-b04b-de2fe9bacb17",
+      "code": "0138",
+      "name": "Nicotinato de Metila - 500ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0138 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 170,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9fd2d291-fc47-5ed3-8ff2-2cccf91eb0f1",
+      "code": "9036",
+      "name": "Nutracêutico - Chá Detox - 10 sachês",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 9036 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 22,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7b3f6edd-07e2-53b0-98e9-c3b2744b0a23",
+      "code": "9035",
+      "name": "Nutracêutico - Detox Ultra - 60 cápsulas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 9035 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 99,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "04ec0a06-5c24-5697-afbb-efaef0022c1b",
+      "code": "0152",
+      "name": "Pós Crio",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0152 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 89,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ce96e72c-cf22-5f4e-a307-8ffc146b272c",
+      "code": "0155",
+      "name": "Preenchimento - 1 ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0155 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 1700,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f3c9ef12-8589-54fe-9f07-1c730aa4fec8",
+      "code": "0160",
+      "name": "Protetor solar",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0160 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 119.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "655fd144-6d9b-5df5-b272-cf4f77cc4616",
+      "code": "529",
+      "name": "Protocolo Up Facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 529 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 180,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "4a735c15-a77a-5a51-9bf6-c58b6c2072ea",
+      "code": "9027",
+      "name": "Sabonete Facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 9027 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 140,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f1dc3d06-07d6-58b1-8f80-be443b9f0e1d",
+      "code": "9034",
+      "name": "Spray Nicotinato de Metila - 240ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 9034 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 89,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "24f58ac8-adfa-58aa-bad0-98d09d0233fb",
+      "code": "0184",
+      "name": "Vale presente",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0184 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f0c0eba4-966f-563a-ad4d-fe4e58906c49",
+      "code": "9030",
+      "name": "Vitamina C",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 9030 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 160,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9d8aca7a-bb87-55cd-b569-2dd4bad1893e",
+      "code": "0198",
+      "name": "Garrafa Crio Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0198 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 69,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b68f3cce-3a2e-57f1-911d-d8eb771e77ae",
+      "code": "0199",
+      "name": "Necessaire Crio Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0199 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 69,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b8d207d6-10ea-5a6c-8c33-ef1d7be3946b",
+      "code": "0471",
+      "name": "Club Essencial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0471 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 1558.8,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5c61f57b-4bae-5bdc-9b85-488cae08f44f",
+      "code": "0472",
+      "name": "Club Soft",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0472 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 1918.8,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "50613922-b215-5b05-85d3-d783638076db",
+      "code": "0473",
+      "name": "Club Premium",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0473 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 2388,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "25b911e0-7eba-534d-add9-5fc8c900a581",
+      "code": "0477",
+      "name": "Club Beleza Ampliada",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0477 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 2398.8,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8c122c12-f8a9-5039-a39f-66720adfe7b0",
+      "code": "0469",
+      "name": "Laser Pison - Colo Rejuvenescimento",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0469 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 999,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7c99d6cd-fd27-53df-9637-7f0aa432f4d5",
+      "code": "0461",
+      "name": "Laser Lavieen Capilar",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0461 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 699,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "1c945ffb-eb43-55e3-9193-acc4547f13d1",
+      "code": "0462",
+      "name": "Laser Lavieen Costas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0462 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 999,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "91e7eece-3f9e-5670-bfc9-fda00ee301e7",
+      "code": "0463",
+      "name": "Laser Lavieen Abdômen",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0463 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 699,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "19b6acc8-d025-5c28-90b7-be7c343b7eb5",
+      "code": "0464",
+      "name": "Laser Lavieen Pernas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0464 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 999,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "edc031f1-9166-52b7-a9cc-f984b5c51871",
+      "code": "0465",
+      "name": "Laser Lavieen Pés",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0465 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 500,
+      "cost": 0,
+      "duration": 15,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "77bf6a7c-9bbc-5a87-828d-2ae926d3675c",
+      "code": "0466",
+      "name": "Laser Lavieen Braço",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0466 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 500,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d29f2d00-d917-50bb-8fcf-ef04b1406aee",
+      "code": "0467",
+      "name": "Laser Pison - Face Rejuvenescimento",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0467 · Página 6 do PDF.",
+      "category": "Estética",
+      "price": 999,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "89d8c14d-6f96-5efc-941b-c3846148ed83",
+      "code": "0468",
+      "name": "Laser Pison - Pescoço Rejuvenescimento",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0468 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7b19d1b4-1433-5bbc-9e92-19810956deaf",
+      "code": "0479",
+      "name": "Bioestimulador íntimo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0479 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2500,
+      "cost": 0,
+      "duration": 90,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7b0af50e-31ef-54b8-96cd-ab33b10edc19",
+      "code": "0486",
+      "name": "Depilação Cabeça",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0486 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2000,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7b8ccfcb-4921-5b47-a895-e29f9d0b0095",
+      "code": "0485",
+      "name": "Mescla Rejuvenescimento N160",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0485 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 590,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "35452ad6-4c8e-5a31-91d7-0672f4f50275",
+      "code": "0484",
+      "name": "Mescla Flacidez Facial Biometil",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0484 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 399,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "06a3cd47-a844-5218-9755-fe7ea9c93d1f",
+      "code": "0483",
+      "name": "Mescla Rejuvenescimento PHD",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0483 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 590,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c777e0ec-91df-55ef-ae3c-0745a405de32",
+      "code": "0482",
+      "name": "Skimbooster 59 ativos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0482 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 590,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c0b97e82-628f-5c2b-a7fc-1b8b271c127d",
+      "code": "0481",
+      "name": "PDRN Biometil",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0481 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 1400,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7435fe35-5780-57c1-918a-441bea90f79f",
+      "code": "0480",
+      "name": "PDRN com Exossomos PHD",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0480 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7fb2c676-60c8-538a-8da3-9a6c64e6795b",
+      "code": "0440",
+      "name": "Tratamento Capilar Feminino",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0440 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 479.9,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "85fe200f-3729-5001-a5e7-1144d5ae2a1e",
+      "code": "0438",
+      "name": "Tratamento Capilar Marculino",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0438 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 479.9,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "22c6b4e2-44e9-5a47-b14d-623f9c18d73b",
+      "code": "0455",
+      "name": "Peeling Diamante Íntimo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0455 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 120,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d23a8f03-c0e2-5732-9634-320fe44158cb",
+      "code": "0454",
+      "name": "Radiofrequência Íntimo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0454 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 120,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8972607e-6875-5021-8c4c-480d4c1e35e9",
+      "code": "0451",
+      "name": "Preenchimento Íntimo 1 ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0451 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 1800,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6b65d7a0-5efb-5c91-a37a-3516f8a4e624",
+      "code": "0487",
+      "name": "Skin booster Retylane",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0487 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 1300,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "fe1dd0fc-242e-5643-be9c-1dc10409e9f9",
+      "code": "0459",
+      "name": "Endolift Papada",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0459 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 3500,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "94a35188-97b1-5e83-b2b5-7844a6ebe45b",
+      "code": "0431",
+      "name": "Pison Clareamento Coporal - Perna (cód. 0431)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0431 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 1000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "cfefdb87-cde5-58e9-9143-14b16109ad8b",
+      "code": "0429",
+      "name": "Pison Clareamento Coporal - Braços (cód. 0429)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0429 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 1000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7a9c643a-6690-5723-ac58-f216424e34bc",
+      "code": "0426",
+      "name": "Pison Clareamento Coporal - Colo (cód. 0426)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0426 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 700,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6e46bd12-459c-5c5b-9e80-411994dd852a",
+      "code": "0424",
+      "name": "Pison BB Laser (cód. 0424)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0424 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 700,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "3bce0c68-30b3-54c8-96d4-0230b96bfc0c",
+      "code": "0422",
+      "name": "Pison Resurfacing Moderado (cód. 0422)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0422 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d8381e11-9778-5893-8394-2793d9a50a04",
+      "code": "0420",
+      "name": "Pison Resurfacing Interno (cód. 0420)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0420 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 1200,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2f6859b5-c636-5668-8f69-a2f7adac885b",
+      "code": "0418",
+      "name": "Pison Linhas Finas (cód. 0418)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0418 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 450,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "0845b238-de73-5ce6-b831-ccbab4b59aa6",
+      "code": "0414",
+      "name": "Pison Poros Dilatados + Textura (cód. 0414)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0414 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 500,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "58b35525-ed48-5e26-9ee1-d4e3520bf60e",
+      "code": "0412",
+      "name": "Pison Melanose + Textura (cód. 0412)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0412 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 500,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "4967486c-6b7a-5e44-8785-d90aa246614d",
+      "code": "0441",
+      "name": "Bio Plus Bioestimulador",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0441 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2520,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ddd1ff5f-9cdd-54ed-a482-7c2d829770a2",
+      "code": "0458",
+      "name": "Endolift Pescoço",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0458 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2300,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b57695d8-dbe0-5241-8e9d-6f2447c9bc9f",
+      "code": "0457",
+      "name": "Endolift Mandíbula",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0457 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2300,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c8e843f2-94a0-5548-8dea-5bd1f3add365",
+      "code": "0456",
+      "name": "Endolift Malar",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0456 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2300,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "cd46625e-178d-58ef-a479-ff6a5cf2b930",
+      "code": "0455",
+      "name": "Endolift Pálpebras",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0455 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2300,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "76165f84-c81d-58e9-82ea-02fc52f70faf",
+      "code": "0454",
+      "name": "Endolift Testa",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0454 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2300,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b4e8f366-0e22-5df1-8c6f-5ad7bc94e1f7",
+      "code": "0453",
+      "name": "Endolift Celulite",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0453 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2800,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ec7a5c5f-f0f6-5b98-8c5c-1d6556902c28",
+      "code": "0452",
+      "name": "Endolift Braços",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0452 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2800,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e3bd5aeb-b06e-5006-a80d-cd20dee2ea4b",
+      "code": "0451",
+      "name": "Endolift Bananinha Bumbum",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0451 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "60286b17-f9d3-5157-9cb8-4e55110fe86a",
+      "code": "0450",
+      "name": "Endolift Interno Coxas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0450 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 2800,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a2923b4f-1b2b-5591-97d2-01e96fb97c58",
+      "code": "0449",
+      "name": "Endolift Culote",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0449 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "1ae7d32c-a038-5995-934a-313f247abeb9",
+      "code": "0448",
+      "name": "Endolift Flancos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0448 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "80170bb9-25ee-546a-9334-8d48929a6eb7",
+      "code": "0447",
+      "name": "Endolift Costas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0447 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 4000,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9af7334f-7063-5ea4-9613-22f6b4946941",
+      "code": "0446",
+      "name": "Endolift Abdômen",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0446 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 4000,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b635b44f-2265-52c9-adbe-40dd49d8414e",
+      "code": "0445",
+      "name": "Laser 60 minutos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0445 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 219,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "279bb979-1abe-5afb-b4e8-5a79aab92139",
+      "code": "0444",
+      "name": "Laser 30 minutos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0444 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 149,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d687709f-941d-5555-826a-aebd608c4b50",
+      "code": "0410",
+      "name": "Pison Clareamento Axila",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0410 · Página 7 do PDF.",
+      "category": "Estética",
+      "price": 450,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c004091e-accb-5446-ae93-baf4c4939bdb",
+      "code": "0543",
+      "name": "Consulta Medica",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0543 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f7aee5b0-c6f9-5be9-8ebe-0a516bde4e07",
+      "code": "0541",
+      "name": "Peeling Tioglicolico",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0541 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 160,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d26993e0-6214-5ee3-824f-8cfa18578093",
+      "code": "0540",
+      "name": "PDRN Exossomos Facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0540 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 1900,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "4408a4be-0cce-5a5a-9ba1-6becd1d4306e",
+      "code": "0539",
+      "name": "PDRN Olhos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0539 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 459.9,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "496be15b-0fa2-5870-b5aa-803535d6c134",
+      "code": "0538",
+      "name": "Toxina Botulínica por Ponto",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0538 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 59.9,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "77cf0ddc-4623-5412-b430-881b22713409",
+      "code": "0537",
+      "name": "Entrada Botox ponto",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0537 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 59.9,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "cebb5c8f-519d-54c5-bd6a-b9eceed934ea",
+      "code": "0536",
+      "name": "Depilação Nariz",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0536 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 49,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "096b0930-883f-58f4-934a-83489b33a8d9",
+      "code": "0535",
+      "name": "Velaryam",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0535 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 540,
+      "cost": 0,
+      "duration": 15,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "4b9bef1d-c0a6-56f0-8c6e-e78d71d918ca",
+      "code": "0531",
+      "name": "Enzima Redutora Light II PHD",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0531 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 200,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f4b3ad74-27ac-5dc4-9701-3980df8730fd",
+      "code": "0530",
+      "name": "Auriculoterapia",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0530 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 49,
+      "cost": 0,
+      "duration": 15,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9e19846a-1828-5235-ac4b-3ce83565a284",
+      "code": "0558",
+      "name": "Magni modelador corporal",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0558 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 299,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f4f6e205-c1fe-5b33-b82b-0410a0ad8b3d",
+      "code": "0506",
+      "name": "Serum c10",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0506 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 69,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "63f663fc-5113-5f19-a065-3c455faec239",
+      "code": "0505",
+      "name": "Serum All you Need",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0505 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 149,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ce2eaa7a-1ef9-5881-a340-84df67443490",
+      "code": "0503",
+      "name": "Peeling pele de Estrela",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0503 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 850,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "be94083c-1c5d-5bcc-a2dd-88e529629be7",
+      "code": "0491",
+      "name": "Mesoterapia PHD",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0491 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 300,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "3f20fa9b-529b-5d6b-b2d8-6f22e30b89fa",
+      "code": "0490",
+      "name": "Hydragloss ( hidratação labial)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0490 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 250,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c3e62744-4ead-5182-821b-5479142ea375",
+      "code": "0508",
+      "name": "Sabonete esfoliante 150 ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0508 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 169,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d218bba0-fcec-50c5-8e05-896a3beb2b80",
+      "code": "0509",
+      "name": "Sabonete esfoliante 30ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0509 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 79,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ffe6ffd8-7cbd-5cbb-85ab-e19787ef664e",
+      "code": "0513",
+      "name": "Ozi fast Contém 1 cápsula",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0513 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 399.99,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "00a478cb-696f-55c5-901e-3c6f66a4e36f",
+      "code": "0511",
+      "name": "Brilho corporal",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0511 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 94.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e4a78418-0dbe-583b-a1e1-631a93243253",
+      "code": "0510",
+      "name": "Protetor stick",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0510 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 129,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9b8b86d4-1bae-5fc4-8f98-c17595c1e239",
+      "code": "533",
+      "name": "Perfect Peel",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 533 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 170,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e65d25ed-c1a4-52a7-b546-6b41c98c8180",
+      "code": "0309",
+      "name": "Microfocado Boca",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0309 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 1300,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "69d85700-82e6-5495-88fd-9f4748583da1",
+      "code": "0313",
+      "name": "Microfocado Joelhos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0313 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 1500,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "376b50b6-75b0-5082-b7f9-71e2cf9bba1d",
+      "code": "0214",
+      "name": "New Striort Detox",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0214 · Página 8 do PDF.",
+      "category": "Estética",
+      "price": 150,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "bc4ff63b-61dd-5475-8e89-290c42c3f5f1",
+      "code": "0216",
+      "name": "Shorts Pélvico",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0216 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 300,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "589d60e2-dbb7-555b-bb9c-97b131063b09",
+      "code": "0274",
+      "name": "Protocolo Controle de Acne com Peeling",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0274 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 190,
+      "cost": 0,
+      "duration": 50,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6ee283b0-88be-5d5f-a0be-3d7aabf56bc1",
+      "code": "0317",
+      "name": "Microfocado Infra Glúteo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0317 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 1600,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2dfd0427-acbb-593e-bf29-6e5241ee4e5c",
+      "code": "0330",
+      "name": "Cinta Modeladora",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0330 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 499,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "4c8fd186-3abc-59b8-a6c0-56f9a513d86c",
+      "code": "0333",
+      "name": "Chá Termogênico - Bumbum Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0333 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 160,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a0516177-38ad-5327-b567-b25c7e097ec1",
+      "code": "0334",
+      "name": "Cápsula Bumbum Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0334 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 170,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ba94008a-aea5-57be-b785-b26de8922586",
+      "code": "0327",
+      "name": "E-10 - PHD",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0327 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 230,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5501d89b-e3a3-5491-9548-0ad86b84d84a",
+      "code": "0326",
+      "name": "TCC - PHD",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0326 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 158,
+      "cost": 0,
+      "duration": 10,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "fd585fad-7e4a-59ad-a966-6b1c1a8fe46f",
+      "code": "0318",
+      "name": "Microfocado Pré Axilar",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0318 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 1300,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a7dcd77b-396e-54e2-926c-5b103b6ea723",
+      "code": "0319",
+      "name": "Microfocado Supraescapular",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0319 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 1500,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8c494d32-719e-575e-b690-b582058b2d17",
+      "code": "0320",
+      "name": "Perfect Glúteos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0320 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 3300,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e55aff2d-56f5-5d21-89a6-470a1df3f623",
+      "code": "0323",
+      "name": "Lip Gloss Hidratante",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0323 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 54.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "073f1030-1542-542a-9c2c-d20b2f21d89c",
+      "code": "0324",
+      "name": "Lip Gloss Volume",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0324 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 54.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "816e929f-1074-527c-b931-ac6815dc1fcf",
+      "code": "0336",
+      "name": "Garrafa Bumbum Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0336 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 49,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "753007ba-2c33-5f09-9d65-2b42357de48b",
+      "code": "116",
+      "name": "Bioestimulador Biometil",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 116 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 2520,
+      "cost": 0,
+      "duration": 90,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7479d839-f6c4-5850-b27a-b4f0879e9427",
+      "code": "215",
+      "name": "Massagem Terapêutica com Ventosa",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 215 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 210,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "23381de6-a05d-5c98-8c37-33c1f047f831",
+      "code": "206",
+      "name": "GluteoFast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 206 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 544,
+      "cost": 0,
+      "duration": 90,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6f21d446-6fbe-51bf-8a1c-e88706e71689",
+      "code": "0218",
+      "name": "Necessaire Flacifast 2.0",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0218 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 69,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "000a698e-f14b-5af1-9802-ff282d724efc",
+      "code": "0217",
+      "name": "Copo Flacifast 2.0",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0217 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 49,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "0b72bb3f-d056-5038-bfac-6eb63d8013db",
+      "code": "0200",
+      "name": "Capsula Crio Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0200 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 79,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8f73b22a-f92a-5cec-bca7-a820b0b334a4",
+      "code": "0201",
+      "name": "Cha Crio Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0201 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "78fd1472-98fe-5a7c-86d2-124a0001229f",
+      "code": "0204",
+      "name": "Cinta Crio Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0204 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 330,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "09965c25-97b8-5da8-b083-36fe63f5d263",
+      "code": "0205",
+      "name": "Rinomodelação",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0205 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 2100,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6b0ffea2-96e2-5dbd-a1cc-f97bb3d43d61",
+      "code": "120",
+      "name": "Fios de Sustentação Parafuso",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 120 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 420,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "505bef88-3068-5b45-a499-1a6971202898",
+      "code": "214",
+      "name": "Jato de Plasma",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 214 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 980,
+      "cost": 0,
+      "duration": 90,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "cd652c47-d4f6-5040-8100-565e25331bae",
+      "code": "0238",
+      "name": "Esfoliante Natural Revitalizador para Lábios Pink Lips 25g",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0238 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 75,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6b6e4f50-2633-5961-a4cd-2859c5a7f461",
+      "code": "0239",
+      "name": "Manteiga Rosa Argila Labial Nutritiva Pink Lips 30g",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0239 · Página 9 do PDF.",
+      "category": "Estética",
+      "price": 75,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "4a3ddb86-e096-559f-8abb-4f25a98782c6",
+      "code": "208",
+      "name": "CeluFast Turbinada",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 208 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 600,
+      "cost": 0,
+      "duration": 160,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "47429011-7ce6-5e29-9ec5-fdf70dd5cf3c",
+      "code": "406",
+      "name": "Ozônio Região",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 406 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 150,
+      "cost": 0,
+      "duration": 20,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "3088ceb4-c519-5aa7-877f-c38e1000378e",
+      "code": "122",
+      "name": "Bioestimulador Corporal",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 122 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 120,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b0d3461d-630e-5606-92e2-01ebf3ddab8f",
+      "code": "0240",
+      "name": "Ponto Antissinais Área dos Olhos e Lábios Pink Lips 6g",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0240 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 210,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c2af1d72-d53d-50bf-961d-a8d956433885",
+      "code": "0241",
+      "name": "Óleo Corporal Áreas Ressecadas Vanilla 30 ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0241 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 75,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "0aefbad8-c1ab-50af-ada1-8341d083006c",
+      "code": "0242",
+      "name": "Hidratante Líquido Vanilla 115 ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0242 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 90,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "1ebaa233-b331-5982-b5e2-8c0f6cc2aa53",
+      "code": "0252",
+      "name": "Cápsulas Flaci Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0252 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 79,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a03b923c-d1a4-56dc-86c0-52079ddaef0a",
+      "code": "0256",
+      "name": "Espuma de Limpeza Micelar com Água Termal - 200ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0256 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 89,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "611dd088-d379-5cde-a7f9-034ab2bc5a3f",
+      "code": "0408",
+      "name": "Pison Clareamento Virilha (cód. 0408)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0408 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 550,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "3e49ca11-c6ab-58d6-826c-3919d9288ae6",
+      "code": "0382",
+      "name": "Loção Tonica Facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0382 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 99.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b48453a2-6668-5d63-81d2-64ed430c5e81",
+      "code": "0374",
+      "name": "Mistura Solúvel Crio Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0374 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 150,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "cbfcf5d2-5623-52d1-bd7e-680e2d18bee2",
+      "code": "0373",
+      "name": "Enzima Gordura Ligth I",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0373 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 260,
+      "cost": 0,
+      "duration": 5,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "267a2834-f619-5c39-9aa7-bccc98d0970d",
+      "code": "0401",
+      "name": "Frasco Mix Ultra - Gotas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0401 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 60,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "61f5103c-f05b-59ce-9aa5-f06849267060",
+      "code": "0400",
+      "name": "Capsula Mix Ultra - Espirulina",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0400 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a925b10b-f784-5545-86d1-4494a20c1f2f",
+      "code": "0399",
+      "name": "Capsula Mix Ultra - Chlorella",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0399 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "eb483e25-c373-5d87-b1e9-e64ac1a65700",
+      "code": "0394",
+      "name": "Preenchimento Labial - Pink Friday",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0394 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f95eefd8-b7d6-5ae3-9e32-2f7554a393c1",
+      "code": "0345",
+      "name": "Bolsa MMI",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0345 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 97,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "1a6f782f-77d8-583b-b0dc-f07b132d1f51",
+      "code": "0349",
+      "name": "Hidratação Facial de Vitamina C - Bioage",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0349 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 330,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5072aa61-eeb4-57e8-8287-93c5ed8a870f",
+      "code": "0346",
+      "name": "Garrafa MMI",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0346 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 34,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a4a82399-661e-5cca-a753-ce3162adfbc0",
+      "code": "0344",
+      "name": "Kit Bumbum Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0344 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 1390,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a8c7e30b-c5ad-5590-8dbf-10bd01b0b4d8",
+      "code": "0342",
+      "name": "Enzima Flacidez Corporal",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0342 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 220,
+      "cost": 0,
+      "duration": 5,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8e470bf2-b82b-5b79-8c28-3b7ef5ac53e5",
+      "code": "0340",
+      "name": "Enzima Flacidez Facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0340 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 350,
+      "cost": 0,
+      "duration": 5,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "0a0c8433-9741-5c23-a8fa-967381496ef0",
+      "code": "0339",
+      "name": "Creme Bumbum Fast",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0339 · Página 10 do PDF.",
+      "category": "Estética",
+      "price": 199,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b383194e-ac06-56bd-80ab-55905cb07c35",
+      "code": "0369",
+      "name": "Creme Arábica Touch - 200g",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0369 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "be5a2e95-c79a-5a6f-a906-9772bc6f0036",
+      "code": "0370",
+      "name": "Serum Facial - Firm-up",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0370 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 95.9,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a3ece5a3-2d24-5ecb-9a62-29e258f33c67",
+      "code": "0367",
+      "name": "Microfocado Intimo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0367 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 550,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b4f262e9-9599-508b-b370-3fc47700cc85",
+      "code": "0430",
+      "name": "Pison Clareamento Coporal - Braços (cód. 0430)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0430 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 1300,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "07365d96-a559-55cb-a8e5-e0b5e78d3e4a",
+      "code": "0566",
+      "name": "Derm sub Skin 20ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0566 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 10000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9aa46de4-3da6-50bd-a353-ee01052653f8",
+      "code": "0565",
+      "name": "Derm sub Skin 10ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0565 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 5000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "37bd1ee6-6f4b-5737-a9ae-7b10f4f8d0e0",
+      "code": "0567",
+      "name": "Lavieen",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0567 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 500,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5fc3b33f-3299-5846-8004-190831ac06d3",
+      "code": "0389",
+      "name": "Preenchedor - HarmonyCa",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0389 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 3400,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e4e59e53-c45a-5f87-ae8c-54ab0d8dda7b",
+      "code": "0363",
+      "name": "Alta Frequência",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0363 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 0,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e02b9d24-0437-5c67-98e3-fa94e959c552",
+      "code": "0456",
+      "name": "PDRN Capilar",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0456 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 400,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c225baa6-3908-544c-a6e8-657f940c3aed",
+      "code": "0570",
+      "name": "Criodermis",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0570 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 300,
+      "cost": 0,
+      "duration": 50,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "299a25d7-4b89-59da-bf52-08fcedd889db",
+      "code": "0569",
+      "name": "MPT",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0569 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 300,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8605ca0b-c9b0-5edf-8a9f-14beb64a3a97",
+      "code": "0571",
+      "name": "MPT intimo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0571 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 1500,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b51eb1ca-42fb-5cb0-97f1-5b47f52b7947",
+      "code": "0568",
+      "name": "Andromeda",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0568 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 350,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "80c60d0d-0860-5ab5-87c8-a1b2d67e6886",
+      "code": "0573",
+      "name": "Andromeda Flacidez",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0573 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 200,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5c31418b-a01f-57ef-8711-dea7b84fda57",
+      "code": "0572",
+      "name": "Andromeda Gordura",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0572 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 200,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "241c88c6-c55d-57bd-ab69-4c4ef695d3e6",
+      "code": "0435",
+      "name": "Endolift Face",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0435 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 4100,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d3f8f0b2-926c-559b-97c5-967de94ad82c",
+      "code": "0575",
+      "name": "Preenchimento glúteo 50ML",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0575 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 5000,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9d997906-d9bb-5fcd-b598-07455a4a6221",
+      "code": "0578",
+      "name": "Peeling Lineless Up Skin",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0578 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 899,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5689bf0d-6a8b-5922-8a45-7e16bc5b3260",
+      "code": "0381",
+      "name": "Elleva X -",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0381 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 7600,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "ebf28543-fc50-5328-b86f-08b7a651e04c",
+      "code": "0579",
+      "name": "Andromeda facial",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0579 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 260,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2175a67f-5043-5ba0-b294-75ad24689a56",
+      "code": "0580",
+      "name": "Botox cabeça (sudorese)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0580 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 2800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b97f8c5c-c283-5cb7-aee3-6cd3269d56af",
+      "code": "0581",
+      "name": "Nutriex Bioestimulador",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0581 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 1990,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "422aeba3-0009-5ad2-8ace-5366abbf2623",
+      "code": "0582",
+      "name": "Ptolomeu Papada",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0582 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 1800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b651c52b-4ec0-5908-9cc8-0e732ed702d5",
+      "code": "0583",
+      "name": "Ptolomeu Pescoço",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0583 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 2500,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b2838fb8-77dd-557c-a192-865c77f8a539",
+      "code": "0584",
+      "name": "Ptolomeu Abdômen",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0584 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 4500,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d8e29fdc-422c-56e1-be42-8b493df95a45",
+      "code": "0585",
+      "name": "Ptolomeu Braço",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0585 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 3500,
+      "cost": 0,
+      "duration": 120,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "fa8e50e5-49f3-5dce-8ae9-4825a2322d7e",
+      "code": "0586",
+      "name": "Ptolomeu Interno de coxa",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0586 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 4000,
+      "cost": 0,
+      "duration": 90,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2a002859-d26c-5c69-b895-66117c159bed",
+      "code": "0492",
+      "name": "Subcisão de Celulite",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0492 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 900,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6ee57902-6833-513f-b37d-67fdc3b710a2",
+      "code": "0577",
+      "name": "Hergon Co2",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0577 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 1500,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b066c476-6183-5568-901b-74a50488e8cf",
+      "code": "0589",
+      "name": "Harmonização de Glúteos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0589 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 15000,
+      "cost": 0,
+      "duration": 90,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9532e3dd-927b-5acf-a967-429efbe591a0",
+      "code": "0590",
+      "name": "Hibrid",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0590 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 179,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "40427196-4384-5963-9001-95c590ae99b7",
+      "code": "0591",
+      "name": "CO2 Rosto ( Full Face)",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0591 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 45,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "557e91ae-8043-5ba1-b6f1-bd26de7e6014",
+      "code": "0592",
+      "name": "CO2 Pálpebras",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0592 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9974dbeb-33b0-542b-8386-5eada968c49b",
+      "code": "0593",
+      "name": "CO2 Pescoço",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0593 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "b1ca76fa-bae9-5573-9859-6cf39b7dc0e2",
+      "code": "0594",
+      "name": "CO2 Colo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0594 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9cbb0e2f-4f1c-567d-b29d-513bc90b0aef",
+      "code": "0595",
+      "name": "CO2 Mãos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0595 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f189e5b6-9286-554f-b848-8e02a950e90c",
+      "code": "0596",
+      "name": "CO2 Abdômen ( Estrias e Flacidez )",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0596 · Página 11 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2901afdb-f4c3-5d29-937b-3128923bda4d",
+      "code": "0597",
+      "name": "CO2 Braços",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0597 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 45,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "203e0c86-72e9-5d58-a12a-44512c022f41",
+      "code": "0598",
+      "name": "CO2 Coxas ( Interno ou Posterior )",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0598 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "35dcc52f-6773-576f-97ca-7f6312cba47f",
+      "code": "0599",
+      "name": "CO2 Glúteo ( estrias )",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0599 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d364fe37-bd35-5f92-bc47-f4324a78c7c9",
+      "code": "0600",
+      "name": "CO2 Intima",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0600 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 3000,
+      "cost": 0,
+      "duration": 45,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "35e07390-0142-5957-b309-2c8074d025af",
+      "code": "0601",
+      "name": "Plataforma Vibratória",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0601 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 79,
+      "cost": 0,
+      "duration": 15,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "8a088671-7638-554b-af10-569b8e6cf72b",
+      "code": "0602",
+      "name": "Depilação Pescoço",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0602 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 100,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c4acc4de-7f29-5d0a-8102-3f58aaaa6b08",
+      "code": "0603",
+      "name": "Peeling Coreano",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0603 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 299,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "a39852aa-1f80-5909-9a0b-693c8666f244",
+      "code": "0604",
+      "name": "CO2 código de barra",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0604 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 2000,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d6f3ef19-086f-53a9-a1f1-ef72bc08e4d0",
+      "code": "0605",
+      "name": "Micro infusão de Exossomos",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0605 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 1800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "f6e7e12c-b93a-5b14-9a29-8622e70da28f",
+      "code": "0606",
+      "name": "Micro infusão de GHK-CU",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0606 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 1800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "6b241586-a501-55bf-8e64-51ee0408deb1",
+      "code": "0607",
+      "name": "Micro infusão de Hialurônico",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0607 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 1800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e712d09a-6232-5826-83c7-b86ae918909b",
+      "code": "0608",
+      "name": "Micro infusão de Vit C",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0608 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 1800,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "aadada69-941b-5eb6-8fff-aaaed4fbd648",
+      "code": "0609",
+      "name": "Microfocado mão",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0609 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 1000,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "7ad4505e-a015-5980-ad6e-54173e05a759",
+      "code": "0610",
+      "name": "Botox Nerfetiti",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0610 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 2500,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "42a69bef-c478-5e78-a1af-6dd82fcde0ab",
+      "code": "0611",
+      "name": "ENDOLIFTING GLUTEO",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0611 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 3850,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "4ce0d44e-09a7-5a0e-b86e-6c11a3d3127a",
+      "code": "0612",
+      "name": "Teste Genético",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0612 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 1300,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2f6d6ec8-1c7c-5612-b887-92c84f03021e",
+      "code": "0613",
+      "name": "Plano Ouro",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0613 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "9c181d7d-c6ca-5f63-9cc0-b7d499961ed6",
+      "code": "0614",
+      "name": "Plano Prata",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0614 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "c100edc2-ae7c-511c-ae26-21cd16c1e1ff",
+      "code": "0615",
+      "name": "Plano Bronze",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0615 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 0,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "e1e55a2b-2142-54a9-a394-a8f132d706b7",
+      "code": "0617",
+      "name": "Bioestimulador Harmonize Gold 1 ml",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0617 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 1600,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "4b0491d8-a9e5-5251-bcd0-5c8277e4b672",
+      "code": "0616",
+      "name": "Bellarine preenchimento de glúteo",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0616 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 2000,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "dafb3923-bffd-536f-9b10-8f65e9ff26fc",
+      "code": "0618",
+      "name": "Velaryan Flacidez",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0618 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 1200,
+      "cost": 0,
+      "duration": 30,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "43237f7d-5169-5111-ae7a-3fc4d0a4c8ec",
+      "code": "0619",
+      "name": "Criolipolise 1 sessão 2 placas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0619 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 299,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "07064b1c-e3dd-54b3-be4b-67334677b50f",
+      "code": "0620",
+      "name": "Criolipolise 1 sessão 4 placas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0620 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 599,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "5b250b3f-d1c2-586d-90f0-c77c1a15abc8",
+      "code": "0621",
+      "name": "Criolipolise 1 sessão 6 placas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0621 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 799,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "d437ccaa-826e-5d45-b754-92ef22a064fa",
+      "code": "0622",
+      "name": "Criolipolise 1 sessão 8 placas",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0622 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 999,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "2b4190c6-acfa-5d04-bf63-437fa2d25512",
+      "code": "0588",
+      "name": "Ptolomeu Full Face",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0588 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 3500,
+      "cost": 0,
+      "duration": 60,
+      "unit": "SBC",
+      "active": true
+    },
+    {
+      "id": "42c6e14d-1231-5fd4-bb25-190fff3df01a",
+      "code": "0587",
+      "name": "Ptolomeu",
+      "description": "Catálogo particular SBC de 21/10/2026 · Código: 0587 · Página 12 do PDF.",
+      "category": "Estética",
+      "price": 3500,
+      "cost": 0,
+      "duration": 40,
+      "unit": "SBC",
+      "active": true
+    }
+  ],
+  "matched": [
+    {
+      "id": "0045459a-13c1-4899-a135-99ab20c0a101",
+      "currentName": "Depilação Virilha Completa",
+      "sourceName": "Depilação Virilha Completa",
+      "code": "300",
+      "currentPrice": 125,
+      "newPrice": 125,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "0200a40e-0cb7-47ae-8969-7eb176c6af8e",
+      "currentName": "Botox Dysport",
+      "sourceName": "Botox Dysport",
+      "code": "0273",
+      "currentPrice": 1599,
+      "newPrice": 1599,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "02aea98c-a420-4cd2-8e08-28b27d0d001d",
+      "currentName": "Colágeno Bumbum Fast",
+      "sourceName": "Colágeno Bumbum Fast",
+      "code": "0335",
+      "currentPrice": 190,
+      "newPrice": 190,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        1
+      ]
+    },
+    {
+      "id": "03d6475f-8d19-440d-a42c-e78b5f3c6f24",
+      "currentName": "Pós Lipo Fast",
+      "sourceName": "Pós Lipo Fast",
+      "code": "0271",
+      "currentPrice": 158,
+      "newPrice": 158,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "058be97d-328b-40ad-a7ae-261bf4b5f637",
+      "currentName": "Depilação Perianal",
+      "sourceName": "Depilação Perianal",
+      "code": "301",
+      "currentPrice": 49,
+      "newPrice": 49,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "060d6e6f-cc69-42a1-83c9-da9de44e074d",
+      "currentName": "Depilação Corpo todo",
+      "sourceName": "Depilação Corpo todo",
+      "code": "0547",
+      "currentPrice": 250,
+      "newPrice": 250,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "062bb4bc-7907-44e4-904c-3e091611b0d4",
+      "currentName": "Depilação Aureola",
+      "sourceName": "Depilação Aureola",
+      "code": "308",
+      "currentPrice": 55,
+      "newPrice": 55,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "069b0952-dc0f-4e02-ab2d-a2a15bc29456",
+      "currentName": "Depilação Virilha Cavada",
+      "sourceName": "Depilação Virilha Cavada",
+      "code": "307",
+      "currentPrice": 95,
+      "newPrice": 95,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "076cf6ba-06ed-4eda-9384-0c1484b59c94",
+      "currentName": "Micro Agulhamento",
+      "sourceName": "Micro Agulhamento",
+      "code": "113",
+      "currentPrice": 470,
+      "newPrice": 470,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "09aa6460-051a-46e6-92a9-158a42116b1d",
+      "currentName": "Lipo Fast 2.0",
+      "sourceName": "Lipo Fast 2.0",
+      "code": "0321",
+      "currentPrice": 520,
+      "newPrice": 520,
+      "currentDuration": 60,
+      "newDuration": 160,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "0a537e7e-8468-420b-8e08-a79624d63c07",
+      "currentName": "Bolsa Celufast Turbinado",
+      "sourceName": "Bolsa Celufast Turbinado",
+      "code": "0223",
+      "currentPrice": 32,
+      "newPrice": 32,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "0c308d2f-6504-4854-972b-f01ff15ee92a",
+      "currentName": "Preenchimento Codigo de Barra",
+      "sourceName": "Preenchimento Codigo de Barra - 1 ml",
+      "code": "124",
+      "currentPrice": 1700,
+      "newPrice": 1700,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "0f791232-e605-409c-8755-5d08ccf524eb",
+      "currentName": "Preenchimento - Mento",
+      "sourceName": "Preenchimento - Mento",
+      "code": "0371",
+      "currentPrice": 1700,
+      "newPrice": 1700,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "1381548c-2102-4a8a-9049-7454a0ade849",
+      "currentName": "Cellutec",
+      "sourceName": "Cellutec",
+      "code": "505",
+      "currentPrice": 60,
+      "newPrice": 60,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "14028e15-83d5-41a9-bc8e-33bca09905fa",
+      "currentName": "Velaryan gordura Localizada 30 min",
+      "sourceName": "Velaryan gordura Localizada 30 min",
+      "code": "0498",
+      "currentPrice": 180,
+      "newPrice": 180,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "15934801-a94a-49d7-a654-f799548d3927",
+      "currentName": "Tônico Adstringente Tea Tree - 120ml",
+      "sourceName": "Tônico Adstringente Tea Tree - Facial - Home Care - 120ml",
+      "code": "0365",
+      "currentPrice": 110,
+      "newPrice": 110,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        1
+      ]
+    },
+    {
+      "id": "16126e04-8367-4026-81e8-c017a9aa707f",
+      "currentName": "Lavieen Clareamento íntimo",
+      "sourceName": "Lavieen Clareamento intimo",
+      "code": "0437",
+      "currentPrice": 699,
+      "newPrice": 699,
+      "currentDuration": 60,
+      "newDuration": 15,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "1641afd8-afeb-4086-9af8-aad4611d0e43",
+      "currentName": "Drenagem local",
+      "sourceName": "Drenagem Local",
+      "code": "516",
+      "currentPrice": 89,
+      "newPrice": 89,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "1660d7d4-3b87-4443-b8fa-feaf05dfd9e1",
+      "currentName": "Hidrolipo - PHD",
+      "sourceName": "Hidrolipo - PHD",
+      "code": "0328",
+      "currentPrice": 499.9,
+      "newPrice": 499.9,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "19bbbdeb-fe7d-4b33-b6ff-c3bd95573cb0",
+      "currentName": "Preenchimento Olheiras - 1 ml",
+      "sourceName": "Preenchimento Olheiras - 1 ml",
+      "code": "100",
+      "currentPrice": 1700,
+      "newPrice": 1700,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "1b767341-5f6e-487a-b5a4-207345ee5deb",
+      "currentName": "Ozônio retal",
+      "sourceName": "Ozônio Retal",
+      "code": "407",
+      "currentPrice": 130,
+      "newPrice": 130,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "1ba6aa6f-f5d9-4421-8dba-926291dfe56c",
+      "currentName": "Enzima - Detox Mary Iaczinski",
+      "sourceName": "Enzima - Detox Mary Iaczinski",
+      "code": "0396",
+      "currentPrice": 120,
+      "newPrice": 120,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "1d583b88-df16-4ed5-bda3-8e0ef1dc6c22",
+      "currentName": "Lipossomas",
+      "sourceName": "Lipossomas",
+      "code": "403",
+      "currentPrice": 270,
+      "newPrice": 270,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "1e68d920-8975-4e99-ae16-4575bda57499",
+      "currentName": "Lipo Cavitação",
+      "sourceName": "Lipo Cavitação",
+      "code": "507",
+      "currentPrice": 65,
+      "newPrice": 65,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "1f42f883-1527-4faf-9295-1eb8a7f855e2",
+      "currentName": "Café Solúvel",
+      "sourceName": "Café Solúvel",
+      "code": "0016",
+      "currentPrice": 160,
+      "newPrice": 160,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "1f4fde40-5372-4982-83e8-164b035e43dc",
+      "currentName": "Depilação Abdomen",
+      "sourceName": "Depilação Abdomen",
+      "code": "303",
+      "currentPrice": 95,
+      "newPrice": 95,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "1ff5f58c-67b5-4bc6-8e0c-46720b471398",
+      "currentName": "Serum Col-Up - 200g",
+      "sourceName": "Serum Col-Up - 200g",
+      "code": "0368",
+      "currentPrice": 100,
+      "newPrice": 100,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        11
+      ]
+    },
+    {
+      "id": "2100892b-f52b-412a-bc3e-3d0de02532f1",
+      "currentName": "Laser Lavieen - Colo",
+      "sourceName": "Laser Lavieen - Colo",
+      "code": "0387",
+      "currentPrice": 999,
+      "newPrice": 999,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "22bee2b3-21de-4175-aea1-6444a7da9c3a",
+      "currentName": "Depilação Ante Braço",
+      "sourceName": "Depilação Ante Braço",
+      "code": "310",
+      "currentPrice": 89,
+      "newPrice": 89,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "2b4cdb7f-e356-4cc6-9b15-824d4b26d5d8",
+      "currentName": "Magic Pump",
+      "sourceName": "Magic Pump",
+      "code": "509",
+      "currentPrice": 78,
+      "newPrice": 78,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "2c0551dc-3a2f-5b9c-a64c-915644fd8c11",
+      "currentName": "Pison Mancha Senil (cód. 0433)",
+      "sourceName": "Pison Mancha Senil",
+      "code": "0433",
+      "currentPrice": 700,
+      "newPrice": 700,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        7
+      ]
+    },
+    {
+      "id": "2dbdd2b7-db25-4691-b8dc-4004c2c5502b",
+      "currentName": "Laser Lavieen - Mãos",
+      "sourceName": "Laser Lavieen - Mãos",
+      "code": "0386",
+      "currentPrice": 500,
+      "newPrice": 500,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "2ec1b15e-dcba-4f13-8ef2-1f627f0e4a4a",
+      "currentName": "Garrafa Celufast Turbinado",
+      "sourceName": "Garrafa Celufast Turbinado",
+      "code": "0224",
+      "currentPrice": 69,
+      "newPrice": 69,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "3064b0a7-4f6a-4e5a-a318-08130213a3a5",
+      "currentName": "Bioestimulador Rennova",
+      "sourceName": "Bioestimulador Rennova",
+      "code": "0322",
+      "currentPrice": 2500,
+      "newPrice": 2500,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "31634f97-44ba-4b77-9df0-c043842b3540",
+      "currentName": "Laser Lavieen - Face Rejuvenescimento",
+      "sourceName": "Laser Lavieen - Face Rejuvenescimento",
+      "code": "0390",
+      "currentPrice": 999,
+      "newPrice": 999,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "31c519a6-8cab-473e-977a-d6c2ab7c77ef",
+      "currentName": "Depilação Rosto",
+      "sourceName": "Depilação Rosto",
+      "code": "318",
+      "currentPrice": 120,
+      "newPrice": 120,
+      "currentDuration": 60,
+      "newDuration": 15,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "33789e6b-3d03-46cb-97a6-2924ffbc7f00",
+      "currentName": "Depilação Ombro",
+      "sourceName": "Depilação Ombro",
+      "code": "309",
+      "currentPrice": 89,
+      "newPrice": 89,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "34419b2b-dca1-41c7-95fa-b033fb110825",
+      "currentName": "Microfocado Colo",
+      "sourceName": "Microfocado Colo",
+      "code": "0310",
+      "currentPrice": 3000,
+      "newPrice": 3000,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "345dea3c-deb6-449d-bbab-5a682b9bb455",
+      "currentName": "Hyper Slim",
+      "sourceName": "Hyper Slim",
+      "code": "0397",
+      "currentPrice": 200,
+      "newPrice": 200,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        3
+      ]
+    },
+    {
+      "id": "348d6802-5dc3-4bfd-9347-eeabdd40c75f",
+      "currentName": "Pison Mancha Senil (cód. 0434)",
+      "sourceName": "Pison Mancha Senil",
+      "code": "0434",
+      "currentPrice": 910,
+      "newPrice": 910,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "3519e3b6-c8ce-43dc-a7d4-af50db1cd19f",
+      "currentName": "Infrared",
+      "sourceName": "Infra",
+      "code": "524",
+      "currentPrice": 49,
+      "newPrice": 49,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "367cdf7b-d178-45e7-b89f-d702dff6b02c",
+      "currentName": "Microfocado Braços",
+      "sourceName": "Microfocado Braços",
+      "code": "0315",
+      "currentPrice": 3500,
+      "newPrice": 3500,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "3c147ff1-5280-4ca4-8164-53514282e703",
+      "currentName": "Microfocado Abdômen",
+      "sourceName": "Microfocado Abdómen",
+      "code": "0311",
+      "currentPrice": 3500,
+      "newPrice": 3500,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "3e482529-38f2-40c8-becf-781c71e68f81",
+      "currentName": "Carboxterapia Facial",
+      "sourceName": "Carboxterapia Facial",
+      "code": "405",
+      "currentPrice": 80,
+      "newPrice": 80,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "4033557a-e6a3-45ca-b057-087d5aba6ccb",
+      "currentName": "Depilação Meia Perna",
+      "sourceName": "Depilação Meia Perna",
+      "code": "3150",
+      "currentPrice": 110,
+      "newPrice": 110,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "4692a0db-38b1-40da-ac08-d62dc6898d72",
+      "currentName": "Entrada de Pacote",
+      "sourceName": "Entrada de Pacote",
+      "code": "0072",
+      "currentPrice": 100,
+      "newPrice": 100,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        1
+      ]
+    },
+    {
+      "id": "46e54324-01bc-4d4c-88fe-638f9be542ac",
+      "currentName": "Lipo de Papada",
+      "sourceName": "Lipo de Papada",
+      "code": "114",
+      "currentPrice": 530,
+      "newPrice": 530,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "47cc164d-a873-4a72-991b-68a8e6940d71",
+      "currentName": "Depilação Braço Inteiro",
+      "sourceName": "Depilação Braço Inteiro",
+      "code": "306",
+      "currentPrice": 170,
+      "newPrice": 170,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "48ddecf4-6cc7-4b50-9225-8cbfa1e90cf8",
+      "currentName": "Hidratacao Fio de Seda",
+      "sourceName": "Hidratacao Fio de Seda",
+      "code": "527",
+      "currentPrice": 160,
+      "newPrice": 160,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "49fe2a83-29d0-402d-8828-75f1c4a90d24",
+      "currentName": "Botox - Terço Superior",
+      "sourceName": "Botox - Terço Superior",
+      "code": "0361",
+      "currentPrice": 1696.2,
+      "newPrice": 1696.2,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        11
+      ]
+    },
+    {
+      "id": "4a5b4624-d946-40f5-b556-89b1ab194f76",
+      "currentName": "Bioestimulador Nutriex",
+      "sourceName": "Bioestimulador Nutriex",
+      "code": "0435",
+      "currentPrice": 1990,
+      "newPrice": 1990,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "4dec110f-c33a-4a3a-aca3-e8d6c9a904c2",
+      "currentName": "Massagem Terapêutica",
+      "sourceName": "Massagem Terapêutica",
+      "code": "521",
+      "currentPrice": 200,
+      "newPrice": 200,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "519c3ffd-ecf4-4e86-9b65-2345e48decec",
+      "currentName": "Depilação LOMBAR",
+      "sourceName": "Depilação LOMBAR",
+      "code": "322",
+      "currentPrice": 95,
+      "newPrice": 95,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "5207c302-ddd7-413a-b49e-332a6501beea",
+      "currentName": "Pison Tratamento Capilar (cód. 0416)",
+      "sourceName": "Pison Tratamento Capilar",
+      "code": "0416",
+      "currentPrice": 950,
+      "newPrice": 950,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "53c71fa3-eee2-4875-9e3d-cd47ca1c9655",
+      "currentName": "Lavieen Cicatriz",
+      "sourceName": "Lavieen Cicatriz",
+      "code": "0438",
+      "currentPrice": 699,
+      "newPrice": 699,
+      "currentDuration": 60,
+      "newDuration": 15,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "55967ec2-0a16-4be4-8aae-6fff0e585174",
+      "currentName": "Velaryan lipedema 40 min",
+      "sourceName": "Velaryan lipedema 40 min ( 20min frente + 20min costas)",
+      "code": "0532",
+      "currentPrice": 280,
+      "newPrice": 280,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        3
+      ]
+    },
+    {
+      "id": "598ab0e5-7ea2-4e89-aec0-ed1cead366e1",
+      "currentName": "Fios de Sustentacao",
+      "sourceName": "Fios de Sustentação",
+      "code": "118",
+      "currentPrice": 599,
+      "newPrice": 599,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "5aa5e8d8-9b44-4dea-a284-7b15dbafad1a",
+      "currentName": "Microfocado Papada",
+      "sourceName": "Microfocado Papada",
+      "code": "0304",
+      "currentPrice": 2500,
+      "newPrice": 2500,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "5af0b0bc-8588-430b-a6a5-a8d7d66bff02",
+      "currentName": "Pison Melasma (cód. 0402)",
+      "sourceName": "Pison Melasma",
+      "code": "0402",
+      "currentPrice": 700,
+      "newPrice": 700,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "5b65733e-9903-49fb-ae12-aa7c3cd99f25",
+      "currentName": "Pós LipoFast 2.0",
+      "sourceName": "Pós Lipo Fast",
+      "code": "0271",
+      "currentPrice": 158,
+      "newPrice": 158,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "5f038705-b279-4b1b-940b-9926233c3c14",
+      "currentName": "Radio Frequência Corporal",
+      "sourceName": "Radio Frequência Corporal",
+      "code": "504",
+      "currentPrice": 79,
+      "newPrice": 79,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "607f5489-fb1b-4c8c-a1c0-19fae2d819bf",
+      "currentName": "Microfocado Full Face",
+      "sourceName": "Microfocado Full Face",
+      "code": "0308",
+      "currentPrice": 3500,
+      "newPrice": 3500,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "61a52c19-fe55-4a3e-8c70-bb1a2c45c4f7",
+      "currentName": "Canga Bumbum Fast",
+      "sourceName": "Canga Bumbum Fast",
+      "code": "0337",
+      "currentPrice": 110,
+      "newPrice": 110,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "61ff9f8e-2bbe-4c58-9ccd-f061f7e54025",
+      "currentName": "Lipo Gesso",
+      "sourceName": "Lipo Gesso",
+      "code": "0356",
+      "currentPrice": 150,
+      "newPrice": 150,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        1
+      ]
+    },
+    {
+      "id": "6214d103-5fb2-4292-ae3b-61e5a46b9a0e",
+      "currentName": "Solúvel Celufast Turbinado",
+      "sourceName": "Solúvel Celufast Turbinado",
+      "code": "0225",
+      "currentPrice": 150,
+      "newPrice": 150,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        1
+      ]
+    },
+    {
+      "id": "6733ca2e-ba7a-4180-a60d-115f1773a635",
+      "currentName": "Microfocado Externo de Coxa",
+      "sourceName": "Microfocado Externo de Coxa",
+      "code": "0316",
+      "currentPrice": 2000,
+      "newPrice": 2000,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "68f96599-b23a-48f1-b394-656883c136ea",
+      "currentName": "Enzimas TCC",
+      "sourceName": "Enzimas TCC",
+      "code": "401",
+      "currentPrice": 180,
+      "newPrice": 180,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "6be0ae51-6dd6-47ab-8539-19736af3da81",
+      "currentName": "Depilação Peito",
+      "sourceName": "Depilação Peito",
+      "code": "305",
+      "currentPrice": 125,
+      "newPrice": 125,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "6d38b4d6-a2f3-53e8-ad7e-44d422f806b9",
+      "currentName": "Pison Melasma (cód. 0403)",
+      "sourceName": "Pison Melasma",
+      "code": "0403",
+      "currentPrice": 910,
+      "newPrice": 910,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "6e28c819-1036-4786-be3a-e9df83db7008",
+      "currentName": "Hidratação Facial",
+      "sourceName": "Hidratação Facial",
+      "code": "522",
+      "currentPrice": 130,
+      "newPrice": 130,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "7024c375-e9c1-4e5c-8c9c-bd128c3ef4dc",
+      "currentName": "Limpeza de Pele - Acne",
+      "sourceName": "Limpeza de Pele - Acne e Pele Oleosa",
+      "code": "0105",
+      "currentPrice": 250,
+      "newPrice": 250,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "703d18bf-2893-46ab-8193-97ad84e9e3ee",
+      "currentName": "Protocolo Illumin",
+      "sourceName": "Protocolo Ilumin",
+      "code": "535",
+      "currentPrice": 170,
+      "newPrice": 170,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "706092b8-bd55-4530-b541-f1fe4292e3d1",
+      "currentName": "Preenchimento Labial - 1 ml",
+      "sourceName": "Preenchimento Labial - 1 ml",
+      "code": "102",
+      "currentPrice": 1700,
+      "newPrice": 1700,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "70654283-eca3-4c8f-b84e-de641415f5aa",
+      "currentName": "Heccus",
+      "sourceName": "Heccus",
+      "code": "500",
+      "currentPrice": 69,
+      "newPrice": 69,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "7273aed2-89ef-4d92-ae1a-f9f14187d90f",
+      "currentName": "Spray de Ambiente Vanilla 115 ml",
+      "sourceName": "Spray de Ambiente Vanilla 115 ml",
+      "code": "0243",
+      "currentPrice": 97,
+      "newPrice": 97,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "738e04c1-4304-4360-a523-106abb3400a9",
+      "currentName": "Enzima Monjifast",
+      "sourceName": "Enzima Monjifast",
+      "code": "0545",
+      "currentPrice": 599,
+      "newPrice": 599,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "77dff4d2-5e99-4fc5-8de9-2fe5d517ca3a",
+      "currentName": "Microfocado Flancos",
+      "sourceName": "Microfocado Flancos",
+      "code": "0312",
+      "currentPrice": 2000,
+      "newPrice": 2000,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "79bb0b7b-67d3-43f6-a1eb-3c449b5d0404",
+      "currentName": "Laser Lavieen - Full Face",
+      "sourceName": "Laser Lavieen - Full Face",
+      "code": "0384",
+      "currentPrice": 999,
+      "newPrice": 999,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "7a3834aa-2209-4c9f-88a0-fa620b6985e1",
+      "currentName": "Velaryan Gordura",
+      "sourceName": "Velaryan Gordura",
+      "code": "0563",
+      "currentPrice": 260,
+      "newPrice": 260,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "7a5730f7-3345-4906-bda3-d335f617d251",
+      "currentName": "Enzimas E-10",
+      "sourceName": "Enzimas E-10",
+      "code": "402",
+      "currentPrice": 240,
+      "newPrice": 240,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "7bc446c1-ebf6-4491-8b65-88a9592904ce",
+      "currentName": "Depilação Linha Alba",
+      "sourceName": "Depilação Linha Alba",
+      "code": "329",
+      "currentPrice": 59,
+      "newPrice": 59,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "7c4deb60-dfad-4f92-93ed-fcb7ba6bc37f",
+      "currentName": "Microfocado Pescoço",
+      "sourceName": "Microfocado Pescoço",
+      "code": "0307",
+      "currentPrice": 2500,
+      "newPrice": 2500,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "7c8ef464-7d84-46ee-ab3d-5424b2b58eac",
+      "currentName": "Pump Gluteo",
+      "sourceName": "Pump Gluteo",
+      "code": "0515",
+      "currentPrice": 3800,
+      "newPrice": 3800,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "7df637ed-d454-49ad-af50-9fb35d8f6cc7",
+      "currentName": "Lipo sem Corte (Sonofocus)",
+      "sourceName": "Lipo sem Corte (Sonofocus)",
+      "code": "503",
+      "currentPrice": 65,
+      "newPrice": 65,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "7f8cd1a1-e3cd-4d1e-adfd-b60e470c8e04",
+      "currentName": "Depilação dedo das mãos",
+      "sourceName": "Depilação Dedo das Mãos",
+      "code": "328",
+      "currentPrice": 49,
+      "newPrice": 49,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "80c4445c-ba80-441e-b8ab-3d2cee392d41",
+      "currentName": "Depilação Queixo",
+      "sourceName": "Depilação Queixo",
+      "code": "314",
+      "currentPrice": 59,
+      "newPrice": 59,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "80d551a8-45c4-4f08-a358-11b78427ce0d",
+      "currentName": "Skinboster",
+      "sourceName": "Skinbooster",
+      "code": "112",
+      "currentPrice": 960,
+      "newPrice": 960,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "81b57568-a1da-4cef-99f2-04e4b5c0904a",
+      "currentName": "Lipo Turbinada",
+      "sourceName": "Lipo Turbinada",
+      "code": "205",
+      "currentPrice": 220,
+      "newPrice": 220,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "841df8fc-ef1d-4c12-8933-34b2fd771998",
+      "currentName": "Gel Crio",
+      "sourceName": "Gel Crio",
+      "code": "519",
+      "currentPrice": 110,
+      "newPrice": 110,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "85192b37-36d5-5307-a3ae-223a6ffceab0",
+      "currentName": "Pison Tratamento Capilar (cód. 0417)",
+      "sourceName": "Pison Tratamento Capilar",
+      "code": "0417",
+      "currentPrice": 1235,
+      "newPrice": 1235,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "8718f0d1-f957-4a75-87ff-ba0c5d9820c3",
+      "currentName": "Corrente Russa",
+      "sourceName": "Corrente Russa",
+      "code": "506",
+      "currentPrice": 90,
+      "newPrice": 90,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "87a12cfd-8a70-4d08-884a-0dbed43cfd69",
+      "currentName": "MMI Definição",
+      "sourceName": "MMI Definição",
+      "code": "204",
+      "currentPrice": 220,
+      "newPrice": 220,
+      "currentDuration": 60,
+      "newDuration": 160,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "89ea1a6b-12f4-4837-ace5-daa1cac5ccaa",
+      "currentName": "Enzima para Celulite",
+      "sourceName": "Enzima para Celulite",
+      "code": "0341",
+      "currentPrice": 220,
+      "newPrice": 220,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "8afe53b7-ab75-43f3-99fb-3a2750e0cedf",
+      "currentName": "Drenagem Pós Cirúrgico",
+      "sourceName": "Drenagem Pós Cirúrgico",
+      "code": "523",
+      "currentPrice": 250,
+      "newPrice": 250,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "8b6adc9e-63af-4144-93b0-d7e6d19b6cb4",
+      "currentName": "Kit Lipo Force",
+      "sourceName": "Kit Lipo Force",
+      "code": "0332",
+      "currentPrice": 1500,
+      "newPrice": 1500,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "8e82e2f4-dbfc-4e72-8713-60b257f6e9c3",
+      "currentName": "Crio Fast III",
+      "sourceName": "Crio Fast III",
+      "code": "213",
+      "currentPrice": 4300,
+      "newPrice": 4300,
+      "currentDuration": 60,
+      "newDuration": 480,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "925489f4-9817-4cd1-afd2-be279f0e45b8",
+      "currentName": "Fios Filler",
+      "sourceName": "Fios Filler",
+      "code": "121",
+      "currentPrice": 990,
+      "newPrice": 990,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "94910c47-574d-4aaf-a7c4-191244400978",
+      "currentName": "Depilação Coxa Completa",
+      "sourceName": "Depilação Coxa Completa",
+      "code": "316",
+      "currentPrice": 140,
+      "newPrice": 140,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "988b9d68-2a66-40dd-8a03-b862a563455d",
+      "currentName": "Depilação Glabela",
+      "sourceName": "Depilacao Glabela",
+      "code": "3133",
+      "currentPrice": 55,
+      "newPrice": 55,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "9970ae5e-b44a-48c8-8179-0f7746f8caf3",
+      "currentName": "Preenchimento Malar - 1 ml",
+      "sourceName": "Preenchimento Malar - 1 ml",
+      "code": "0350",
+      "currentPrice": 2400,
+      "newPrice": 2400,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "9d11e300-4441-4f3d-b223-ff704eaff876",
+      "currentName": "Depilação Barba",
+      "sourceName": "Depilação Barba",
+      "code": "320",
+      "currentPrice": 119,
+      "newPrice": 119,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "9d3d2824-a05a-4d68-89ce-4cf0d40c86f3",
+      "currentName": "Drenagem Facial",
+      "sourceName": "Drenagem Facial",
+      "code": "526",
+      "currentPrice": 129,
+      "newPrice": 129,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "9e2ab76a-c3df-4ef4-9d48-b7e3f101908e",
+      "currentName": "Velaryan lipedema 20 min costas",
+      "sourceName": "Velaryan lipedema 20 min costas",
+      "code": "0493",
+      "currentPrice": 180,
+      "newPrice": 180,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "a2102b84-3a56-42a2-bf4b-0025396b5e2f",
+      "currentName": "Endermoterapia",
+      "sourceName": "Endermoterapia",
+      "code": "514",
+      "currentPrice": 65,
+      "newPrice": 65,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "a3b725ec-9df6-452f-b835-a9907ff03d30",
+      "currentName": "Microfocado Terço Inferior e Médio",
+      "sourceName": "Microfocado Terço Inferior e Médio",
+      "code": "0305",
+      "currentPrice": 2000,
+      "newPrice": 2000,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "a72a4abe-cdc4-44e6-86e1-985f4083a1e9",
+      "currentName": "Cápsula Celufast Turbinado",
+      "sourceName": "Cápsula Celufast Turbinado",
+      "code": "0226",
+      "currentPrice": 99,
+      "newPrice": 99,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "a7d80a4d-097c-4239-8fde-d29fce37941a",
+      "currentName": "Microfocado Terço Inferior",
+      "sourceName": "Microfocado Terço Inferior",
+      "code": "0440",
+      "currentPrice": 1000,
+      "newPrice": 1000,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "a9d3dfaa-f2f0-471d-818b-03e7a400b238",
+      "currentName": "BIOESTIMULADOR DE COLAGENO",
+      "sourceName": "Bioestimulador",
+      "code": "0574",
+      "currentPrice": 2200,
+      "newPrice": 2200,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        11
+      ]
+    },
+    {
+      "id": "aa05622c-07b5-4c20-98e0-0ed8150edb2c",
+      "currentName": "Depilação Dedos dos pés",
+      "sourceName": "Depilacao Dedos dos Pés",
+      "code": "326",
+      "currentPrice": 49,
+      "newPrice": 49,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "ab0028fc-8ab5-4157-b788-4fc649f97d9b",
+      "currentName": "FlaciFast 2.0",
+      "sourceName": "FlaciFast 2.0",
+      "code": "203",
+      "currentPrice": 600,
+      "newPrice": 600,
+      "currentDuration": 60,
+      "newDuration": 120,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "ac6efd0c-6fe9-492b-ba69-52bca09f2748",
+      "currentName": "Depilação Buço",
+      "sourceName": "Depilação Buço",
+      "code": "312",
+      "currentPrice": 55,
+      "newPrice": 55,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "ac746d93-3f01-4b17-928e-44de4fbeb1a2",
+      "currentName": "Chá Celufast Turbinado",
+      "sourceName": "Chá Celufast Turbinado",
+      "code": "0300",
+      "currentPrice": 29,
+      "newPrice": 29,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "ae8dd3b5-5149-4173-8989-2bdf215fbfde",
+      "currentName": "Depilação Facial Feminino",
+      "sourceName": "Depilação Facial Feminino",
+      "code": "311",
+      "currentPrice": 120,
+      "newPrice": 120,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "af24f119-f132-4a3f-a7c7-2597b42456d1",
+      "currentName": "Depilação Axilas",
+      "sourceName": "Depilação Axilas",
+      "code": "323",
+      "currentPrice": 70,
+      "newPrice": 70,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "b2d2b75d-9f94-411e-8916-62088ff919ea",
+      "currentName": "Enzima Ultra Detox",
+      "sourceName": "Enzima Emagrecimento Ultra Detox",
+      "code": "404",
+      "currentPrice": 260,
+      "newPrice": 260,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "b32c8927-0659-426d-abd1-311dcd62b284",
+      "currentName": "Protocolo Mix Ultra",
+      "sourceName": "Protocolo Mix Ultra - Mary Iaczinski",
+      "code": "0395",
+      "currentPrice": 799.9,
+      "newPrice": 799.9,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "b502292b-4be7-4e4d-9c69-e66d93d11811",
+      "currentName": "Depilação Gluteos",
+      "sourceName": "Depilação Gluteos",
+      "code": "304",
+      "currentPrice": 89,
+      "newPrice": 89,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "b5e50334-86d2-4e4f-b355-1936476f974e",
+      "currentName": "Peeling Rose de Mer",
+      "sourceName": "Peeling Rose de Mer",
+      "code": "530",
+      "currentPrice": 627,
+      "newPrice": 627,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "b663e4e0-047b-4744-9785-fa086d87929f",
+      "currentName": "Criofrequencia",
+      "sourceName": "Criofrequencia",
+      "code": "508",
+      "currentPrice": 179,
+      "newPrice": 179,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "b6703738-b5dd-4141-b20e-cdf7572b11bb",
+      "currentName": "Consulta Nutricionista",
+      "sourceName": "Consulta Nutricionista",
+      "code": "0028",
+      "currentPrice": 220,
+      "newPrice": 220,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "b717e820-f3e2-4013-bec1-eaae1e5bea8b",
+      "currentName": "Criolipólise",
+      "sourceName": "Criolipólise",
+      "code": "513",
+      "currentPrice": 299,
+      "newPrice": 299,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "b9876b02-b32d-4652-a32e-d72e91d5f0a3",
+      "currentName": "Hidrolipo",
+      "sourceName": "Hidrolipo",
+      "code": "408",
+      "currentPrice": 929,
+      "newPrice": 929,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "babfc4a1-276e-40ca-b12e-e938d4bf544e",
+      "currentName": "Depilação Contorno Barba",
+      "sourceName": "Depilação Contorno Barba",
+      "code": "319",
+      "currentPrice": 100,
+      "newPrice": 100,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "bac0ae11-b51f-450a-92a7-91459ab385ef",
+      "currentName": "Criofrequencia Facial",
+      "sourceName": "Criofrequencia Facial",
+      "code": "525",
+      "currentPrice": 170,
+      "newPrice": 170,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "bceeb1c3-22f8-43ef-9f0e-e2e6d06e94ed",
+      "currentName": "Crio Fast II",
+      "sourceName": "Crio Fast II",
+      "code": "212",
+      "currentPrice": 3660,
+      "newPrice": 3660,
+      "currentDuration": 60,
+      "newDuration": 360,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "bd37c304-ee1a-459f-996a-da175173940d",
+      "currentName": "Botox Face",
+      "sourceName": "Botox Face",
+      "code": "0360",
+      "currentPrice": 2100,
+      "newPrice": 2100,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "be3a458e-3740-4ec1-8a11-6529a552b2a0",
+      "currentName": "Botox Axilas",
+      "sourceName": "Botox Axilas",
+      "code": "123",
+      "currentPrice": 2450,
+      "newPrice": 2450,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "c0b09ef8-e4bb-452c-a508-ca9b83f0545c",
+      "currentName": "LipoFast 2.0",
+      "sourceName": "Lipo Fast 2.0",
+      "code": "0321",
+      "currentPrice": 520,
+      "newPrice": 520,
+      "currentDuration": 60,
+      "newDuration": 160,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "c0f778f2-3acd-4aa6-ae93-b4f5a786de6c",
+      "currentName": "Crio Plats 01 região",
+      "sourceName": "Crio Plats 01 Região",
+      "code": "511",
+      "currentPrice": 264,
+      "newPrice": 264,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "c3f03d0f-e4c1-473c-a9e1-9af8fbaa152b",
+      "currentName": "Detox Power",
+      "sourceName": "Detox Power",
+      "code": "501",
+      "currentPrice": 89,
+      "newPrice": 89,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "c3f707ee-0aa7-4eb7-97c5-d537b3d1dc35",
+      "currentName": "Velaryan gordura localizada 20 min",
+      "sourceName": "Velaryan gordura localizada 20 min",
+      "code": "0497",
+      "currentPrice": 130,
+      "newPrice": 130,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        3
+      ]
+    },
+    {
+      "id": "c446d50a-97bc-4f67-9d81-6ee606347f77",
+      "currentName": "Limpeza de Pele",
+      "sourceName": "Limpeza de Pele",
+      "code": "517",
+      "currentPrice": 210,
+      "newPrice": 210,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "c635fab8-f4a8-460a-bd21-447f2a2beac4",
+      "currentName": "Microfocado Olhos",
+      "sourceName": "MIcrofocado Olhos -",
+      "code": "0370",
+      "currentPrice": 699,
+      "newPrice": 699,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        11
+      ]
+    },
+    {
+      "id": "c9b399f8-8de5-4678-9f8d-709a9d7e25ed",
+      "currentName": "Velaryan Analgesia",
+      "sourceName": "Velaryan Analgesia",
+      "code": "0502",
+      "currentPrice": 90,
+      "newPrice": 90,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        3
+      ]
+    },
+    {
+      "id": "caa8f21f-91f9-410f-b108-985a7e36dcc0",
+      "currentName": "Bamboo Slim",
+      "sourceName": "Bamboo Slim",
+      "code": "0321",
+      "currentPrice": 190,
+      "newPrice": 190,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "cb51961c-cddf-46d3-8f43-77b69d56d78c",
+      "currentName": "Preenchimento Bigo chines - 1 ml",
+      "sourceName": "Preenchimento Bigo chines - 1 ml",
+      "code": "101",
+      "currentPrice": 1700,
+      "newPrice": 1700,
+      "currentDuration": 60,
+      "newDuration": 50,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "cd5ef4f6-abcb-4e0c-bbeb-0fa88cc72816",
+      "currentName": "Preenchimento glúteo 100ML",
+      "sourceName": "Preenchimento glúteo 100ML",
+      "code": "0576",
+      "currentPrice": 8000,
+      "newPrice": 8000,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        11
+      ]
+    },
+    {
+      "id": "d05f8532-0502-4b56-997a-7ff5b4b2de4a",
+      "currentName": "Radio Frequência Facial",
+      "sourceName": "Radio Frequência Facial",
+      "code": "512",
+      "currentPrice": 80,
+      "newPrice": 80,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "d1843c9b-74e9-45d5-a2f0-a4e29b06127d",
+      "currentName": "Bioestimulador Eleva",
+      "sourceName": "Bioestimulador Eleva",
+      "code": "0194",
+      "currentPrice": 4000,
+      "newPrice": 4000,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "d63a4a4d-a310-4a8e-88a0-84f4fe8f79a6",
+      "currentName": "Flacifast",
+      "sourceName": "FlaciFast 2.0",
+      "code": "203",
+      "currentPrice": 600,
+      "newPrice": 600,
+      "currentDuration": 60,
+      "newDuration": 120,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "d8962703-5624-45c5-9a71-1c388c1e985b",
+      "currentName": "Fio Liso",
+      "sourceName": "Fio Liso",
+      "code": "0082",
+      "currentPrice": 370,
+      "newPrice": 370,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "d90b80b9-629a-4c39-baa6-40c6bd12a33b",
+      "currentName": "Secagem de vasinhos",
+      "sourceName": "Secagem de Vasinhos",
+      "code": "115",
+      "currentPrice": 550,
+      "newPrice": 550,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "da3a0005-c519-4993-9eae-2379c19a39a7",
+      "currentName": "Massagem Relaxante",
+      "sourceName": "Massagem Relaxante",
+      "code": "520",
+      "currentPrice": 200,
+      "newPrice": 200,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "dabc969b-da67-4de1-95a4-03aabad07483",
+      "currentName": "Botox - Terço Superior 50 UI",
+      "sourceName": "Botox - Terço Superior 50 UI",
+      "code": "0347",
+      "currentPrice": 1700,
+      "newPrice": 1700,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "db9dd2d3-de5d-4376-af31-5acad6a69e28",
+      "currentName": "Glúteo Max",
+      "sourceName": "Glúteo Max",
+      "code": "0436",
+      "currentPrice": 3065,
+      "newPrice": 3065,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "de72ad43-b28d-4b7f-b5b1-b4b6cdba08f7",
+      "currentName": "Enzima Emagrecimento Ultra Detox",
+      "sourceName": "Enzima Emagrecimento Ultra Detox",
+      "code": "404",
+      "currentPrice": 260,
+      "newPrice": 260,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "dea01e29-d38b-4b66-8537-baf6109c5aa2",
+      "currentName": "Preenchimento",
+      "sourceName": "Preenchimento",
+      "code": "488",
+      "currentPrice": 899,
+      "newPrice": 899,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        3
+      ]
+    },
+    {
+      "id": "e195609f-c48f-4da5-a731-1aab6285a22e",
+      "currentName": "Lipossomas - PHD",
+      "sourceName": "Lipossomas - PHD",
+      "code": "0329",
+      "currentPrice": 260,
+      "newPrice": 260,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "e356e2db-4a3e-45f1-9a65-1902c4d04657",
+      "currentName": "Mascara Revitalizante",
+      "sourceName": "Mascara Revitalizante",
+      "code": "532",
+      "currentPrice": 130,
+      "newPrice": 130,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "e7299a4a-6028-4648-b881-c56b52207c61",
+      "currentName": "Bioestimulador",
+      "sourceName": "Bioestimulador",
+      "code": "0574",
+      "currentPrice": 2200,
+      "newPrice": 2200,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        11
+      ]
+    },
+    {
+      "id": "e84960b2-ca03-4787-a9a8-249438e2535a",
+      "currentName": "Depilação Interno Coxa",
+      "sourceName": "Depilação Interno Coxa",
+      "code": "317",
+      "currentPrice": 89,
+      "newPrice": 89,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "e8675873-213a-4160-8da4-6744d9c24860",
+      "currentName": "Rennova Body Shape Gluteo - 3ml",
+      "sourceName": "Rennova Body Shape Gluteo - 3ml",
+      "code": "0380",
+      "currentPrice": 3600,
+      "newPrice": 3600,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "e9d44ca8-1e51-4060-a286-42c37b846d57",
+      "currentName": "Botox Região",
+      "sourceName": "Botox Região",
+      "code": "107",
+      "currentPrice": 765.2,
+      "newPrice": 765.2,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "ea815134-0939-4d47-b078-2a79d9e8bb2b",
+      "currentName": "Peeling Químico",
+      "sourceName": "Peeling Quimico",
+      "code": "518",
+      "currentPrice": 300,
+      "newPrice": 300,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "eafefa41-c678-46a6-b4cb-2415dbfec909",
+      "currentName": "Bumbum Fast",
+      "sourceName": "Bumbum Fast",
+      "code": "0331",
+      "currentPrice": 470,
+      "newPrice": 470,
+      "currentDuration": 60,
+      "newDuration": 120,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "ecd5c346-5b1d-4889-81fa-4b78092cdf60",
+      "currentName": "Massagem Modeladora",
+      "sourceName": "Massagem Modeladora",
+      "code": "502",
+      "currentPrice": 80,
+      "newPrice": 80,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "ed00bd7a-13b9-4858-9673-1523fa972d40",
+      "currentName": "Laser Lavieen - Melasma",
+      "sourceName": "Laser Lavieen - Melasma",
+      "code": "0393",
+      "currentPrice": 1200,
+      "newPrice": 1200,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        2
+      ]
+    },
+    {
+      "id": "eee3480c-0fb8-41b6-a946-2736cafa6684",
+      "currentName": "Depilação Costas",
+      "sourceName": "Depilação Costas",
+      "code": "321",
+      "currentPrice": 170,
+      "newPrice": 170,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        4
+      ]
+    },
+    {
+      "id": "efa95ee0-98ca-4185-a9b1-19382463bd0a",
+      "currentName": "Mascara de Ouro",
+      "sourceName": "Mascara de Ouro",
+      "code": "528",
+      "currentPrice": 130,
+      "newPrice": 130,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "f08ec972-0bb5-4fb2-b10e-71b8e66c6d82",
+      "currentName": "Microfocado Terço Superior",
+      "sourceName": "Microfocado Terço Superior",
+      "code": "0348",
+      "currentPrice": 1000,
+      "newPrice": 1000,
+      "currentDuration": 60,
+      "newDuration": 40,
+      "pages": [
+        10
+      ]
+    },
+    {
+      "id": "f1f1ca1d-13ac-47ea-b2b0-1594ebe3cc32",
+      "currentName": "Velaryan Celulite",
+      "sourceName": "Velaryan Celulite",
+      "code": "0564",
+      "currentPrice": 260,
+      "newPrice": 260,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "f2407339-bf87-4250-8794-7ac374a4f854",
+      "currentName": "Peeling de Diamante",
+      "sourceName": "Peeling de Diamante",
+      "code": "515",
+      "currentPrice": 119,
+      "newPrice": 119,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "f3806c6e-8124-4633-8c5c-e5164d46d001",
+      "currentName": "Infra",
+      "sourceName": "Infra",
+      "code": "524",
+      "currentPrice": 49,
+      "newPrice": 49,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "f4cb806b-d754-4146-b0e3-76a5326ca7ba",
+      "currentName": "Depilação Perna Inteira",
+      "sourceName": "Depilação Perna Inteira",
+      "code": "302",
+      "currentPrice": 210,
+      "newPrice": 210,
+      "currentDuration": 60,
+      "newDuration": 30,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "f4d59f41-6b02-4882-b240-5d7147ea17df",
+      "currentName": "Depilação Costeleta",
+      "sourceName": "Depilação Costeleta",
+      "code": "0302",
+      "currentPrice": 89,
+      "newPrice": 89,
+      "currentDuration": 60,
+      "newDuration": 5,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "f4d6588d-e8c6-421f-8e2b-9273632dc03d",
+      "currentName": "Microfocado Interno de Coxa",
+      "sourceName": "Microfocado Interno de Coxa",
+      "code": "0314",
+      "currentPrice": 3800,
+      "newPrice": 3800,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "f5e501c5-f353-4a0e-9f84-d0eb9369bd1a",
+      "currentName": "Crio Fast I",
+      "sourceName": "Crio Fast I",
+      "code": "211",
+      "currentPrice": 2900,
+      "newPrice": 2900,
+      "currentDuration": 60,
+      "newDuration": 240,
+      "pages": [
+        6
+      ]
+    },
+    {
+      "id": "f6f4ae05-2af1-4ffd-85cf-be26efc8eabe",
+      "currentName": "Crio de Placas - KLD",
+      "sourceName": "Crio de Placas - KLD",
+      "code": "0325",
+      "currentPrice": 399,
+      "newPrice": 399,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "fa092360-0118-4041-ac6c-25aa72d6b667",
+      "currentName": "Depilação Pé",
+      "sourceName": "Depilação Pé",
+      "code": "325",
+      "currentPrice": 65,
+      "newPrice": 65,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        5
+      ]
+    },
+    {
+      "id": "fb00674f-d26f-405d-bdf6-18c00fd83210",
+      "currentName": "Drenagem Linfática",
+      "sourceName": "Drenagem Linfática",
+      "code": "510",
+      "currentPrice": 200,
+      "newPrice": 200,
+      "currentDuration": 60,
+      "newDuration": 60,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "fbba8a08-b486-47f7-a193-733d46f98afc",
+      "currentName": "Carboxterapia",
+      "sourceName": "Carboxterapia",
+      "code": "400",
+      "currentPrice": 120,
+      "newPrice": 120,
+      "currentDuration": 60,
+      "newDuration": 20,
+      "pages": [
+        12
+      ]
+    },
+    {
+      "id": "fc3dcbb5-5f10-4e08-9758-402812fdadd8",
+      "currentName": "VELARYAN CELULITE (30 MINUTOS)",
+      "sourceName": "Velaryan celulite 30 min",
+      "code": "0500",
+      "currentPrice": 180,
+      "newPrice": 180,
+      "currentDuration": 60,
+      "newDuration": 10,
+      "pages": [
+        8
+      ]
+    },
+    {
+      "id": "fd664fc8-31d8-4f43-8481-75cd852d7741",
+      "currentName": "Shot Crio Fast",
+      "sourceName": "Shot Crio Fast",
+      "code": "0202",
+      "currentPrice": 39,
+      "newPrice": 39,
+      "currentDuration": 60,
+      "newDuration": 0,
+      "pages": [
+        1
+      ]
+    },
+    {
+      "id": "fe647be9-2f87-4d20-b89e-c208ebd2fcb1",
+      "currentName": "MMI Emagrecimento",
+      "sourceName": "MMI Emagrecimento",
+      "code": "201",
+      "currentPrice": 220,
+      "newPrice": 220,
+      "currentDuration": 60,
+      "newDuration": 160,
+      "pages": [
+        9
+      ]
+    },
+    {
+      "id": "fec1859f-6bf4-4adb-af9b-6784ff6ecf70",
+      "currentName": "Bioestimulador Radiesse",
+      "sourceName": "Bioestimulador Radiesse",
+      "code": "117",
+      "currentPrice": 2600,
+      "newPrice": 2600,
+      "currentDuration": 60,
+      "newDuration": 90,
+      "pages": [
+        8
+      ]
+    }
+  ],
+  "exclusions": [
+    {
+      "page": 1,
+      "code": "999",
+      "name": "Teste Procedimento",
+      "priceCents": 0,
+      "costCents": 0,
+      "duration": 0
+    },
+    {
+      "page": 2,
+      "code": "0470",
+      "name": "Teste - Beleza Essencial",
+      "priceCents": 0,
+      "costCents": 0,
+      "duration": 30
+    },
+    {
+      "page": 3,
+      "code": null,
+      "name": "Procedimento Teste",
+      "priceCents": 0,
+      "costCents": 0,
+      "duration": 30
+    },
+    {
+      "page": 10,
+      "code": "0379",
+      "name": "Entrada de Pacote",
+      "priceCents": 50000,
+      "costCents": 0,
+      "duration": 5
+    },
+    {
+      "page": 10,
+      "code": "0377",
+      "name": "Entrada de Pacote",
+      "priceCents": 30000,
+      "costCents": 0,
+      "duration": 5
+    },
+    {
+      "page": 10,
+      "code": "0376",
+      "name": "Entrada de Pacote",
+      "priceCents": 40000,
+      "costCents": 0,
+      "duration": 5
+    },
+    {
+      "page": 10,
+      "code": "0378",
+      "name": "Entrada de Pacote",
+      "priceCents": 20000,
+      "costCents": 0,
+      "duration": 5
+    }
+  ]
+}

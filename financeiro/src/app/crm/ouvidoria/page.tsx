@@ -2198,7 +2198,7 @@ export default function AvaliacoesAgendaPage() {
                   </div>
                   <div className="mb-3 grid min-w-0 gap-3">
                     <AppointmentClientNameField value={scheduleClientName} onChange={setScheduleClientName} disabled={savingSchedule || !!updatingStatus} />
-                    {usesEvaluationProcedure(selectedEvaluation.unit) && <EvaluationProcedureField value={scheduleProcedure} onChange={setScheduleProcedure} clientPhone={selectedEvaluation.clientPhone} disabled={savingSchedule || !!updatingStatus} />}
+                    {usesEvaluationProcedure(selectedEvaluation.unit) && <EvaluationProcedureField services={catalogServices} value={scheduleProcedure} onChange={setScheduleProcedure} clientPhone={selectedEvaluation.clientPhone} disabled={savingSchedule || !!updatingStatus} />}
                   </div>
                   <div className="grid gap-3 sm:grid-cols-[1fr_130px]">
                     <div className="grid gap-2">
@@ -2427,6 +2427,7 @@ export default function AvaliacoesAgendaPage() {
                             )}
                           </div>
                           <EvaluationProcedureField
+                            services={catalogServices}
                             value={confirmationProcedure}
                             onChange={(value) => { setConfirmationProcedure(value); setConfirmationProcedureError(""); }}
                             clientPhone={selectedEvaluation.clientPhone}

@@ -15,6 +15,7 @@ import { AppointmentClientNameField } from "@/components/appointment-client-name
 import { normalizeAppointmentClientName, APPOINTMENT_CLIENT_NAME_ERROR } from "@/lib/appointment-client-name";
 import { evaluationProcedureDraft } from "@/lib/evaluation-procedure-draft";
 import { EvaluationProcedureField } from "@/components/evaluation-procedure-field";
+import { useServiceCatalog } from "@/hooks/useServiceCatalog";
 import { normalizeEvaluationProcedure, usesEvaluationProcedure } from "@/lib/evaluation-procedure";
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
@@ -860,6 +861,7 @@ function PipelineStageSelector({
 
   const effectiveUnit = unit || clientData?.unit || deal?.unit || "";
   const showEvaluationProcedure = usesEvaluationProcedure(effectiveUnit, whatsappInstanceId);
+  const scheduleCatalog = useServiceCatalog(effectiveUnit, scheduleModalOpen && showEvaluationProcedure);
   const isOsascoSchedule = effectiveUnit === "Osasco";
   const pipelineMutationUrl = useMemo(() => {
     if (!whatsappInstanceId) return "/api/pipeline";
@@ -1292,6 +1294,9 @@ function PipelineStageSelector({
           <AppointmentClientNameField value={scheduleClientName} onChange={setScheduleClientName} disabled={isScheduling} />
           {showEvaluationProcedure && (
             <EvaluationProcedureField
+              services={scheduleCatalog.services}
+              loading={scheduleCatalog.loading}
+              loadError={scheduleCatalog.error}
               value={scheduleProcedure}
               onChange={setScheduleProcedure}
               required={!deal?.evaluationAppointmentId}

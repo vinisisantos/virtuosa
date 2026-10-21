@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { useServiceCatalog } from '@/hooks/useServiceCatalog';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { ProcedureSelector } from '@/components/procedure-selector';
@@ -10,7 +11,6 @@ import { adminCardStyle as cardS, adminCompactInputStyle as inputS, adminLabelSt
 import { formatCurrency as fmt } from '@/lib/currency';
 
 interface OrcLine { name: string; quantity: number; unitPrice: string; discount: string; }
-interface CatalogService { id: string; name: string; price: number; duration: number; category: string; }
 
 interface ClientForm {
   name: string; email: string; phone: string; birthdate: string;
@@ -221,13 +221,9 @@ export default function CadastroClientePage() {
 
   // Procedures of interest
   const [orcLines, setOrcLines] = useState<OrcLine[]>([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
-  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+  const { services: catalogServices } = useServiceCatalog(form.unit || globalUnit);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [installments, setInstallments] = useState(1);
-
-  useEffect(() => {
-    fetch('/api/catalog').then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
-  }, []);
 
   const parseNum = (v: string) => { const clean = v.replace(/[^\d.,]/g, ''); const hasBrFormat = clean.includes(','); const normalized = hasBrFormat ? clean.replace(/\./g, '').replace(',', '.') : clean; const n = parseFloat(normalized); return isNaN(n) ? 0 : n; };
   const fmtCurrency = (v: string) => {

@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     data: {
       name: body.name, description: body.description || null,
       category: body.category || 'Estética', price: body.price,
-      duration: body.duration || 60,
+      duration: body.duration ?? 60,
       unit: guard.isAdmin && body.unit ? body.unit : guard.createUnit(),
       active: body.active !== false,
     },

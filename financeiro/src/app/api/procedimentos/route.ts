@@ -3,14 +3,18 @@ import { requireUnitGuard } from '@/lib/unit-guard';
 import { prisma } from '@/lib/db';
 
 export async function GET(req: NextRequest) {
-  const guard = requireUnitGuard(req);
+  const guard = requireUnitGuard(req, { requestedUnit: req.nextUrl.searchParams.get('unit') });
   if (guard instanceof NextResponse) return guard;
 
   try {
-    const procedures = await prisma.procedimentoTermo.findMany({
-      orderBy: { name: 'asc' },
-    });
-    return NextResponse.json(procedures.map((p: { name: string }) => p.name));
+    const [procedures, catalog] = await Promise.all([
+      prisma.procedimentoTermo.findMany({ select: { name: true }, orderBy: { name: 'asc' } }),
+      prisma.serviceCatalog.findMany({
+        where: { active: true, ...(guard.unitFilter ? { unit: { in: [guard.unitFilter, 'Todas'] } } : {}) },
+        select: { name: true }, orderBy: { name: 'asc' },
+      }),
+    ]);
+    return NextResponse.json([...new Set([...procedures, ...catalog].map(p => p.name))].sort((a, b) => a.localeCompare(b, 'pt-BR')));
   } catch (error) {
     console.error('Failed to fetch procedures:', error);
     return NextResponse.json([], { status: 500 });

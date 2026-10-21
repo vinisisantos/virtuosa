@@ -2,6 +2,7 @@
 import { memo, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AppHeader } from '@/components/app-header';
 import { useGlobalUnit } from '@/contexts/UnitContext';
+import { useServiceCatalog } from '@/hooks/useServiceCatalog';
 import AuthGuard from '@/components/auth-guard';
 import { toast } from '@/components/toast';
 import { ProcedureSelector } from '@/components/procedure-selector';
@@ -24,7 +25,6 @@ interface Package {
   totalSessions: number; completedSessions: number;
   status: string; unit: string; notes: string | null; createdAt: string;
 }
-interface CatalogService { id: string; name: string; price: number; duration: number; category: string; }
 interface Profissional { id: string; name: string; color: string; unit: string; }
 
 
@@ -164,7 +164,7 @@ export default function PacotesPage() {
   const [selectedPatient, setSelectedPatient] = useState<PatientData | null>(null);
 
   // Autocomplete data
-  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+  const { services: catalogServices } = useServiceCatalog(showModal ? unit : globalUnit);
   const [profissionais, setProfissionais] = useState<Profissional[]>([]);
   const packageRequestRef = useRef<AbortController | null>(null);
   const requestKey = `${globalUnit || ''}:${statusFilter}`;
@@ -172,7 +172,6 @@ export default function PacotesPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch('/api/catalog', { signal: controller.signal }).then(r => r.json()).then(d => setCatalogServices(d.services || [])).catch(() => {});
     fetch('/api/profissionais', { signal: controller.signal }).then(r => r.json()).then(d => setProfissionais(d || [])).catch(() => {});
     return () => controller.abort();
   }, []);

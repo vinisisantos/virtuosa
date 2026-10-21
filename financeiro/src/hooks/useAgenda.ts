@@ -6,8 +6,8 @@ import { useGlobalUnit } from '@/contexts/UnitContext';
 import { logActivity } from '@/lib/activity-logger';
 import { normalizeAppointmentClientName, APPOINTMENT_CLIENT_NAME_ERROR } from '@/lib/appointment-client-name';
 import { isEvaluationAppointment, normalizeEvaluationProcedure, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
+import { useServiceCatalog } from '@/hooks/useServiceCatalog';
 
-interface CatalogService { id: string; name: string; duration: number; price: number; category: string; }
 interface CrmClient { id: string; name: string; phone: string | null; campaignName?: string | null; unit?: string; }
 
 export function useAgenda() {
@@ -37,7 +37,7 @@ export function useAgenda() {
   const [canDarBaixa, setCanDarBaixa] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   const [canExcluirFinalizado, setCanExcluirFinalizado] = useState(false);
-  const [catalogServices, setCatalogServices] = useState<CatalogService[]>([]);
+  const { services: catalogServices } = useServiceCatalog(showModal ? form.unit : filterUnit);
   const [crmClients, setCrmClients] = useState<CrmClient[]>([]);
   const gridRef = useRef<HTMLDivElement>(null);
   const fetchDataRef = useRef<(() => Promise<void>) | null>(null);
@@ -174,7 +174,6 @@ export function useAgenda() {
 
   // Fetch catalog services + CRM clients (filtered by unit)
   useEffect(() => {
-    fetch('/api/catalog').then(r => r.json()).then(data => setCatalogServices(data.services || [])).catch(() => {});
     const clientUrl = filterUnit ? `/api/clients?limit=1000&unit=${encodeURIComponent(filterUnit)}` : '/api/clients?limit=1000';
     fetch(clientUrl).then(r => r.json()).then(data => setCrmClients((data.clients || []).map((c: any) => ({ id: c.id, name: c.name, phone: c.phone, campaignName: c.campaignName, unit: c.unit })))).catch(() => {});
   }, [filterUnit]);
