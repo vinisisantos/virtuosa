@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCrmLeadCountAdjustments } from "@/lib/crm/lead-count-adjustments";
 import { prisma } from "@/lib/db";
-import { isMarketingRole } from "@/lib/role-access";
+import { ACTIVE_UNITS, isMarketingRole } from "@/lib/role-access";
 import { requireUnitGuard } from "@/lib/unit-guard";
 import { getQualifiedWhatsappLeads } from "@/lib/whatsapp/qualified-leads";
 
@@ -60,11 +60,19 @@ export async function GET(req: NextRequest) {
 
   const queryUserId = req.nextUrl.searchParams.get("userId");
   const canUseUserFilter = guard.isAdmin || isMarketingRole(guard.userRole);
-  const canSeeUnitDashboard =
+  const hasExistingUnitDashboardAccess =
     guard.isAdmin ||
     isMarketingRole(guard.userRole) ||
     guard.permissions?.dashboard === true ||
     guard.permissions?.crmEstatistica === true;
+  const hasOwnUnitSummary = guard.permissions?.crm === true && guard.permissions?.crmDashboardUnit === true;
+  const hasValidHomeUnit = ACTIVE_UNITS.some(unit => unit === guard.userUnit);
+  if (hasOwnUnitSummary && !hasExistingUnitDashboardAccess && !hasValidHomeUnit) {
+    return NextResponse.json({ error: "Unidade do resumo CRM não configurada." }, { status: 403 });
+  }
+  // Resumo agregado não concede Estatísticas, Financeiro ou visão de outra unidade.
+  const canSeeUnitDashboard = hasExistingUnitDashboardAccess
+    || (hasOwnUnitSummary && hasValidHomeUnit && guard.unitFilter === guard.userUnit);
   const targetUserId = canUseUserFilter && queryUserId ? queryUserId : guard.userId;
   const isUserFiltered = !canSeeUnitDashboard || !!queryUserId;
   const unitFilter = guard.unitFilter; // string | undefined (já validado pelo guard)
