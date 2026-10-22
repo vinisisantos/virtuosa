@@ -7,6 +7,8 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { CategorySelector } from '@/components/category-selector';
 import { EditableProductExpenseItem, ProductExpenseItemsEditor, ProductExpenseSummary } from './product-expense-items-editor';
 import { CostReferenceMonthPicker } from './cost-reference-month-picker';
+import { CostExpenseList, CostGroupingPicker } from './cost-expense-list';
+import { groupingCandidates, manualCostMonth } from '@/lib/cost-expense-groups';
 import { LucratividadeView } from './lucratividade-view';
 import { CostCalendar } from './cost-calendar';
 import { RevenueView } from './revenue-view';
@@ -32,7 +34,7 @@ import {
 } from '@/lib/payroll-client-sync';
 
 /* ─── Types ─── */
-interface CostRow {
+export interface CostRow {
   id: string | number;
   name: string;
   value: number;
@@ -540,6 +542,7 @@ export function CustosUnificado({
   const [addDueDate, setAddDueDate] = useState('');
   const [addRefMonth, setAddRefMonth] = useState('');
   const [addObs, setAddObs] = useState('');
+  const [groupSelection, setGroupSelection] = useState<{ scope: string; value: string | null } | null>(null);
   const [productItems, setProductItems] = useState<EditableProductExpenseItem[]>([]);
   const [productFreight, setProductFreight] = useState('');
   const [customCategories, setCustomCategories] = useState<string[]>([]);
@@ -1049,6 +1052,7 @@ export function CustosUnificado({
   })), [automaticCalendarExpenses]);
 
   const resetForm = () => {
+    setGroupSelection(null);
     setAddName(''); setAddValue(''); setAddCategory('Outros');
     setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setProductItems([]); setProductFreight(''); setRecurrence('once'); setEditingRow(null);
   };
@@ -1166,6 +1170,11 @@ export function CustosUnificado({
     return manualBills + manualFixed + automaticOrders;
   }, [automaticCosts?.productOrders.length, d.bills, d.fixedExpenses, d.selectedUnit, productTargetMonthKey, selectedMonthKey]);
 
+  const groupingMonth = manualCostMonth(addRefMonth, addDueDate);
+  const groupingUnit = resolveCostEntryUnit(d.selectedUnit, d.billUnit);
+  const groupingScope = JSON.stringify([groupingMonth, groupingUnit, addCategory, recurrence]);
+  const selectedGroup = groupSelection?.scope === groupingScope ? groupSelection.value : null;
+  const canGroupNewExpense = !editingRow && recurrence === 'once' && !isProductExpense;
   const shouldRequestProductTitle = !isProductExpense || Boolean(editingRow) || existingProductLaunchCount === 0;
   const automaticProductTitle = buildAutomaticProductExpenseName(
     existingProductLaunchCount + 1,
@@ -1251,6 +1260,14 @@ export function CustosUnificado({
     }
     const fixedEntryUnit = resolveCostEntryUnit(d.selectedUnit, d.fixedUnit);
     const billEntryUnit = resolveCostEntryUnit(d.selectedUnit, d.billUnit);
+    const groupingTarget = canGroupNewExpense && selectedGroup !== null
+      ? groupingCandidates({ fixed: d.fixedExpenses, bills: d.bills }, groupingMonth, groupingUnit, addCategory)
+          .find(candidate => `${candidate.target.source}:${candidate.target.id}` === selectedGroup)?.target
+      : undefined;
+    if (canGroupNewExpense && selectedGroup !== null && !groupingTarget) {
+      toast('Selecione uma despesa compatível ou desative o agrupamento.', 'warning');
+      return;
+    }
 
     const fixedDraft = {
       name: expenseName,
@@ -1274,6 +1291,7 @@ export function CustosUnificado({
           obs: addObs,
           items: isProductExpense ? normalizedItems : undefined,
           freight: isProductExpense && freight > 0 ? freight : undefined,
+          groupTarget: groupingTarget,
     };
 
     let saved = false;
@@ -1378,11 +1396,13 @@ export function CustosUnificado({
   const totalLancado = costRows.reduce((sum, row) => sum + row.recognizedPortion, 0);
   const totalDespesas = totalPendente + totalPago + totalLancado;
   const displayedExpenseRows = costRows.filter(row => !isProductExpenseCategory(row.category));
+  const automaticExpenseRows = displayedExpenseRows.filter(row => row.source.startsWith('automatic-'));
+  const manualExpenseRows = displayedExpenseRows.filter(row => !row.source.startsWith('automatic-'));
   const dreDataUnavailable = viewMode === 'lucratividade'
     && (d.backupLoading || Boolean(d.backupError) || !automaticCosts);
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', paddingBottom: 60, fontFamily: 'Inter, sans-serif' }}>
+    <div className="costs-page" style={{ maxWidth: 1200, margin: '0 auto', paddingBottom: 60, fontFamily: 'Inter, sans-serif' }}>
       
       {/* ─── TOP BAR ─── */}
       <div className="costs-topbar" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24, gap: 12 }}>
@@ -1415,7 +1435,7 @@ export function CustosUnificado({
                   Pedidos
                 </a>
               )}
-              <button onClick={openAddForm} style={{
+              <button onClick={openAddForm} disabled={d.backupLoading || Boolean(d.backupError)} style={{
                 display: 'flex', minHeight: 44, alignItems: 'center', gap: 8, background: 'var(--primary)', color: 'white',
                 border: 'none', padding: '10px 20px', borderRadius: 12, fontWeight: 700, cursor: 'pointer',
                 boxShadow: '0 4px 14px rgba(230, 0, 126, 0.25)', transition: 'transform 0.15s'
@@ -1506,7 +1526,7 @@ export function CustosUnificado({
       ) : (
         <>
           {/* ─── KPI CARDS ─── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 32 }}>
+      <div className="costs-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, marginBottom: 20 }}>
         
         <div style={{ background: 'var(--card-bg)', border: '1px solid var(--border)', borderRadius: 16, padding: 24, display: 'flex', alignItems: 'center', gap: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1571,6 +1591,8 @@ export function CustosUnificado({
       </div>
 
       {/* ─── TABLE ─── */}
+      {automaticExpenseRows.length > 0 && <>
+      <h2 style={{ margin: '20px 0 10px', fontSize: '1.05rem', color: 'var(--text-main)' }}>Custos automáticos</h2>
       <div style={{ background: 'var(--card-bg)', borderRadius: 16, border: '1px solid var(--border)', overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
         <div className="cost-table-scroll" style={{ overflowX: 'auto' }}>
           <table className="cost-table" style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -1584,7 +1606,7 @@ export function CustosUnificado({
               </tr>
             </thead>
             <tbody>
-              {displayedExpenseRows.length === 0 ? (
+              {automaticExpenseRows.length === 0 ? (
                 <tr>
                   <td colSpan={5} style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 40, opacity: 0.5, marginBottom: 8 }}>receipt_long</span>
@@ -1592,7 +1614,7 @@ export function CustosUnificado({
                   </td>
                 </tr>
               ) : (
-                displayedExpenseRows.map(row => {
+                automaticExpenseRows.map(row => {
                   const rowId = String(row.id);
                   const isAutomatic = row.source.startsWith('automatic-');
                   const payroll = row.source === 'automatic-payroll' ? row.raw as AutomaticPayrollCost : null;
@@ -1735,12 +1757,25 @@ export function CustosUnificado({
           </table>
         </div>
       </div>
+      </>}
+      <CostExpenseList
+        rows={manualExpenseRows}
+        month={selectedMonthKey}
+        filtered={filterStatus !== 'all' || filterType !== 'all'}
+        loading={d.backupLoading}
+        error={d.backupError}
+        canEdit={row => !row.isPaid && (!row.isHistorical || Boolean(getActiveFixedVersion(row)))}
+        onEdit={openEditForm}
+        onDelete={handleDelete}
+        onTogglePaid={row => row.isPaid ? d.unmarkBillPaid(row.raw) : d.markPaid(row.id)}
+        onUngroup={row => d.ungroupCostEntry({ source: row.source, id: Number(row.id) }, selectedMonthKey)}
+      />
       </>
       )}
 
       {/* ─── ADD MODAL ─── */}
       {showAddForm && (
-        <div style={{ position: 'fixed', inset: 0, padding: 16, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeSlide 0.2s ease-out', overflowY: 'auto' }}>
+        <div role="dialog" aria-modal="true" aria-label={editingRow ? 'Editar despesa' : 'Nova despesa'} style={{ position: 'fixed', inset: 0, padding: 16, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeSlide 0.2s ease-out', overflowY: 'auto' }}>
           <div style={{ background: 'var(--card-bg)', width: '100%', maxWidth: 600, maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', borderRadius: 20, padding: 'clamp(20px, 5vw, 32px)', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
             <h2 style={{ margin: '0 0 24px', fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>{editingRow ? 'edit' : 'add_circle'}</span>
@@ -1831,6 +1866,14 @@ export function CustosUnificado({
                 />
               )}
 
+              {canGroupNewExpense && <CostGroupingPicker
+                fixed={d.fixedExpenses} bills={d.bills}
+                month={groupingMonth} unit={groupingUnit} category={addCategory}
+                selection={selectedGroup}
+                disabled={d.backupLoading || Boolean(d.backupError)}
+                onChange={value => setGroupSelection({ scope: groupingScope, value })}
+              />}
+
               <div>
                 <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>Recorrência</label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, padding: 5, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12 }}>
@@ -1871,6 +1914,20 @@ export function CustosUnificado({
       )}
 
       <style>{`
+        .costs-page .costs-topbar { display: grid !important; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+        .costs-page .costs-view-tabs { grid-row: 3; }
+        .costs-page .costs-actions { justify-content: stretch !important; }
+        .costs-page .costs-actions > * { min-height: 44px; justify-content: center; flex: 1 1 auto; }
+        .costs-page .costs-kpis { grid-template-columns: minmax(0, 1fr) !important; gap: 10px !important; }
+        .costs-page .costs-kpis > div { padding: 16px !important; gap: 12px !important; min-width: 0; }
+        .costs-page .costs-kpis > div > div:first-child { width: 40px !important; height: 40px !important; flex-shrink: 0; }
+        @media (min-width: 769px) {
+          .costs-page .costs-topbar { grid-template-columns: minmax(220px, 1fr) auto; }
+          .costs-page .costs-view-tabs { grid-row: 2; grid-column: 1 / -1; }
+          .costs-page .costs-actions { grid-row: 1; grid-column: 2; }
+          .costs-page .costs-view-tabs button { min-height: 44px; flex: 1; }
+          .costs-page .costs-kpis { grid-template-columns: repeat(3, minmax(0,1fr)) !important; }
+        }
         @keyframes fadeSlide {
           from { opacity: 0; transform: translateY(-10px); }
           to { opacity: 1; transform: translateY(0); }

@@ -12,6 +12,7 @@ import {
 } from '@/lib/financial-backup-client-sync';
 import { normalizeProductExpenseFreight, normalizeProductExpenseItems, ProductExpenseItem, sumProductExpenseTotal } from '@/lib/product-expense-items';
 import { isManualRevenue, isOperationalSale, isRevenueReceived } from '@/lib/revenue';
+import { appendGroupedBill, detachExpense, type ExpenseGroups, type ManualCostReference } from '@/lib/cost-expense-groups';
 
 /* ─── Constants ─── */
 export const STORAGE_KEY_LOGS = 'virtuosa_finance_logs_v2';
@@ -29,11 +30,11 @@ const FINANCIAL_BACKUP_REVISION_INTERVAL_MS = 60_000;
 export type RevenueStatus = 'pending' | 'received';
 export interface LogEntry { type:'sale'|'cost'; name:string; value:number; unit?:string; payment?:string; category?:string; obs?:string; date:string; id?:string; seller?:string; source?:'manual'; status?:RevenueStatus; receivedAt?:string; }
 export interface ManualRevenueDraft { name:string; value:string|number; date:string; category:string; payment?:string; obs?:string; unit?:string; status:RevenueStatus; }
-export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; recurrence?:'monthly'|'weekly'; effectiveFrom?:string; effectiveTo?:string; seriesId?:string; items?:ProductExpenseItem[]; freight?:number; }
-export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; refMonth?:string; items?:ProductExpenseItem[]; freight?:number; }
+export interface FixedExpense { id:number; name:string; value:number; category:string; date?:string; unit?:string; obs?:string; recurrence?:'monthly'|'weekly'; effectiveFrom?:string; effectiveTo?:string; seriesId?:string; items?:ProductExpenseItem[]; freight?:number; expenseGroups?:ExpenseGroups; }
+export interface Bill { id:number; name:string; value:number; dueDay:number|null; dueDateManual:string|null; type:'fixo'|'variavel'; category:string; payments:Record<string,boolean>; obs?:string; unit?:string; refMonth?:string; items?:ProductExpenseItem[]; freight?:number; expenseGroups?:ExpenseGroups; }
 export interface DueBill extends Bill { dueDate:Date; diffDays:number; isOverdue:boolean; }
 export interface FixedExpenseDraft { name:string; value:string; category:string; date?:string; unit?:string; obs?:string; recurrence?:Exclude<CostRecurrence,'once'>; effectiveFrom?:string; items?:ProductExpenseItem[]; freight?:number; }
-export interface BillDraft { name:string; value:string; type:'fixo'|'variavel'; dueDay?:string; dueDate?:string; category:string; obs?:string; unit?:string; refMonth?:string; items?:ProductExpenseItem[]; freight?:number; }
+export interface BillDraft { name:string; value:string; type:'fixo'|'variavel'; dueDay?:string; dueDate?:string; category:string; obs?:string; unit?:string; refMonth?:string; items?:ProductExpenseItem[]; freight?:number; groupTarget?:ManualCostReference; }
 interface FinancialBackupResponse {
   exists?: boolean;
   logs?: LogEntry[];
@@ -757,6 +758,18 @@ export function useDashboard({
   };
   const saveFixed = (f:FixedExpense[]) => { setFixedExpenses(f); markFinancialBackupChanged(); localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(f)); };
   const saveBillsState = (b:Bill[]) => { setBills(b); markFinancialBackupChanged(); localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(b)); };
+  const saveManualCosts = (state: { fixed: FixedExpense[]; bills: Bill[] }) => {
+    setFixedExpenses(state.fixed);
+    setBills(state.bills);
+    localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(state.fixed));
+    localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(state.bills));
+    // Both sides of a group must belong to the same versioned backup snapshot.
+    markFinancialBackupChanged();
+  };
+  const ungroupCostEntry = (target: ManualCostReference, month: string) => {
+    if (readOnly || backupLoading || backupError) return;
+    saveManualCosts(detachExpense({ fixed: fixedExpenses, bills }, target, month));
+  };
 
   // Actions
   const addSale = () => {
@@ -992,7 +1005,7 @@ export function useDashboard({
       if(!dueDateInput) { toast('Informe a data de vencimento.', 'warning'); return false; }
       dueDateManual=dueDateInput;
     }
-    saveBillsState([...bills,{
+    const bill: Bill = {
       id:Date.now(),
       name:name.trim(),
       value,
@@ -1006,7 +1019,13 @@ export function useDashboard({
       refMonth:(draft?.refMonth ?? billRefMonth)||undefined,
       items:items?.length ? items : undefined,
       freight:freight > 0 ? freight : undefined,
-    }]);
+    };
+    if (draft?.groupTarget) {
+      if (readOnly || backupLoading || backupError) { toast('Aguarde a sincronização dos dados antes de agrupar.', 'warning'); return false; }
+      try {
+        saveManualCosts(appendGroupedBill({ fixed: fixedExpenses, bills }, bill, draft.groupTarget, crypto.randomUUID()));
+      } catch (error) { toast(error instanceof Error ? error.message : 'Não foi possível agrupar a despesa.', 'warning'); return false; }
+    } else saveBillsState([...bills, bill]);
     setBillName(''); setBillValue(''); setBillDueDay(''); setBillDueDate(''); setBillObs(''); setBillRefMonth('');
     return true;
   };
@@ -1140,7 +1159,7 @@ export function useDashboard({
     // Bill form
     billName, setBillName, billValue, setBillValue, billType, setBillType,
     billDueDay, setBillDueDay, billDueDate, setBillDueDate, billCategory, setBillCategory, billObs, setBillObs, billUnit, setBillUnit, billRefMonth, setBillRefMonth,
-    addBill, deleteBill, editBill, markPaid, unmarkBillPaid, isBillPaid,
+    addBill, deleteBill, editBill, markPaid, unmarkBillPaid, isBillPaid, ungroupCostEntry,
     // UI state
     showClearModal, setShowClearModal, showPopup, setShowPopup, showMiniBell, setShowMiniBell,
     // Chart refs

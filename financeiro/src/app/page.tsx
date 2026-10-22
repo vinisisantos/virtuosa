@@ -47,7 +47,7 @@ function FinanceiroHome() {
 
         <main style={{ padding: '0 20px' }}>
           {/* Section Header */}
-          <section style={{ margin: '32px 0 24px', display: 'flex', alignItems: 'center', gap: 14 }}>
+          <section style={{ margin: f.activeTab === 'custos' ? '24px auto 20px' : '32px 0 24px', maxWidth: f.activeTab === 'custos' ? 1200 : undefined, display: 'flex', alignItems: 'center', gap: 14 }}>
             <div style={{ width: 44, height: 44, borderRadius: 14, background: `${activeTabMeta.color}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span className="material-symbols-outlined" style={{ fontSize: 24, color: activeTabMeta.color }}>{activeTabMeta.icon}</span>
             </div>
