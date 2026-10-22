@@ -1,4 +1,4 @@
-import { isValidLeadName } from "./lead-name";
+import { isValidLeadName } from "@/lib/whatsapp/lead-name";
 
 type ContactNameMessage = {
   pushName?: unknown;
@@ -6,8 +6,14 @@ type ContactNameMessage = {
 };
 
 function normalizeContactName(value: unknown) {
+  // Perfis permitem emoji; remover só a decoração antes de validar o nome
+  // preserva a rejeição de telefones, URLs e frases de atendimento.
   const text = typeof value === "string"
-    ? value.trim().replace(/\s+/g, " ")
+    ? value
+        .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\u200D\uFE0E\uFE0F\u{E0020}-\u{E007F}]+/gu, " ")
+        .trim()
+        .replace(/^~+\s*/, "")
+        .replace(/\s+/g, " ")
     : "";
 
   return isValidLeadName(text) ? text : null;
