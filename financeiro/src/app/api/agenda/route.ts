@@ -3,6 +3,7 @@ import { AppointmentClientNameError, requireAppointmentClientName } from '@/lib/
 import { getPipelineDealIdFromEvaluationNotes } from '@/lib/evaluation-scheduling';
 import { syncEvaluationClientName } from '@/lib/evaluation-client-name-sync';
 import { prisma } from '@/lib/db';
+import { enforceSharedEvaluationWriteAccess, EvaluationReadOnlyError, hasSharedEvaluationReadOnlyAccess } from '@/lib/evaluation-access';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { incrementPackageSession, withSerializableRetry } from '@/lib/agenda/finalization';
 import { isEvaluationAppointment, normalizeEvaluationProcedure, usesEvaluationProcedure } from '@/lib/evaluation-procedure';
@@ -112,12 +113,14 @@ export async function PUT(req: NextRequest) {
     const body = await req.json();
 
     // UNIT GUARD: Check record belongs to user's unit
-    const currentAg = await prisma.agendamento.findUnique({ where: { id: body.id } });
+    const accessInclude = hasSharedEvaluationReadOnlyAccess(guard) ? { profissional: { select: { name: true } } } : undefined;
+    const currentAg = await prisma.agendamento.findUnique({ where: { id: body.id }, include: accessInclude });
     if (!currentAg) return NextResponse.json({ error: 'Agendamento não encontrado' }, { status: 404 });
     try { guard.enforceUnit(currentAg.unit); } catch (e) {
       if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
       throw e;
     }
+    enforceSharedEvaluationWriteAccess(guard, currentAg);
 
     const data: Record<string, unknown> = {};
     if (body.clientName !== undefined) data.clientName = body.clientName === currentAg.clientName
@@ -157,9 +160,10 @@ export async function PUT(req: NextRequest) {
     if (body.notes !== undefined) data.notes = body.notes;
 
     const { updated, groupNotice } = await withSerializableRetry(async (tx) => {
-      const latest = await tx.agendamento.findUnique({ where: { id: body.id } });
+      const latest = await tx.agendamento.findUnique({ where: { id: body.id }, include: accessInclude });
       if (!latest) throw new Error('Agendamento não encontrado');
       guard.enforceUnit(latest.unit);
+      enforceSharedEvaluationWriteAccess(guard, latest);
       const scheduleChanged = data.startTime instanceof Date && data.startTime.getTime() !== latest.startTime.getTime();
       if (scheduleChanged || (data.clientName !== undefined && data.clientName !== latest.clientName)) {
         data.clientName = requireAppointmentClientName(data.clientName ?? latest.clientName);
@@ -192,6 +196,7 @@ export async function PUT(req: NextRequest) {
     if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
     return NextResponse.json({ ...updated, groupNotice });
   } catch (err) {
+    if (err instanceof EvaluationReadOnlyError) return NextResponse.json({ error: err.message }, { status: 403 });
     if (err instanceof AppointmentClientNameError) return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
     if (err instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     console.error('Agenda PUT error:', err);
@@ -216,6 +221,7 @@ export async function DELETE(req: NextRequest) {
       if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
       throw e;
     }
+    enforceSharedEvaluationWriteAccess(guard, agendamento);
 
     // If agendamento is finalized, check permissions
     if (agendamento.status === 'finalizado') {
@@ -247,6 +253,7 @@ export async function DELETE(req: NextRequest) {
     await prisma.agendamento.delete({ where: { id } });
     return NextResponse.json({ ok: true, deleted: agendamento });
   } catch (err) {
+    if (err instanceof EvaluationReadOnlyError) return NextResponse.json({ error: err.message }, { status: 403 });
     console.error('Agenda DELETE error:', err);
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Erro ao excluir agendamento' }, { status: 500 });
   }

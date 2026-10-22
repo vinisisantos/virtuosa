@@ -19,7 +19,7 @@ import {
 import { AppointmentClientNameError, requireAppointmentClientName } from "@/lib/appointment-client-name";
 import { syncEvaluationClientName } from "@/lib/evaluation-client-name-sync";
 import { prisma } from "@/lib/db";
-import { canManageAllEvaluations, isOwnEvaluation } from "@/lib/evaluation-access";
+import { canManageAllEvaluations, canViewAllEvaluations, isOwnEvaluation } from "@/lib/evaluation-access";
 import { saoPauloDayRange } from "@/lib/date-filter";
 import {
   getPipelineProcedureSelections,
@@ -385,7 +385,8 @@ export async function GET(req: NextRequest) {
   const start = dateFromParam(searchParams.get("start"), defaults.start);
   const end = dateFromParam(searchParams.get("end"), defaults.end);
   const profissionalId = searchParams.get("profissionalId");
-  const canViewAll = canManageAllEvaluations(guard);
+  const canManageAll = canManageAllEvaluations(guard);
+  const canViewAll = canViewAllEvaluations(guard, unit);
 
   const professionals = await prisma.profissional.findMany({
     where: { unit, isActive: true },
@@ -446,8 +447,12 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     unit,
     canViewAll,
+    canManageAll,
     professionals: visibleProfessionals,
-    evaluations: enrichedEvaluations,
+    evaluations: enrichedEvaluations.map((evaluation) => ({
+      ...evaluation,
+      canEdit: canManageAll || isOwnEvaluation(evaluation, { id: guard.userId, name: guard.userName }),
+    })),
     newEvaluationsToday: visibleEvaluationsCreatedToday.length,
   });
 }

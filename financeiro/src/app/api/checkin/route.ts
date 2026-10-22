@@ -3,6 +3,7 @@ import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } fro
 import { dispatchEvaluationGroupNotice, enqueueEvaluationGroupConfirmation } from '@/lib/whatsapp/evaluation-group-notice';
 
 import { prisma } from "@/lib/db";
+import { enforceSharedEvaluationWriteAccess, EvaluationReadOnlyError, hasSharedEvaluationReadOnlyAccess } from '@/lib/evaluation-access';
 
 export async function GET(req: NextRequest) {
   const guard = requireUnitGuard(req);
@@ -39,6 +40,11 @@ export async function POST(req: NextRequest) {
       `;
       if (!latest) return null;
       guard.enforceUnit(latest.unit);
+      if (hasSharedEvaluationReadOnlyAccess(guard)) {
+        const appointment = await tx.agendamento.findUnique({ where: { id: agendamentoId }, include: { profissional: true } });
+        if (!appointment) return null;
+        enforceSharedEvaluationWriteAccess(guard, appointment);
+      }
       const updated = await tx.agendamento.update({
         where: { id: agendamentoId },
         data: { status: 'confirmado' },
@@ -55,6 +61,7 @@ export async function POST(req: NextRequest) {
     if (noticeId) after(async () => { await dispatchEvaluationGroupNotice(noticeId); });
     return NextResponse.json({ success: true, agendamento: updated, groupNotice });
   } catch (error) {
+    if (error instanceof EvaluationReadOnlyError) return NextResponse.json({ error: error.message }, { status: 403 });
     if (error instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     return NextResponse.json({ error: 'Agendamento not found' }, { status: 404 });
   }

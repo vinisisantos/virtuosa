@@ -129,6 +129,7 @@ type Evaluation = {
   outcomeReason?: string | null;
   assignedUserId?: string | null;
   isInstagramSource?: boolean;
+  canEdit?: boolean;
 };
 
 function evaluationProcedureLabel(evaluation: Evaluation) {
@@ -647,13 +648,14 @@ function DraggableEvaluationCard({
   const dragBindings = useDraggable({
     id: `evaluation:${evaluation.id}`,
     data: { type: "evaluation", evaluationId: evaluation.id },
+    disabled: evaluation.canEdit === false,
   });
 
   return (
     <EvaluationCardButton
       evaluation={evaluation}
       onClick={onClick}
-      dragBindings={dragBindings}
+      dragBindings={evaluation.canEdit === false ? undefined : dragBindings}
     />
   );
 }
@@ -753,7 +755,9 @@ export default function AvaliacoesAgendaPage() {
   const [professionalId, setProfessionalId] = useState("");
   const [filterDayKey, setFilterDayKey] = useState("");
   const [canViewAll, setCanViewAll] = useState(false);
+  const [canManageAll, setCanManageAll] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showAllMetrics, setShowAllMetrics] = useState(false);
   const [calendarView, setCalendarView] = useState<"month" | "week" | "list">("month");
   const [selectedEvaluationId, setSelectedEvaluationId] = useState<string | null>(null);
@@ -818,6 +822,7 @@ export default function AvaliacoesAgendaPage() {
 
   const fetchEvaluations = useCallback(async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const params = new URLSearchParams({
         start: startOfMonth(month).toISOString(),
@@ -833,12 +838,15 @@ export default function AvaliacoesAgendaPage() {
       setNewEvaluationsToday(Number(data.newEvaluationsToday || 0));
       setProfessionals(data.professionals || []);
       setCanViewAll(data.canViewAll === true);
+      setCanManageAll(data.canManageAll === true);
       setResolvedUnit(data.unit || globalUnit || "");
     } catch {
       setEvaluations([]);
       setNewEvaluationsToday(0);
       setProfessionals([]);
       setCanViewAll(false);
+      setCanManageAll(false);
+      setLoadError(true);
       setResolvedUnit(globalUnit || "");
       toast.error("Erro ao carregar avaliações");
     } finally {
@@ -873,7 +881,7 @@ export default function AvaliacoesAgendaPage() {
   }, [resolvedUnit]);
 
   useEffect(() => {
-    if (!canViewAll || !resolvedUnit) {
+    if (!canManageAll || !resolvedUnit) {
       setEvaluationAssignees([]);
       setLoadingAssignees(false);
       return;
@@ -900,7 +908,7 @@ export default function AvaliacoesAgendaPage() {
     return () => {
       cancelled = true;
     };
-  }, [canViewAll, resolvedUnit]);
+  }, [canManageAll, resolvedUnit]);
 
   useEffect(() => {
     setProfessionalId("");
@@ -966,7 +974,7 @@ export default function AvaliacoesAgendaPage() {
   }, [outcomeFlow]);
 
   useEffect(() => {
-    if (!selectedEvaluation) {
+    if (!selectedEvaluation || selectedEvaluation.canEdit === false) {
       setChatLink(null);
       return;
     }
@@ -1017,7 +1025,7 @@ export default function AvaliacoesAgendaPage() {
     setLoadingEvaluationConfirmation(false);
     setSendingEvaluationConfirmation(false);
 
-    if (!selectedEvaluation) return;
+    if (!selectedEvaluation || selectedEvaluation.canEdit === false) return;
 
     const controller = new AbortController();
     let boundaryTimer: number | null = null;
@@ -1070,7 +1078,7 @@ export default function AvaliacoesAgendaPage() {
     setLoadingEvaluationDayReminder(false);
     setSendingEvaluationDayReminder(false);
 
-    if (!selectedEvaluation || !chatLink?.available || !chatLink.conversationId) return;
+    if (!selectedEvaluation || selectedEvaluation.canEdit === false || !chatLink?.available || !chatLink.conversationId) return;
 
     const controller = new AbortController();
     let boundaryTimer: number | null = null;
@@ -1210,6 +1218,7 @@ export default function AvaliacoesAgendaPage() {
     assigneeUserId?: string,
     details?: { evaluationClientName?: string; evaluationProcedure?: string },
   ) => {
+    if (evaluations.find((evaluation) => evaluation.id === evaluationId)?.canEdit === false) return null;
     setSavingSchedule(true);
     try {
       const res = await fetch("/api/crm/evaluations", {
@@ -1271,7 +1280,7 @@ export default function AvaliacoesAgendaPage() {
     if (typeof evaluationId !== "string" || typeof targetDayKey !== "string") return;
 
     const evaluation = evaluations.find((item) => item.id === evaluationId);
-    if (!evaluation || dateKey(evaluation.startTime) === targetDayKey) return;
+    if (!evaluation || evaluation.canEdit === false || dateKey(evaluation.startTime) === targetDayKey) return;
     setPendingReschedule({ evaluationId, targetDayKey });
   };
 
@@ -1297,14 +1306,14 @@ export default function AvaliacoesAgendaPage() {
   };
 
   const saveSelectedEvaluationSchedule = async () => {
-    if (!selectedEvaluation) return;
+    if (!selectedEvaluation || selectedEvaluation.canEdit === false) return;
     const startTime = buildLocalDateTime(scheduleDate, scheduleTime);
     if (!startTime) {
       toast.error("Informe uma data e um horário válidos");
       return;
     }
 
-    if (canViewAll && !scheduleAssigneeUserId) {
+    if (canManageAll && !scheduleAssigneeUserId) {
       toast.error("Selecione a responsável pela avaliação");
       return;
     }
@@ -1320,7 +1329,7 @@ export default function AvaliacoesAgendaPage() {
     const updated = await updateEvaluationSchedule(
       selectedEvaluation.id,
       startTime,
-      canViewAll ? scheduleAssigneeUserId : undefined,
+      canManageAll ? scheduleAssigneeUserId : undefined,
       { ...((nameChanged || dateChanged) && evaluationClientName ? { evaluationClientName } : {}),
         ...(usesEvaluationProcedure(selectedEvaluation.unit) && evaluationProcedure ? { evaluationProcedure } : {}) },
     );
@@ -1337,7 +1346,7 @@ export default function AvaliacoesAgendaPage() {
     payload: Record<string, unknown> = {},
     successMessage = "Status da avaliação atualizado",
   ) => {
-    if (!selectedEvaluation) return;
+    if (!selectedEvaluation || selectedEvaluation.canEdit === false) return;
     const submittingId = selectedEvaluation.id;
     const nameChanged = scheduleClientName.trim() !== selectedEvaluation.clientName.trim();
     const evaluationClientName = normalizeAppointmentClientName(scheduleClientName);
@@ -1673,7 +1682,7 @@ export default function AvaliacoesAgendaPage() {
       || scheduleTime !== timeInputValue(selectedEvaluation.startTime)
       || scheduleClientName.trim() !== selectedEvaluation.clientName.trim()
       || scheduleProcedure !== (selectedEvaluation.evaluationProcedure || "")
-      || (canViewAll && scheduleAssigneeUserId !== (selectedEvaluation.assignedUserId || ""))
+      || (canManageAll && scheduleAssigneeUserId !== (selectedEvaluation.assignedUserId || ""))
     ),
   );
   const monthIndex = month.getMonth();
@@ -1907,9 +1916,15 @@ export default function AvaliacoesAgendaPage() {
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex min-h-[420px] items-center justify-center text-muted-foreground">
+          {loadError ? (
+            <div role="alert" className="flex min-h-[240px] flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+              <p className="text-sm text-muted-foreground">Não foi possível carregar as avaliações. Tente novamente.</p>
+              <Button variant="outline" className="min-h-11" onClick={() => void fetchEvaluations()}>Tentar novamente</Button>
+            </div>
+          ) : loading ? (
+            <div role="status" className="flex min-h-[420px] items-center justify-center text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin" />
+              <span className="sr-only">Carregando avaliações</span>
             </div>
           ) : (
             <>
@@ -2124,7 +2139,7 @@ export default function AvaliacoesAgendaPage() {
                         <PackageCheck className="h-4 w-4" />
                         <div className="text-sm font-semibold">Fechamento registrado</div>
                       </div>
-                      <Button
+                      {selectedEvaluation.canEdit !== false && <Button
                         type="button"
                         variant="outline"
                         size="sm"
@@ -2138,7 +2153,7 @@ export default function AvaliacoesAgendaPage() {
                           <PencilLine className="mr-2 h-4 w-4" />
                         )}
                         Editar orçamento
-                      </Button>
+                      </Button>}
                     </div>
                     <div className="mt-3 grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                       <div>
@@ -2191,6 +2206,17 @@ export default function AvaliacoesAgendaPage() {
                   </div>
                 )}
 
+                {selectedEvaluation.canEdit === false ? (
+                  <div className="rounded-xl border border-border bg-muted/20 p-4" data-testid="evaluation-read-only">
+                    <p className="text-sm font-semibold text-foreground">
+                      {EVALUATION_STATUS_LABELS[getEffectiveStatus(selectedEvaluation)]}
+                    </p>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Somente consulta. A edição desta avaliação está disponível para a responsável ou para quem tem permissão de gestão.
+                    </p>
+                    {selectedEvaluation.outcomeReason && <p className="mt-2 break-words text-sm text-muted-foreground">{selectedEvaluation.outcomeReason}</p>}
+                  </div>
+                ) : <>
                 <div className="rounded-xl border border-border bg-muted/20 p-4">
                   <div className="mb-3 flex items-center gap-2">
                     <CalendarClock className="h-4 w-4 text-primary" />
@@ -2220,7 +2246,7 @@ export default function AvaliacoesAgendaPage() {
                       />
                     </div>
                   </div>
-                  {canViewAll && (
+                  {canManageAll && (
                     <div className="mt-3 grid gap-2">
                       <Label htmlFor="evaluationScheduleAssignee">Responsável</Label>
                       <select
@@ -2256,7 +2282,7 @@ export default function AvaliacoesAgendaPage() {
                       ) : (
                         <CalendarCheck className="mr-2 h-4 w-4" />
                       )}
-                      {canViewAll ? "Salvar agendamento" : "Salvar data e horário"}
+                      {canManageAll ? "Salvar agendamento" : "Salvar data e horário"}
                     </Button>
 
                     {evaluationConfirmation?.visible && (
@@ -2678,10 +2704,11 @@ export default function AvaliacoesAgendaPage() {
                     </div>
                   )}
                 </div>
+                </>}
               </div>
 
               <DialogFooter>
-                <span
+                {selectedEvaluation.canEdit !== false && <span
                   className="inline-flex"
                   title={
                     chatLink?.loading
@@ -2706,7 +2733,7 @@ export default function AvaliacoesAgendaPage() {
                     )}
                     Chat
                   </Button>
-                </span>
+                </span>}
                 <Button variant="outline" onClick={() => setSelectedEvaluationId(null)}>
                   Fechar
                 </Button>
