@@ -12,6 +12,7 @@ import {
 } from '@/lib/financial-backup-client-sync';
 import { normalizeProductExpenseFreight, normalizeProductExpenseItems, ProductExpenseItem, sumProductExpenseTotal } from '@/lib/product-expense-items';
 import { isManualRevenue, isOperationalSale, isRevenueReceived } from '@/lib/revenue';
+import { pendingCostAdditions } from '@/lib/pending-cost-additions';
 import { appendGroupedBill, detachExpense, type ExpenseGroups, type ManualCostReference } from '@/lib/cost-expense-groups';
 
 /* ─── Constants ─── */
@@ -129,6 +130,8 @@ export function useDashboard({
   const [backupError, setBackupError] = useState<string | null>(null);
   const backupRevisionRef = useRef<string | null>(null);
   const backupMutationVersionRef = useRef(0);
+  // Costs created on this device since the last successful sync; kept across a revision conflict.
+  const unsyncedCostIdsRef = useRef<Set<number>>(new Set());
   const [backupMutationVersion, setBackupMutationVersion] = useState(0);
   const [backupSyncRetry, setBackupSyncRetry] = useState(0);
 
@@ -385,8 +388,8 @@ export function useDashboard({
     setBackupError(null);
   }, [readOnly, syncPayroll]);
 
-  const refreshFinancialBackup = useCallback(async (force = false) => {
-    if (!force && backupMutationVersionRef.current > 0) return;
+  const refreshFinancialBackup = useCallback(async (force = false): Promise<FinancialBackupResponse | null> => {
+    if (!force && backupMutationVersionRef.current > 0) return null;
     try {
       const response = await fetch('/api/backup', { cache: 'no-store' });
       if (!response.ok) throw new Error(`Backup indisponível (${response.status})`);
@@ -394,13 +397,39 @@ export function useDashboard({
       const remoteRevision = backup.exists && typeof backup.updatedAt === 'string'
         ? backup.updatedAt
         : null;
-      if (!force && remoteRevision === backupRevisionRef.current) return;
+      if (!force && remoteRevision === backupRevisionRef.current) return null;
+      // A local change made while this request was in flight is newer than the snapshot; the
+      // pending sync will send it with the old revision and resolve any real conflict.
+      if (!force && backupMutationVersionRef.current > 0) return null;
       await applyRemoteFinancialBackup(backup);
+      return backup;
     } catch (error) {
       console.warn('[Backup] Falha ao verificar atualização:', error);
       setBackupError('Não foi possível carregar os dados financeiros mais recentes.');
+      return null;
     }
   }, [applyRemoteFinancialBackup]);
+
+  /** After a revision conflict, re-adds costs created here that the newer snapshot lacks. */
+  const restoreUnsyncedCosts = useCallback((backup: FinancialBackupResponse | null, localFixed: FixedExpense[], localBills: Bill[]) => {
+    const ids = unsyncedCostIdsRef.current;
+    if (!backup?.exists || ids.size === 0) return false;
+    const remoteFixed = Array.isArray(backup.fixed) ? backup.fixed : [];
+    const remoteBills = Array.isArray(backup.bills) ? backup.bills : [];
+    const missingFixed = pendingCostAdditions(localFixed, remoteFixed, ids);
+    const missingBills = pendingCostAdditions(localBills, remoteBills, ids);
+    if (missingFixed.length === 0 && missingBills.length === 0) return false;
+    const fixed = [...remoteFixed, ...missingFixed];
+    const bills = [...remoteBills, ...missingBills];
+    setFixedExpenses(fixed);
+    setBills(bills);
+    if (!readOnly) {
+      localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(fixed));
+      localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(bills));
+    }
+    markFinancialBackupChanged();
+    return true;
+  }, [markFinancialBackupChanged, readOnly]);
 
   // Envia somente mudanças locais reais. O versionamento impede que um
   // dispositivo com cache antigo sobrescreva a fotografia mais recente.
@@ -449,8 +478,11 @@ export function useDashboard({
         if (response.status === 409 || response.status === 428 || result.reloadRequired) {
           backupMutationVersionRef.current = 0;
           setBackupMutationVersion(0);
-          await refreshFinancialBackup(true);
-          toast('Os dados foram atualizados em outro dispositivo. A versão mais recente foi carregada.', 'warning');
+          const latest = await refreshFinancialBackup(true);
+          const keptCosts = restoreUnsyncedCosts(latest, payload.fixed, payload.bills);
+          toast(keptCosts
+            ? 'Os dados foram atualizados em outro dispositivo. Seus lançamentos novos foram mantidos.'
+            : 'Os dados foram atualizados em outro dispositivo. A versão mais recente foi carregada.', 'warning');
           return;
         }
         if (!response.ok || !result.success || typeof result.updatedAt !== 'string') {
@@ -463,6 +495,7 @@ export function useDashboard({
         if (backupMutationVersionRef.current === requestVersion) {
           backupMutationVersionRef.current = 0;
           setBackupMutationVersion(0);
+          unsyncedCostIdsRef.current.clear();
         }
         console.log('[Backup] Auto-sync OK:', result.updatedAt);
       }).catch(error => {
@@ -493,9 +526,11 @@ export function useDashboard({
     logs,
     readOnly,
     refreshFinancialBackup,
+    restoreUnsyncedCosts,
   ]);
 
-  useVisiblePolling(refreshFinancialBackup, FINANCIAL_BACKUP_REVISION_INTERVAL_MS, {
+  const pollFinancialBackup = useCallback(async () => { await refreshFinancialBackup(); }, [refreshFinancialBackup]);
+  useVisiblePolling(pollFinancialBackup, FINANCIAL_BACKUP_REVISION_INTERVAL_MS, {
     enabled: !backupLoading,
     runImmediately: false,
     runOnFocus: true,
@@ -956,6 +991,7 @@ export function useDashboard({
     if(!name.trim()||value<=0) { toast('Informe nome e valor.', 'warning'); return false; }
     const id = Date.now();
     const date = (draft?.date ?? fixedDate)||undefined;
+    unsyncedCostIdsRef.current.add(id);
     saveFixed([...fixedExpenses,{
       id,
       name:name.trim(),
@@ -1026,6 +1062,7 @@ export function useDashboard({
         saveManualCosts(appendGroupedBill({ fixed: fixedExpenses, bills }, bill, draft.groupTarget, crypto.randomUUID()));
       } catch (error) { toast(error instanceof Error ? error.message : 'Não foi possível agrupar a despesa.', 'warning'); return false; }
     } else saveBillsState([...bills, bill]);
+    unsyncedCostIdsRef.current.add(bill.id);
     setBillName(''); setBillValue(''); setBillDueDay(''); setBillDueDate(''); setBillObs(''); setBillRefMonth('');
     return true;
   };

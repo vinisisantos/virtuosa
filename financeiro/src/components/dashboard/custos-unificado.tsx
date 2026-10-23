@@ -548,6 +548,7 @@ export function CustosUnificado({
   const [addObs, setAddObs] = useState('');
   const [groupSelection, setGroupSelection] = useState<{ scope: string; value: string | null } | null>(null);
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [lastSavedCost, setLastSavedCost] = useState<{ name: string; value: number; otherMonthLabel: string } | null>(null);
   const [productItems, setProductItems] = useState<EditableProductExpenseItem[]>([]);
   const [productFreight, setProductFreight] = useState('');
   const [customCategories, setCustomCategories] = useState<string[]>([]);
@@ -1059,6 +1060,7 @@ export function CustosUnificado({
   const resetForm = () => {
     setGroupSelection(null);
     setShowMoreOptions(false);
+    setLastSavedCost(null);
     setAddName(''); setAddValue(''); setAddCategory('Outros');
     setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setProductItems([]); setProductFreight(''); setRecurrence('once'); setEditingRow(null);
   };
@@ -1181,6 +1183,7 @@ export function CustosUnificado({
   const groupingScope = JSON.stringify([groupingMonth, groupingUnit, addCategory, recurrence]);
   const selectedGroup = groupSelection?.scope === groupingScope ? groupSelection.value : null;
   const canGroupNewExpense = !editingRow && recurrence === 'once' && !isProductExpense;
+  const canSaveAndContinue = !editingRow && !isProductExpense;
   const hasMoreOptions = recurrence === 'once' || canGroupNewExpense;
   const moreOptionsOpen = showMoreOptions || Boolean(addRefMonth) || selectedGroup !== null;
   const moreOptionsSummary = [
@@ -1247,7 +1250,7 @@ export function CustosUnificado({
   };
 
   /* ─── Add/edit cost handler ─── */
-  const handleSave = () => {
+  const handleSave = (keepOpen = false) => {
     const normalizedItems = isProductExpense
       ? normalizeProductExpenseItems(productItems.map(item => ({
           id: item.id,
@@ -1335,19 +1338,39 @@ export function CustosUnificado({
     }
 
     if (!saved) return;
-    if (!editingRow) {
-      const targetMonthKey = recurrence === 'once'
-        ? referenceMonth || addDueDate.slice(0, 7)
-        : addDueDate.slice(0, 7);
-      const shouldFollowMonth = recurrence === 'once' || targetMonthKey > selectedMonthKey;
-      if (shouldFollowMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(targetMonthKey) && targetMonthKey !== selectedMonthKey) {
-        const [year, month] = targetMonthKey.split('-').map(Number);
-        d.setSelectedYear(year);
-        d.setSelectedMonth(month - 1);
+    const targetMonthKey = recurrence === 'once'
+      ? referenceMonth || addDueDate.slice(0, 7)
+      : addDueDate.slice(0, 7);
+    const shouldFollowMonth = recurrence === 'once' || targetMonthKey > selectedMonthKey;
+    const landsInOtherMonth = !editingRow && shouldFollowMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(targetMonthKey) && targetMonthKey !== selectedMonthKey;
+    const [targetYear, targetMonth] = targetMonthKey.split('-').map(Number);
+    const otherMonthLabel = landsInOtherMonth ? `${MONTHS[targetMonth - 1]}/${targetYear}` : '';
+
+    if (isProductExpense) {
+      // The Produtos tab only lists the selected month, so products still follow the launch month.
+      if (landsInOtherMonth) {
+        d.setSelectedYear(targetYear);
+        d.setSelectedMonth(targetMonth - 1);
       }
+      setViewMode('produtos');
+      toast('Pedido adicionado na aba Produtos.', 'success');
+    } else if (!keepOpen) {
+      toast(otherMonthLabel
+        ? `Despesa adicionada em ${otherMonthLabel}${recurrence === 'once' ? '' : ' (a partir desse mês)'}.`
+        : 'Despesa adicionada.', 'success');
     }
-    if (isProductExpense) setViewMode('produtos');
-    toast(isProductExpense ? 'Pedido adicionado na aba Produtos.' : 'Despesa adicionada.', 'success');
+
+    if (keepOpen && !editingRow && !isProductExpense) {
+      setLastSavedCost({ name: expenseName, value: val, otherMonthLabel });
+      setAddName(''); setAddValue(''); setGroupSelection(null);
+      requestAnimationFrame(() => {
+        const valueInput = document.getElementById('cost-value');
+        // Keep the confirmation with the new month total in view while typing the next value.
+        valueInput?.closest('[role="dialog"] > div')?.scrollTo({ top: 0, behavior: 'smooth' });
+        valueInput?.focus({ preventScroll: true });
+      });
+      return;
+    }
     resetForm();
     setShowAddForm(false);
   };
@@ -1801,6 +1824,15 @@ export function CustosUnificado({
             </h2>
 
             <div style={{ display: 'grid', gap: 18 }}>
+              {lastSavedCost && (
+                <div className="cost-form-saved" role="status">
+                  <span className="material-symbols-outlined" aria-hidden="true">check_circle</span>
+                  <div>
+                    <strong>{lastSavedCost.name} · {fmt(lastSavedCost.value)} adicionada{lastSavedCost.otherMonthLabel ? ` em ${lastSavedCost.otherMonthLabel}` : ''}</strong>
+                    <p>Total de {MONTHS[d.selectedMonth]}/{d.selectedYear}: {fmt(totalDespesas)}</p>
+                  </div>
+                </div>
+              )}
               <div>
                 <span style={FIELD_LABEL_STYLE}>Do que é esse gasto?</span>
                 <CostCategoryGrid
@@ -1917,11 +1949,16 @@ export function CustosUnificado({
               )}
             </div>
 
-            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-              <button onClick={() => { resetForm(); setShowAddForm(false); }} style={{ flex: 1, minHeight: 48, padding: '12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit' }}>
-                Cancelar
+            <div className="cost-form-actions" data-actions={canSaveAndContinue ? 3 : 2}>
+              <button type="button" onClick={() => { resetForm(); setShowAddForm(false); }} className="cost-form-cancel">
+                {lastSavedCost ? 'Fechar' : 'Cancelar'}
               </button>
-              <button onClick={handleSave} style={{ flex: 2, minHeight: 48, padding: '12px', borderRadius: 10, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(230, 0, 126, 0.2)' }}>
+              {canSaveAndContinue && (
+                <button type="button" onClick={() => handleSave(true)} className="cost-form-continue">
+                  Salvar e lançar outro
+                </button>
+              )}
+              <button type="button" onClick={() => handleSave()} className="cost-form-submit">
                 {editingRow
                   ? 'Salvar Alterações'
                   : isProductExpense
@@ -1947,6 +1984,22 @@ export function CustosUnificado({
           .costs-page .costs-actions { grid-row: 1; grid-column: 2; }
           .costs-page .costs-view-tabs button { min-height: 44px; flex: 1; }
           .costs-page .costs-kpis { grid-template-columns: repeat(3, minmax(0,1fr)) !important; }
+        }
+        .cost-form-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 10px; margin-top: 24px; }
+        .cost-form-actions button { min-width: 0; min-height: 48px; padding: 12px; border-radius: 10px; font-family: inherit; font-size: 0.95rem; font-weight: 700; cursor: pointer; }
+        .cost-form-cancel, .cost-form-continue { border: 1px solid var(--border); background: var(--bg); color: var(--text-main); }
+        .cost-form-continue { color: var(--primary) !important; border-color: rgba(139, 92, 246, 0.45) !important; }
+        .cost-form-submit { border: none; background: var(--primary); color: #fff; box-shadow: 0 4px 12px rgba(230, 0, 126, 0.2); }
+        .cost-form-actions[data-actions="3"] { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+        .cost-form-actions[data-actions="3"] .cost-form-submit { grid-column: 1 / -1; grid-row: 1; }
+        .cost-form-saved { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 10px; background: rgba(16, 185, 129, 0.1); color: var(--text-main); }
+        .cost-form-saved > span { color: #10b981; font-size: 20px; }
+        .cost-form-saved strong { display: block; font-size: 0.85rem; overflow-wrap: anywhere; }
+        .cost-form-saved p { margin: 3px 0 0; color: var(--text-muted); font-size: 0.78rem; font-weight: 600; }
+        @media (min-width: 640px) {
+          .cost-form-actions[data-actions="3"] { grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr) minmax(0, 1.4fr); }
+          .cost-form-actions[data-actions="3"] button { white-space: nowrap; }
+          .cost-form-actions[data-actions="3"] .cost-form-submit { grid-column: auto; grid-row: auto; }
         }
         @keyframes fadeSlide {
           from { opacity: 0; transform: translateY(-10px); }
