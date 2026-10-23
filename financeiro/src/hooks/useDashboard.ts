@@ -122,6 +122,7 @@ export function useDashboard({
   const [goals, setGoals] = useState<Record<string, Record<string, number>>>({});
   const [fixedExpenses, setFixedExpenses] = useState<FixedExpense[]>([]);
   const [bills, setBills] = useState<Bill[]>([]);
+  const localCostsRef = useRef<{ fixed: FixedExpense[]; bills: Bill[] }>({ fixed: [], bills: [] });
   const [showClearModal, setShowClearModal] = useState(false);
   const [showPopup, setShowPopup] = useState(true);
   const [showMiniBell, setShowMiniBell] = useState(false);
@@ -338,6 +339,7 @@ export function useDashboard({
       // EXCLUIR BARUERI OVERRIDE
       if (cancelled) return;
       setLogs(loadedLogs);
+      localCostsRef.current = { fixed: loadedFixed, bills: loadedBills };
       setFixedExpenses(loadedFixed);
       setBills(loadedBills);
       setGoals(loadedGoals);
@@ -374,11 +376,13 @@ export function useDashboard({
       ? backup.updatedAt
       : null;
     if (!readOnly) {
-      await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(remoteLogs));
       localStorage.setItem(STORAGE_KEY_GOALS, JSON.stringify(remoteGoals));
       localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(remoteFixed));
       localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(remoteBills));
     }
+    // Apply costs before yielding to IndexedDB: a new cost added during that
+    // write must not be replaced when the asynchronous log write completes.
+    localCostsRef.current = { fixed: remoteFixed, bills: remoteBills };
     setLogs(current => syncPayroll
       ? [...remoteLogs, ...current.filter(log => log.id?.toString().startsWith('payroll-'))]
       : remoteLogs);
@@ -386,9 +390,10 @@ export function useDashboard({
     setFixedExpenses(remoteFixed);
     setBills(remoteBills);
     setBackupError(null);
+    if (!readOnly) await idbSaveLogs(STORAGE_KEY_LOGS, JSON.stringify(remoteLogs));
   }, [readOnly, syncPayroll]);
 
-  const refreshFinancialBackup = useCallback(async (force = false): Promise<FinancialBackupResponse | null> => {
+  const refreshFinancialBackup = useCallback(async (force = false, preserveNewCosts = false): Promise<{ restoredCosts: boolean } | null> => {
     if (!force && backupMutationVersionRef.current > 0) return null;
     try {
       const response = await fetch('/api/backup', { cache: 'no-store' });
@@ -401,35 +406,35 @@ export function useDashboard({
       // A local change made while this request was in flight is newer than the snapshot; the
       // pending sync will send it with the old revision and resolve any real conflict.
       if (!force && backupMutationVersionRef.current > 0) return null;
-      await applyRemoteFinancialBackup(backup);
-      return backup;
+      const remoteFixed = Array.isArray(backup.fixed) ? backup.fixed : [];
+      const remoteBills = Array.isArray(backup.bills) ? backup.bills : [];
+      const missingFixed = preserveNewCosts
+        ? pendingCostAdditions(localCostsRef.current.fixed, remoteFixed, unsyncedCostIdsRef.current)
+        : [];
+      const missingBills = preserveNewCosts
+        ? pendingCostAdditions(localCostsRef.current.bills, remoteBills, unsyncedCostIdsRef.current)
+        : [];
+      const restoredCosts = missingFixed.length > 0 || missingBills.length > 0;
+      if (preserveNewCosts) {
+        backupMutationVersionRef.current = 0;
+        setBackupMutationVersion(0);
+      }
+      // Reconcile the live state, not the older POST payload: more costs may
+      // have been added while either the POST or this GET was in flight.
+      const applied = applyRemoteFinancialBackup(restoredCosts ? {
+        ...backup,
+        fixed: [...remoteFixed, ...missingFixed],
+        bills: [...remoteBills, ...missingBills],
+      } : backup);
+      if (restoredCosts) markFinancialBackupChanged();
+      await applied;
+      return { restoredCosts };
     } catch (error) {
       console.warn('[Backup] Falha ao verificar atualização:', error);
       setBackupError('Não foi possível carregar os dados financeiros mais recentes.');
       return null;
     }
-  }, [applyRemoteFinancialBackup]);
-
-  /** After a revision conflict, re-adds costs created here that the newer snapshot lacks. */
-  const restoreUnsyncedCosts = useCallback((backup: FinancialBackupResponse | null, localFixed: FixedExpense[], localBills: Bill[]) => {
-    const ids = unsyncedCostIdsRef.current;
-    if (!backup?.exists || ids.size === 0) return false;
-    const remoteFixed = Array.isArray(backup.fixed) ? backup.fixed : [];
-    const remoteBills = Array.isArray(backup.bills) ? backup.bills : [];
-    const missingFixed = pendingCostAdditions(localFixed, remoteFixed, ids);
-    const missingBills = pendingCostAdditions(localBills, remoteBills, ids);
-    if (missingFixed.length === 0 && missingBills.length === 0) return false;
-    const fixed = [...remoteFixed, ...missingFixed];
-    const bills = [...remoteBills, ...missingBills];
-    setFixedExpenses(fixed);
-    setBills(bills);
-    if (!readOnly) {
-      localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(fixed));
-      localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(bills));
-    }
-    markFinancialBackupChanged();
-    return true;
-  }, [markFinancialBackupChanged, readOnly]);
+  }, [applyRemoteFinancialBackup, markFinancialBackupChanged]);
 
   // Envia somente mudanças locais reais. O versionamento impede que um
   // dispositivo com cache antigo sobrescreva a fotografia mais recente.
@@ -476,11 +481,9 @@ export function useDashboard({
           return;
         }
         if (response.status === 409 || response.status === 428 || result.reloadRequired) {
-          backupMutationVersionRef.current = 0;
-          setBackupMutationVersion(0);
-          const latest = await refreshFinancialBackup(true);
-          const keptCosts = restoreUnsyncedCosts(latest, payload.fixed, payload.bills);
-          toast(keptCosts
+          const latest = await refreshFinancialBackup(true, true);
+          if (!latest) throw new Error('Não foi possível carregar a versão financeira mais recente.');
+          toast(latest.restoredCosts
             ? 'Os dados foram atualizados em outro dispositivo. Seus lançamentos novos foram mantidos.'
             : 'Os dados foram atualizados em outro dispositivo. A versão mais recente foi carregada.', 'warning');
           return;
@@ -526,7 +529,6 @@ export function useDashboard({
     logs,
     readOnly,
     refreshFinancialBackup,
-    restoreUnsyncedCosts,
   ]);
 
   const pollFinancialBackup = useCallback(async () => { await refreshFinancialBackup(); }, [refreshFinancialBackup]);
@@ -791,9 +793,10 @@ export function useDashboard({
       catch { console.error('[saveLogs] All storage options failed'); }
     });
   };
-  const saveFixed = (f:FixedExpense[]) => { setFixedExpenses(f); markFinancialBackupChanged(); localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(f)); };
-  const saveBillsState = (b:Bill[]) => { setBills(b); markFinancialBackupChanged(); localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(b)); };
+  const saveFixed = (f:FixedExpense[]) => { localCostsRef.current = { ...localCostsRef.current, fixed: f }; setFixedExpenses(f); markFinancialBackupChanged(); localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(f)); };
+  const saveBillsState = (b:Bill[]) => { localCostsRef.current = { ...localCostsRef.current, bills: b }; setBills(b); markFinancialBackupChanged(); localStorage.setItem(STORAGE_KEY_BILLS, JSON.stringify(b)); };
   const saveManualCosts = (state: { fixed: FixedExpense[]; bills: Bill[] }) => {
+    localCostsRef.current = state;
     setFixedExpenses(state.fixed);
     setBills(state.bills);
     localStorage.setItem(STORAGE_KEY_FIXED, JSON.stringify(state.fixed));
