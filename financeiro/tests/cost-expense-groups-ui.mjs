@@ -103,15 +103,19 @@ try {
     await page.screenshot({ path: join(output, `costs-top-${width}.png`), fullPage: true });
     assert.equal(await page.evaluate(() => document.body.textContent.includes('Não pertence a SBC')), false);
     await clickText(page, 'addNova Despesa');
-    await fill(page, '[role="dialog"] input[placeholder="Ex: Aluguel, Internet..."]', description);
-    await fill(page, '[role="dialog"] input[placeholder="R$ 0,00"]', '5000');
+    // Category comes first; Marketing sits behind "Mais" in the collapsed grid.
+    assert.equal(await page.$eval('[role="dialog"] [role="radio"][aria-checked="true"]', tile => tile.textContent), 'more_horizOutros');
+    await pause(400);
+    await page.screenshot({ path: join(output, `costs-form-empty-${width}.png`), fullPage: true });
+    await clickText(page, 'grid_viewMais', '[role="dialog"]');
+    await clickText(page, 'campaignMarketing', '[role="dialog"]');
+    await fill(page, '#cost-detail', description);
+    await fill(page, '#cost-value', '5000');
     await fill(page, '[role="dialog"] .date-picker-text-input', '03112026');
     await page.keyboard.press('Tab');
     await clickSelector(page, '[role="dialog"] h2');
+    await clickText(page, 'Mais opções', '[role="dialog"]', true);
     await page.select('select[aria-label="Mês de referência"]', '10');
-    // Open the current category, then choose Marketing from the existing selector.
-    await clickText(page, 'Outros', '[role="dialog"]', true);
-    await clickText(page, 'Marketing', '[role="dialog"]', true);
     await clickSelector(page, '[role="dialog"] input[type="checkbox"]');
     await pause(200);
     if (!await page.$('#cost-group-target')) {
@@ -124,7 +128,8 @@ try {
     await layout(page, '[role="dialog"] > div');
     await page.screenshot({ path: join(output, `costs-form-${width}.png`), fullPage: true });
     assert.equal(await page.$eval('#cost-group-target', select => [...select.options].some(option => option.text.includes('Não pertence'))), false);
-    await clickText(page, 'Adicionar Despesa', '[role="dialog"]');
+    assert.match(await page.$eval('[role="dialog"]', dialog => dialog.textContent.replace(/\s/g, ' ')), /Adicionar · R\$ 50,00/);
+    await clickText(page, 'Adicionar ·', '[role="dialog"]', true);
     await pause(200);
     if (!await page.$('[data-cost-group="true"]')) {
       console.error(await page.evaluate(() => ({ text: document.body.textContent, inputs: [...document.querySelectorAll('[role="dialog"] input, [role="dialog"] select')].map(input => ({ value: input.value, name: input.getAttribute('aria-label') })) })));

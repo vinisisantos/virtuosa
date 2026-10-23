@@ -23,7 +23,7 @@ const CAT_META: Record<string, { icon: string; color: string; gradient: string }
   'Outros':         { icon: 'more_horiz',         color: '#6b7280', gradient: 'linear-gradient(135deg, #6b7280, #9ca3af)' },
 };
 
-function getCatMeta(cat: string) {
+export function getCatMeta(cat: string) {
   return CAT_META[cat] || { icon: 'category', color: '#6b7280', gradient: 'linear-gradient(135deg, #6b7280, #9ca3af)' };
 }
 

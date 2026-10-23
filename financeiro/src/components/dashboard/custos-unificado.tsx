@@ -4,7 +4,8 @@ import { toast } from '@/components/toast';
 import { confirmDialog } from '@/components/ui/confirm-dialog';
 import { FixedExpense, Bill, LogEntry, fmt, FIXED_CATEGORIES, BILL_CATEGORIES, MONTHS, formatCurrency } from '@/hooks/useDashboard';
 import { DatePicker } from '@/components/ui/date-picker';
-import { CategorySelector } from '@/components/category-selector';
+import { CostCategoryGrid, CostFormMoreOptions, CostRecurrencePicker, DueDateShortcuts } from './cost-expense-form';
+import { dueDateShortcuts } from '@/lib/cost-due-date-shortcuts';
 import { EditableProductExpenseItem, ProductExpenseItemsEditor, ProductExpenseSummary } from './product-expense-items-editor';
 import { CostReferenceMonthPicker } from './cost-reference-month-picker';
 import { CostExpenseList, CostGroupingPicker } from './cost-expense-list';
@@ -520,6 +521,9 @@ function ProductCostsView({
 /* ═══════════════════════════════════════════ */
 type CostsViewMode = 'pagamentos' | 'produtos' | 'receitas' | 'calendario' | 'lucratividade';
 
+const FIELD_LABEL_STYLE: React.CSSProperties = { display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 };
+const FIELD_INPUT_STYLE: React.CSSProperties = { width: '100%', minHeight: 46, padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: 16, fontFamily: 'inherit' };
+
 export function CustosUnificado({
   d,
   initialView = 'pagamentos',
@@ -543,6 +547,7 @@ export function CustosUnificado({
   const [addRefMonth, setAddRefMonth] = useState('');
   const [addObs, setAddObs] = useState('');
   const [groupSelection, setGroupSelection] = useState<{ scope: string; value: string | null } | null>(null);
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
   const [productItems, setProductItems] = useState<EditableProductExpenseItem[]>([]);
   const [productFreight, setProductFreight] = useState('');
   const [customCategories, setCustomCategories] = useState<string[]>([]);
@@ -1053,6 +1058,7 @@ export function CustosUnificado({
 
   const resetForm = () => {
     setGroupSelection(null);
+    setShowMoreOptions(false);
     setAddName(''); setAddValue(''); setAddCategory('Outros');
     setAddDueDate(''); setAddRefMonth(''); setAddObs(''); setProductItems([]); setProductFreight(''); setRecurrence('once'); setEditingRow(null);
   };
@@ -1175,6 +1181,16 @@ export function CustosUnificado({
   const groupingScope = JSON.stringify([groupingMonth, groupingUnit, addCategory, recurrence]);
   const selectedGroup = groupSelection?.scope === groupingScope ? groupSelection.value : null;
   const canGroupNewExpense = !editingRow && recurrence === 'once' && !isProductExpense;
+  const hasMoreOptions = recurrence === 'once' || canGroupNewExpense;
+  const moreOptionsOpen = showMoreOptions || Boolean(addRefMonth) || selectedGroup !== null;
+  const moreOptionsSummary = [
+    recurrence === 'once' && (addRefMonth ? `Referência ${addRefMonth.split('-').reverse().join('/')}` : 'Mês de referência'),
+    canGroupNewExpense && (selectedGroup !== null ? 'Agrupando' : 'Agrupar'),
+  ].filter(Boolean).join(' · ');
+  const dueShortcuts = useMemo(
+    () => dueDateShortcuts([...d.fixedExpenses, ...d.bills], addCategory, d.selectedYear, d.selectedMonth, todayDateKey()),
+    [d.fixedExpenses, d.bills, addCategory, d.selectedYear, d.selectedMonth],
+  );
   const shouldRequestProductTitle = !isProductExpense || Boolean(editingRow) || existingProductLaunchCount === 0;
   const automaticProductTitle = buildAutomaticProductExpenseName(
     existingProductLaunchCount + 1,
@@ -1247,10 +1263,10 @@ export function CustosUnificado({
     const val = isProductExpense ? sumProductExpenseTotal(normalizedItems, freight) : currencyInputToNumber(addValue);
     const expenseName = isProductExpense && !shouldRequestProductTitle
       ? automaticProductTitle
-      : addName.trim();
+      : addName.trim() || (isProductExpense ? '' : addCategory);
     if (!expenseName || val <= 0) return alert(isProductExpense
       ? 'Informe o título do primeiro pedido e os produtos.'
-      : 'Informe nome e valor da despesa.');
+      : 'Informe o valor da despesa.');
     if (!addDueDate) return alert('Informe a data.');
     const referenceMonth = recurrence === 'once'
       ? normalizeCostReferenceMonth(addRefMonth, Number(addDueDate.slice(0, 4)) || d.selectedYear)
@@ -1777,22 +1793,30 @@ export function CustosUnificado({
       {showAddForm && (
         <div role="dialog" aria-modal="true" aria-label={editingRow ? 'Editar despesa' : 'Nova despesa'} style={{ position: 'fixed', inset: 0, padding: 16, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fadeSlide 0.2s ease-out', overflowY: 'auto' }}>
           <div style={{ background: 'var(--card-bg)', width: '100%', maxWidth: 600, maxHeight: 'calc(100dvh - 32px)', overflowY: 'auto', borderRadius: 20, padding: 'clamp(20px, 5vw, 32px)', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
-            <h2 style={{ margin: '0 0 24px', fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h2 style={{ margin: '0 0 20px', fontSize: '1.3rem', fontWeight: 800, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span className="material-symbols-outlined" style={{ color: 'var(--primary)' }}>{editingRow ? 'edit' : 'add_circle'}</span>
               {editingRow
                 ? isProductExpense ? 'Editar Pedido' : 'Editar Despesa'
                 : isProductExpense ? 'Novo Pedido' : 'Nova Despesa'}
             </h2>
-            
-            <div style={{ display: 'grid', gap: 16 }}>
-              {shouldRequestProductTitle ? (
+
+            <div style={{ display: 'grid', gap: 18 }}>
+              <div>
+                <span style={FIELD_LABEL_STYLE}>Do que é esse gasto?</span>
+                <CostCategoryGrid
+                  value={addCategory}
+                  onChange={handleCategoryChange}
+                  categories={availableCategories}
+                  onCreateCategory={handleCreateCategory}
+                />
+              </div>
+
+              {isProductExpense && (shouldRequestProductTitle ? (
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>
-                    {isProductExpense
-                      ? editingRow ? 'Título do Pedido' : 'Título do primeiro pedido do mês'
-                      : 'Nome da Despesa'}
+                  <label htmlFor="cost-product-title" style={FIELD_LABEL_STYLE}>
+                    {editingRow ? 'Título do Pedido' : 'Título do primeiro pedido do mês'}
                   </label>
-                  <input type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder={isProductExpense ? 'Ex: Compra de setembro, Fornecedor...' : 'Ex: Aluguel, Internet...'} style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit' }} />
+                  <input id="cost-product-title" type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder="Ex: Compra de setembro, Fornecedor..." style={FIELD_INPUT_STYLE} />
                 </div>
               ) : (
                 <div className="product-expense-auto-title" aria-live="polite">
@@ -1802,17 +1826,7 @@ export function CustosUnificado({
                     <p>Já existe lançamento de Produtos neste mês. A identificação será criada automaticamente.</p>
                   </div>
                 </div>
-              )}
-
-              <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Categoria</label>
-                <CategorySelector
-                  value={addCategory}
-                  onChange={handleCategoryChange}
-                  categories={availableCategories}
-                  onCreateCategory={handleCreateCategory}
-                />
-              </div>
+              ))}
 
               {isProductExpense && (
                 <ProductExpenseItemsEditor
@@ -1837,76 +1851,82 @@ export function CustosUnificado({
                 </p>
               )}
 
-              <div className="product-expense-value-date" style={{ display: 'grid', gridTemplateColumns: isProductExpense ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 16 }}>
-                {!isProductExpense && (
+              <div>
+                <div className="product-expense-value-date" style={{ display: 'grid', gridTemplateColumns: isProductExpense ? 'minmax(0, 1fr)' : 'minmax(0, 1.2fr) minmax(0, 1fr)', gap: 12 }}>
+                  {!isProductExpense && (
+                    <div style={{ minWidth: 0 }}>
+                      <label htmlFor="cost-value" style={FIELD_LABEL_STYLE}>Valor</label>
+                      <input id="cost-value" type="text" inputMode="numeric" value={addValue} onChange={e => setAddValue(formatCurrency(e.target.value))} placeholder="R$ 0,00" style={{ ...FIELD_INPUT_STYLE, height: 50, fontSize: '1.2rem', fontWeight: 800 }} />
+                    </div>
+                  )}
                   <div style={{ minWidth: 0 }}>
-                    <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Valor</label>
-                    <input type="text" inputMode="numeric" value={addValue} onChange={e => setAddValue(formatCurrency(e.target.value))} placeholder="R$ 0,00" style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontSize: '0.95rem', fontFamily: 'inherit', fontWeight: 700 }} />
+                    <span style={FIELD_LABEL_STYLE}>{recurrence === 'once' ? 'Vencimento' : 'Primeiro vencimento'}</span>
+                    <DatePicker
+                      value={addDueDate}
+                      onChange={setAddDueDate}
+                      variant="input"
+                      calendarSize="small"
+                      placeholder="DD/MM/AAAA"
+                      inputStyle={{ height: 50, borderRadius: 10 }}
+                    />
                   </div>
-                )}
-                <div style={{ minWidth: 0 }}>
-                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>{recurrence === 'once' ? 'Vencimento' : 'Primeiro vencimento'}</label>
-                  <DatePicker
-                    value={addDueDate}
-                    onChange={setAddDueDate}
-                    variant="input"
-                    calendarSize="small"
-                    placeholder="DD/MM/AAAA"
-                    inputStyle={{ height: 46, borderRadius: 10 }}
-                  />
                 </div>
+                <DueDateShortcuts shortcuts={dueShortcuts} value={addDueDate} onChange={setAddDueDate} />
               </div>
 
-              {recurrence === 'once' && (
-                <CostReferenceMonthPicker
-                  value={addRefMonth}
-                  dueDate={addDueDate}
-                  selectedYear={d.selectedYear}
-                  onChange={setAddRefMonth}
-                />
+              {!isProductExpense && (
+                <div>
+                  <label htmlFor="cost-detail" style={FIELD_LABEL_STYLE}>
+                    Detalhe <span style={{ fontWeight: 500 }}>(opcional)</span>
+                  </label>
+                  <input id="cost-detail" type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder="Ex: Vivo Fibra – unidade SBC" style={FIELD_INPUT_STYLE} />
+                  <p style={{ margin: '6px 0 0', color: 'var(--text-muted)', fontSize: '0.74rem', lineHeight: 1.4 }}>
+                    Se ficar vazio, aparece como “{addCategory}” na lista.
+                  </p>
+                </div>
               )}
 
-              {canGroupNewExpense && <CostGroupingPicker
-                fixed={d.fixedExpenses} bills={d.bills}
-                month={groupingMonth} unit={groupingUnit} category={addCategory}
-                selection={selectedGroup}
-                disabled={d.backupLoading || Boolean(d.backupError)}
-                onChange={value => setGroupSelection({ scope: groupingScope, value })}
-              />}
-
               <div>
-                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>Recorrência</label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6, padding: 5, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 12 }}>
-                  {([
-                    { value: 'monthly', label: 'Mensal', icon: 'calendar_month' },
-                    { value: 'weekly', label: 'Semanal', icon: 'date_range' },
-                    { value: 'once', label: 'Único', icon: 'looks_one' },
-                  ] as const).map(option => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      onClick={() => setRecurrence(option.value)}
-                      style={{ minWidth: 0, minHeight: 58, padding: '8px 5px', border: recurrence === option.value ? '1px solid rgba(139,92,246,0.45)' : '1px solid transparent', borderRadius: 9, background: recurrence === option.value ? 'rgba(139,92,246,0.12)' : 'transparent', color: recurrence === option.value ? 'var(--primary)' : 'var(--text-muted)', cursor: 'pointer', display: 'grid', placeItems: 'center', gap: 3, fontFamily: 'inherit', fontSize: '0.72rem', fontWeight: 750 }}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{option.icon}</span>
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
+                <span style={FIELD_LABEL_STYLE}>Repete?</span>
+                <CostRecurrencePicker value={recurrence} onChange={setRecurrence} />
                 {editingRow?.source === 'fixed' && (
                   <div style={{ marginTop: 8, color: 'var(--text-muted)', fontSize: '0.72rem', lineHeight: 1.4 }}>
                     A nova configuração valerá a partir de hoje. Os meses anteriores serão preservados.
                   </div>
                 )}
               </div>
+
+              {hasMoreOptions && (
+                <CostFormMoreOptions open={moreOptionsOpen} summary={moreOptionsSummary} onToggle={() => setShowMoreOptions(!moreOptionsOpen)}>
+                  {recurrence === 'once' && (
+                    <CostReferenceMonthPicker
+                      value={addRefMonth}
+                      dueDate={addDueDate}
+                      selectedYear={d.selectedYear}
+                      onChange={setAddRefMonth}
+                    />
+                  )}
+                  {canGroupNewExpense && <CostGroupingPicker
+                    fixed={d.fixedExpenses} bills={d.bills}
+                    month={groupingMonth} unit={groupingUnit} category={addCategory}
+                    selection={selectedGroup}
+                    disabled={d.backupLoading || Boolean(d.backupError)}
+                    onChange={value => setGroupSelection({ scope: groupingScope, value })}
+                  />}
+                </CostFormMoreOptions>
+              )}
             </div>
 
-            <div style={{ display: 'flex', gap: 12, marginTop: 32 }}>
-              <button onClick={() => { resetForm(); setShowAddForm(false); }} style={{ flex: 1, padding: '12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit' }}>
+            <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
+              <button onClick={() => { resetForm(); setShowAddForm(false); }} style={{ flex: 1, minHeight: 48, padding: '12px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text-main)', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit' }}>
                 Cancelar
               </button>
-              <button onClick={handleSave} style={{ flex: 2, padding: '12px', borderRadius: 10, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(230, 0, 126, 0.2)' }}>
-                {editingRow ? 'Salvar Alterações' : isProductExpense ? 'Adicionar Pedido' : 'Adicionar Despesa'}
+              <button onClick={handleSave} style={{ flex: 2, minHeight: 48, padding: '12px', borderRadius: 10, border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 700, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit', boxShadow: '0 4px 12px rgba(230, 0, 126, 0.2)' }}>
+                {editingRow
+                  ? 'Salvar Alterações'
+                  : isProductExpense
+                    ? 'Adicionar Pedido'
+                    : currencyInputToNumber(addValue) > 0 ? `Adicionar · ${fmt(currencyInputToNumber(addValue))}` : 'Adicionar Despesa'}
               </button>
             </div>
           </div>
