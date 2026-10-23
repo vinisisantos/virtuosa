@@ -34,6 +34,34 @@ test('preserva nomes simples, acentos e pontuação pessoal existentes', () => {
   }
 });
 
+test('preserva apelido alfanumérico recebido no perfil, sem fabricar nome civil', () => {
+  for (const [input, expected] of [
+    ['Debora1souza9', 'Debora1souza9'],
+    ['~Debora1souza9', 'Debora1souza9'],
+    ['~Debora1souza9 🍀', 'Debora1souza9'],
+    ['ana_souza1989', 'ana_souza1989'],
+    ['Maria.2026', 'Maria.2026'],
+    ['Júlia2', 'Júlia2'],
+  ]) {
+    assert.equal(resolveContactNameFromMessage({ pushName: input }, phone, false), expected);
+    assert.equal(resolveContactNameFromMessage({ senderName: input }, phone, false), expected);
+    assert.equal(shouldUpdateContactName(phone, expected, phone), true);
+    assert.equal(shouldUpdateContactName('Nome preenchido manualmente', expected, phone), false);
+  }
+  assert.equal(resolveContactNameFromMessage({ pushName: '🍀', senderName: 'Debora1souza9' }, phone, false), 'Debora1souza9');
+  assert.equal(resolveContactNameFromMessage({ pushName: 'Debora1souza9' }, phone, true), phone);
+});
+
+test('apelido do perfil não relaxa a captura textual nem aceita telefones e links', () => {
+  assert.equal(isValidLeadName('Debora1souza9'), false);
+  assert.equal(extractLeadName('Debora1souza9', { allowBareName: true }), null);
+  assert.equal(extractLeadName('Me chamo Debora1souza9'), null);
+  for (const input of ['www.debora9.com', 'https://debora9.com', 'debora9@example.com', '@debora9',
+    '123456789', '1️⃣2️⃣3️⃣', 'A123', 'Debora 123', 'Quero agendar 2', `Ana${'1'.repeat(48)}`]) {
+    assert.equal(resolveContactNameFromMessage({ pushName: input }, phone, false), phone, input);
+  }
+});
+
 test('não transforma emoji, número, URL ou mensagem comercial em nome', () => {
   for (const input of [undefined, null, 123, {}, '', '🍀✨', '~', '  ', phone, `~${phone} 🍀`,
     'Camila 123 🍀', 'Ana 1️⃣', 'https://example.invalid 🍀', '@camila 🍀', 'oi 🍀',

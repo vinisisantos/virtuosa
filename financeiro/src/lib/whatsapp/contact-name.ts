@@ -5,6 +5,16 @@ type ContactNameMessage = {
   senderName?: unknown;
 };
 
+function isAlphanumericProfileName(text: string) {
+  // Apelidos compactos são válidos no perfil, mas não são nomes civis
+  // extraídos de uma mensagem. Preservar os dígitos evita inventar um nome.
+  return text.length <= 50 &&
+    (text.match(/\p{L}/gu)?.length || 0) >= 2 &&
+    /\p{N}/u.test(text) &&
+    !/^www\./i.test(text) &&
+    /^[\p{L}\p{M}\p{N}_'’.-]+$/u.test(text);
+}
+
 function normalizeContactName(value: unknown) {
   // Perfis permitem emoji; remover só a decoração antes de validar o nome
   // preserva a rejeição de telefones, URLs e frases de atendimento.
@@ -16,7 +26,7 @@ function normalizeContactName(value: unknown) {
         .replace(/\s+/g, " ")
     : "";
 
-  return isValidLeadName(text) ? text : null;
+  return isValidLeadName(text) || isAlphanumericProfileName(text) ? text : null;
 }
 
 export function isGenericWhatsAppContactName(value?: string | null) {
