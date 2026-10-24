@@ -169,11 +169,24 @@ test("oferece uma resposta modelo somente para cada nova campanha", () => {
   assert.deepEqual(savedReplySuggestionsForCampaign("Botox Dysport 3 Regiões").map(({ title }) => title), [
     "Botox Dysport — apresentação",
   ]);
-  assert.deepEqual(savedReplySuggestionsForCampaign("Botox Terço Superior").map(({ title }) => title), [
-    "Botox Terço Superior — apresentação",
-  ]);
   assert.deepEqual(savedReplySuggestionsForCampaign("Botox"), []);
   assert.deepEqual(savedReplySuggestionsForCampaign(null), []);
+});
+
+test("retira o modelo de Botox Terço Superior sem remover respostas pessoais da campanha", () => {
+  const categories = [
+    { id: "botox-terco", title: "Botox Terço Superior" },
+    { id: "botox-dysport", title: "Botox Dysport 3 Regiões" },
+  ];
+  const replies = [
+    { id: "global", categoryId: null },
+    { id: "pessoal-botox", categoryId: "botox-terco" },
+    { id: "outra-campanha", categoryId: "botox-dysport" },
+  ];
+  for (const campaignName of ["Botox Terço Superior", "BOTOX TERCO SUPERIOR", "Botox Terço Superior — SBC"]) {
+    assert.deepEqual(savedReplySuggestionsForCampaign(campaignName), []);
+    assert.deepEqual(filterSavedRepliesByCampaign(replies, campaignName, categories), replies.slice(0, 2));
+  }
 });
 
 test("associa explicitamente uma pasta com nome livre à campanha escolhida", () => {
