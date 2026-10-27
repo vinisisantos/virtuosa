@@ -89,6 +89,16 @@ try {
       assert.equal(posts.length, 1); assert.equal(bills.length, 6);
       await page.reload({ waitUntil: 'domcontentloaded' }); await page.waitForSelector('[data-cost-group="true"] > button');
       group = await marketing(); assert.match(await group.evaluate(e => e.textContent), /2\.000,00/);
+      // A one-off reference must not leak into the preview after choosing recurrence.
+      await click(page, 'Nova Despesa'); await click(page, 'Internet', '[role="dialog"]');
+      await fill(page, '#cost-value', '10000'); await fill(page, '[role="dialog"] .date-picker-text-input', '03112026');
+      await page.keyboard.press('Tab'); await page.click('[role="dialog"] h2');
+      await click(page, 'Mais opções', '[role="dialog"]');
+      await page.select('select[aria-label="Mês de referência"]', '10');
+      await click(page, 'Toda semana', '[role="dialog"]');
+      await wait(page, () => document.querySelector('[data-testid="cost-automatic-grouping"]')?.textContent.includes('11/2026'));
+      assert.match(await page.$eval('[data-testid="cost-automatic-grouping"]', e => e.textContent), /450,00/);
+      await click(page, 'Cancelar', '[role="dialog"]');
       fail = true; await page.reload({ waitUntil: 'domcontentloaded' });
       await wait(page, () => document.querySelector('[role="alert"]')?.textContent.includes('alterações ficam indisponíveis')); await fit(page);
       assert.deepEqual(errors, []); console.log(`PASS SBC ${width}px: dias distintos, soma imediata, reabertura, separar/reagrupar, isolamento e erro.`);

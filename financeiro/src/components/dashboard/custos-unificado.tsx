@@ -1178,7 +1178,7 @@ export function CustosUnificado({
     return manualBills + manualFixed + automaticOrders;
   }, [automaticCosts?.productOrders.length, d.bills, d.fixedExpenses, d.selectedUnit, productTargetMonthKey, selectedMonthKey]);
 
-  const groupingMonth = manualCostMonth(addRefMonth, addDueDate);
+  const groupingMonth = manualCostMonth(recurrence === 'once' ? addRefMonth : undefined, addDueDate);
   const groupingUnit = resolveCostEntryUnit(d.selectedUnit, recurrence === 'once' ? d.billUnit : d.fixedUnit);
   const groupingScope = JSON.stringify([groupingMonth, groupingUnit, addCategory, recurrence]);
   const selectedGroup = groupSelection?.scope === groupingScope ? groupSelection.value : null;
