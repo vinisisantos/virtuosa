@@ -141,6 +141,18 @@ test('telefone inválido, negócio fora de agendado, status e janela impedem cri
   setup();appointment.startTime=new Date(Date.now()+8*86400000);assert.equal((await request('POST')).status,409);assert.equal(writes,0);
   assert.equal(sends.length,0);
 });
+test('gestão da unidade do cadastro permite confirmar avaliação alheia em Osasco, sem liberar SBC/SCS',async()=>{
+  const permissions={crm:true,crmEvaluationsManageUnit:true,crmEvaluationsViewUnit:true,unitSBC:true,unitSCS:true};
+  for(const unit of ['Osasco','SBC','SCS']) {
+    setup(unit);appointment.notes='[pipelineDealId:deal]';appointment.profissional={name:'Outra responsável'};
+    const options={unit:'Osasco',permissions};
+    assert.equal((await request('GET',options)).status,unit==='Osasco'?200:403);
+    assert.equal(writes,0);assert.equal(sends.length,0);
+    assert.equal((await request('POST',options)).status,unit==='Osasco'?200:403);
+    assert.equal(sends.length,unit==='Osasco'?1:0);
+    if(unit!=='Osasco') assert.equal(writes,0);
+  }
+});
 test('desconectado e automação inativa não criam chat nem enviam',async()=>{
   instance.status='disconnected';assert.equal((await (await request()).json()).connected,false);assert.equal((await request('POST')).status,409);
   instance.status='connected';automation.isActive=false;assert.equal((await request('POST')).status,409);

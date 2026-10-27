@@ -37,7 +37,7 @@ async function resolveAppointment(req: NextRequest, id: string): Promise<Evaluat
     if (error instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
     throw error;
   }
-  if (!canManageAllEvaluations(guard) && !isOwnEvaluation(appointment, { id: guard.userId, name: guard.userName })) {
+  if (!canManageAllEvaluations(guard, appointment.unit) && !isOwnEvaluation(appointment, { id: guard.userId, name: guard.userName })) {
     return NextResponse.json({ error: "Você só pode confirmar avaliações atribuídas a você." }, { status: 403 });
   }
   const unitConfig = getEvaluationScheduleUnitConfigByUnit(appointment.unit);

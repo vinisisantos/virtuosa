@@ -15,23 +15,28 @@ export function isOwnEvaluation(
   return userTokens.some((token) => professionalName.includes(token));
 }
 
-export function canManageAllEvaluations(guard: UnitGuardResult) {
-  return guard.isAdmin || guard.permissions?.admin === true
-    || guard.permissions?.multiUnit === true || guard.permissions?.crmEvaluationsAll === true;
-}
-
-export function canViewAllEvaluations(guard: UnitGuardResult, unit: string) {
-  if (canManageAllEvaluations(guard)) return true;
-  // Consulta compartilhada não acompanha outras unidades liberadas no perfil.
+function isRegisteredUnitContext(guard: UnitGuardResult, unit?: string) {
   return guard.permissions?.crm === true
-    && guard.permissions?.crmEvaluationsViewUnit === true
     && ACTIVE_UNITS.some((activeUnit) => activeUnit === unit)
     && unit === guard.userUnit
     && unit === guard.unitFilter;
 }
 
+export function canManageAllEvaluations(guard: UnitGuardResult, unit?: string) {
+  if (guard.isAdmin || guard.permissions?.admin === true
+    || guard.permissions?.multiUnit === true || guard.permissions?.crmEvaluationsAll === true) return true;
+  // A capacidade restrita exige a unidade real do registro, não só o filtro da requisição.
+  return guard.permissions?.crmEvaluationsManageUnit === true && isRegisteredUnitContext(guard, unit);
+}
+
+export function canViewAllEvaluations(guard: UnitGuardResult, unit: string) {
+  if (canManageAllEvaluations(guard, unit)) return true;
+  // Consulta compartilhada não acompanha outras unidades liberadas no perfil.
+  return guard.permissions?.crmEvaluationsViewUnit === true && isRegisteredUnitContext(guard, unit);
+}
+
 export function hasSharedEvaluationReadOnlyAccess(guard: UnitGuardResult) {
-  return guard.permissions?.crmEvaluationsViewUnit === true
+  return (guard.permissions?.crmEvaluationsViewUnit === true || guard.permissions?.crmEvaluationsManageUnit === true)
     && guard.permissions?.agenda !== true
     && !canManageAllEvaluations(guard);
 }
@@ -45,10 +50,11 @@ export class EvaluationReadOnlyError extends Error {
 
 export function enforceSharedEvaluationWriteAccess(
   guard: UnitGuardResult,
-  evaluation: { procedimento: string; notes?: string | null; profissional?: { name: string } | null },
+  evaluation: { unit: string; procedimento: string; notes?: string | null; profissional?: { name: string } | null },
 ) {
   if (hasSharedEvaluationReadOnlyAccess(guard)
     && isEvaluationAppointment(evaluation.procedimento)
+    && !canManageAllEvaluations(guard, evaluation.unit)
     && !isOwnEvaluation(evaluation, { id: guard.userId, name: guard.userName })) {
     throw new EvaluationReadOnlyError();
   }

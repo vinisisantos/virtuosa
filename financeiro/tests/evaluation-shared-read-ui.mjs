@@ -59,7 +59,7 @@ try {
       } else if (url.pathname === '/api/catalog') data = { services: [] };
       else if (url.pathname.endsWith('/assignees')) data = { assignees: [{ id: 'operator', name: 'Operadora Sintética' }, { id: 'another', name: 'Outra Responsável' }] };
       else if (url.pathname.includes('notifications')) data = { notifications: [], unreadCount: 0 };
-      else if (url.pathname.endsWith('/confirmation')) data = { visible: false, alreadySent: false };
+      else if (url.pathname.endsWith('/confirmation')) data = { visible: manage, alreadySent: false, connected: true, instanceName: 'Leads Osasco', phone: '5511999999999' };
       await req.respond({ status, contentType: 'application/json', body: JSON.stringify(data) });
     });
     try {
@@ -99,15 +99,17 @@ try {
       await fit(page, width);
       fail = false; await clickText(page, 'Tentar novamente');
       await wait(page, name => document.body.innerText.includes(name), otherName);
-      manage = true; user.permissions.crmEvaluationsAll = true;
+      manage = true;
+      user.permissions[name === 'Thais Amorim' ? 'crmEvaluationsManageUnit' : 'crmEvaluationsAll'] = true;
       await page.reload({ waitUntil: 'domcontentloaded' });
       await wait(page, name => document.body.innerText.includes(name), otherName);
       await clickText(page, otherName);
       await page.waitForSelector('#evaluationScheduleAssignee');
-      assert.equal(await page.$('[data-testid="evaluation-read-only"]'), null, 'gestão existente segue editável');
+      assert.equal(await page.$('[data-testid="evaluation-read-only"]'), null, 'gestão autorizada segue editável');
+      await wait(page, () => [...document.querySelectorAll('[role="dialog"] button')].some(b => b.textContent.includes('Confirmar pelo WhatsApp') && !b.disabled));
       await fit(page, width);
       assert.deepEqual(writes, []); assert.deepEqual(errors, []);
-      console.log(`PASS ${name} ${width}px: calendário, leitura, edição própria, filtro, carregamento, falha e gestão existente.`);
+      console.log(`PASS ${name} ${width}px: calendário, leitura, edição própria, filtro, carregamento, falha, gestão e botão de confirmação habilitado.`);
     } catch (error) {
       console.log({ width, name, errors, writes, body: await page.evaluate(() => document.body.innerText.slice(-1600)) }); throw error;
     } finally { releaseLoading(); await page.close(); }

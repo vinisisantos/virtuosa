@@ -151,3 +151,39 @@ test('gestão existente e acesso explícito à Agenda geral permanecem intactos'
   assert.equal(canManageAllEvaluations({ permissions: { crmEvaluationsViewUnit: true } }), false);
   assert.doesNotThrow(() => enforceSharedEvaluationWriteAccess({ permissions: { crmEvaluationsViewUnit: true, agenda: true } }, appointment('Osasco', 'other')));
 });
+
+const unitManagerPermissions = { crm: true, crmEvaluationsManageUnit: true, crmEvaluationsViewUnit: true, unitSBC: true, unitSCS: true };
+test('gestão da unidade do cadastro libera edição alheia somente em Osasco', async () => {
+  const data = await (await GET(request('GET', null, { permissions: unitManagerPermissions }))).json();
+  assert.equal(data.canViewAll, true); assert.equal(data.canManageAll, true);
+  assert.ok(data.evaluations.every(item => item.canEdit));
+  assert.equal((await PATCH(request('PATCH', { id: 'Osasco-other', evaluationClientName: 'Nome Atualizado' }, { permissions: unitManagerPermissions }))).status, 200);
+  assert.equal((await PUT(request('PUT', { id: 'Osasco-other', status: 'confirmado' }, { permissions: unitManagerPermissions }))).status, 200);
+  assert.equal((await checkin(request('POST', { agendamentoId: 'Osasco-other' }, { permissions: unitManagerPermissions }))).status, 200);
+});
+test('gestão restrita não amplia consulta nem escrita de SBC/SCS mesmo com filtro forjado', async () => {
+  for (const unit of ['SBC', 'SCS']) {
+    const data = await (await GET(request('GET', null, { unit, permissions: unitManagerPermissions }))).json();
+    assert.equal(data.canViewAll, false); assert.equal(data.canManageAll, false);
+    assert.deepEqual(data.evaluations.map(item => item.id), [`${unit}-own`]);
+    for (const queryUnit of [unit, 'Osasco']) {
+      const options = { unit: queryUnit, permissions: unitManagerPermissions };
+      assert.equal((await PATCH(request('PATCH', { id: `${unit}-other`, status: 'confirmado' }, options))).status, 403);
+      assert.equal((await PUT(request('PUT', { id: `${unit}-other`, status: 'confirmado' }, options))).status, 403);
+      assert.equal((await checkin(request('POST', { agendamentoId: `${unit}-other` }, options))).status, 403);
+      assert.equal((await DELETE(request('DELETE', null, { ...options, query: `&id=${unit}-other` }))).status, 403);
+    }
+  }
+  assert.equal(state.writes, 0); assert.equal(state.audits, 0);
+});
+test('gestão restrita exige CRM, unidade real e filtro da unidade do cadastro', () => {
+  const guard = { permissions: unitManagerPermissions, userUnit: 'Osasco', unitFilter: 'Osasco' };
+  assert.equal(canManageAllEvaluations(guard, 'Osasco'), true);
+  for (const unit of [undefined, '', 'Todas', 'SBC', 'SCS']) assert.equal(canManageAllEvaluations(guard, unit), false);
+  assert.equal(canManageAllEvaluations({ ...guard, permissions: { crmEvaluationsManageUnit: true } }, 'Osasco'), false);
+  assert.equal(canManageAllEvaluations({ ...guard, unitFilter: 'SBC' }, 'Osasco'), false);
+  assert.equal(canManageAllEvaluations({ ...guard, userUnit: 'Todas', unitFilter: 'Todas' }, 'Todas'), false);
+  const withoutView = { ...guard, permissions: { ...unitManagerPermissions, crmEvaluationsViewUnit: false }, userId: 'operator', userName: 'Pessoa Operadora' };
+  assert.throws(() => enforceSharedEvaluationWriteAccess(withoutView, appointment('SBC', 'other')));
+  assert.doesNotThrow(() => enforceSharedEvaluationWriteAccess(withoutView, appointment('Osasco', 'other')));
+});

@@ -385,7 +385,7 @@ export async function GET(req: NextRequest) {
   const start = dateFromParam(searchParams.get("start"), defaults.start);
   const end = dateFromParam(searchParams.get("end"), defaults.end);
   const profissionalId = searchParams.get("profissionalId");
-  const canManageAll = canManageAllEvaluations(guard);
+  const canManageAll = canManageAllEvaluations(guard, unit);
   const canViewAll = canViewAllEvaluations(guard, unit);
 
   const professionals = await prisma.profissional.findMany({
@@ -528,13 +528,6 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Informe o motivo da ausência." }, { status: 400 });
     }
 
-    if (hasAssigneeUserId && !canManageAllEvaluations(guard)) {
-      return NextResponse.json(
-        { error: "Você não tem permissão para alterar a responsável desta avaliação." },
-        { status: 403 },
-      );
-    }
-
     const persistedStatus = rescheduled ? "pendente" : status;
 
     const transactionResult = await prisma.$transaction(async (tx) => {
@@ -543,7 +536,11 @@ export async function PATCH(req: NextRequest) {
       const latest = await tx.agendamento.findUnique({ where: { id }, include: { profissional: true } });
       if (!latest) return NextResponse.json({ error: "Avaliação não encontrada." }, { status: 404 });
       guard.enforceUnit(latest.unit);
-      if (!canManageAllEvaluations(guard) && !isOwnEvaluation(latest, { id: guard.userId, name: guard.userName })) {
+      const canManageAll = canManageAllEvaluations(guard, latest.unit);
+      if (hasAssigneeUserId && !canManageAll) {
+        return NextResponse.json({ error: "Você não tem permissão para alterar a responsável desta avaliação." }, { status: 403 });
+      }
+      if (!canManageAll && !isOwnEvaluation(latest, { id: guard.userId, name: guard.userName })) {
         return NextResponse.json({ error: "Você só pode atualizar avaliações atribuídas a você." }, { status: 403 });
       }
       if (editingClosedPackage && (status !== "fechou_pacote" || !isClosedPackageEvaluationStatus(latest.status))) {
