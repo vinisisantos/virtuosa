@@ -51,10 +51,11 @@ export class EvaluationReadOnlyError extends Error {
 export function enforceSharedEvaluationWriteAccess(
   guard: UnitGuardResult,
   evaluation: { unit: string; procedimento: string; notes?: string | null; profissional?: { name: string } | null },
+  operation: "edit" | "delete" = "edit",
 ) {
   if (hasSharedEvaluationReadOnlyAccess(guard)
     && isEvaluationAppointment(evaluation.procedimento)
-    && !canManageAllEvaluations(guard, evaluation.unit)
+    && !(operation === "edit" && canManageAllEvaluations(guard, evaluation.unit))
     && !isOwnEvaluation(evaluation, { id: guard.userId, name: guard.userName })) {
     throw new EvaluationReadOnlyError();
   }

@@ -160,6 +160,9 @@ test('gestão da unidade do cadastro libera edição alheia somente em Osasco', 
   assert.equal((await PATCH(request('PATCH', { id: 'Osasco-other', evaluationClientName: 'Nome Atualizado' }, { permissions: unitManagerPermissions }))).status, 200);
   assert.equal((await PUT(request('PUT', { id: 'Osasco-other', status: 'confirmado' }, { permissions: unitManagerPermissions }))).status, 200);
   assert.equal((await checkin(request('POST', { agendamentoId: 'Osasco-other' }, { permissions: unitManagerPermissions }))).status, 200);
+  const writesBeforeDelete = state.writes;
+  assert.equal((await DELETE(request('DELETE', null, { permissions: unitManagerPermissions, query: '&id=Osasco-other' }))).status, 403);
+  assert.equal(state.writes, writesBeforeDelete, 'edição restrita não concede exclusão alheia');
 });
 test('gestão restrita não amplia consulta nem escrita de SBC/SCS mesmo com filtro forjado', async () => {
   for (const unit of ['SBC', 'SCS']) {

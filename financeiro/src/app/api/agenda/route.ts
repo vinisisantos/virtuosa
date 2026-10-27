@@ -221,7 +221,7 @@ export async function DELETE(req: NextRequest) {
       if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
       throw e;
     }
-    enforceSharedEvaluationWriteAccess(guard, agendamento);
+    enforceSharedEvaluationWriteAccess(guard, agendamento, "delete");
 
     // If agendamento is finalized, check permissions
     if (agendamento.status === 'finalizado') {
