@@ -8,7 +8,7 @@ import puppeteer from 'puppeteer';
 const origin = process.env.COSTS_UI_ORIGIN || 'http://127.0.0.1:3098';
 assert.match(origin, /^http:\/\/(127\.0\.0\.1|localhost):\d+$/);
 const output = await mkdtemp(join(tmpdir(), 'virtuosa-cost-groups-ui-'));
-const user = { id: 'costs-local', name: 'Teste local', role: 'ADMINISTRADOR', unit: 'SBC', permissions: { admin: true, financeiro: true, finCustos: true } };
+const user = { id: 'costs-local', name: 'Teste local', role: 'ADMINISTRADOR', unit: 'Osasco', permissions: { admin: true, financeiro: true, finCustos: true } };
 const description = 'Anúncio terça-feira com descrição extensa para conferir quebra de linha e legibilidade no celular';
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -47,9 +47,9 @@ const browser = await puppeteer.launch({ headless: true });
 const results = [];
 try {
   for (const width of [390, 430, 1440]) {
-    let fixed = [{ id: 1, name: 'Marketing mensal', value: 1000, category: 'Marketing', unit: 'SBC', date: '2026-10-01', recurrence: 'monthly' }];
-    let bills = [{ id: 2, name: 'Anúncio segunda-feira', value: 200, category: 'Marketing', unit: 'SBC', type: 'variavel', dueDateManual: '2026-10-19', refMonth: '2026-10', payments: {} },
-      { id: 3, name: 'Não pertence a SBC', value: 900, category: 'Marketing', unit: 'Osasco', type: 'variavel', dueDateManual: '2026-10-19', payments: {} }];
+    let fixed = [{ id: 1, name: 'Marketing mensal', value: 1000, category: 'Marketing', unit: 'Osasco', date: '2026-10-01', recurrence: 'monthly' }];
+    let bills = [{ id: 2, name: 'Anúncio segunda-feira', value: 200, category: 'Marketing', unit: 'Osasco', type: 'variavel', dueDateManual: '2026-10-19', refMonth: '2026-10', payments: {} },
+      { id: 3, name: 'Não pertence a Osasco', value: 900, category: 'Marketing', unit: 'SBC', type: 'variavel', dueDateManual: '2026-10-19', payments: {} }];
     let revision = '2026-10-22T12:00:00.000Z';
     let failBackup = false;
     let delayBackup = true;
@@ -91,7 +91,7 @@ try {
     });
     await page.evaluateOnNewDocument(user => {
       localStorage.setItem('virtuosa_user', JSON.stringify(user));
-      localStorage.setItem('virtuosa_global_unit', 'SBC');
+      localStorage.setItem('virtuosa_global_unit', 'Osasco');
       localStorage.setItem('virtuosa_financeiro_tab', 'custos');
     }, user);
     await page.goto(`${origin}/?tab=custos&month=9&year=2026`, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -101,7 +101,7 @@ try {
     await page.evaluate(() => document.fonts.ready);
     await layout(page, '.costs-page');
     await page.screenshot({ path: join(output, `costs-top-${width}.png`), fullPage: true });
-    assert.equal(await page.evaluate(() => document.body.textContent.includes('Não pertence a SBC')), false);
+    assert.equal(await page.evaluate(() => document.body.textContent.includes('Não pertence a Osasco')), false);
     await clickText(page, 'addNova Despesa');
     // Category comes first; Marketing sits behind "Mais" in the collapsed grid.
     assert.equal(await page.$eval('[role="dialog"] [role="radio"][aria-checked="true"]', tile => tile.textContent), 'more_horizOutros');

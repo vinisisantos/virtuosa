@@ -92,7 +92,7 @@ try {
       localStorage.setItem('virtuosa_financeiro_tab', 'custos');
     }, user);
     await page.goto(`${origin}/?tab=custos&month=9&year=2026`, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForFunction(() => document.body.textContent?.includes('Marketing mensal'));
+    await page.waitForFunction(() => document.querySelector('[data-cost-group="true"] > button')?.textContent.includes('Marketing'));
     assert.match(await monthTotal(page), /1\.000,00/);
 
     // Two costs in a row: the dialog stays open and the month total follows each save.

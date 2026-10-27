@@ -158,6 +158,7 @@ try {
       const cache = await page.evaluate(() => JSON.parse(localStorage.getItem('virtuosa_bills_v2')));
       assert.equal(cache.length, 3, 'cache mantém os três lançamentos sem duplicar');
 
+      await page.evaluate(() => [...document.querySelectorAll('[data-cost-group="true"] > button')].find(b => b.textContent.includes('Marketing'))?.click());
       const paymentButton = await page.waitForSelector('[aria-label="Marcar como pago: Marketing primeira campanha"]');
       await paymentButton.evaluate(button => button.click());
       await page.waitForFunction(() => document.querySelector('.costs-kpis > div:nth-child(2)')?.textContent.includes('1.000,00'));
@@ -166,6 +167,7 @@ try {
       assert.equal(accepted.length, 2);
       await page.reload({ waitUntil: 'domcontentloaded' });
       await assertTotal(page, '1.480,00');
+      await page.evaluate(() => [...document.querySelectorAll('[data-cost-group="true"] > button')].find(b => b.textContent.includes('Marketing'))?.click());
       await page.waitForFunction(() => document.body.textContent.includes('Marketing segunda campanha'));
       const pageFits = await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1);
       assert.ok(pageFits, `página sem overflow em ${width}px`);

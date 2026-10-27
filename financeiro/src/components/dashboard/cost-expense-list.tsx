@@ -4,12 +4,26 @@ import { useMemo, useState } from 'react';
 import type { CostRow } from './custos-unificado';
 import type { Bill, FixedExpense } from '@/hooks/useDashboard';
 import { fmt } from '@/hooks/useDashboard';
-import { expenseGroupId, groupExpenseRows, groupingCandidates, type ManualCostReference } from '@/lib/cost-expense-groups';
+import { automaticExpenseGroupKey, groupExpenseRows, groupingCandidates, type ManualCostReference } from '@/lib/cost-expense-groups';
 import { recurringCostOccurrencesInMonth } from '@/lib/cost-recurrence';
 import styles from './cost-expense-list.module.css';
 
 const shortDate = (date: string) => date ? date.split('-').reverse().join('/') : 'Sem data';
 const targetKey = (target: ManualCostReference) => `${target.source}:${target.id}`;
+
+export function AutomaticCostGroupingNotice({ fixed, bills, month, unit, category, value }: {
+  fixed: FixedExpense[]; bills: Bill[]; month: string; unit: string; category: string; value: number;
+}) {
+  const candidates = useMemo(() => groupingCandidates({ fixed, bills }, month, unit, category), [fixed, bills, month, unit, category]);
+  const key = automaticExpenseGroupKey(unit, category, month);
+  const currentTotal = candidates.find(candidate => candidate.key === key)?.total || 0;
+  const nextTotal = (Math.round(currentTotal * 100) + Math.round(Math.max(0, value) * 100)) / 100;
+  return <div className={styles.picker} data-testid="cost-automatic-grouping">
+    <strong>Agrupamento automático · {unit}</strong>
+    <p>{category} · {month.split('-').reverse().join('/')} — lançamentos de dias diferentes ficam no mesmo grupo, com suas datas e pagamentos preservados.</p>
+    <p>Acumulado: {fmt(currentTotal)}{value > 0 && <> · Com este lançamento: <b>{fmt(nextTotal)}</b></>}</p>
+  </div>;
+}
 
 export function CostGroupingPicker({ fixed, bills, month, unit, category, selection, disabled, onChange }: {
   fixed: FixedExpense[]; bills: Bill[]; month: string; unit: string; category: string;
@@ -59,7 +73,7 @@ export function CostExpenseList({ rows, month, filtered, loading, error, canEdit
     return <div className={styles.actions}>
       {canEdit(row) && <button type="button" disabled={loading || Boolean(error)} onClick={() => onEdit(row)} aria-label={`Editar ${row.name}`} title="Editar"><span className="material-symbols-outlined">edit</span></button>}
       {row.source === 'bill' && <button type="button" disabled={loading || Boolean(error)} onClick={() => onTogglePaid(row)} aria-label={`${row.isPaid ? 'Desfazer pagamento de' : 'Marcar como pago:'} ${row.name}`} title={row.isPaid ? 'Desfazer pagamento' : 'Marcar como pago'}><span className="material-symbols-outlined">{row.isPaid ? 'undo' : 'check'}</span></button>}
-      {grouped && <button type="button" disabled={loading || Boolean(error)} onClick={() => onUngroup(row)} aria-label={`Desagrupar ${row.name}`} title="Retirar do grupo, mantendo a despesa"><span className="material-symbols-outlined">link_off</span></button>}
+      {(grouped || (automaticExpenseGroupKey(row.raw.unit, row.category, month) && row.raw.expenseGroupExclusions?.includes(month))) && <button type="button" disabled={loading || Boolean(error)} onClick={() => onUngroup(row)} aria-label={`${grouped ? 'Desagrupar' : 'Reagrupar'} ${row.name}`} title={grouped ? 'Retirar do grupo, mantendo a despesa' : 'Voltar ao grupo automático da categoria'}><span className="material-symbols-outlined">{grouped ? 'link_off' : 'link'}</span></button>}
       {!row.isHistorical && <button type="button" disabled={loading || Boolean(error)} onClick={() => onDelete(row)} aria-label={`Excluir ${row.name}`} title="Excluir"><span className="material-symbols-outlined">delete</span></button>}
     </div>;
   }
@@ -78,7 +92,7 @@ export function CostExpenseList({ rows, month, filtered, loading, error, canEdit
       return <article key={group.key} className={styles.card} data-cost-group={group.grouped ? 'true' : 'false'}>
         {group.grouped ? <>
           <button type="button" className={styles.groupButton} aria-expanded={isExpanded} onClick={() => toggle(group.key)}>
-            <span className={styles.groupTitle}><span className={styles.badge}>Grupo · {first.raw.unit}</span><strong>{first.category}</strong><small>{group.rows.length} {group.rows.length === 1 ? 'lançamento' : 'lançamentos'} · {status}{filtered ? ' · filtro aplicado' : ''}</small></span>
+            <span className={styles.groupTitle}><span className={styles.badge}>{automaticExpenseGroupKey(first.raw.unit, first.category, month) ? 'Categoria' : 'Grupo'} · {first.raw.unit}</span><strong>{first.category}</strong><small>{group.rows.length} {group.rows.length === 1 ? 'lançamento' : 'lançamentos'} · {status}{filtered ? ' · filtro aplicado' : ''}</small></span>
             <span className={styles.groupValue}><small>{filtered ? 'Total no filtro' : 'Total acumulado'}</small><strong>{fmt(group.total)}</strong></span>
             <span className="material-symbols-outlined" aria-hidden="true">{isExpanded ? 'expand_less' : 'expand_more'}</span>
           </button>
@@ -89,7 +103,8 @@ export function CostExpenseList({ rows, month, filtered, loading, error, canEdit
                 {dates(row).map(date => <span className={styles.day} key={date}><time dateTime={date}>{shortDate(date)}</time><b>{fmt(row.value)}</b></span>)}
               </div>
               <div className={styles.entryValue}>{fmt(row.periodTotal)}</div>
-              {actions(row, Boolean(expenseGroupId(row.raw, month)))}
+              {row.raw.unit === 'SBC' && row.raw.obs && <p className={styles.entryNote}>{row.raw.obs}</p>}
+              {actions(row, true)}
             </div>)}
           </div>}
         </> : <div className={styles.single}>

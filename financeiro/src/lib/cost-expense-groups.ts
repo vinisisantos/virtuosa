@@ -6,6 +6,7 @@ export interface ManualCostReference { source: 'fixed' | 'bill'; id: number; }
 interface Entry {
   id: number; name: string; value: number; category: string; unit?: string;
   expenseGroups?: ExpenseGroups;
+  expenseGroupExclusions?: string[];
 }
 interface FixedEntry extends Entry {
   date?: string; recurrence?: 'monthly' | 'weekly'; effectiveFrom?: string;
@@ -34,7 +35,14 @@ export function expenseGroupId(entry: { expenseGroups?: ExpenseGroups }, month: 
   return MONTH.test(month) && typeof id === 'string' && id.length > 0 && id.length <= 100 ? id : undefined;
 }
 
+export function automaticExpenseGroupKey(unit: string | undefined, category: string, month: string): string | undefined {
+  return unit === 'SBC' && MONTH.test(month) && categoryKey(category) && categoryKey(category) !== 'produtos'
+    ? JSON.stringify(['category', unit, categoryKey(category), month]) : undefined;
+}
+
 export function expenseGroupKey(entry: Entry, month: string): string | undefined {
+  const automatic = automaticExpenseGroupKey(entry.unit, entry.category, month);
+  if (automatic) return entry.expenseGroupExclusions?.includes(month) ? undefined : automatic;
   const id = expenseGroupId(entry, month);
   return id && validUnit(entry.unit) ? JSON.stringify([entry.unit, categoryKey(entry.category), month, id]) : undefined;
 }
@@ -43,7 +51,11 @@ function withGroup<T extends Entry>(entry: T, month: string, id?: string): T {
   const expenseGroups = { ...entry.expenseGroups };
   if (id) expenseGroups[month] = id;
   else delete expenseGroups[month];
-  return { ...entry, expenseGroups: Object.keys(expenseGroups).length ? expenseGroups : undefined };
+  const exclusions = new Set(entry.expenseGroupExclusions || []);
+  if (id) exclusions.delete(month);
+  else if (automaticExpenseGroupKey(entry.unit, entry.category, month)) exclusions.add(month);
+  return { ...entry, expenseGroups: Object.keys(expenseGroups).length ? expenseGroups : undefined,
+    ...(exclusions.size || entry.expenseGroupExclusions ? { expenseGroupExclusions: exclusions.size ? [...exclusions] : undefined } : {}) };
 }
 
 export function groupingCandidates<F extends FixedEntry, B extends BillEntry>(
@@ -97,6 +109,23 @@ export function detachExpense<F extends FixedEntry, B extends BillEntry>(
   return {
     fixed: state.fixed.map(entry => target.source === 'fixed' && entry.id === target.id ? withGroup(entry, month) : entry),
     bills: state.bills.map(entry => target.source === 'bill' && entry.id === target.id ? withGroup(entry, month) : entry),
+  };
+}
+
+export function toggleExpenseGrouping<F extends FixedEntry, B extends BillEntry>(
+  state: CostState<F, B>, target: ManualCostReference, month: string,
+): CostState<F, B> {
+  const entry = (target.source === 'fixed' ? state.fixed : state.bills).find(item => item.id === target.id);
+  if (!entry || !automaticExpenseGroupKey(entry.unit, entry.category, month) || !entry.expenseGroupExclusions?.includes(month)) {
+    return detachExpense(state, target, month);
+  }
+  const restore = <T extends Entry>(item: T): T => {
+    const exclusions = item.expenseGroupExclusions?.filter(value => value !== month);
+    return { ...item, expenseGroupExclusions: exclusions?.length ? exclusions : undefined };
+  };
+  return {
+    fixed: state.fixed.map(item => target.source === 'fixed' && item.id === target.id ? restore(item) : item),
+    bills: state.bills.map(item => target.source === 'bill' && item.id === target.id ? restore(item) : item),
   };
 }
 

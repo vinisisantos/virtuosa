@@ -8,8 +8,8 @@ import { CostCategoryGrid, CostFormMoreOptions, CostRecurrencePicker, DueDateSho
 import { dueDateShortcuts } from '@/lib/cost-due-date-shortcuts';
 import { EditableProductExpenseItem, ProductExpenseItemsEditor, ProductExpenseSummary } from './product-expense-items-editor';
 import { CostReferenceMonthPicker } from './cost-reference-month-picker';
-import { CostExpenseList, CostGroupingPicker } from './cost-expense-list';
-import { groupingCandidates, manualCostMonth } from '@/lib/cost-expense-groups';
+import { AutomaticCostGroupingNotice, CostExpenseList, CostGroupingPicker } from './cost-expense-list';
+import { automaticExpenseGroupKey, groupingCandidates, manualCostMonth } from '@/lib/cost-expense-groups';
 import { LucratividadeView } from './lucratividade-view';
 import { CostCalendar } from './cost-calendar';
 import { RevenueView } from './revenue-view';
@@ -1179,10 +1179,13 @@ export function CustosUnificado({
   }, [automaticCosts?.productOrders.length, d.bills, d.fixedExpenses, d.selectedUnit, productTargetMonthKey, selectedMonthKey]);
 
   const groupingMonth = manualCostMonth(addRefMonth, addDueDate);
-  const groupingUnit = resolveCostEntryUnit(d.selectedUnit, d.billUnit);
+  const groupingUnit = resolveCostEntryUnit(d.selectedUnit, recurrence === 'once' ? d.billUnit : d.fixedUnit);
   const groupingScope = JSON.stringify([groupingMonth, groupingUnit, addCategory, recurrence]);
   const selectedGroup = groupSelection?.scope === groupingScope ? groupSelection.value : null;
-  const canGroupNewExpense = !editingRow && recurrence === 'once' && !isProductExpense;
+  const hasAutomaticGrouping = !editingRow && !isProductExpense && Boolean(automaticExpenseGroupKey(groupingUnit, addCategory, groupingMonth));
+  const groupingDraftValue = currencyInputToNumber(addValue) * (recurrence === 'once' ? 1
+    : recurringCostOccurrencesInMonth({ value: 0, date: addDueDate, recurrence }, Number(groupingMonth.slice(0, 4)), Number(groupingMonth.slice(5, 7)) - 1).length);
+  const canGroupNewExpense = !editingRow && recurrence === 'once' && !isProductExpense && !hasAutomaticGrouping;
   const canSaveAndContinue = !editingRow && !isProductExpense;
   const hasMoreOptions = recurrence === 'once' || canGroupNewExpense;
   const moreOptionsOpen = showMoreOptions || Boolean(addRefMonth) || selectedGroup !== null;
@@ -1927,6 +1930,11 @@ export function CustosUnificado({
                   </div>
                 )}
               </div>
+
+              {hasAutomaticGrouping && <AutomaticCostGroupingNotice
+                fixed={d.fixedExpenses} bills={d.bills} month={groupingMonth} unit={groupingUnit}
+                category={addCategory} value={groupingDraftValue}
+              />}
 
               {hasMoreOptions && (
                 <CostFormMoreOptions open={moreOptionsOpen} summary={moreOptionsSummary} onToggle={() => setShowMoreOptions(!moreOptionsOpen)}>
