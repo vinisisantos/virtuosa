@@ -21,6 +21,7 @@ import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
 import { InboxChatHeader } from "@/components/whatsapp/inbox-chat-header";
+import { ClientReportDialog } from "@/components/whatsapp/client-report-dialog";
 import { AiAssistantComposer } from "@/components/whatsapp/ai-assistant-composer";
 import { isAliceUnit } from "@/lib/ai-assistant/scope";
 import { MessageStatusIcon } from "@/components/whatsapp/message-status-icon";
@@ -3267,6 +3268,9 @@ export default function InboxPage() {
   const [isDraggingAttachment, setIsDraggingAttachment] = useState(false);
   const [contactSidebarOpen, setContactSidebarOpen] = useState(false);
   const [showQuickSchedule, setShowQuickSchedule] = useState(false);
+  const [clientReportConversationId, setClientReportConversationId] = useState<string | null>(null);
+  const showClientReport = !!selectedConversationId && clientReportConversationId === selectedConversationId;
+  useEffect(() => { setClientReportConversationId(null); }, [selectedConversationId]);
   useEffect(() => { setShowQuickSchedule(false); }, [selectedConversationId]);
   const [contactPopoverOpen, setContactPopoverOpen] = useState(false);
   const [kebabOpen, setKebabOpen] = useState(false);
@@ -5257,7 +5261,7 @@ export default function InboxPage() {
       if (event.key !== "Escape" || event.defaultPrevented) return;
 
       // Overlays consume Escape first; a second press then leaves the chat.
-      if (dispatchTarget || imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog || showQuickSchedule || internalNotesOpen) {
+      if (dispatchTarget || imagePreview || documentPreview || editingMessage || showDeleteModal || showBlockModal || showCloseModal || showNewConversationDialog || showSavedRepliesDialog || showEvaluationAvailabilityDialog || showQuickSchedule || showClientReport || internalNotesOpen) {
         return;
       }
       if (bulkFollowUpConfirmOpen) {
@@ -5295,6 +5299,7 @@ export default function InboxPage() {
     showSavedRepliesDialog,
     showEvaluationAvailabilityDialog,
     showQuickSchedule,
+    showClientReport,
     internalNotesOpen,
     dispatchTarget,
   ]);
@@ -7901,6 +7906,11 @@ export default function InboxPage() {
                   id: "profile", label: "Perfil & Funil", icon: FileText,
                   onClick: () => { setEvoSignal(0); setContactSidebarOpen(true); },
                 },
+                ...(["SBC", "Osasco", "SCS"].includes(selectedConversationUnit) ? [{
+                  id: "client-report", label: "Relatório do cliente", icon: FileText,
+                  disabled: !selectedConv.instanceId,
+                  onClick: () => setClientReportConversationId(selectedConv.id),
+                }] : []),
                 ...(!selectedConv.blockedAt && evaluationConfirmation?.visible ? [{
                   id: "confirmation",
                   label: evaluationConfirmation.alreadySent ? "Confirmação já enviada" : "Confirmar avaliação",
@@ -9488,6 +9498,16 @@ export default function InboxPage() {
         onConversationReady={handleNewConversationReady}
       />
       <DispatchDetails dispatch={currentDispatchDetails} onClose={() => setDispatchTarget(null)} />
+      {showClientReport && selectedConv?.instanceId && (
+        <ClientReportDialog
+          key={`report:${selectedConv.id}:${selectedConversationUnit}`}
+          conversationId={selectedConv.id}
+          instanceId={selectedConv.instanceId}
+          unit={selectedConversationUnit}
+          onClose={() => setClientReportConversationId(null)}
+          returnFocus={internalNotesTriggerRef}
+        />
+      )}
       {showQuickSchedule && selectedConv && canReplyToSelectedConversation && !selectedConv.blockedAt && (
         <PipelineStageSelector
           key={`schedule:${selectedConv.id}:${selectedConversationUnit}`}
