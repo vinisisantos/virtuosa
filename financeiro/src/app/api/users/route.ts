@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
-        const normalizedUnit = canonicalUserUnit({ role, permissions, unit }) || 'SCS';
+        const normalizedUnit = canonicalUserUnit({ role, permissions, unit }) || 'Osasco';
 
         const newUser = await prisma.user.create({
             data: {

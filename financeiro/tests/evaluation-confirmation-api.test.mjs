@@ -63,7 +63,7 @@ const { evaluationAssignedUserMarker } = await import('../src/lib/evaluation-sch
 const { getEvaluationScheduleUnitConfigByUnit } = await import('../src/lib/whatsapp/evaluation-schedule-confirmation-message.ts');
 const { GET, POST } = await import('../src/app/api/crm/evaluations/[id]/confirmation/route.ts');
 
-function setup(unit='SCS') {
+function setup(unit='Osasco') {
   const config=getEvaluationScheduleUnitConfigByUnit(unit);
   instance={id:config.instanceId,name:'synthetic-instance',unit,userId:'operator',status:'connected',members:[],assignmentMode:'OWNER'};
   appointment={id:'appointment',clientName:'Cliente Instagram',clientPhone:'(11) 90000-0001',unit,procedimento:'Avaliação',status:'pendente',startTime:new Date(Date.now()+86400000),notes:`[pipelineDealId:deal] ${evaluationAssignedUserMarker('operator')}`,profissional:{name:'Operador Teste'}};
@@ -74,15 +74,15 @@ function setup(unit='SCS') {
 }
 beforeEach(()=>setup());
 async function request(method='GET', options={}) {
-  const {role='VENDEDOR',unit=appointment?.unit||'SCS',permissions={crm:true},authenticated=true}=options;
+  const {role='VENDEDOR',unit=appointment?.unit||'Osasco',permissions={crm:true},authenticated=true}=options;
   const token=authenticated?await signToken({userId:'operator',name:'Operador Teste',email:'synthetic@example.invalid',role,unit,permissions}):null;
-  const req=new NextRequest('http://localhost/api/crm/evaluations/appointment/confirmation?unit=Osasco&targetInstanceId=forged',{
-    method,headers:{...(token?{Authorization:`Bearer ${token}`} : {}),'x-user-id':'forged','x-user-role':'ADMINISTRADOR','x-user-unit':'SCS','x-user-permissions':'{"admin":true}'},
+  const req=new NextRequest('http://localhost/api/crm/evaluations/appointment/confirmation?unit=SBC&targetInstanceId=forged',{
+    method,headers:{...(token?{Authorization:`Bearer ${token}`} : {}),'x-user-id':'forged','x-user-role':'ADMINISTRADOR','x-user-unit':'Osasco','x-user-permissions':'{"admin":true}'},
   });
   return (method==='GET'?GET:POST)(req,{params:Promise.resolve({id:'appointment'})});
 }
-test('consulta sem chat é somente leitura nas três unidades; origem Instagram não muda',async()=>{
-  for(const unit of ['SCS','SBC','Osasco']) {
+test('consulta sem chat é somente leitura nas duas unidades; origem Instagram não muda',async()=>{
+  for(const unit of ['SBC','Osasco']) {
     setup(unit);const before=structuredClone(client);const res=await request();assert.equal(res.status,200);
     const data=await res.json();assert.equal(data.visible,true);assert.equal(data.startsConversation,true);assert.equal(data.phone,'5511900000001');
     assert.equal(writes,0);assert.equal(sends.length,0);assert.deepEqual(client,before);
@@ -93,7 +93,7 @@ test('envio cria contato/chat na caixa da unidade, grava mensagem e não altera 
   assert.equal(data.status,'sent');assert.equal(data.conversationId,'new-chat');assert.equal(data.targetInstanceId,instance.id);
   assert.equal(contacts.length,1);assert.equal(conversations.length,1);assert.equal(conversations[0].instanceId,instance.id);
   assert.equal(sends.length,1);assert.equal(sends[0].number,'5511900000001');assert.equal(messages.length,1);assert.equal(messages[0].conversationId,'new-chat');
-  assert.equal(appointment.status,'pendente');assert.equal(client.source,'Instagram');assert.equal(deal.source,'Instagram');assert.equal(client.originUnit,'SCS');
+  assert.equal(appointment.status,'pendente');assert.equal(client.source,'Instagram');assert.equal(deal.source,'Instagram');assert.equal(client.originUnit,'Osasco');
   assert.equal(logs[0].result,'success');assert.equal(logs[0].triggerData.conversationId,'new-chat');
   assert.equal((await (await request('POST')).json()).status,'already_sent');assert.equal(sends.length,1);
 });
@@ -125,7 +125,7 @@ test('avaliação manual sem negócio também permite confirmação com telefone
 test('autenticação/CRM/unidade/atribuição e permissão de resposta são obrigatórios',async()=>{
   assert.equal((await request('POST',{authenticated:false})).status,401);
   assert.equal((await request('POST',{permissions:{}})).status,403);
-  assert.equal((await request('POST',{unit:'Osasco'})).status,403);
+  assert.equal((await request('POST',{unit:'SBC'})).status,403);
   appointment.notes='[pipelineDealId:deal]';appointment.profissional={name:'Outra responsável'};
   assert.equal((await request('POST')).status,403);
   assert.equal((await request('POST',{permissions:{crm:true,crmEvaluationsAll:true}})).status,200);
@@ -141,9 +141,9 @@ test('telefone inválido, negócio fora de agendado, status e janela impedem cri
   setup();appointment.startTime=new Date(Date.now()+8*86400000);assert.equal((await request('POST')).status,409);assert.equal(writes,0);
   assert.equal(sends.length,0);
 });
-test('gestão da unidade do cadastro permite confirmar avaliação alheia em Osasco, sem liberar SBC/SCS',async()=>{
-  const permissions={crm:true,crmEvaluationsManageUnit:true,crmEvaluationsViewUnit:true,unitSBC:true,unitSCS:true};
-  for(const unit of ['Osasco','SBC','SCS']) {
+test('gestão da unidade do cadastro permite confirmar avaliação alheia em Osasco, sem liberar SBC',async()=>{
+  const permissions={crm:true,crmEvaluationsManageUnit:true,crmEvaluationsViewUnit:true,unitSBC:true};
+  for(const unit of ['Osasco','SBC']) {
     setup(unit);appointment.notes='[pipelineDealId:deal]';appointment.profissional={name:'Outra responsável'};
     const options={unit:'Osasco',permissions};
     assert.equal((await request('GET',options)).status,unit==='Osasco'?200:403);

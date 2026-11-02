@@ -34,8 +34,8 @@ const WEBHOOK_EVENTS = [
   "CALL",
 ];
 const CALL_BLOCK_SETTINGS_KEY = "whatsapp_call_block_settings";
-const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
-const LEGACY_CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
+const CALL_BLOCK_UNITS = ["Osasco", "SBC", "Todas"];
+const LEGACY_CALL_BLOCK_UNITS = ["Osasco", "SBC"];
 const DEFAULT_CALL_BLOCK_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
 
@@ -462,11 +462,11 @@ export async function POST(req: Request) {
     // ── Unidade da instância (separação total por unidade) ──────────────────
     // A unidade NÃO vem mais do JWT de quem conecta — vem da seleção explícita
     // feita na tela, validada contra as unidades que o usuário pode operar.
-    // Assim o WhatsApp de SCS é criado como SCS mesmo que quem conecte seja um
+    // Assim o WhatsApp de SBC é criado como SBC mesmo que quem conecte seja um
     // admin com outra unidade no token. Sem isso, tudo caía na unidade errada.
-    const VISIBLE_UNITS = ["Osasco", "SBC", "SCS"];
+    const VISIBLE_UNITS = ["Osasco", "SBC"];
     const UNIT_PERMISSION_MAP: Record<string, string> = {
-      unitOsasco: "Osasco", unitSBC: "SBC", unitSCS: "SCS",
+      unitOsasco: "Osasco", unitSBC: "SBC",
     };
     const permitted = new Set<string>();
     if (isAdmin || userPermissions?.admin || userPermissions?.multiUnit) {
@@ -482,7 +482,7 @@ export async function POST(req: Request) {
     let instanceUnit: string | undefined = targetUser.unit || userUnit || undefined;
     if (requestedUnit) {
       if (!VISIBLE_UNITS.includes(requestedUnit)) {
-        return NextResponse.json({ error: "Unidade inválida (use Osasco, SBC ou SCS)" }, { status: 400 });
+        return NextResponse.json({ error: "Unidade inválida (use Osasco ou SBC)" }, { status: 400 });
       }
       if (!permitted.has(requestedUnit)) {
         return NextResponse.json({ error: "Você não tem permissão para conectar nesta unidade" }, { status: 403 });

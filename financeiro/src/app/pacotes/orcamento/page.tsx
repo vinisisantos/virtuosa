@@ -68,7 +68,7 @@ interface DuplicateResponse {
 const EMPTY_FORM: ClientForm = {
   name: '', email: '', phone: '', birthdate: '', cpf: '', rg: '',
   gender: '', profissao: '', estadoCivil: '', source: '', notes: '', tags: '',
-  unit: 'SCS', isActive: true,
+  unit: 'Osasco', isActive: true,
   cep: '', pais: 'Brasil', estado: '', cidade: '', bairro: '', rua: '', numero: '', complemento: '',
   closingDate: '',
 };
@@ -178,7 +178,7 @@ function parseQuoteLines(value: string | null): OrcLine[] {
 
 export default function CadastroClientePage() {
   const { units: UNITS, globalUnit } = useGlobalUnit();
-  const [form, setForm] = useState<ClientForm>({ ...EMPTY_FORM, unit: globalUnit || 'SCS' });
+  const [form, setForm] = useState<ClientForm>({ ...EMPTY_FORM, unit: globalUnit || 'Osasco' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
@@ -305,7 +305,7 @@ export default function CadastroClientePage() {
   };
 
   const selectNameSuggestion = (c: ClientSuggestion) => {
-    setForm(clientToForm(c, UNITS[0] || 'SCS'));
+    setForm(clientToForm(c, UNITS[0] || 'Osasco'));
     setEditingId(c.id);
     setShowNameSuggestions(false);
     setErrors({});
@@ -419,7 +419,7 @@ export default function CadastroClientePage() {
       
       if (res.ok) {
         toast(editingId ? 'Cliente atualizado!' : 'Orçamento cadastrado!', 'success');
-        setForm({ ...EMPTY_FORM, unit: globalUnit || 'SCS' }); setEditingId(null); setShowForm(false); setErrors({}); setTouched({});
+        setForm({ ...EMPTY_FORM, unit: globalUnit || 'Osasco' }); setEditingId(null); setShowForm(false); setErrors({}); setTouched({});
         setOrcLines([{ name: '', quantity: 1, unitPrice: '', discount: '' }]);
         setPaymentMethod(''); setInstallments(1);
         fetchClients();
@@ -445,7 +445,7 @@ export default function CadastroClientePage() {
   };
 
   const handleEdit = (client: Client) => {
-    setForm(clientToForm(client, 'SCS'));
+    setForm(clientToForm(client, 'Osasco'));
     setEditingId(client.id);
     // Restore saved procedures
     try {
@@ -494,7 +494,7 @@ export default function CadastroClientePage() {
           totalSessions,
           completedSessions: 0,
           status: 'ativo',
-          unit: client.unit || 'SCS',
+          unit: client.unit || 'Osasco',
         }),
       });
 
@@ -548,7 +548,7 @@ export default function CadastroClientePage() {
               <p style={{ margin: '4px 0 0', fontSize: '0.82rem', color: 'var(--text-muted)' }}>Cadastre e gerencie as informações completas dos clientes</p>
             </div>
             {!showForm && (
-              <button data-tour="orc-novo-cliente" onClick={() => { setForm({ ...EMPTY_FORM, unit: globalUnit || 'SCS' }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '11px 20px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', minHeight: 44 }}>
+              <button data-tour="orc-novo-cliente" onClick={() => { setForm({ ...EMPTY_FORM, unit: globalUnit || 'Osasco' }); setEditingId(null); setShowForm(true); setErrors({}); setTouched({}); }} style={{ padding: '11px 20px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg, var(--primary), #ff4db1)', color: '#fff', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 7, whiteSpace: 'nowrap', minHeight: 44 }}>
                 <span className="material-symbols-outlined" style={{ fontSize: 20 }}>add</span> Novo Cliente
               </button>
             )}
@@ -998,7 +998,7 @@ export default function CadastroClientePage() {
                 <span className="material-symbols-outlined" style={{ fontSize: 20 }}>{saving ? 'hourglass_top' : 'save'}</span>
                 {saving ? 'Salvando...' : editingId ? 'Atualizar Cliente' : 'Cadastrar Cliente'}
               </button>
-              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ ...EMPTY_FORM, unit: globalUnit || 'SCS' }); setErrors({}); setTouched({}); }}
+              <button onClick={() => { setShowForm(false); setEditingId(null); setForm({ ...EMPTY_FORM, unit: globalUnit || 'Osasco' }); setErrors({}); setTouched({}); }}
                 style={{ padding: '14px', borderRadius: 14, border: '1px solid var(--border)', background: 'var(--card-bg)', color: 'var(--text-muted)', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.88rem', minHeight: 48 }}>
                 Cancelar
               </button>

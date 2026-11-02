@@ -62,7 +62,7 @@ export async function GET(req: Request) {
       }),
       prisma.campaign.findMany({
         where: {
-          unit: { in: ["Osasco", "SBC", "SCS"] },
+          unit: { in: ["Osasco", "SBC"] },
           status: { not: "encerrada" },
         },
         select: { name: true, unit: true },

@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db';
  * Picks the active operator who was last assigned the longest ago (or never).
  * Supports weighted distribution via the `weight` field.
  */
-export async function assignLeadToOperator(unit: string = 'SCS'): Promise<{
+export async function assignLeadToOperator(unit: string = 'Osasco'): Promise<{
   userId: string;
   userName: string;
 } | null> {

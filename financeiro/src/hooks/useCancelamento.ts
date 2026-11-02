@@ -33,7 +33,7 @@ export function useCancelamento() {
   const [scenario, setScenario] = useState<'sem-multa' | 'com-multa'>('sem-multa');
   const [clientName, setClientName] = useState('');
   const { globalUnit } = useGlobalUnit();
-  const unidade = globalUnit || 'SCS';
+  const unidade = globalUnit || 'Osasco';
   const [showClearModal, setShowClearModal] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
   const resultRef = useRef<HTMLDivElement>(null);

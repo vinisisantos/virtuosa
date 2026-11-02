@@ -85,12 +85,12 @@ const pipeline = await import('../src/app/api/pipeline/route.ts');
 
 beforeEach(() => {
   Object.assign(state, {
-    unit: 'SCS', existingAppointment: true, writes: [], syncs: [], failCommit: false, enrichDeal: false,
-    appointment: { id: 'appointment', unit: 'SCS', clientName: '(11) 99999-9999', clientPhone: '5511999999999',
+    unit: 'Osasco', existingAppointment: true, writes: [], syncs: [], failCommit: false, enrichDeal: false,
+    appointment: { id: 'appointment', unit: 'Osasco', clientName: '(11) 99999-9999', clientPhone: '5511999999999',
       procedimento: 'Avaliação', evaluationProcedure: null, status: 'pendente', profissionalId: 'professional',
       notes: '[assignedUserId:operator]', profissional: { name: 'Operadora' },
       startTime: new Date('2026-10-20T15:00:00Z'), endTime: new Date('2026-10-20T16:00:00Z'), createdAt: new Date(0) },
-    deal: { id: 'deal', clientId: 'client', unit: 'SCS', clientName: '(11) 99999-9999', stage: 'em_atendimento', value: 0 },
+    deal: { id: 'deal', clientId: 'client', unit: 'Osasco', clientName: '(11) 99999-9999', stage: 'em_atendimento', value: 0 },
   });
 });
 function request(method, body) {
@@ -106,7 +106,7 @@ async function assertNameError(response) {
 }
 
 test('Agenda POST e Pipeline POST rejeitam telefone antes de criar cliente ou agendamento, em todas as unidades', async () => {
-  for (const unit of ['Osasco', 'SBC', 'SCS']) {
+  for (const unit of ['Osasco', 'SBC']) {
     state.unit = unit;
     await assertNameError(await agenda.POST(request('POST', { ...state.appointment, clientName: '5511999999999', profissionalId: 'user-Teste' })));
     await assertNameError(await pipeline.POST(request('POST', { clientName: '5511999999999', evaluationStartTime: nextDate })));
@@ -114,7 +114,7 @@ test('Agenda POST e Pipeline POST rejeitam telefone antes de criar cliente ou ag
 });
 
 test('agendamento novo válido normaliza o nome sem exigir sobrenome', async () => {
-  const response = await agenda.POST(request('POST', { ...state.appointment, clientName: '  Érica  ' }));
+  const response = await agenda.POST(request('POST', { ...state.appointment, evaluationProcedure: 'Botox', clientName: '  Érica  ' }));
   assert.equal(response.status, 200);
   assert.equal((await response.json()).clientName, 'Érica');
 });
@@ -146,7 +146,7 @@ test('correção em Agenda e Avaliações sincroniza somente deal e cliente liga
     state.appointment.clientName = '(11) 99999-9999'; state.syncs = [];
     const response = await handler(request(method, { id: 'appointment', [nameKey]: 'João da Silva', startTime: nextDate }));
     assert.equal(response.status, 200);
-    assert.deepEqual(state.syncs.map(item => item.where), [{ id: 'deal', unit: 'SCS' }, { id: 'client', unit: 'SCS' }]);
+    assert.deepEqual(state.syncs.map(item => item.where), [{ id: 'deal', unit: 'Osasco' }, { id: 'client', unit: 'Osasco' }]);
   }
 });
 
@@ -164,7 +164,7 @@ test('Pipeline PUT salva correção e avaliação na mesma transação e desfaz 
   assert.equal(response.status, 200);
   assert.equal(state.deal.clientName, 'Maria da Conceição');
   assert.equal(state.appointment.clientName, 'Maria da Conceição');
-  assert.deepEqual(state.syncs.find(item => item.model === 'client').where, { id: 'client', unit: 'SCS' });
+  assert.deepEqual(state.syncs.find(item => item.model === 'client').where, { id: 'client', unit: 'Osasco' });
   state.deal.clientName = '(11) 99999-9999'; state.appointment.clientName = '(11) 99999-9999';
   state.writes = []; state.syncs = []; state.failCommit = true;
   assert.equal((await pipeline.PUT(request('PUT', body))).status, 500);
@@ -173,8 +173,8 @@ test('Pipeline PUT salva correção e avaliação na mesma transação e desfaz 
   assert.deepEqual(state.writes, []);
 });
 
-test('Pipeline agenda uma nova avaliação com nome corrigido nas três unidades', async () => {
-  for (const unit of ['Osasco', 'SBC', 'SCS']) {
+test('Pipeline agenda uma nova avaliação com nome corrigido nas duas unidades', async () => {
+  for (const unit of ['Osasco', 'SBC']) {
     state.unit = unit; state.deal.unit = unit; state.appointment.unit = unit;
     state.deal.clientName = '(11) 99999-9999'; state.existingAppointment = false;
     const response = await pipeline.PUT(request('PUT', {

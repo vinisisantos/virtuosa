@@ -9,7 +9,7 @@ interface Props {
   selectedYear: number;
 }
 
-const UNIT_COLORS: Record<string, string> = {  Osasco: '#10b981', SBC: '#f59e0b', SCS: '#e600a0' };
+const UNIT_COLORS: Record<string, string> = {  Osasco: '#10b981', SBC: '#f59e0b' };
 
 export function UnitComparisonView({ logs, selectedMonth, selectedYear }: Props) {
   const monthLogs = logs.filter(l => {
@@ -19,7 +19,7 @@ export function UnitComparisonView({ logs, selectedMonth, selectedYear }: Props)
   });
 
   const unitData = UNITS.map(unit => {
-    const unitLogs = monthLogs.filter(l => (l.unit || 'SCS') === unit);
+    const unitLogs = monthLogs.filter(l => l.unit === unit);
     const sales = unitLogs.filter(isOperationalSale);
     const receivedRevenues = unitLogs.filter(isRevenueReceived);
     const costs = unitLogs.filter(l => l.type === 'cost');

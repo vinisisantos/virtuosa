@@ -26,7 +26,7 @@ export default function ProfilePage() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
-  const [unit, setUnit] = useState('SCS');
+  const [unit, setUnit] = useState('Osasco');
   const [role, setRole] = useState('VENDEDOR');
   const [createdAt, setCreatedAt] = useState('');
   const [permissionsCount, setPermissionsCount] = useState(0);
@@ -44,7 +44,7 @@ export default function ProfilePage() {
         setName(user.name || '');
         setEmail(user.email || '');
         setPhone(user.phone || '');
-        setUnit(user.unit || 'SCS');
+        setUnit(user.unit || 'Osasco');
         setRole(user.role || 'VENDEDOR');
         setCreatedAt(user.createdAt || '');
         const perms = user.permissions || {};

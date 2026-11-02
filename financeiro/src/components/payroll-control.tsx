@@ -85,7 +85,7 @@ interface PayrollMutationScope {
   unit: string;
 }
 
-const UNITS = ['Osasco', 'SBC', 'SCS'];
+const UNITS = ['Osasco', 'SBC'];
 const ADJUSTMENT_ORDER: PayrollAdjustmentKind[] = ['absence', 'award', 'transport', 'advance', 'discount', 'addition', 'other'];
 type PayrollStatusFilter = 'all' | 'pending' | 'paid';
 type PayrollDetailTab = 'summary' | 'adjustments' | 'vacation';

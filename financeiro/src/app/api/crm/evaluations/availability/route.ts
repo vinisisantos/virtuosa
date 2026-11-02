@@ -16,7 +16,7 @@ import {
   unitAccessDeniedResponse,
 } from "@/lib/unit-guard";
 
-const ACTIVE_UNITS = new Set(["Osasco", "SBC", "SCS"]);
+const ACTIVE_UNITS = new Set(["Osasco", "SBC"]);
 const AVAILABILITY_PERIODS = new Set<EvaluationAvailabilityPeriod>([
   "all",
   "morning",

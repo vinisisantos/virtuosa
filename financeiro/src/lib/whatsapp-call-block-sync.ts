@@ -19,7 +19,7 @@ const SETTINGS_REQUEST_TIMEOUT_MS = 3_000;
 const VERSION_REQUEST_TIMEOUT_MS = 1_000;
 const DEFAULT_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
-const ALLOWED_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
+const ALLOWED_UNITS = ["Osasco", "SBC", "Todas"];
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",

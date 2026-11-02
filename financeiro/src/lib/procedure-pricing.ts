@@ -55,7 +55,7 @@ const operationLimits = {
   duracaoHoras: 24, duracaoMinutos: 59,
 } as const;
 const numericFields = [...monetaryFields, ...percentFields, ...Object.keys(operationLimits) as (keyof typeof operationLimits)[]];
-const units = ['Osasco', 'SBC', 'SCS'];
+const units = ['Osasco', 'SBC'];
 const MAX_MONEY = 1_000_000_000;
 const MAX_RESULT = 1_000_000_000_000;
 
@@ -105,7 +105,7 @@ export function validateState(value: unknown): string[] {
     check(p.preparationMinutes, 'Tempo de preparação', 1440, true);
     check(p.installments, 'Parcelas', 18, true);
     if (p.installments === 0) errors.push('Informe entre 1 e 18 parcelas.');
-    if (typeof p.unit !== 'string' || (p.unit !== '' && !units.includes(p.unit))) errors.push('Selecione Osasco, SBC ou SCS.');
+    if (typeof p.unit !== 'string' || (p.unit !== '' && !units.includes(p.unit))) errors.push('Selecione Osasco ou SBC.');
     if (typeof p.referenceMonth !== 'string' || (p.referenceMonth !== '' && !/^\d{4}-(0[1-9]|1[0-2])$/.test(p.referenceMonth))) errors.push('Mês de referência inválido. Use AAAA-MM.');
     if (typeof p.paymentLabel !== 'string' || p.paymentLabel.length > 200) errors.push('Identificação da taxa de pagamento inválida.');
     for (const field of ['marketLow', 'marketHigh']) if (p[field] !== undefined) check(p[field], 'Preço de referência do mercado');

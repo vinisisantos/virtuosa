@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const unit = params.get('unit');
   const guard = requireUnitGuard(req, { requestedUnit: unit });
   if (guard instanceof NextResponse) return guard;
-  if (!unit || !['SBC', 'Osasco', 'SCS'].includes(unit) || guard.unitFilter !== unit) {
+  if (!unit || !['SBC', 'Osasco'].includes(unit) || guard.unitFilter !== unit) {
     return NextResponse.json({ error: 'Selecione uma unidade autorizada.' }, { status: 403 });
   }
   const conversationId = params.get('conversationId');

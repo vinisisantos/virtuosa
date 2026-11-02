@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
   const content = template
     .replace(/\{\{NOME\}\}/g, body.clientName || '')
     .replace(/\{\{CPF\}\}/g, body.clientCpf || '')
-    .replace(/\{\{UNIDADE\}\}/g, requestedUnit || 'SCS')
+    .replace(/\{\{UNIDADE\}\}/g, requestedUnit || 'Osasco')
     .replace(/\{\{PROCEDIMENTO\}\}/g, body.procedimento || '')
     .replace(/\{\{VALOR\}\}/g, body.valor || '')
     .replace(/\{\{PAGAMENTO\}\}/g, body.pagamento || '')
@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
       templateName: body.templateName,
       content,
       unit: user.isAdmin
-        ? (requestedUnit || 'SCS')
+        ? (requestedUnit || 'Osasco')
         : (canonicalContractUnit(user.unit) || user.unit),
     },
   });

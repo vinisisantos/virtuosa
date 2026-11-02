@@ -98,7 +98,7 @@ export async function POST(req: NextRequest) {
           content,
           pdfContent: pdfContent || null,
           unit: user.isAdmin
-            ? (canonicalContractUnit(unit) || 'SCS')
+            ? (canonicalContractUnit(unit) || 'Osasco')
             : (canonicalContractUnit(user.unit) || user.unit),
           signingToken,
           status: 'pendente',

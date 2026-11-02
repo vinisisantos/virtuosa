@@ -48,6 +48,7 @@ export interface UnitGuardResult {
    * Always uses JWT unit for non-admins.
    * Admins can specify a target unit.
    */
+  financialBackupUnit: () => string;
   createUnit: (requestedUnit?: string | null) => string;
 }
 
@@ -81,6 +82,10 @@ function permittedUnitsFor(
   }
   return [...set];
 }
+
+// Chave histórica do financeiro geral do administrador, com lançamentos de todas as unidades.
+// Não indica a filial SCS: mudar ou apagar esta linha troca a base financeira usada pelo admin.
+const GLOBAL_FINANCIAL_BACKUP_UNIT = 'SCS';
 
 export function getUnitGuard(
   req: NextRequest,
@@ -141,8 +146,12 @@ export function getUnitGuard(
     ) return requestedUnit;
     if (requestedUnit && permitted.includes(requestedUnit)) return requestedUnit;
     if (ACTIVE_UNITS.includes(userUnit as (typeof ACTIVE_UNITS)[number])) return userUnit;
-    return 'SCS';
+    return 'Osasco';
   };
+
+  const financialBackupUnit = (): string => (
+    ACTIVE_UNITS.includes(userUnit as (typeof ACTIVE_UNITS)[number]) ? userUnit : GLOBAL_FINANCIAL_BACKUP_UNIT
+  );
 
   return {
     userUnit: userUnit || '',
@@ -154,6 +163,7 @@ export function getUnitGuard(
     unitFilter,
     enforceUnit,
     createUnit,
+    financialBackupUnit,
   };
 }
 

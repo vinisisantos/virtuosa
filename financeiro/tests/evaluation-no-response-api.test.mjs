@@ -28,8 +28,8 @@ const { getEvaluationScheduleUnitConfigByUnit } = await import('../src/lib/whats
 const date = new Date('2026-09-07T15:00:00Z');
 beforeEach(() => {
   reads = 0; writes = 0; rawQueries=[]; lastConversationWhere=null;
-  record = {...noResponseAutomationData('SCS', date),updatedAt:date};
-  instance={id:getEvaluationScheduleUnitConfigByUnit('SCS').instanceId,unit:'SCS',userId:'synthetic',status:'connected',members:[],assignmentMode:'OWNER'};
+  record = {...noResponseAutomationData('Osasco', date),updatedAt:date};
+  instance={id:getEvaluationScheduleUnitConfigByUnit('Osasco').instanceId,unit:'Osasco',userId:'synthetic',status:'connected',members:[],assignmentMode:'OWNER'};
 });
 async function request(method, body, role = 'ADMINISTRADOR') {
   const token = role ? await signToken({ userId: 'synthetic', name: 'Teste', email: 'test@example.invalid', role }) : '';
@@ -46,12 +46,12 @@ test('sem sessão e sem perfil administrativo não lê nem altera configuração
 });
 test('administrador edita prazo/mensagem sem mover unidade ou retroagir ativação', async () => {
   const id = record.id;
-  const res = await PUT(await request('PUT', { id, unit: 'Osasco', triggerType: 'new_message', name: 'Outro nome', createdBy: 'Outro',
+  const res = await PUT(await request('PUT', { id, unit: 'SBC', triggerType: 'new_message', name: 'Outro nome', createdBy: 'Outro',
     triggerConfig: { delayHours: 3, activatedAt: '2000-01-01', instanceIds: ['outra'] },
     steps: [{ type: 'send_message', config: { message: 'Mensagem editada' } }], isActive: true }));
   assert.equal(res.status, 200);
   const a = (await res.json()).automation;
-  assert.equal(a.id, id); assert.equal(a.unit, 'SCS'); assert.equal(a.name, 'Lembrete sem resposta — SCS');
+  assert.equal(a.id, id); assert.equal(a.unit, 'Osasco'); assert.equal(a.name, 'Lembrete sem resposta — Osasco');
   assert.equal(a.triggerConfig.activatedAt, date.toISOString()); assert.equal(a.triggerConfig.delayHours, 3);
   assert.equal(a.steps[0].config.message, 'Mensagem editada'); assert.equal(writes, 1);
 });
@@ -68,7 +68,7 @@ test('reativação reinicia marco e tipo nativo não pode ser duplicado/excluíd
   assert.equal((await DELETE(await request('DELETE'))).status, 400);
   assert.equal(writes, 1);
 });
-async function sendRequest({role='VENDEDOR',unit='SCS',id='chat',token=true}={}) {
+async function sendRequest({role='VENDEDOR',unit='Osasco',id='chat',token=true}={}) {
   const auth = token ? await signToken({userId:'synthetic',name:'Operador',email:'test@example.invalid',role,unit}) : '';
   return sendReminder(new NextRequest(`http://localhost/api/whatsapp/conversations/${id}/evaluation-no-response?targetInstanceId=${instance.id}&unit=${unit}`,{
     method:'POST',headers:{...(auth?{Authorization:`Bearer ${auth}`} : {}),'x-user-id':'forged-admin','x-user-role':'ADMINISTRADOR'},
@@ -84,7 +84,7 @@ test('consulta e unidade divergente não podem enviar, mesmo sendo proprietário
   instance.members=[{userId:'synthetic',role:'VIEWER',isActive:true}];
   assert.equal((await sendRequest()).status,403);
   instance.members=[];
-  assert.equal((await sendRequest({unit:'Osasco'})).status,403);
+  assert.equal((await sendRequest({unit:'SBC'})).status,403);
   assert.equal(rawQueries.length,0);assert.equal(writes,0);
 });
 test('membro AGENT usa apenas o chat selecionado e recebe erro quando não elegível',async t=>{

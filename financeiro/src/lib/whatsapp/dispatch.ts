@@ -1,5 +1,5 @@
 export type DispatchSource = "inbox_bulk" | "follow_up_bulk";
-export type DispatchUnit = "Osasco" | "SBC" | "SCS";
+export type DispatchUnit = "Osasco" | "SBC";
 export type DispatchMetadata = {
   version: 1;
   unit: DispatchUnit;
@@ -24,7 +24,7 @@ function object(value: unknown): Record<string, unknown> | null {
 function resolveDispatchUnit(instanceUnit?: string | null, contactUnit?: string | null): DispatchUnit | null {
   // A unidade escolhida na interface não pode substituir a unidade real da caixa/contato.
   const unit = instanceUnit === "Todas" ? contactUnit : instanceUnit;
-  return unit === "Osasco" || unit === "SBC" || unit === "SCS" ? unit : null;
+  return unit === "Osasco" || unit === "SBC" ? unit : null;
 }
 
 export function dispatchUnitEnabled(instanceUnit?: string | null, contactUnit?: string | null) {
@@ -51,7 +51,7 @@ export function dispatchMetadataForSend(value: unknown, instanceUnit?: string | 
 
 export function readDispatchMetadata(value: unknown): DispatchMetadata | null {
   const data = object(value);
-  if (!data || data.version !== 1 || !["Osasco", "SBC", "SCS"].includes(String(data.unit))) return null;
+  if (!data || data.version !== 1 || !["Osasco", "SBC"].includes(String(data.unit))) return null;
   const parsed = parseDispatchRequest({ ...data, size: 1 });
   return parsed ? { version: 1, unit: data.unit as DispatchUnit, ...parsed } : null;
 }

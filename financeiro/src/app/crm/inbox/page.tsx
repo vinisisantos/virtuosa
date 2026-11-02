@@ -7882,7 +7882,7 @@ export default function InboxPage() {
               closed={["resolved", "closed"].includes(selectedConv.status)}
               scheduled={!!selectedConv.scheduledEvaluation}
               canSchedule={!selectedConv.blockedAt && canReplyToSelectedConversation}
-              scheduleDisabled={!["SCS", "SBC", "Osasco"].includes(selectedConversationUnit)}
+              scheduleDisabled={!["SBC", "Osasco"].includes(selectedConversationUnit)}
               onSchedule={() => setShowQuickSchedule(true)}
               onBack={() => leaveConversation(archivedView ? { archived: "1" } : undefined)}
               onProfile={() => { setEvoSignal(0); setContactSidebarOpen(true); }}
@@ -7906,7 +7906,7 @@ export default function InboxPage() {
                   id: "profile", label: "Perfil & Funil", icon: FileText,
                   onClick: () => { setEvoSignal(0); setContactSidebarOpen(true); },
                 },
-                ...(["SBC", "Osasco", "SCS"].includes(selectedConversationUnit) ? [{
+                ...(["SBC", "Osasco"].includes(selectedConversationUnit) ? [{
                   id: "client-report", label: "Relatório do cliente", icon: FileText,
                   disabled: !selectedConv.instanceId,
                   onClick: () => setClientReportConversationId(selectedConv.id),

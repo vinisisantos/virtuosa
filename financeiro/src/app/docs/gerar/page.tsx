@@ -265,15 +265,6 @@ const CLINIC_DETAILS: Record<string, Record<string, string>> = {
     uf: 'SP',
     cep: '06010-130',
   },
-  SCS: {
-    razao_social_contratante: 'CLINICA DE ESTETICA ALMEIDA RIBEIRO LTDA',
-    cnpj_contratante: '63.246.385/0001-91',
-    endereco_contratante: 'Av. Vital Brasil Filho',
-    numero: '143',
-    cidade: 'São Caetano do Sul',
-    uf: 'SP',
-    cep: '09541-130',
-  },
   Barueri: {
     razao_social_contratante: 'CLINICA DE ESTETICA FACIAL E CORPORAL LTDA',
     cnpj_contratante: '63.676.273/0001-70',

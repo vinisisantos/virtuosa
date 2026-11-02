@@ -117,15 +117,14 @@ const STEP_TYPES = [
   { key: "send_notification", label: "Notificar Equipe", icon: Phone, color: "text-emerald-700 bg-emerald-400/10 dark:text-emerald-400" },
 ];
 
-const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
+const CALL_BLOCK_UNITS = ["Osasco", "SBC", "Todas"];
 const AUTOMATION_UNIT_CATEGORIES = [
   { key: "general", label: "Geral", description: "Configurações e automações compartilhadas entre unidades." },
   { key: "Osasco", label: "Osasco", description: "Automações exclusivas da unidade de Osasco." },
   { key: "SBC", label: "SBC", description: "Automações exclusivas da unidade de São Bernardo." },
-  { key: "SCS", label: "SCS", description: "Automações exclusivas da unidade de São Caetano." },
 ] as const;
 type AutomationUnitCategory = (typeof AUTOMATION_UNIT_CATEGORIES)[number]["key"];
-const AUTOMATION_UNIT_NAMES = new Set<AutomationUnitCategory>(["Osasco", "SBC", "SCS"]);
+const AUTOMATION_UNIT_NAMES = new Set<AutomationUnitCategory>(["Osasco", "SBC"]);
 const DEFAULT_CALL_BLOCK_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
 

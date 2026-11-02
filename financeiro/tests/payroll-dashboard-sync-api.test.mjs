@@ -89,12 +89,12 @@ test('nega outra unidade sem consultar o banco', async () => {
 test('permite unidade adicional explicitamente concedida e filtra no banco', async () => {
   imports = [];
   const response = await GET(request({
-    query: '?unit=SCS',
-    permissions: { financeiro: true, unitSCS: true },
+    query: '?unit=SBC',
+    permissions: { financeiro: true, unitSBC: true },
   }));
 
   assert.equal(response.status, 200);
-  assert.deepEqual(calls[0].where, { unit: 'SCS' });
+  assert.deepEqual(calls[0].where, { unit: 'SBC' });
 });
 
 test('admin pode consultar todas ou uma unidade específica', async () => {

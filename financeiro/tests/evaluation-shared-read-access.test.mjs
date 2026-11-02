@@ -25,7 +25,7 @@ globalThis.fetch = async () => { throw new Error('Network forbidden'); };
 const state = globalThis.sharedEvaluationAccess = {};
 const copy = value => structuredClone(value);
 const now = new Date();
-const professionals = ['Osasco', 'SBC', 'SCS'].flatMap(unit => ['own', 'other'].map(owner => ({
+const professionals = ['Osasco', 'SBC'].flatMap(unit => ['own', 'other'].map(owner => ({
   id: `${unit}-${owner}`, name: owner === 'own' ? 'Pessoa Operadora' : 'Outra Responsável', unit, isActive: true,
 })));
 function appointment(unit, owner) {
@@ -63,7 +63,7 @@ const { PUT, DELETE } = await import('../src/app/api/agenda/route.ts');
 const { POST: checkin } = await import('../src/app/api/checkin/route.ts');
 const { canViewAllEvaluations, canManageAllEvaluations, enforceSharedEvaluationWriteAccess } = await import('../src/lib/evaluation-access.ts');
 beforeEach(() => {
-  Object.assign(state, { records: ['Osasco', 'SBC', 'SCS'].flatMap(unit => ['own', 'other'].map(owner => appointment(unit, owner))),
+  Object.assign(state, { records: ['Osasco', 'SBC'].flatMap(unit => ['own', 'other'].map(owner => appointment(unit, owner))),
     reads: 0, writes: 0, audits: 0, professionalQueries: 0, appointmentQueries: 0, beforeTransaction: null });
 });
 function request(method = 'GET', body, { permissions = { crm: true, crmEvaluationsViewUnit: true }, unit = 'Osasco', query = '', authenticated = true, name = 'Pessoa Operadora' } = {}) {
@@ -93,14 +93,16 @@ test('sem a nova permissão a consulta permanece pessoal e exige sessão', async
   assert.equal((await GET(request('GET', null, { authenticated: false }))).status, 401);
 });
 test('permissões prévias de outras unidades não recebem compartilhamento nem gestão', async () => {
-  const permissions = { crm: true, crmEvaluationsViewUnit: true, unitSBC: true, unitSCS: true };
-  for (const unit of ['SBC', 'SCS']) {
+  const permissions = { crm: true, crmEvaluationsViewUnit: true, unitSBC: true };
+  for (const unit of ['SBC']) {
     const data = await (await GET(request('GET', null, { unit, permissions }))).json();
     assert.equal(data.unit, unit); assert.equal(data.canViewAll, false); assert.equal(data.canManageAll, false);
     assert.deepEqual(data.evaluations.map(item => item.id), [`${unit}-own`]);
   }
   const fallback = await (await GET(request('GET', null, { unit: 'SBC' }))).json();
   assert.equal(fallback.unit, 'Osasco'); assert.ok(fallback.evaluations.every(item => item.unit === 'Osasco'));
+  const retired = await (await GET(request('GET', null, { unit: 'SCS', permissions: { crm: true, crmEvaluationsViewUnit: true, unitSCS: true } }))).json();
+  assert.equal(retired.unit, 'Osasco');
 });
 test('filtro de responsável e de unidade não pode buscar registros fora do conjunto permitido', async () => {
   const data = await (await GET(request('GET', null, { query: '&profissionalId=Osasco-other' }))).json();
@@ -152,7 +154,7 @@ test('gestão existente e acesso explícito à Agenda geral permanecem intactos'
   assert.doesNotThrow(() => enforceSharedEvaluationWriteAccess({ permissions: { crmEvaluationsViewUnit: true, agenda: true } }, appointment('Osasco', 'other')));
 });
 
-const unitManagerPermissions = { crm: true, crmEvaluationsManageUnit: true, crmEvaluationsViewUnit: true, unitSBC: true, unitSCS: true };
+const unitManagerPermissions = { crm: true, crmEvaluationsManageUnit: true, crmEvaluationsViewUnit: true, unitSBC: true };
 test('gestão da unidade do cadastro libera edição alheia somente em Osasco', async () => {
   const data = await (await GET(request('GET', null, { permissions: unitManagerPermissions }))).json();
   assert.equal(data.canViewAll, true); assert.equal(data.canManageAll, true);
@@ -164,8 +166,8 @@ test('gestão da unidade do cadastro libera edição alheia somente em Osasco', 
   assert.equal((await DELETE(request('DELETE', null, { permissions: unitManagerPermissions, query: '&id=Osasco-other' }))).status, 403);
   assert.equal(state.writes, writesBeforeDelete, 'edição restrita não concede exclusão alheia');
 });
-test('gestão restrita não amplia consulta nem escrita de SBC/SCS mesmo com filtro forjado', async () => {
-  for (const unit of ['SBC', 'SCS']) {
+test('gestão restrita não amplia consulta nem escrita de SBC mesmo com filtro forjado', async () => {
+  for (const unit of ['SBC']) {
     const data = await (await GET(request('GET', null, { unit, permissions: unitManagerPermissions }))).json();
     assert.equal(data.canViewAll, false); assert.equal(data.canManageAll, false);
     assert.deepEqual(data.evaluations.map(item => item.id), [`${unit}-own`]);

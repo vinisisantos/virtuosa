@@ -84,18 +84,15 @@ test("identifica a nova campanha facial de SBC como conta secundária", () => {
   assert.equal(campaignAccountOriginFromTrackId(SBC_FACIAL_SECONDARY_TRACK_ID, "SCS"), null);
 });
 
-test("mantém o código compartilhado como conta secundária em SBC e SCS", () => {
+test("mantém o código compartilhado como conta secundária em SBC e não em SCS", () => {
   assert.equal(
     campaignAccountOriginFromTrackId(SHARED_GLUTEO_PERFEITO_SECONDARY_TRACK_ID, "SBC"),
     "secondary",
   );
-  assert.equal(
-    campaignAccountOriginFromTrackId(SHARED_GLUTEO_PERFEITO_SECONDARY_TRACK_ID, "SCS"),
-    "secondary",
-  );
+  assert.equal(campaignAccountOriginFromTrackId(SHARED_GLUTEO_PERFEITO_SECONDARY_TRACK_ID, "SCS"), null);
 });
 
-test("restringe SCS ao único código secundário compartilhado", () => {
+test("SCS encerrada não classifica códigos secundários antigos", () => {
   for (const trackId of FORMER_SCS_SECONDARY_TRACK_IDS) {
     assert.equal(campaignAccountOriginFromTrackId(trackId, "SCS"), null);
   }

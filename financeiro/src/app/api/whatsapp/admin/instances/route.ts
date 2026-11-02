@@ -96,7 +96,7 @@ async function getConnectionState(instanceName: string, provider = 'evolution') 
   }
 }
 
-// GET /api/whatsapp/admin/instances?unit=SCS&includeInactive=true
+// GET /api/whatsapp/admin/instances?unit=Osasco&includeInactive=true
 export async function GET(req: Request) {
   try {
     const access = readAccess(req);
@@ -534,7 +534,7 @@ export async function PATCH(req: Request) {
           where: { id },
           data: {
             userId: owner?.id || null,
-            ...(owner?.unit && ['Osasco', 'SBC', 'SCS'].includes(owner.unit) ? { unit: owner.unit } : {}),
+            ...(owner?.unit && ['Osasco', 'SBC'].includes(owner.unit) ? { unit: owner.unit } : {}),
           },
           select: { id: true, name: true, unit: true, userId: true },
         });
@@ -560,9 +560,9 @@ export async function PATCH(req: Request) {
     }
 
     // "Todas" = WhatsApp compartilhado, visível em todas as unidades.
-    const ALLOWED_UNITS = ['Osasco', 'SBC', 'SCS', 'Todas'];
+    const ALLOWED_UNITS = ['Osasco', 'SBC', 'Todas'];
     if (!unit || !ALLOWED_UNITS.includes(unit)) {
-      return NextResponse.json({ error: 'Unidade inválida (use Osasco, SBC, SCS ou Todas)' }, { status: 400 });
+      return NextResponse.json({ error: 'Unidade inválida (use Osasco, SBC ou Todas)' }, { status: 400 });
     }
 
     const updated = await prisma.whatsAppInstance.update({

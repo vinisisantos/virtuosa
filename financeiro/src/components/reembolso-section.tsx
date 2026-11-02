@@ -95,7 +95,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             requesterName: user?.name || 'Usuário',
-            unit: selectedUnit || 'SCS',
+            unit: selectedUnit || 'Osasco',
             status: 'rascunho',
             items: [], attachments: []
           })
@@ -205,7 +205,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
     try {
       const res = await fetch('/api/reembolso/recebimento', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unit: selectedUnit || 'SCS', valorRecebido: val })
+        body: JSON.stringify({ unit: selectedUnit || 'Osasco', valorRecebido: val })
       });
       const data = await res.json();
       if (res.ok) {
@@ -226,7 +226,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
   const handleRevertRecebimento = async (id: string) => {
     setReversaoPendente(null);
     try {
-      const res = await fetch(`/api/reembolso/recebimento?id=${id}&unit=${selectedUnit || 'SCS'}`, { method: 'DELETE' });
+      const res = await fetch(`/api/reembolso/recebimento?id=${id}&unit=${selectedUnit || 'Osasco'}`, { method: 'DELETE' });
       if (res.ok) {
         showToast('Valor revertido com sucesso.', 'success');
         fetchTickets();
@@ -303,7 +303,7 @@ export function ReembolsoSection({ selectedUnit }: { selectedUnit?: string }) {
             </div>
           </div>
           <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: 16 }}>
-            Criado em {activeTicket ? fmtDate(activeTicket.createdAt) : fmtDate(new Date().toISOString())} por {user?.name} • {selectedUnit || 'SCS'}
+            Criado em {activeTicket ? fmtDate(activeTicket.createdAt) : fmtDate(new Date().toISOString())} por {user?.name} • {selectedUnit || 'Osasco'}
           </div>
 
           {/* Item list with scroll */}

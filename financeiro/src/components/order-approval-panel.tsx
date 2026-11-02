@@ -102,7 +102,7 @@ export function OrderApprovalPanel({ unit, onPendingCountChange }: { unit?: stri
   }, [loading, onPendingCountChange, pendingCount]);
   if (loading) return null;
 
-  const unitColors: Record<string, string> = {  Osasco: '#f59e0b', SBC: '#10b981', SCS: '#ef4444' };
+  const unitColors: Record<string, string> = {  Osasco: '#f59e0b', SBC: '#10b981' };
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);

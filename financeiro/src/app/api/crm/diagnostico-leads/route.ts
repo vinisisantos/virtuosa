@@ -175,7 +175,7 @@ export async function GET(req: NextRequest) {
     }
 
     // ── Unit distribution across the main tables (to size a Barueri migration) ──
-    const KNOWN_UNITS = ["Barueri", "Osasco", "SBC", "SCS"];
+    const KNOWN_UNITS = ["Barueri", "Osasco", "SBC"];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const dist = async (model: any): Promise<Record<string, number>> => {
       const o: Record<string, number> = { Total: await model.count() };

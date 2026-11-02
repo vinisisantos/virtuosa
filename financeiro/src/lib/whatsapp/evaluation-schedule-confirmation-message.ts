@@ -3,7 +3,6 @@ import { renderTemplateVariables } from "#lib/whatsapp/message-template";
 export const LEADS_OSASCO_INSTANCE_ID = "d1385a2c-e4e9-4822-8125-c693edf9ef3d";
 export const LEADS_OSASCO_UNIT = "Osasco";
 export const LEADS_SBC_INSTANCE_ID = "a6871ee7-8352-4b66-bfb2-b8dba9e4f8e3";
-export const LEADS_SCS_INSTANCE_ID = "bbb24b4e-ef6d-4b64-93e8-9998d0514c65";
 export const EVALUATION_SCHEDULED_AUTOMATION_TRIGGER = "evaluation_scheduled";
 export const EVALUATION_CONFIRMATION_REQUEST_AUTOMATION_TRIGGER = "evaluation_confirmation_request";
 export const EVALUATION_NO_SHOW_AUTOMATION_TRIGGER = "evaluation_no_show_follow_up";
@@ -91,30 +90,7 @@ export const DEFAULT_SBC_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE = [
   "*Podemos confirmar a sua presença?* 💕",
 ].join("\n");
 
-export const DEFAULT_SCS_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE = [
-  "{{nome}} sua avaliação ficou agendada para *{{dia_da_semana}}*, *{{data}}*, às *{{hora}}*. 🗓️✨",
-  "",
-  "📍 Avenida Vital Brasil Filho, 143 — Osvaldo Cruz, São Caetano do Sul",
-  "Localização: https://www.google.com/maps/search/?api=1&query=Avenida+Vital+Brasil+Filho%2C+143%2C+S%C3%A3o+Caetano+do+Sul+SP",
-  "24h antes será enviado uma mensagem de confirmação do seu agendamento.",
-  "",
-  "Estaremos esperando por você. Será um prazer receber você na *Clínica Virtuosa São Caetano*! 🌸",
-].join("\n");
-
-export const DEFAULT_SCS_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE = [
-  "Olá, *{{nome}}*! 💗",
-  "",
-  "Passando para confirmar a sua avaliação na *Clínica Virtuosa São Caetano*, no dia *{{data}}*, às *{{hora}}*. 🗓️✨",
-  "",
-  "Esse momento é muito importante para que nossa especialista consiga entender melhor os seus objetivos, avaliar a região com atenção e indicar o tratamento mais adequado para você. 🌸",
-  "",
-  "📍 Avenida Vital Brasil Filho, 143 — Osvaldo Cruz, São Caetano do Sul",
-  "Localização: https://www.google.com/maps/search/?api=1&query=Avenida+Vital+Brasil+Filho%2C+143%2C+S%C3%A3o+Caetano+do+Sul+SP",
-  "",
-  "*Podemos confirmar a sua presença?* 💕",
-].join("\n");
-
-export type EvaluationScheduleUnit = "Osasco" | "SBC" | "SCS";
+export type EvaluationScheduleUnit = "Osasco" | "SBC";
 
 export type EvaluationScheduleUnitConfig = {
   unit: EvaluationScheduleUnit;
@@ -150,17 +126,6 @@ export const EVALUATION_SCHEDULE_UNIT_CONFIGS: readonly EvaluationScheduleUnitCo
     locationUrl: "https://www.google.com/maps/search/?api=1&query=Avenida+das+Na%C3%A7%C3%B5es+Unidas%2C+30%2C+S%C3%A3o+Bernardo+do+Campo+SP",
     scheduledTemplate: DEFAULT_SBC_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
     confirmationRequestTemplate: DEFAULT_SBC_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
-  },
-  {
-    unit: "SCS",
-    displayUnitName: "São Caetano",
-    instanceId: LEADS_SCS_INSTANCE_ID,
-    instanceDisplayName: "Thais Amorim Leads",
-    clinicName: "Clínica Virtuosa São Caetano",
-    address: "Avenida Vital Brasil Filho, 143 — Osvaldo Cruz, São Caetano do Sul",
-    locationUrl: "https://www.google.com/maps/search/?api=1&query=Avenida+Vital+Brasil+Filho%2C+143%2C+S%C3%A3o+Caetano+do+Sul+SP",
-    scheduledTemplate: DEFAULT_SCS_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
-    confirmationRequestTemplate: DEFAULT_SCS_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE,
   },
 ];
 

@@ -99,7 +99,7 @@ export function PatientAutocomplete({
   onNameChange,
   label,
   required = false,
-  units = [ 'Osasco', 'SBC', 'SCS'],
+  units = ['Osasco', 'SBC'],
 }: PatientAutocompleteProps) {
   const [internalQuery, setQuery] = useState(value?.name || '');
   const query = nameValue ?? internalQuery;
@@ -114,7 +114,7 @@ export function PatientAutocomplete({
   const [createForm, setCreateForm] = useState({
     name: '', phone: '', email: '', cpf: '', rg: '',
     birthdate: '', gender: '', profissao: '', estadoCivil: '',
-    unit: units[0] || 'SCS', notes: '',
+    unit: units[0] || 'Osasco', notes: '',
     cep: '', estado: '', cidade: '', bairro: '', rua: '', numero: '', complemento: '',
   });
 
@@ -201,7 +201,7 @@ export function PatientAutocomplete({
     setCreateForm(prev => ({
       ...prev,
       name: query,
-      unit: unit || units[0] || 'SCS',
+      unit: unit || units[0] || 'Osasco',
     }));
     setShowDropdown(false);
     setShowCreateModal(true);

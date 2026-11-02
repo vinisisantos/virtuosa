@@ -11,7 +11,6 @@ import { enqueueEvaluationGroupNotice, enqueueEvaluationGroupStatusNotice } from
 const UNIT_PERMISSION_KEY: Record<string, string> = {
   Osasco: "unitOsasco",
   SBC: "unitSBC",
-  SCS: "unitSCS",
   Barueri: "unitBarueri",
 };
 

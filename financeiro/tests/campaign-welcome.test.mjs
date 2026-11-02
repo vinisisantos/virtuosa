@@ -15,7 +15,7 @@ const pg = new PGlite({ parsers: { 1114: value => new Date(`${value}Z`) } });
 let now, arrived, activation, sent, operations, library;
 const config = () => ({ libraryUserId: WELCOME_LIBRARY_USER_ID, greeting: DEFAULT_WELCOME_GREETING, replyIds: DEFAULT_WELCOME_REPLIES });
 const fixtureReply = (key='barriga-trincada', title='Barriga Trincada') => ({ id: DEFAULT_WELCOME_REPLIES[key], userId: WELCOME_LIBRARY_USER_ID, title: 'ENTENDENDO A REGIÃO', content: 'O que mais te incomoda no abdômen?', category: { userId: WELCOME_LIBRARY_USER_ID, title, campaignName: null } });
-const input = (unit='SCS') => ({ conversationId:`chat-${unit}`, clientId:`client-${unit}`, instanceId:units.find(c=>c.unit===unit).instanceId, unit, messageId:'first', timestamp:arrived, contactPhone:'5511900000000' });
+const input = (unit='Osasco') => ({ conversationId:`chat-${unit}`, clientId:`client-${unit}`, instanceId:units.find(c=>c.unit===unit).instanceId, unit, messageId:'first', timestamp:arrived, contactPhone:'5511900000000' });
 const sql = (args) => Array.isArray(args[0]) ? Prisma.sql(args[0], ...args.slice(1)) : args[0];
 const query = async q => { try { return (await pg.query(q.text,q.values)).rows; } catch (error) { console.error('SQL de teste:',error.message); throw error; } };
 function adapter({ hook, failReceipt=false }={}) {
@@ -35,8 +35,8 @@ function adapter({ hook, failReceipt=false }={}) {
     },
   };
 }
-const job = async(unit='SCS') => (await pg.query('SELECT * FROM "WhatsAppWelcomeJob" WHERE "conversationId"=$1',[`chat-${unit}`])).rows[0];
-async function queue(unit='SCS') { return enqueueWelcome(input(unit),adapter()); }
+const job = async(unit='Osasco') => (await pg.query('SELECT * FROM "WhatsAppWelcomeJob" WHERE "conversationId"=$1',[`chat-${unit}`])).rows[0];
+async function queue(unit='Osasco') { return enqueueWelcome(input(unit),adapter()); }
 async function outgoing(params) {
   await params.beforeSend(); sent.push(params);
   const messageId=randomUUID();
@@ -87,12 +87,12 @@ beforeEach(async()=>{
 });
 after(()=>pg.close());
 
-test('migração, reserva e replay: uma única recepção por conversa nas três unidades',async()=>{
+test('migração, reserva e replay: uma única recepção por conversa nas duas unidades',async()=>{
   for(const {unit} of units){assert.equal((await findWelcomeReception(input(unit),adapter())).isActive,true);await queue(unit);await queue(unit);}
-  assert.equal((await pg.query('SELECT count(*)::int AS n FROM "WhatsAppWelcomeJob"')).rows[0].n,3);
-  await run();assert.equal(sent.length,6,JSON.stringify((await pg.query('SELECT status,reason FROM "WhatsAppWelcomeJob"')).rows));
+  assert.equal((await pg.query('SELECT count(*)::int AS n FROM "WhatsAppWelcomeJob"')).rows[0].n,2);
+  await run();assert.equal(sent.length,4,JSON.stringify((await pg.query('SELECT status,reason FROM "WhatsAppWelcomeJob"')).rows));
   for(const {unit} of units){const j=await job(unit);assert.equal(j.status,'completed');assert.notEqual(j.greetingMessageId,j.questionMessageId);assert.equal(sent.filter(p=>p.conversationId===`chat-${unit}`)[0].message,DEFAULT_WELCOME_GREETING);}
-  await run();assert.equal(sent.length,6);
+  await run();assert.equal(sent.length,4);
 });
 test('aguarda exatamente 60s, não envia cedo e preserva JID/autoria',async()=>{
   await queue();await run({now:()=>new Date(now.getTime()-1)});assert.equal(sent.length,0);
@@ -105,18 +105,18 @@ test('sem agendador pronto conserva caminho antigo e não enfileira',async()=>{
 for(const [name,change] of [
   ['conversa antiga',`UPDATE "WhatsAppConversation" SET "createdAt"='2020-01-01'`],
   ['lead antigo',`UPDATE "Client" SET "arrivedAt"='2020-01-01'`],
-  ['transferência',`UPDATE "Client" SET unit='SBC' WHERE unit='SCS'`],
-  ['outra mensagem',`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe") VALUES ('extra','chat-SCS','extra',false)`],
+  ['transferência',`UPDATE "Client" SET unit='SBC' WHERE unit='Osasco'`],
+  ['outra mensagem',`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe") VALUES ('extra','chat-Osasco','extra',false)`],
 ]) test(`${name}: nunca inicia recepção retroativa`,async()=>{await pg.exec(change);assert.equal(await findWelcomeReception(input(),adapter()),null);await queue();assert.equal(await job(),undefined);});
 test('desabilitada mantém domínio da recepção nova mas não coloca na fila',async()=>{
   await pg.exec('UPDATE "Automation" SET "isActive"=false');assert.equal((await findWelcomeReception(input(),adapter())).isActive,false);await queue();assert.equal(await job(),undefined);
 });
 test('não usa saudação, explicação global ou outra campanha como segunda',()=>{
-  for(const campaign of ['Botox',null,'Adeus Rosto Cansado']) assert.equal(welcomePair(config(),campaign,library,'SCS').question,null);
-  assert.equal(welcomePair(config(),'Barriga Trincada',[{...library[0],category:null}],'SCS').question,null);
-  assert.equal(welcomePair(config(),'Barriga Trincada',[{...library[0],userId:'other'}],'SCS').question,null);
-  assert.equal(welcomePair(config(),'Barriga Trincada',[{...library[0],category:{...library[0].category,campaignName:'Botox'}}],'SCS').question,null);
-  assert.throws(()=>welcomePair({...config(),libraryUserId:'other'},'Barriga Trincada',library,'SCS'));
+  for(const campaign of ['Botox',null,'Adeus Rosto Cansado']) assert.equal(welcomePair(config(),campaign,library,'Osasco').question,null);
+  assert.equal(welcomePair(config(),'Barriga Trincada',[{...library[0],category:null}],'Osasco').question,null);
+  assert.equal(welcomePair(config(),'Barriga Trincada',[{...library[0],userId:'other'}],'Osasco').question,null);
+  assert.equal(welcomePair(config(),'Barriga Trincada',[{...library[0],category:{...library[0].category,campaignName:'Botox'}}],'Osasco').question,null);
+  assert.throws(()=>welcomePair({...config(),libraryUserId:'other'},'Barriga Trincada',library,'Osasco'));
 });
 test('sete mapeamentos explícitos, pastas/acentos e 60ml versus 120ml isolados',()=>{
   const names=['Preenchimento Facial','Glúteos Perfeitos','Barriga Trincada','Harmonização de Glúteos','Combo Harmonização','Glúteos Perfeitos 120ml','Harmonização de Mamas'];
@@ -124,11 +124,11 @@ test('sete mapeamentos explícitos, pastas/acentos e 60ml versus 120ml isolados'
     const reply=fixtureReply(key,names[index]);
     for(const {unit} of units)assert.equal(welcomePair(config(),names[index],[reply],unit).replyId,reply.id);
   });
-  assert.equal(welcomePair(config(),'Glúteos Perfeitos 120ml',[fixtureReply('gluteos-perfeito','Glúteos Perfeitos')],'SCS').question,null);
+  assert.equal(welcomePair(config(),'Glúteos Perfeitos 120ml',[fixtureReply('gluteos-perfeito','Glúteos Perfeitos')],'Osasco').question,null);
 });
 test('nome e variáveis não resolvidas são bloqueados sem alterar resposta manual',()=>{
-  assert.throws(()=>welcomePair({...config(),greeting:'Olá {{nome}}'},'Barriga Trincada',library,'SCS'));
-  assert.equal(welcomePair(config(),'Barriga Trincada',[{...library[0],content:'Olá {{nome}}'}],'SCS').question,null);
+  assert.throws(()=>welcomePair({...config(),greeting:'Olá {{nome}}'},'Barriga Trincada',library,'Osasco'));
+  assert.equal(welcomePair(config(),'Barriga Trincada',[{...library[0],content:'Olá {{nome}}'}],'Osasco').question,null);
   assert.equal(welcomeConfig(null).libraryUserId,'');
 });
 test('faltando pergunta envia só saudação e registra lacuna de configuração',async()=>{
@@ -136,13 +136,13 @@ test('faltando pergunta envia só saudação e registra lacuna de configuração
   assert.equal((await pg.query('SELECT result FROM "AutomationLog"')).rows[0].result,'greeting_only');
 });
 for(const [name,change] of [
-  ['resposta humana',`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",status) VALUES ('human','chat-SCS','human',true,'sent')`],
-  ['agendado no funil',`UPDATE "SalesPipeline" SET stage='agendado' WHERE unit='SCS'`],
-  ['agenda sem vínculo de funil',`INSERT INTO "Agendamento" VALUES ('appt','SCS',now()+interval '1 day','(11) 90000-0000','pendente')`],
+  ['resposta humana',`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",status) VALUES ('human','chat-Osasco','human',true,'sent')`],
+  ['agendado no funil',`UPDATE "SalesPipeline" SET stage='agendado' WHERE unit='Osasco'`],
+  ['agenda sem vínculo de funil',`INSERT INTO "Agendamento" VALUES ('appt','Osasco',now()+interval '1 day','(11) 90000-0000','pendente')`],
   ['bloqueio',`UPDATE "WhatsAppConversation" SET "blockedAt"=now()`],
   ['arquivamento',`UPDATE "WhatsAppConversation" SET "archivedAt"=now()`],
   ['fechamento',`UPDATE "WhatsAppConversation" SET status='closed'`],
-  ['transferência da instância',`UPDATE "WhatsAppInstance" SET unit='Osasco' WHERE unit='SCS'`],
+  ['transferência da instância',`UPDATE "WhatsAppInstance" SET unit='SBC' WHERE unit='Osasco'`],
   ['troca do telefone',`UPDATE "WhatsAppContact" SET phone='5511900000001'`],
   ['automação desativada',`UPDATE "Automation" SET "isActive"=false`],
 ]) test(`${name} antes de enviar interrompe sem mensagem`,async()=>{await queue();await pg.exec(change);await run();assert.equal(sent.length,0);assert.equal((await job()).status,'cancelled');});
@@ -151,11 +151,11 @@ test('desconectada adia sem tentativa externa; expira sem enviar muito tarde',as
   await run({now:()=>new Date(now.getTime()+16*60_000)});assert.equal((await job()).status,'cancelled');
 });
 test('resposta entre as etapas suspende segunda inclusive timestamp antigo',async()=>{
-  await queue();await run({send:async p=>{const receipt=await outgoing(p);await pg.query('INSERT INTO "WhatsAppMessage" VALUES ($1,$2,$1,false,$3,$4,$5,$6)',['reply','chat-SCS',arrived,now,'received','Tenho dúvida']);return receipt;}});
+  await queue();await run({send:async p=>{const receipt=await outgoing(p);await pg.query('INSERT INTO "WhatsAppMessage" VALUES ($1,$2,$1,false,$3,$4,$5,$6)',['reply','chat-Osasco',arrived,now,'received','Tenho dúvida']);return receipt;}});
   assert.equal(sent.length,1);assert.equal((await job()).reason,'lead_replied_after_greeting');
 });
 test('mudança de campanha entre etapas não mistura protocolos',async()=>{
-  await queue();await run({send:async p=>{const r=await outgoing(p);await pg.exec(`UPDATE "Client" SET "campaignName"='Botox' WHERE unit='SCS'`);return r;}});
+  await queue();await run({send:async p=>{const r=await outgoing(p);await pg.exec(`UPDATE "Client" SET "campaignName"='Botox' WHERE unit='Osasco'`);return r;}});
   assert.equal(sent.length,1);assert.equal((await job()).reason,'campaign_changed');
 });
 test('revalida imediatamente antes do envio, não somente ao selecionar',async()=>{
@@ -189,7 +189,7 @@ test('interrupção antes do HTTP retoma; durante HTTP fica incerta',async()=>{
   await queue('SBC');await pg.exec(`UPDATE "WhatsAppWelcomeJob" SET status='sending',"claimToken"='old',"claimedAt"=now()-interval '3 minutes' WHERE unit='SBC'`);await run();assert.equal(sent.length,2);assert.equal((await job('SBC')).status,'uncertain');
 });
 test('eventos de histórico, saída, instância pessoal e data inválida não iniciam',()=>{
-  const base={fromMe:false,sendable:true,capturesLeads:true,unit:'SCS',instanceId:units.find(c=>c.unit==='SCS').instanceId,conversationCreatedAt:arrived,timestamp:arrived,payload:{event:'messages.upsert',data:{type:'notify'}}};
+  const base={fromMe:false,sendable:true,capturesLeads:true,unit:'Osasco',instanceId:units.find(c=>c.unit==='Osasco').instanceId,conversationCreatedAt:arrived,timestamp:arrived,payload:{event:'messages.upsert',data:{type:'notify'}}};
   assert.equal(isFreshWelcomeEvent(base,now),true);
   for(const change of [{fromMe:true},{sendable:false},{capturesLeads:false},{instanceId:'personal'},{unit:'Todas'},{timestamp:new Date('invalid')},{timestamp:activation},{conversationCreatedAt:activation},{payload:{event:'messages.set'}},{payload:{data:{type:'append'}}}])assert.equal(isFreshWelcomeEvent({...base,...change},now),false);
 });
@@ -221,6 +221,6 @@ test('remoção ou troca de categoria entre etapas não reaproveita pergunta inv
 });
 test('agendamento por telefone de dez dígitos normaliza o código 55',async()=>{
   await queue();await pg.exec(`UPDATE "WhatsAppContact" SET phone='551140000000'; UPDATE "WhatsAppWelcomeJob" SET "contactPhone"='551140000000';
-    INSERT INTO "Agendamento" VALUES ('appt','SCS',now()+interval '1 day','11 4000-0000','pendente')`);
+    INSERT INTO "Agendamento" VALUES ('appt','Osasco',now()+interval '1 day','11 4000-0000','pendente')`);
   await run();assert.equal(sent.length,0);assert.equal((await job()).reason,'lead_already_attended_or_scheduled');
 });

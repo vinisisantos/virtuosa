@@ -67,7 +67,6 @@ function userCanUseUnit(user: UserForHandoff, unit: string): boolean {
   const permissionKeyByUnit: Record<string, string> = {
     Osasco: "unitOsasco",
     SBC: "unitSBC",
-    SCS: "unitSCS",
     Barueri: "unitBarueri",
   };
 

@@ -158,7 +158,7 @@ export default function PacotesPage() {
   const [paymentMethod, setPaymentMethod] = useState('pix');
   const [installments, setInstallments] = useState('1');
   const [paymentFeeConfigId, setPaymentFeeConfigId] = useState<string | null>(null);
-  const [unit, setUnit] = useState('SCS');
+  const [unit, setUnit] = useState('Osasco');
   const [notes, setNotes] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientData | null>(null);
@@ -213,7 +213,7 @@ export default function PacotesPage() {
     setClientName(''); setClientId(''); setSelectedPatient(null); setVendedor(''); setCategoria('Receitas de serviços');
     setDataVenda(new Date().toISOString().split('T')[0]); setDescricao(''); setDataValidade('');
     setServiceLines([{ name: '', quantity: 1, unitPrice: 0, discount: 0, profissional: '' }]);
-    const defaultUnit = globalUnit && UNITS.includes(globalUnit) ? globalUnit : 'SCS';
+    const defaultUnit = globalUnit && UNITS.includes(globalUnit) ? globalUnit : 'Osasco';
     setPaymentMethod('pix'); setInstallments('1'); setPaymentFeeConfigId(null); setUnit(defaultUnit); setNotes('');
     setEditingPkg(null); setShowAdvanced(false);
   };

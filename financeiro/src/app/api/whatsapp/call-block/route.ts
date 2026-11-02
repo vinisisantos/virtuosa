@@ -7,8 +7,8 @@ const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || "";
 const CALL_BLOCK_SETTINGS_KEY = "whatsapp_call_block_settings";
 const DEFAULT_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
-const ALLOWED_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
-const LEGACY_DEFAULT_UNITS = ["Osasco", "SBC", "SCS"];
+const ALLOWED_UNITS = ["Osasco", "SBC", "Todas"];
+const LEGACY_DEFAULT_UNITS = ["Osasco", "SBC"];
 const WEBHOOK_EVENTS = [
   "MESSAGES_UPSERT",
   "MESSAGES_UPDATE",

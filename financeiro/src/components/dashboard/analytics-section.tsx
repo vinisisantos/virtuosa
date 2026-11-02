@@ -11,7 +11,7 @@ interface Props {
   selectedUnit: string;
 }
 
-const UNIT_COLORS: Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
+const UNIT_COLORS: Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981'};
 
 export function AnalyticsSection({ logs, selectedMonth, selectedYear, selectedUnit }: Props) {
   // Period mode: 'month' = full month(s), 'custom' = date range

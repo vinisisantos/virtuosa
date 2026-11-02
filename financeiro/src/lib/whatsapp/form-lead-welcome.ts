@@ -1,12 +1,11 @@
 import { phoneLookupKey } from "@/lib/phone";
 import { extractLeadName } from "@/lib/whatsapp/lead-name";
 
-export type FormLeadUnit = "Osasco" | "SBC" | "SCS";
+export type FormLeadUnit = "Osasco" | "SBC";
 
 const CLINIC_NAME_BY_UNIT: Record<FormLeadUnit, string> = {
   Osasco: "Osasco",
   SBC: "São Bernardo",
-  SCS: "São Caetano",
 };
 
 const DIRECT_FORM_OPENING = "olá! preenchi seu formulário e gostaria de saber mais sobre sua empresa.";

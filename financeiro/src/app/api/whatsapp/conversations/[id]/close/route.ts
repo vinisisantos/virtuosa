@@ -99,7 +99,7 @@ export async function PATCH(
             status: 'sent',
             sentAt: new Date(),
             conversationId: id,
-            unit: unit || conversation.contact.unit || 'SCS',
+            unit: unit || conversation.contact.unit || 'Osasco',
             profissionalId: conversation.assignedTo || userId,
             profissional: conversation.assignedToName || userName || 'Equipe',
           }

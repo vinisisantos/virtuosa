@@ -101,7 +101,7 @@ export default function WhatsAppSettingsPage() {
   const [permittedUnits, setPermittedUnits] = useState<string[]>([]);
   const [connectUnit, setConnectUnit] = useState<string>("");
   const [connectUserId, setConnectUserId] = useState<string>("");
-  const connectableUnits = new Set(["Osasco", "SBC", "SCS"]);
+  const connectableUnits = new Set(["Osasco", "SBC"]);
 
   // Buscar info do usuário logado
   useEffect(() => {
@@ -118,7 +118,7 @@ export default function WhatsAppSettingsPage() {
         setCanViewCollaborators(canManageCollaborators || role === "MARKETING");
 
         // Calcula as unidades que esse usuário pode operar (mesma regra do back).
-        const VISIBLE = ["Osasco", "SBC", "SCS"];
+        const VISIBLE = ["Osasco", "SBC"];
         const perms = u.permissions || {};
         let allowed: string[];
         if (u.role === "ADMINISTRADOR" || perms.admin || perms.multiUnit) {
@@ -126,7 +126,7 @@ export default function WhatsAppSettingsPage() {
         } else {
           const set = new Set<string>();
           if (u.unit && VISIBLE.includes(u.unit)) set.add(u.unit);
-          const map: Record<string, string> = { unitOsasco: "Osasco", unitSBC: "SBC", unitSCS: "SCS" };
+          const map: Record<string, string> = { unitOsasco: "Osasco", unitSBC: "SBC" };
           for (const [k, name] of Object.entries(map)) if (perms[k]) set.add(name);
           allowed = [...set];
         }
@@ -493,8 +493,8 @@ export default function WhatsAppSettingsPage() {
       ? instances
       : instances.filter((i) => i.unit === unitFilter);
   const unitFilterOptions = isAdmin
-    ? ["Todas", "Osasco", "SCS", "SBC"]
-    : ["Todas", ...permittedUnits.filter((unit) => ["Osasco", "SCS", "SBC"].includes(unit))];
+    ? ["Todas", "Osasco", "SBC"]
+    : ["Todas", ...permittedUnits.filter((unit) => ["Osasco", "SBC"].includes(unit))];
 
   return (
     <div className="min-h-screen bg-background">

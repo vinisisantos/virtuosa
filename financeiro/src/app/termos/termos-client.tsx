@@ -64,7 +64,7 @@ export function TermosClient() {
   const [genStep, setGenStep] = useState(0);
   const [genData, setGenData] = useState<Record<string, string>>({});
   const [genHtml, setGenHtml] = useState('');
-  const [genUnidade, setGenUnidade] = useState('SCS');
+  const [genUnidade, setGenUnidade] = useState('Osasco');
   const [procedureSuggestions, setProcedureSuggestions] = useState<{ unit: string; names: string[] } | null>(null);
   const [showVars, setShowVars] = useState(false);
   const [showTablePicker, setShowTablePicker] = useState(false);
@@ -254,7 +254,7 @@ export function TermosClient() {
     // Wait for templates to load
     if (templates.length === 0) return;
 
-    const unit = params.get('unidade') || 'SCS';
+    const unit = params.get('unidade') || 'Osasco';
     const profile = UNIT_PROFILES[unit] || UNIT_PROFILES.Barueri;
 
     const prefilled: Record<string, string> = {
@@ -795,7 +795,6 @@ export function TermosClient() {
               <span style={{ fontWeight: 700, color: 'var(--text-main)', fontSize: '0.85rem' }}>Unidade:</span>
               <select value={historyUnitFilter} onChange={e => { setHistoryUnitFilter(e.target.value); fetchHistory(e.target.value); }} style={{ ...inputS, width: 'auto', minWidth: 140 }}>
                 <option value="">Todas</option>
-                <option value="SCS">SCS</option>
                 <option value="SBC">SBC</option>
                 <option value="Osasco">Osasco</option>
               </select>
@@ -1166,7 +1165,7 @@ export function TermosClient() {
                             templateName: genTemplate?.name || 'Contrato',
                             content: genHtml,
                             pdfContent: pdfBase64,
-                            unit: genData.nome_clinica || 'SCS',
+                            unit: genData.nome_clinica || 'Osasco',
                           }),
                         });
                         const saveData = await saveRes.json();
@@ -1254,7 +1253,7 @@ export function TermosClient() {
                             templateName: genTemplate?.name || 'Contrato',
                             content: genHtml,
                             pdfContent: pdfBase64,
-                            unit: genData.nome_clinica || 'SCS',
+                            unit: genData.nome_clinica || 'Osasco',
                           }),
                         });
                         const saveData = await saveRes.json();
@@ -1478,7 +1477,6 @@ export function TermosClient() {
                   onChange={e => { const u = e.target.value; setGenUnidade(u); setGenData(prev => applyUnitProfile(u, prev)); }}
                   className="gen-input gen-select"
                 >
-                  <option value="SCS">SCS</option>
                   <option value="SBC">SBC</option>
                   <option value="Osasco">Osasco</option>
                 </select>

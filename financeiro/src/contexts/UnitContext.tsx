@@ -69,7 +69,7 @@ function getInitialState(): { allowed: string[]; unit: string } {
   if (saved !== null && allowed.includes(saved)) {
     return { allowed, unit: saved };
   }
-  const fallback = allowed[0] ?? (ALL_UNITS[0] || 'SCS');
+  const fallback = allowed[0] ?? (ALL_UNITS[0] || 'Osasco');
   localStorage.setItem(STORAGE_KEY, fallback);
   return { allowed, unit: fallback };
 }
@@ -88,7 +88,7 @@ export function UnitProvider({ children }: { children: ReactNode }) {
       // If current unit is no longer allowed, reset
       setGlobalUnitState(prev => {
         if (!allowed.includes(prev)) {
-          const fallback = allowed[0] ?? 'SCS';
+          const fallback = allowed[0] ?? 'Osasco';
           localStorage.setItem(STORAGE_KEY, fallback);
           window.dispatchEvent(new CustomEvent('virtuosa-unit-change', { detail: fallback }));
           return fallback;

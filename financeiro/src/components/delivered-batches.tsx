@@ -88,7 +88,7 @@ export function DeliveredBatches({ orders }: Props) {
   const maxQty = analytics.topProducts[0]?.[1].qty || 1;
   const maxMonthly = Math.max(...analytics.monthlySpend.map(m => m[1]), 1);
 
-  const unitColors: Record<string, string> = {  Osasco: '#f59e0b', SBC: '#10b981', SCS: '#ef4444' };
+  const unitColors: Record<string, string> = {  Osasco: '#f59e0b', SBC: '#10b981' };
 
   return (
     <div className="delivered-orders" style={{ marginTop: 32 }}>

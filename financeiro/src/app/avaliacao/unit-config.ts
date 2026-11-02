@@ -1,9 +1,9 @@
-export type EvaluationLandingSlug = 'osasco' | 'sbc' | 'scs';
+export type EvaluationLandingSlug = 'osasco' | 'sbc';
 
 export type EvaluationLandingUnit = {
   slug: EvaluationLandingSlug;
-  unit: 'Osasco' | 'SBC' | 'SCS';
-  city: 'Osasco' | 'São Bernardo' | 'São Caetano';
+  unit: 'Osasco' | 'SBC';
+  city: 'Osasco' | 'São Bernardo';
   publicPath: string;
   whatsappUrl: string | null;
   trackMetaLead: boolean;
@@ -24,14 +24,6 @@ export const EVALUATION_LANDING_UNITS: Record<EvaluationLandingSlug, EvaluationL
     city: 'São Bernardo',
     publicPath: '/avaliacao/sbc',
     whatsappUrl: 'https://wa.me/5511936192770',
-    trackMetaLead: false,
-  },
-  scs: {
-    slug: 'scs',
-    unit: 'SCS',
-    city: 'São Caetano',
-    publicPath: '/avaliacao/scs',
-    whatsappUrl: 'https://wa.me/5511936197836',
     trackMetaLead: false,
   },
 };

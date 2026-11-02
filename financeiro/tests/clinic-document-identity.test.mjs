@@ -28,19 +28,9 @@ function readLiteral(node) {
 }
 const clinics = readLiteral(clinicLiteral);
 
-test('SCS usa a razão social e o CNPJ solicitados sem alterar o endereço', () => {
-  assert.deepEqual(clinics.SCS, {
-    razao_social_contratante: 'CLINICA DE ESTETICA ALMEIDA RIBEIRO LTDA',
-    cnpj_contratante: '63.246.385/0001-91',
-    endereco_contratante: 'Av. Vital Brasil Filho',
-    numero: '143', cidade: 'São Caetano do Sul', uf: 'SP', cep: '09541-130',
-  });
-  assert.deepEqual(UNIT_PROFILES.SCS, {
-    nome_clinica: 'Virtuosa São Caetano do Sul',
-    endereco_clinica: 'Av. Vital Brasil Filho, 143 - Osvaldo Cruz, São Caetano do Sul - SP, 09541-130',
-    cidade_clinica: 'São Caetano do Sul - SP',
-    cnpj_clinica: '63.246.385/0001-91',
-  });
+test('SCS encerrada não oferece mais perfil para novos documentos', () => {
+  assert.equal(clinics.SCS, undefined);
+  assert.equal(UNIT_PROFILES.SCS, undefined);
 });
 
 test('perfis de documentos das demais unidades permanecem intactos', () => {
@@ -86,5 +76,5 @@ test('perfis de termos das demais unidades e alias de SCS permanecem intactos', 
       cidade_clinica: 'Osasco - SP', cnpj_clinica: '51.590.266/0001-72',
     },
   });
-  assert.equal(canonicalContractUnit(UNIT_PROFILES.SCS.nome_clinica), 'SCS');
+  assert.equal(canonicalContractUnit('Virtuosa São Caetano do Sul'), 'SCS');
 });

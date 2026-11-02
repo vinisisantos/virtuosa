@@ -184,13 +184,13 @@ test('análise financeira recebe agregados sem nomes nem ações de pagamento', 
 
 test('informa a competência e a unidade quando não há folha para refletir', async () => {
   payrollImports = [];
-  const response = await GET(request('SCS', { finCustos: true }));
+  const response = await GET(request('SBC', { finCustos: true }));
   const body = await response.json();
 
   assert.equal(response.status, 200);
   assert.equal(body.payroll, null);
   assert.deepEqual(body.payrollCompetence, { month: 8, year: 2026 });
-  assert.deepEqual(body.missingPayrollUnits, ['SCS']);
+  assert.deepEqual(body.missingPayrollUnits, ['SBC']);
 });
 
 test('visão global aponta somente as unidades sem folha na competência anterior', async () => {
@@ -204,5 +204,5 @@ test('visão global aponta somente as unidades sem folha na competência anterio
   const body = await response.json();
 
   assert.equal(response.status, 200);
-  assert.deepEqual(body.missingPayrollUnits, ['Osasco', 'SCS']);
+  assert.deepEqual(body.missingPayrollUnits, ['Osasco']);
 });

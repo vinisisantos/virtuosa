@@ -22,7 +22,7 @@ export function useAgenda() {
   const [form, setForm] = useState<AgendaForm>({
     clientName: '', clientPhone: '', procedimento: '', profissionalId: '',
     startDate: '', startHour: '09', startMin: '00', endHour: '10', endMin: '00',
-    status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: globalUnit || allowedUnits[0] || 'SCS',
+    status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: globalUnit || allowedUnits[0] || 'Osasco',
   });
   const [filterProf, setFilterProf] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -31,7 +31,7 @@ export function useAgenda() {
   const [filterUnit, setFilterUnit] = useState(globalUnit || allowedUnits[0] || '');
   const [search, setSearch] = useState('');
   const [showProfModal, setShowProfModal] = useState(false);
-  const [profForm, setProfForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: globalUnit || allowedUnits[0] || 'SCS' });
+  const [profForm, setProfForm] = useState<ProfForm>({ name: '', color: '#e600a0', unit: globalUnit || allowedUnits[0] || 'Osasco' });
   const [now, setNow] = useState(new Date());
   const [canMultiUnit, setCanMultiUnit] = useState(allowedUnits.length > 1);
   const [canDarBaixa, setCanDarBaixa] = useState(false);
@@ -68,8 +68,8 @@ export function useAgenda() {
       setFilterUnit(allowedUnits[0]);
     }
     // Update form defaults
-    setForm(prev => ({ ...prev, unit: prev.unit || allowedUnits[0] || 'SCS' }));
-    setProfForm(prev => ({ ...prev, unit: prev.unit || allowedUnits[0] || 'SCS' }));
+    setForm(prev => ({ ...prev, unit: prev.unit || allowedUnits[0] || 'Osasco' }));
+    setProfForm(prev => ({ ...prev, unit: prev.unit || allowedUnits[0] || 'Osasco' }));
     setCanMultiUnit(allowedUnits.length > 1);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalUnit, allowedUnits]);
@@ -217,7 +217,7 @@ export function useAgenda() {
     setForm({
       clientName: '', clientPhone: '', procedimento: '', profissionalId: profissionalId || profissionais[0]?.id || '',
       startDate: dateKey(d), startHour: h, startMin: m, endHour: eH, endMin: eM,
-      status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: filterUnit || 'SCS',
+      status: 'pendente', sala: '', sessionNumber: '', totalSessions: '', notes: '', unit: filterUnit || 'Osasco',
     });
     setEditingId(null);
     setShowModal(true);
@@ -431,7 +431,7 @@ export function useAgenda() {
     try {
       const res = await fetch('/api/profissionais', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(profForm) });
       if (!res.ok) { toast('Erro ao criar profissional', 'error'); return; }
-      setProfForm({ name: '', color: '#e600a0', unit: filterUnit || 'SCS' });
+      setProfForm({ name: '', color: '#e600a0', unit: filterUnit || 'Osasco' });
       fetchData();
       toast('Profissional criado com sucesso!', 'success');
     } catch { toast('Erro ao criar profissional', 'error'); }

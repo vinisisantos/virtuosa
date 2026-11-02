@@ -246,8 +246,8 @@ async function classifyPhone(params: {
           campaignAttribution: "automatic_meta",
           fbclid: inferredContext.sourceUrl || undefined,
           arrivedAt: inferredContext.leadArrivedAt || new Date(),
-          unit: inferredContext.unit || "SCS",
-          originUnit: inferredContext.unit || "SCS",
+          unit: inferredContext.unit || "Osasco",
+          originUnit: inferredContext.unit || "Osasco",
           stage: "entrada",
         },
       });

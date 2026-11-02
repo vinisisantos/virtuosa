@@ -99,7 +99,7 @@ export function EquipmentModals({ showManageModal, setShowManageModal, selectedD
     } catch {}
   }, []);
 
-  const allUnits = ['SCS', 'SBC', 'Osasco'];
+  const allUnits = ['SBC', 'Osasco'];
   const [newApName, setNewApName] = useState('');
   const [newApColor, setNewApColor] = useState('#e6007e');
   const [isSaving, setIsSaving] = useState(false);
@@ -126,7 +126,7 @@ export function EquipmentModals({ showManageModal, setShowManageModal, selectedD
     } catch (err) { console.error(err); }
   };
 
-  const [allocUnit, setAllocUnit] = useState(allUnits[0] || 'SCS');
+  const [allocUnit, setAllocUnit] = useState(allUnits[0] || 'Osasco');
   const [allocAparelho, setAllocAparelho] = useState('');
 
   const handleAddAlocacao = async () => {

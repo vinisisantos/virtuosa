@@ -129,7 +129,7 @@ export function OrdersTable({ orders, viewMode, onEdit, onDelete, onStatusChange
         return counts;
     };
 
-    const unitColors: Record<string,string> = { Barueri:'#8b5cf6', Osasco:'#f59e0b', SBC:'#10b981', SCS:'#ef4444' };
+    const unitColors: Record<string,string> = { Barueri:'#8b5cf6', Osasco:'#f59e0b', SBC:'#10b981' };
 
     const handleStatusSelect = (orderId: string, productName: string, newStatus: string) => {
         if (newStatus === 'Pedido') {

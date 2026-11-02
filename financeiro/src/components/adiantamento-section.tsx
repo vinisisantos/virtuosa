@@ -67,7 +67,7 @@ export function AdiantamentoSection({ selectedUnit = 'all' }: { selectedUnit?: s
   const [description, setDescription] = useState('');
   const [value, setValue] = useState('');
   const [recipient, setRecipient] = useState('');
-  const [unit, setUnit] = useState(selectedUnit !== 'all' ? selectedUnit : 'SCS');
+  const [unit, setUnit] = useState(selectedUnit !== 'all' ? selectedUnit : 'Osasco');
   const [notes, setNotes] = useState('');
   const [isRecurring, setIsRecurring] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -77,7 +77,7 @@ export function AdiantamentoSection({ selectedUnit = 'all' }: { selectedUnit?: s
   const [editDescription, setEditDescription] = useState('');
   const [editValue, setEditValue] = useState('');
   const [editRecipient, setEditRecipient] = useState('');
-  const [editUnit, setEditUnit] = useState('SCS');
+  const [editUnit, setEditUnit] = useState('Osasco');
   const [editNotes, setEditNotes] = useState('');
   const [editIsRecurring, setEditIsRecurring] = useState(false);
   const [editSaving, setEditSaving] = useState(false);

@@ -24,11 +24,11 @@ const {DEFAULT_WELCOME_GREETING,WELCOME_LIBRARY_USER_ID}=await import('../src/li
 beforeEach(()=>{
   reads=0;writes=0;setting=null;blocked=null;sent=[];messages=[];providerResponse={key:{id:'provider-message'}};
   reply={id:'reply',userId:WELCOME_LIBRARY_USER_ID,title:'Entendendo',content:'O que te incomoda?',category:{userId:WELCOME_LIBRARY_USER_ID,title:'Barriga Trincada',campaignName:null}};
-  record={id:'campaign_welcome:SCS',unit:'SCS',triggerType:'campaign_welcome',isActive:true,triggerConfig:{libraryUserId:WELCOME_LIBRARY_USER_ID,greeting:DEFAULT_WELCOME_GREETING,replyIds:{'barriga-trincada':'reply'}},steps:[]};
+  record={id:'campaign_welcome:Osasco',unit:'Osasco',triggerType:'campaign_welcome',isActive:true,triggerConfig:{libraryUserId:WELCOME_LIBRARY_USER_ID,greeting:DEFAULT_WELCOME_GREETING,replyIds:{'barriga-trincada':'reply'}},steps:[]};
 });
 async function request(method,body,role='ADMINISTRADOR') {
   const token=role?await signToken({userId:'test',name:'Teste',email:'test@example.invalid',role}):'';
-  return new NextRequest('http://localhost/api/crm/automations?id=campaign_welcome:SCS&welcomeUnit=SCS',{method,headers:{'content-type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
+  return new NextRequest('http://localhost/api/crm/automations?id=campaign_welcome:Osasco&welcomeUnit=Osasco',{method,headers:{'content-type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},...(body?{body:JSON.stringify(body)}:{})});
 }
 test('sem autorização não lê biblioteca nem escreve configuração',async()=>{
   assert.equal((await GET(await request('GET',null,null))).status,401);
@@ -37,9 +37,9 @@ test('sem autorização não lê biblioteca nem escreve configuração',async()=
   assert.equal(reads,0);assert.equal(writes,0);
 });
 test('edição administrativa conserva fonte, unidade, tipo e atraso',async()=>{
-  const res=await PUT(await request('PUT',{id:record.id,unit:'Osasco',triggerType:'keyword',triggerConfig:record.triggerConfig,steps:[{type:'wait',config:{seconds:0}}]}));
+  const res=await PUT(await request('PUT',{id:record.id,unit:'SBC',triggerType:'keyword',triggerConfig:record.triggerConfig,steps:[{type:'wait',config:{seconds:0}}]}));
   assert.equal(res.status,200);const value=(await res.json()).automation;
-  assert.equal(value.unit,'SCS');assert.equal(value.triggerType,'campaign_welcome');assert.equal(value.steps[0].config.seconds,60);assert.equal(value.triggerConfig.libraryUserId,WELCOME_LIBRARY_USER_ID);
+  assert.equal(value.unit,'Osasco');assert.equal(value.triggerType,'campaign_welcome');assert.equal(value.steps[0].config.seconds,60);assert.equal(value.triggerConfig.libraryUserId,WELCOME_LIBRARY_USER_ID);
 });
 test('rejeita biblioteca alheia, campanha incompatível e nome personalizado',async()=>{
   for(const triggerConfig of [{...record.triggerConfig,libraryUserId:'other'},{...record.triggerConfig,replyIds:{botox:'reply'}},{...record.triggerConfig,greeting:'Olá {{nome}}'}]){

@@ -11,7 +11,6 @@ export const GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID = "120249766005370006";
 export const GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID = "120249766070900006";
 export const HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME = "Harmonização de Mamas";
 export const HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID = "120249951529480006";
-export const HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID = "120249648815820109";
 export const COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME = "Combo Barriga Chapada";
 export const BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME = "Botox Dysport 3 Regiões";
 export const BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME = "Botox Terço Superior";
@@ -21,14 +20,14 @@ export type PrefilledMetaLeadCampaign = {
   campaignTrackId: string | null;
 };
 
-const ACTIVE_CAMPAIGN_UNITS = new Set(["osasco", "sbc", "scs"]);
+const ACTIVE_CAMPAIGN_UNITS = new Set(["osasco", "sbc"]);
 
 function campaignTrackIdForUnit(
   normalizedUnit: string | undefined,
-  idsByUnit: Partial<Record<"osasco" | "sbc" | "scs", string>>,
+  idsByUnit: Partial<Record<"osasco" | "sbc", string>>,
 ) {
   if (!normalizedUnit || !ACTIVE_CAMPAIGN_UNITS.has(normalizedUnit)) return null;
-  return idsByUnit[normalizedUnit as "osasco" | "sbc" | "scs"] || null;
+  return idsByUnit[normalizedUnit as "osasco" | "sbc"] || null;
 }
 
 function normalizePrefilledMetaLeadMessage(value?: string | null) {
@@ -111,7 +110,6 @@ export function campaignFromPrefilledMetaLeadMessage(
       campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
       campaignTrackId: campaignTrackIdForUnit(normalizedUnit, {
         osasco: HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID,
-        scs: HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID,
       }),
     };
   }
@@ -192,7 +190,7 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
   {
     campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
     sourceMarkers: ["Dc2YOMms4wI"],
-    units: ["Osasco", "SBC", "SCS"],
+    units: ["Osasco", "SBC"],
   },
   {
     campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
@@ -239,7 +237,6 @@ const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
   { adId: "120250180063610006", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120250180269700006", campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME, unit: "SBC" },
   { adId: HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID, campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME, unit: "Osasco" },
-  { adId: HARMONIZACAO_DE_MAMAS_SCS_PARENT_CAMPAIGN_ID, campaignName: HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME, unit: "SCS" },
   { adId: "120249502709450006", campaignName: FACIAL_FILLER_CAMPAIGN_NAME, unit: "Osasco" },
   { adId: "120249502628370006", campaignName: "Glúteo Perfeito", unit: "Osasco" },
   { adId: "120249502294110006", campaignName: "Harmonização de Glúteos", unit: "Osasco" },
@@ -259,10 +256,6 @@ const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
   { adId: "120249304650490006", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120247237450560077", campaignName: "Glúteo Perfeito", unit: "SBC" },
   { adId: "120247237187760077", campaignName: "Harmonização de Glúteos", unit: "SBC" },
-  { adId: "120249007495800109", campaignName: "Glúteo Perfeito", unit: "SCS" },
-  { adId: "120249310857190006", campaignName: "Glúteo Perfeito", unit: "SCS" },
-  { adId: "120249007079190109", campaignName: "Harmonização de Glúteos", unit: "SCS" },
-  { adId: "120249321328780006", campaignName: "Harmonização de Glúteos", unit: "SCS" },
 ];
 
 export function campaignNameFromExactMetaAdId(

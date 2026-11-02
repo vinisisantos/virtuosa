@@ -7,7 +7,7 @@ import {
 export function inboxAppointmentsQuery(
   instanceIds: string[],
   requestedUnit?: string | null,
-  allowedUnits = ["SCS", "SBC", "Osasco"],
+  allowedUnits = ["SBC", "Osasco"],
 ) {
   // Um snapshot por caixa autorizada também atualiza cards paginados quando
   // só a agenda mudou, sem depender do updatedAt da conversa ou de nova mensagem.
@@ -16,7 +16,7 @@ export function inboxAppointmentsQuery(
       SELECT 'appointment' AS kind, a.id, a.unit, a."startTime",
         regexp_replace(a."clientPhone", '[^0-9]', '', 'g') AS digits
       FROM "Agendamento" a
-      WHERE a.unit IN ('SCS', 'SBC', 'Osasco')
+      WHERE a.unit IN ('SBC', 'Osasco')
         AND a.unit IN (${Prisma.join(allowedUnits.length ? allowedUnits : [""])})
         AND a.procedimento ILIKE '%avalia%'
         AND lower(trim(a.status)) IN (${Prisma.join(ACTIVE_INBOX_APPOINTMENT_STATUSES)})

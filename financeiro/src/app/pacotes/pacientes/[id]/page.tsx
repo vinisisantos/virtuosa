@@ -234,7 +234,7 @@ export default function FichaPacientePage() {
         estado_civil: client?.estadoCivil || '',
         profissao: client?.profissao || '',
         endereco_completo: [client?.rua, client?.numero, client?.bairro, client?.cidade, client?.estado, client?.cep].filter(Boolean).join(', '),
-        unidade: client?.unit || 'SCS',
+        unidade: client?.unit || 'Osasco',
         total_venda: String(totalAfterDiscount),
         pagamento: `${methodName} - ${nInstallments}x`,
         procs: JSON.stringify(procsArr),

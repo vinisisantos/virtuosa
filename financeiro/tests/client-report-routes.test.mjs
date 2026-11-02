@@ -117,8 +117,8 @@ test('falha de leitura não expõe detalhes internos e permite tentar novamente'
   try { const response = await GET(request()); assert.equal(response.status, 500); assert.doesNotMatch(JSON.stringify(await response.json()), /sensitive/); }
   finally { state.database.$transaction = original; }
 });
-test('Osasco, SBC e SCS usam somente os próprios fechamentos', async () => {
-  for (const unit of ['Osasco', 'SBC', 'SCS']) {
+test('Osasco e SBC usam somente os próprios fechamentos', async () => {
+  for (const unit of ['Osasco', 'SBC']) {
     state.unit = unit; state.instance.unit = unit; state.clients[0].unit = unit; state.deals[0].unit = unit;
     const response = await GET(request({ unit, requestedUnit: unit }));
     assert.equal(response.status, 200);

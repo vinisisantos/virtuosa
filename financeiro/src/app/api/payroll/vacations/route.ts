@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
         baseSalary: calculatePayrollLegalFigures(entry).grossSalary,
         inssBrackets: taxConfig.inssBrackets,
       });
-      const backupUnits = [...new Set([guard.createUnit(), entry.payrollImport.unit])];
+      const backupUnits = [...new Set([guard.financialBackupUnit(), entry.payrollImport.unit])];
       const snapshots = await Promise.all(backupUnits.map(unit => transaction.financialBackup.findFirst({
         where: { unit, isAuto: true }, orderBy: { updatedAt: 'desc' }, select: { id: true, bills: true },
       })));

@@ -67,9 +67,9 @@ test('pedido de unidade não autorizada continua em Osasco e nunca abre resumo d
   }
 });
 test('unidade adicional autorizada continua pessoal; nova flag só agrega a própria unidade',async()=>{
-  const req=request({permissions:{crm:true,crmDashboardUnit:true,unitSCS:true}});req.nextUrl.searchParams.set('unit','SCS');
+  const req=request({permissions:{crm:true,crmDashboardUnit:true,unitSBC:true}});req.nextUrl.searchParams.set('unit','SBC');
   const body=await(await GET(req)).json();assert.equal(body.leadsSeries.at(-1).newLeads,5);
-  assert.equal(state.calls.find(c=>c.kind==='leads').args.unit,'SCS');
+  assert.equal(state.calls.find(c=>c.kind==='leads').args.unit,'SBC');
 });
 test('userId arbitrário não permite consultar outro operador',async()=>{
   await GET(request({permissions:{crm:true,crmDashboardUnit:true},query:'&userId=someone-else'}));

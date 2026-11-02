@@ -39,7 +39,7 @@ const SCS_CAMPAIGN_IDS = new Set([
 ]);
 
 type LeadRouting = {
-  unit: "Osasco" | "SBC" | "SCS";
+  unit: "Osasco" | "SBC";
   instanceDisplayName: string;
   campaignName: string;
   eventType: string;
@@ -221,6 +221,11 @@ function campaignFromAdName(adName?: string | null) {
   return null;
 }
 
+function isRetiredScsLead(lead: ParsedMetaLead) {
+  return lead.formId === SCS_TARGET_FORM_ID
+    || (lead.campaignId ? SCS_CAMPAIGN_IDS.has(lead.campaignId) : false);
+}
+
 function resolveLeadRouting(lead: ParsedMetaLead): LeadRouting | null {
   const osascoCampaign = osascoMetaLeadCampaignFromAdId(lead.adId) || campaignFromAdName(lead.adName);
   const isOsascoLead = lead.formId === OSASCO_TARGET_FORM_ID
@@ -237,21 +242,8 @@ function resolveLeadRouting(lead: ParsedMetaLead): LeadRouting | null {
 
   if (isOsascoLead) return null;
 
-  const scsCampaign = campaignFromAdName(lead.adName);
-  const isScsLead = lead.formId === SCS_TARGET_FORM_ID
-    || (lead.campaignId ? SCS_CAMPAIGN_IDS.has(lead.campaignId) : false);
-  if (isScsLead && scsCampaign) {
-    return {
-      unit: "SCS",
-      instanceDisplayName: "Thais Amorim Leads",
-      campaignName: scsCampaign.campaignName,
-      messageCampaignName: scsCampaign.messageCampaignName,
-      eventType: `${scsCampaign.eventTypeBase}_scs`,
-    };
-  }
-
-  // Um lead reconhecido como SCS nunca deve cair no fallback legado de SBC.
-  if (isScsLead) return null;
+  // SCS encerrada: lead de formulário ou campanha antiga não pode cair no fallback de SBC.
+  if (isRetiredScsLead(lead)) return null;
 
   const sbcCampaign = campaignFromAdName(lead.adName);
   const isSbcLead = (lead.formId ? SBC_TARGET_FORM_IDS.has(lead.formId) : false)
@@ -422,7 +414,6 @@ export async function GET() {
       routes: [
         { form: "GLÚTEO", unit: "Osasco", campaigns: ["Glúteo Perfeito", "Harmonização de Glúteos"] },
         { form: "GLÚTEO", unit: "SBC", campaigns: ["Glúteo Perfeito", "Harmonização de Glúteos"] },
-        { form: "GLÚTEO", unit: "SCS", campaigns: ["Glúteo Perfeito", "Harmonização de Glúteos"] },
       ],
     },
     { status: configured ? 200 : 503 },
@@ -450,6 +441,11 @@ export async function POST(request: NextRequest) {
   }
   const routing = resolveLeadRouting(lead);
   if (!routing) {
+    // Responde 200 para o Zapier não repetir nem acusar erro em anúncio antigo de SCS.
+    if (isRetiredScsLead(lead)) {
+      console.info("[Meta Leads] Lead de SCS ignorado: unidade encerrada", { formId: lead.formId, campaignId: lead.campaignId });
+      return NextResponse.json({ ok: true, ignored: "unidade_encerrada" });
+    }
     return NextResponse.json(
       {
         error: `O evento não pertence ao formulário GLÚTEO. Detectado: ${formIdentificationSummary(lead)}`,

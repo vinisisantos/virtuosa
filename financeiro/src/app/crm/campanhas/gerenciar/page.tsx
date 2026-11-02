@@ -247,7 +247,7 @@ export default function GerenciarCampanhasPage() {
     try {
       const payload = {
         ...form,
-        unit: globalUnit || 'SCS',
+        unit: globalUnit || 'Osasco',
         budget: form.budget ? parseBRL(form.budget) : null,
         objective: form.objective || null,
         notes: form.notes || null,
@@ -261,7 +261,7 @@ export default function GerenciarCampanhasPage() {
       })
       if (res.ok) {
         if (!editing && form.allUnits) {
-          toast('✅ Campanha registrada em todas as 3 unidades!', 'success')
+          toast('✅ Campanha registrada em todas as unidades!', 'success')
         } else {
           toast(editing ? '✅ Campanha atualizada!' : '✅ Campanha registrada!', 'success')
         }
@@ -612,8 +612,8 @@ export default function GerenciarCampanhasPage() {
                     </div>
                     <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 1 }}>
                       {form.allUnits
-                        ? '✅ Será registrada em Osasco, SBC e SCS'
-                        : 'Ativar para registrar em todas as 3 unidades ao mesmo tempo'
+                        ? '✅ Será registrada em Osasco e SBC'
+                        : 'Ativar para registrar em todas as unidades ao mesmo tempo'
                       }
                     </div>
                   </div>

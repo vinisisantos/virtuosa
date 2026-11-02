@@ -104,12 +104,12 @@ const getEvolutionConfig = () => ({
 export const maxDuration = 60;
 
 const CTWA_WELCOME_TRIGGER = "ctwa_welcome";
-const COMMERCIAL_LEAD_UNITS = ["Osasco", "SBC", "SCS"] as const;
+const COMMERCIAL_LEAD_UNITS = ["Osasco", "SBC"] as const;
 const CALL_BLOCK_SETTINGS_KEY = "whatsapp_call_block_settings";
 const DEFAULT_CALL_BLOCK_MESSAGE =
   "Este número não recebe ligações. Por favor, envie sua mensagem por aqui para darmos continuidade ao atendimento.";
-const CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS", "Todas"];
-const LEGACY_CALL_BLOCK_UNITS = ["Osasco", "SBC", "SCS"];
+const CALL_BLOCK_UNITS = ["Osasco", "SBC", "Todas"];
+const LEGACY_CALL_BLOCK_UNITS = ["Osasco", "SBC"];
 const TECHNICAL_LID_ARCHIVE_ACTOR = "Sistema — identificador técnico LID";
 const MISSING_ACK_MESSAGE_RETRY_DELAYS_MS = [100, 250, 500] as const;
 

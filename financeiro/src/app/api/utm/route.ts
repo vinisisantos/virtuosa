@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       clientId = existingClient.id
     } else {
       // Create new client with UTM data
-      const targetUnit = unit || 'SCS';
+      const targetUnit = unit || 'Osasco';
       const newClient = await prisma.client.create({
         data: {
           name: name || 'Lead via UTM',

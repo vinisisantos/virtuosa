@@ -18,12 +18,11 @@ export function canManageCollaboratorWhatsApp(role?: string | null) {
   return isAdminRole(role);
 }
 
-export const ACTIVE_UNITS = ['Osasco', 'SBC', 'SCS'] as const;
+export const ACTIVE_UNITS = ['Osasco', 'SBC'] as const;
 
 export const UNIT_PERMISSION_MAP: Record<string, string> = {
   unitOsasco: 'Osasco',
   unitSBC: 'SBC',
-  unitSCS: 'SCS',
 };
 
 export const ALL_VISIBLE_UNITS = [...ACTIVE_UNITS];

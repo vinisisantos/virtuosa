@@ -18,7 +18,7 @@ interface BillEntry extends Entry {
 interface CostState<F extends FixedEntry, B extends BillEntry> { fixed: F[]; bills: B[]; }
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const categoryKey = (category: string) => category.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-const validUnit = (unit?: string) => ['SBC', 'Osasco', 'SCS'].includes(unit || '');
+const validUnit = (unit?: string) => ['SBC', 'Osasco'].includes(unit || '');
 const eligible = (entry: Entry, unit: string, category: string) => (
   validUnit(unit) && entry.unit === unit && categoryKey(entry.category) === categoryKey(category)
   && categoryKey(category) !== 'produtos'

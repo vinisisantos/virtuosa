@@ -148,7 +148,7 @@ export async function processLead(data: LeadData): Promise<{
   error?: string;
   isDuplicate?: boolean;
 }> {
-  const unit = data.unit || 'SCS';
+  const unit = data.unit || 'Osasco';
   const phone = normalizePhone(data.phone);
   const email = data.email?.trim().toLowerCase() || null;
   const name = data.name?.trim() || 'Lead sem nome';

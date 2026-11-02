@@ -133,7 +133,7 @@ function DiagnosticoInner() {
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {data.instances.map((i, idx) => {
-                const valid = !!i.unit && ['Osasco', 'SBC', 'SCS', 'Todas'].includes(i.unit)
+                const valid = !!i.unit && ['Osasco', 'SBC', 'Todas'].includes(i.unit)
                 return (
                   <div key={i.id} style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: '0.76rem', padding: '10px 0', borderBottom: idx < data.instances.length - 1 ? '1px solid var(--border)' : 'none' }}>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -149,7 +149,6 @@ function DiagnosticoInner() {
                           <option value="" disabled>Definir unidade…</option>
                           <option value="Osasco">Osasco</option>
                           <option value="SBC">SBC</option>
-                          <option value="SCS">SCS</option>
                           <option value="Todas">Todas as unidades (compartilhado)</option>
                         </select>
                       </label>

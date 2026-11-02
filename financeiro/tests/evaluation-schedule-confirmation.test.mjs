@@ -9,7 +9,6 @@ import {
   DEFAULT_EVALUATION_SCHEDULE_CONFIRMATION_TEMPLATE,
   LEADS_OSASCO_INSTANCE_ID,
   LEADS_SBC_INSTANCE_ID,
-  LEADS_SCS_INSTANCE_ID,
   buildEvaluationConfirmationRequestMessage,
   buildEvaluationDayReminderMessage,
   buildEvaluationNoShowMessage,
@@ -59,8 +58,8 @@ test("confirmação fica restrita à caixa de leads da própria unidade", () => 
   })?.unit, "SBC");
   assert.equal(getEvaluationScheduleUnitConfig({
     unit: "SCS",
-    instanceId: LEADS_SCS_INSTANCE_ID,
-  })?.unit, "SCS");
+    instanceId: "bbb24b4e-ef6d-4b64-93e8-9998d0514c65",
+  }), null);
   assert.equal(getEvaluationScheduleUnitConfig({
     unit: "Osasco",
     instanceId: "outra-instancia",
@@ -114,19 +113,6 @@ test("agendamento de SBC usa endereço e identidade de São Bernardo", () => {
   assert.doesNotMatch(message, /Osasco/);
 });
 
-test("agendamento de SCS usa endereço e identidade de São Caetano", () => {
-  const message = buildEvaluationScheduleConfirmationMessage({
-    unit: "SCS",
-    clientName: "Beatriz",
-    startTime: new Date("2026-08-10T13:30:00.000Z"),
-  });
-
-  assert.match(message, /Avenida Vital Brasil Filho, 143/);
-  assert.match(message, /Clínica Virtuosa São Caetano/);
-  assert.match(message, /10\/08\/2026/);
-  assert.doesNotMatch(message, /Osasco/);
-});
-
 test("pedido de confirmação preserva conteúdo, parágrafos, data e horário", () => {
   const message = buildEvaluationConfirmationRequestMessage({
     unit: "Osasco",
@@ -148,19 +134,6 @@ test("pedido de confirmação preserva conteúdo, parágrafos, data e horário",
   ].join("\n"));
   assert.match(DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE, /\{\{nome\}\}/);
   assert.match(DEFAULT_EVALUATION_CONFIRMATION_REQUEST_TEMPLATE, /\{\{hora\}\}/);
-});
-
-test("pedido de confirmação de SCS usa o modelo da própria unidade", () => {
-  const message = buildEvaluationConfirmationRequestMessage({
-    unit: "SCS",
-    clientName: "Carla",
-    startTime: new Date("2026-08-10T13:30:00.000Z"),
-  });
-
-  assert.match(message, /Olá, \*Carla\*!/);
-  assert.match(message, /Clínica Virtuosa São Caetano/);
-  assert.match(message, /Vital Brasil Filho, 143/);
-  assert.doesNotMatch(message, /Eloy Cândido Lopes/);
 });
 
 test("pedido de confirmação de SBC usa o modelo da própria unidade", () => {
@@ -195,8 +168,8 @@ test("mensagem de ausência preserva os parágrafos e substitui o nome", () => {
   assert.match(DEFAULT_EVALUATION_NO_SHOW_TEMPLATE, /\{\{nome\}\}/);
 });
 
-test("mensagem de ausência editada continua disponível nas três unidades", () => {
-  for (const unit of ["Osasco", "SBC", "SCS"]) {
+test("mensagem de ausência editada continua disponível nas duas unidades", () => {
+  for (const unit of ["Osasco", "SBC"]) {
     assert.equal(buildEvaluationNoShowMessage({
       unit,
       clientName: "Ana Souza",
@@ -231,7 +204,6 @@ test("reagendamento preserva os parágrafos e informa a nova agenda de Osasco", 
 test("reagendamento usa identidade, endereço e link da própria unidade", () => {
   const cases = [
     ["SBC", "São Bernardo", "Avenida das Nações Unidas, 30"],
-    ["SCS", "São Caetano", "Avenida Vital Brasil Filho, 143"],
   ];
 
   for (const [unit, displayName, address] of cases) {
@@ -248,14 +220,14 @@ test("reagendamento usa identidade, endereço e link da própria unidade", () =>
 
 test("reagendamento editado continua substituindo todas as variáveis", () => {
   const message = buildEvaluationRescheduledMessage({
-    unit: "SCS",
+    unit: "SBC",
     clientName: "Ana Souza",
     startTime: new Date("2026-08-24T13:30:00.000Z"),
     template: "{{primeiro_nome}}, reagendamos em {{unidade}} para {{data}} às {{hora}}. {{endereco}} {{link_localizacao}}",
   });
 
-  assert.match(message, /^Ana, reagendamos em São Caetano para 24\/08\/2026 às 10:30\./);
-  assert.match(message, /Avenida Vital Brasil Filho, 143/);
+  assert.match(message, /^Ana, reagendamos em São Bernardo para 24\/08\/2026 às 10:30\./);
+  assert.match(message, /Avenida das Nações Unidas, 30/);
   assert.match(message, /google\.com\/maps/);
 });
 
@@ -285,7 +257,6 @@ test("lembrete no dia preserva o texto aprovado e os dados de Osasco", () => {
 test("lembrete no dia usa nome, endereço e localização da própria unidade", () => {
   const cases = [
     ["SBC", "São Bernardo", "Avenida das Nações Unidas, 30"],
-    ["SCS", "São Caetano", "Avenida Vital Brasil Filho, 143"],
   ];
 
   for (const [unit, displayName, address] of cases) {

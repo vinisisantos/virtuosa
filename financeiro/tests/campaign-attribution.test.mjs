@@ -17,7 +17,7 @@ const openings = [
   ['Vim pelo HYPERSLIM', 'HyperSlim'],
   ['Vim pelo MONJIFAST', 'MonjiFast'],
 ];
-for(const unit of ['SBC','SCS','Osasco']) {
+for(const unit of ['SBC','Osasco']) {
   test(`recupera aberturas explícitas, acentos e variantes em ${unit}`,()=>{
     for(const [message,name] of openings) {
       assert.equal(campaignFromPrefilledMetaLeadMessage(message,unit)?.campaignName,name,message);

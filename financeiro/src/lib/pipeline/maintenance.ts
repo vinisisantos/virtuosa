@@ -4,7 +4,7 @@ import { pipelineStageKeyFromName } from '@/lib/pipeline/stages';
 
 const PIPELINE_PLACEMENT_SYNC_KEY = 'pipeline_placement_sync_by_phone_and_dedup_last_run_v1';
 const PIPELINE_PLACEMENT_SYNC_INTERVAL_MS = 5 * 60 * 1000;
-const PIPELINE_UNITS = ['Osasco', 'SBC', 'SCS'];
+const PIPELINE_UNITS = ['Osasco', 'SBC'];
 
 export type PipelinePlacementSyncResult = {
   skipped: boolean;

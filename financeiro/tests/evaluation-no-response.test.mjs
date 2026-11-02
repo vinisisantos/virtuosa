@@ -20,7 +20,7 @@ const scope = unit => {
   const a = automations.find(a => a.unit === unit);
   return { id: a.id, unit, instanceId: EVALUATION_SCHEDULE_UNIT_CONFIGS.find(c => c.unit === unit).instanceId, delayHours: 2, activatedAt, updatedAt: activatedAt };
 };
-const candidates = async (scopes = [scope('SCS')], when = now, revalidate, conversationId = `chat-${scopes[0].unit}`) => {
+const candidates = async (scopes = [scope('Osasco')], when = now, revalidate, conversationId = `chat-${scopes[0].unit}`) => {
   const q = noResponseCandidatesQuery(scopes, when, conversationId, revalidate);
   return (await pg.query(q.text, q.values)).rows;
 };
@@ -67,10 +67,10 @@ test('padrão 2h e prazo válido, sem faixa de horário na configuração', () =
   }
 });
 test('ativação não aceita retroatividade, não muda unidade e preserva prazo', () => {
-  const existing = {unit:'SCS',isActive:false,triggerConfig:{delayHours:2,activatedAt:activatedAt.toISOString(),earliestHour:8,latestHour:21}};
-  const updated = updatedNoResponseConfig(existing,{isActive:true,triggerConfig:{activatedAt:'2000-01-01',units:['Osasco'],delayHours:3,earliestHour:8,latestHour:21}},now);
+  const existing = {unit:'Osasco',isActive:false,triggerConfig:{delayHours:2,activatedAt:activatedAt.toISOString(),earliestHour:8,latestHour:21}};
+  const updated = updatedNoResponseConfig(existing,{isActive:true,triggerConfig:{activatedAt:'2000-01-01',units:['SBC'],delayHours:3,earliestHour:8,latestHour:21}},now);
   assert.equal(updated.activatedAt,now.toISOString());
-  assert.deepEqual(updated.units,['SCS']);
+  assert.deepEqual(updated.units,['Osasco']);
   assert.equal(updated.delayHours,3);
   assert.equal(updated.earliestHour,undefined);assert.equal(updated.latestHour,undefined);
   assert.equal(updatedNoResponseConfig({...existing,isActive:true},{isActive:true},now).activatedAt,activatedAt.toISOString());
@@ -90,26 +90,26 @@ test('limite exato das 2h e agendamento já iniciado', async () => {
   assert.equal((await candidates(undefined,startTime)).length,0);
 });
 test('clique individual aceita confirmação vinculada anterior ao cadastro, nunca log sem mensagem exata', async () => {
-  assert.equal((await candidates([{...scope('SCS'),activatedAt:new Date(sentAt.getTime()+1)}])).length,1);
+  assert.equal((await candidates([{...scope('Osasco'),activatedAt:new Date(sentAt.getTime()+1)}])).length,1);
   await pg.exec(`UPDATE "AutomationLog" SET "triggerData" = "triggerData" - 'confirmationMessageId'`);
   assert.equal((await candidates()).length,0);
 });
 test('resposta cancela mesmo com lastInboundAt defasado e timestamp de importação antigo', async () => {
-  await pg.query('INSERT INTO "WhatsAppMessage" VALUES ($1,$2,$3,false,$4,$5,$6)', ['incoming','chat-SCS','incoming',activatedAt,now,'received']);
+  await pg.query('INSERT INTO "WhatsAppMessage" VALUES ($1,$2,$3,false,$4,$5,$6)', ['incoming','chat-Osasco','incoming',activatedAt,now,'received']);
   assert.equal((await candidates()).length,0);
 });
 test('resposta recente registrada no resumo também interrompe', async () => {
-  await pg.query('UPDATE "WhatsAppConversation" SET "lastInboundAt"=$1 WHERE id=$2',[sentAt,'chat-SCS']);
+  await pg.query('UPDATE "WhatsAppConversation" SET "lastInboundAt"=$1 WHERE id=$2',[sentAt,'chat-Osasco']);
   assert.equal((await candidates()).length,0);
 });
 test('mensagem anterior não cancela; nova saída humana não apaga uma resposta recebida', async () => {
-  await pg.query('INSERT INTO "WhatsAppMessage" VALUES ($1,$2,$3,false,$4,$4,$5)', ['old','chat-SCS','old',activatedAt,'received']);
+  await pg.query('INSERT INTO "WhatsAppMessage" VALUES ($1,$2,$3,false,$4,$4,$5)', ['old','chat-Osasco','old',activatedAt,'received']);
   assert.equal((await candidates()).length,1);
   await pg.query('UPDATE "WhatsAppMessage" SET timestamp=$1 WHERE id=$2',[now,'old']);
   assert.equal((await candidates()).length,0);
 });
 for (const status of ['confirmado','cancelado','nao_compareceu','realizado']) test(`status ${status} não recebe lembrete`,async()=>{
-  await pg.query('UPDATE "Agendamento" SET status=$1 WHERE unit=$2',[status,'SCS']);
+  await pg.query('UPDATE "Agendamento" SET status=$1 WHERE unit=$2',[status,'Osasco']);
   assert.equal((await candidates()).length,0);
 });
 test('não confirmou permanece elegível e horário alterado impede envio antigo',async()=>{
@@ -123,7 +123,7 @@ for (const [name,sql] of [
   ['conversa fechada',`UPDATE "WhatsAppConversation" SET status='closed'`],
   ['conversa arquivada',`UPDATE "WhatsAppConversation" SET "archivedAt"=current_timestamp`],
   ['instância desconectada',`UPDATE "WhatsAppInstance" SET status='disconnected'`],
-  ['instância de outra unidade',`UPDATE "WhatsAppInstance" SET unit='Osasco' WHERE unit='SCS'`],
+  ['instância de outra unidade',`UPDATE "WhatsAppInstance" SET unit='SBC' WHERE unit='Osasco'`],
   ['Pipeline não agendado',`UPDATE "SalesPipeline" SET stage='novo'`],
   ['agenda sem vínculo',`UPDATE "Agendamento" SET notes='Sem vínculo'`],
   ['telefone diferente',`UPDATE "Agendamento" SET "clientPhone"='11988888888'`],
@@ -137,7 +137,7 @@ test('normalização mantém número nacional de dez dígitos com/sem 55',async(
   assert.equal((await candidates()).length,1);
 });
 for (const status of ['processing','success','failed','uncertain','skipped']) test(`reserva ${status} nunca repete`,async()=>{
-  await pg.query('INSERT INTO "AutomationLog" (id,result) VALUES ($1,$2)',[noResponseExecutionId('appointment-SCS',startTime),status]);
+  await pg.query('INSERT INTO "AutomationLog" (id,result) VALUES ($1,$2)',[noResponseExecutionId('appointment-Osasco',startTime),status]);
   assert.equal((await candidates()).length,0);
 });
 
@@ -152,7 +152,7 @@ function adapter({beforeQuery,failLogSuccess=false}={}) {
     },
   };
 }
-const context={conversationId:'chat-SCS',instanceId:EVALUATION_SCHEDULE_UNIT_CONFIGS.find(c=>c.unit==='SCS').instanceId,unit:'SCS',actorId:'operator',actorName:'Pessoa Operadora'};
+const context={conversationId:'chat-Osasco',instanceId:EVALUATION_SCHEDULE_UNIT_CONFIGS.find(c=>c.unit==='Osasco').instanceId,unit:'Osasco',actorId:'operator',actorName:'Pessoa Operadora'};
 const run=(database,sendText,extra={})=>sendEvaluationNoResponseReminder(context,{database,sendText,clock:()=>now.getTime(),...extra});
 test('clique envia somente à conversa escolhida, com JID, texto e autoria corretos',async()=>{
   let sends=0;let payload;
@@ -160,8 +160,8 @@ test('clique envia somente à conversa escolhida, com JID, texto e autoria corre
   const result=await run(db,async params=>{await params.beforeSend();payload=params;sends++;return {messageId:'sent',sentAt:now};});
   assert.equal(result.sent,1);assert.equal(sends,1);
   assert.equal(payload.lastKnownJid,'123@lid');assert.match(payload.message,/Olá, Pessoa!/);assert.match(payload.message,/08\/09\/2026 às 15:00/);
-  assert.equal(payload.conversationId,'chat-SCS');assert.equal(payload.respondedByName,'Pessoa Operadora');
-  const audit=(await pg.query('SELECT "triggerData" FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId('appointment-SCS',startTime)])).rows[0].triggerData;
+  assert.equal(payload.conversationId,'chat-Osasco');assert.equal(payload.respondedByName,'Pessoa Operadora');
+  const audit=(await pg.query('SELECT "triggerData" FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId('appointment-Osasco',startTime)])).rows[0].triggerData;
   assert.equal(audit.source,'manual');assert.equal(audit.actorId,'operator');
   assert.equal((await pg.query(`SELECT count(*)::int AS n FROM "AutomationLog" WHERE result='success' AND "automationId" LIKE 'evaluation_confirmation_no_response:%'`)).rows[0].n,1);
 });
@@ -172,7 +172,7 @@ test('resposta entre seleção e envio cancela a tentativa',async()=>{
   assert.equal(result.skipped,1);assert.equal(sends,0);
 });
 test('falha externa ou de auditoria não libera reenvio',async()=>{
-  automations=automations.map(a=>({...a,isActive:a.unit==='SCS'}));
+  automations=automations.map(a=>({...a,isActive:a.unit==='Osasco'}));
   let sends=0;
   const db=adapter({failLogSuccess:true});
   assert.equal((await run(db,async p=>{await p.beforeSend();sends++;return {messageId:'sent',sentAt:now};})).uncertain,1);
@@ -180,7 +180,7 @@ test('falha externa ou de auditoria não libera reenvio',async()=>{
   assert.equal(sends,1);
 });
 test('timeout do provedor preserva reserva sem retry',async()=>{
-  automations=automations.map(a=>({...a,isActive:a.unit==='SCS'}));
+  automations=automations.map(a=>({...a,isActive:a.unit==='Osasco'}));
   let sends=0;const db=adapter();
   const send=async p=>{await p.beforeSend();sends++;throw new Error('timeout');};
   assert.equal((await run(db,send)).uncertain,1);
@@ -191,7 +191,7 @@ test('sem orçamento de execução não consulta nem envia',async()=>{
   assert.equal((await run(database,async()=>{throw new Error('não envia');},{deadlineAt:now.getTime()+19000})).checked,0);
 });
 test('duas execuções concorrentes disputam a mesma chave primária',async()=>{
-  automations=automations.map(a=>({...a,isActive:a.unit==='SCS'}));
+  automations=automations.map(a=>({...a,isActive:a.unit==='Osasco'}));
   let sends=0;const db=adapter();
   const send=async p=>{await p.beforeSend();sends++;return {messageId:'sent',sentAt:now};};
   const results=await Promise.all([run(db,send),run(db,send)]);
@@ -203,8 +203,8 @@ test('troca de configuração entre seleção e envio cancela',async()=>{
   assert.equal(result.skipped,1);assert.equal(sends,0);
 });
 test('seleção exige conversa e não usa candidato de outra caixa como fallback',async()=>{
-  assert.throws(()=>noResponseCandidatesQuery([scope('SCS')],now,''));
-  assert.equal((await candidates(undefined,now,undefined,'chat-Osasco')).length,0);
+  assert.throws(()=>noResponseCandidatesQuery([scope('Osasco')],now,''));
+  assert.equal((await candidates(undefined,now,undefined,'chat-SBC')).length,0);
   assert.equal((await candidates(undefined,now,undefined,'nao-existe')).length,0);
   await assert.rejects(()=>sendEvaluationNoResponseReminder({...context,instanceId:'outra'},{database:adapter()}));
 });
@@ -237,13 +237,13 @@ for (const {unit,instanceId} of EVALUATION_SCHEDULE_UNIT_CONFIGS) {
   }
 }
 test('passar das 21h entre clique e revalidação não cancela envio elegível',async()=>{
-  let time=new Date('2026-09-08T23:59:59Z').getTime();await retimeConfirmation('SCS',new Date(time));
+  let time=new Date('2026-09-08T23:59:59Z').getTime();await retimeConfirmation('Osasco',new Date(time));
   let sends=0;
   const result=await run(adapter(),async p=>{time+=2000;await p.beforeSend();sends++;return {messageId:'sent',sentAt:new Date(time)};},{clock:()=>time});
   assert.equal(result.sent,1);assert.equal(sends,1);
 });
 
-async function legacyConfirmation(unit = 'SCS', template) {
+async function legacyConfirmation(unit = 'Osasco', template) {
   const body = buildEvaluationConfirmationRequestMessage({unit, clientName:'Pessoa Teste', startTime, template});
   await pg.query(`UPDATE "AutomationLog" SET "triggerData"=("triggerData" - 'confirmationMessageId') || '{"source":"manual"}'::jsonb WHERE id=$1`, [`source-${unit}`]);
   await pg.query(`UPDATE "WhatsAppMessage" SET body=$1,"respondedByName"='Automação de agenda' WHERE id=$2`, [body,`message-${unit}`]);
@@ -269,9 +269,9 @@ for (const {unit,instanceId} of EVALUATION_SCHEDULE_UNIT_CONFIGS) {
   });
 }
 test('confirmação antiga aceita texto personalizado integral e padrão anterior à edição do modelo',async()=>{
-  await legacyConfirmation('SCS','Olá {{nome}}, confirma sua avaliação em {{data}} às {{hora}}?');
+  await legacyConfirmation('Osasco','Olá {{nome}}, confirma sua avaliação em {{data}} às {{hora}}?');
   assert.equal((await run(adapter(),simulatedSend)).sent,1);
-  await pg.query('DELETE FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId('appointment-SCS',startTime)]);
+  await pg.query('DELETE FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId('appointment-Osasco',startTime)]);
   await legacyConfirmation(); // Mensagem padrão antiga; configuração personalizada continua salva.
   assert.equal((await run(adapter(),simulatedSend)).sent,1);
 });
@@ -280,7 +280,7 @@ for (const [name,sql] of [
   ['auditoria de outro tipo',`UPDATE "AutomationLog" SET "triggerData"="triggerData" || '{"action":"evaluation_day_reminder"}'::jsonb`],
   ['origem antiga desconhecida',`UPDATE "AutomationLog" SET "triggerData"="triggerData" - 'source'`],
   ['autoria humana',`UPDATE "WhatsAppMessage" SET "respondedByName"='Pessoa Operadora'`],
-  ['outra conversa',`UPDATE "WhatsAppMessage" SET "conversationId"='outro-chat' WHERE id='message-SCS'`],
+  ['outra conversa',`UPDATE "WhatsAppMessage" SET "conversationId"='outro-chat' WHERE id='message-Osasco'`],
   ['mensagem recebida',`UPDATE "WhatsAppMessage" SET "fromMe"=false`],
   ['mensagem excluída',`UPDATE "WhatsAppMessage" SET status='deleted'`],
   ['mensagem com falha',`UPDATE "WhatsAppMessage" SET status='failed'`],
@@ -296,20 +296,20 @@ for (const [name,sql] of [
 });
 for (const [name,body] of [
   ['texto genérico','Olá, tudo bem?'],
-  ['lembrete do dia',buildEvaluationDayReminderMessage({unit:'SCS',clientName:'Pessoa Teste',startTime})],
-  ['reagendamento',buildEvaluationRescheduledMessage({unit:'SCS',clientName:'Pessoa Teste',startTime})],
-  ['outro horário',buildEvaluationConfirmationRequestMessage({unit:'SCS',clientName:'Pessoa Teste',startTime:new Date(startTime.getTime()+3600000)})],
-  ['outra unidade',buildEvaluationConfirmationRequestMessage({unit:'Osasco',clientName:'Pessoa Teste',startTime})],
+  ['lembrete do dia',buildEvaluationDayReminderMessage({unit:'Osasco',clientName:'Pessoa Teste',startTime})],
+  ['reagendamento',buildEvaluationRescheduledMessage({unit:'Osasco',clientName:'Pessoa Teste',startTime})],
+  ['outro horário',buildEvaluationConfirmationRequestMessage({unit:'Osasco',clientName:'Pessoa Teste',startTime:new Date(startTime.getTime()+3600000)})],
+  ['outra unidade',buildEvaluationConfirmationRequestMessage({unit:'SBC',clientName:'Pessoa Teste',startTime})],
 ]) test(`autoria e horário não bastam para recuperar ${name}`,async()=>{
   await legacyConfirmation();
   await pg.query('UPDATE "WhatsAppMessage" SET body=$1',[body]);
   assert.equal((await candidates()).length,1);
   assert.equal((await run(adapter(),mustNotSend)).skipped,1);
-  assert.equal((await pg.query('SELECT count(*)::int AS n FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId('appointment-SCS',startTime)])).rows[0].n,0);
+  assert.equal((await pg.query('SELECT count(*)::int AS n FROM "AutomationLog" WHERE id=$1',[noResponseExecutionId('appointment-Osasco',startTime)])).rows[0].n,0);
 });
 for (const status of ['sent','failed','deleted']) test(`duas mensagens da agenda na janela são ambíguas mesmo com segunda ${status}`,async()=>{
   await legacyConfirmation();
-  await pg.query(`INSERT INTO "WhatsAppMessage" SELECT 'second',"conversationId",'second',"fromMe",timestamp,"createdAt",$1,body,type,"respondedByName" FROM "WhatsAppMessage" WHERE id='message-SCS'`,[status]);
+  await pg.query(`INSERT INTO "WhatsAppMessage" SELECT 'second',"conversationId",'second',"fromMe",timestamp,"createdAt",$1,body,type,"respondedByName" FROM "WhatsAppMessage" WHERE id='message-Osasco'`,[status]);
   assert.equal((await candidates()).length,0);
   await pg.exec(`UPDATE "AutomationLog" SET "triggerData"="triggerData" || '{"confirmationMessageId":"same-provider-id"}'::jsonb`);
   assert.equal((await candidates())[0].confirmationReference,'message_id');
@@ -317,7 +317,7 @@ for (const status of ['sent','failed','deleted']) test(`duas mensagens da agenda
 });
 test('confirmação antiga não ignora resposta recebida ou importada',async()=>{
   await legacyConfirmation();
-  await pg.query('INSERT INTO "WhatsAppMessage" VALUES ($1,$2,$3,false,$4,$5,$6)',['response','chat-SCS','response',activatedAt,now,'received']);
+  await pg.query('INSERT INTO "WhatsAppMessage" VALUES ($1,$2,$3,false,$4,$5,$6)',['response','chat-Osasco','response',activatedAt,now,'received']);
   assert.equal((await run(adapter(),mustNotSend)).sent,0);
 });
 for (const [name,sql] of [

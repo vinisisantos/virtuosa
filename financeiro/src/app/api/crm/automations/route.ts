@@ -57,7 +57,7 @@ async function ensureCtwaWelcomeAutomation(createdBy?: string | null) {
       description: "Envia uma saudação somente para novos leads click-to-WhatsApp e captura o nome informado.",
       triggerType: CTWA_WELCOME_TRIGGER,
       triggerConfig: {
-        units: ["Osasco", "SBC", "SCS"],
+        units: ["Osasco", "SBC"],
         requireCampaignSignal: true,
         requireUnassignedConversation: true,
         captureName: true,

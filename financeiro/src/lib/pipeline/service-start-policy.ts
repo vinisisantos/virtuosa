@@ -1,7 +1,6 @@
 const COMMERCIAL_UNITS = new Map([
   ["osasco", "Osasco"],
   ["sbc", "SBC"],
-  ["scs", "SCS"],
 ]);
 
 export function normalizedPipelineStageName(value?: string | null) {

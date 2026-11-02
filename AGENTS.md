@@ -13,7 +13,7 @@ Este projeto usa uma memória compartilhada externa em `~/Documents/BC OBSIDIAN/
 - Banco: Postgres/Supabase via Prisma (`financeiro/prisma/schema.prisma`). O `.env` local aponta para produção; scripts locais podem ler/escrever dados reais.
 - Prisma deve usar o singleton `financeiro/src/lib/db.ts`; ele adiciona `connection_limit=1` e `pool_timeout=20`.
 - WhatsApp: Evolution API v2 auto-hospedada em VPS; `EVOLUTION_API_URL` só é acessível em produção/Vercel porque a VPS restringe IPs.
-- Unidades ativas: Osasco, SBC e SCS; instâncias com unidade `Todas` são compartilhadas, mas continuam isoladas por dono.
+- Unidades ativas: Osasco e SBC; instâncias com unidade `Todas` são compartilhadas, mas continuam isoladas por dono.
 - Inbox WhatsApp é isolado por dono da instância em `financeiro/src/lib/whatsapp/instance-resolver.ts`; admin só acessa outro dono via `targetUserId`/`targetInstanceId`.
 - Origem imutável de lead fica em `Client.originUnit`; unidade atual (`Client.unit`/pipeline) pode mudar por transferência.
 

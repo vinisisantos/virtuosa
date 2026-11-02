@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     // O snapshot contém o conjunto financeiro usado pelo perfil. Ler e gravar
     // sempre a mesma unidade canônica evita que administradores com unidade
     // "Todas" alternem acidentalmente entre backups de filiais diferentes.
-    const backupUnit = guard.createUnit();
+    const backupUnit = guard.financialBackupUnit();
     const backup = await prisma.financialBackup.findFirst({
       where: { unit: backupUnit },
       orderBy: { updatedAt: 'desc' },
@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
     }
 
-    const unitValue = guard.createUnit();
+    const unitValue = guard.financialBackupUnit();
 
     // UNIT GUARD: Upsert per unit — each unit gets its own backup
     const backup = await prisma.$transaction(async transaction => {
@@ -168,7 +168,7 @@ export async function DELETE(req: NextRequest) {
   if (!guard.isAdmin) return NextResponse.json({ error: 'Apenas administradores' }, { status: 403 });
 
   try {
-    const backupUnit = guard.createUnit();
+    const backupUnit = guard.financialBackupUnit();
     await prisma.financialBackup.deleteMany({
       where: { unit: backupUnit },
     });

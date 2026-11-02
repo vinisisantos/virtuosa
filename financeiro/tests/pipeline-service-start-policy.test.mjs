@@ -20,13 +20,14 @@ test("normaliza o nome canônico da etapa de atendimento", () => {
 });
 
 test("prioriza a unidade canônica da instância sobre o contato global", () => {
-  assert.equal(resolveServiceStartUnit("SCS", "Osasco"), "Osasco");
+  assert.equal(resolveServiceStartUnit("SBC", "Osasco"), "Osasco");
   assert.equal(resolveServiceStartUnit("Osasco", " sbc "), "SBC");
   assert.equal(resolveServiceStartUnit(null, "SBC"), "SBC");
 });
 
 test("usa o contato somente quando a instância não identifica uma unidade comercial", () => {
-  assert.equal(resolveServiceStartUnit("SCS", null), "SCS");
+  assert.equal(resolveServiceStartUnit("SBC", null), "SBC");
+  assert.equal(resolveServiceStartUnit("SCS", null), null);
   assert.equal(resolveServiceStartUnit(" osasco ", "Todas"), "Osasco");
   assert.equal(resolveServiceStartUnit("SBC", "Barueri"), "SBC");
   assert.equal(resolveServiceStartUnit(null, "Todas"), null);

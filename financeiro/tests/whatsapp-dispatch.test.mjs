@@ -8,7 +8,7 @@ import {latestDispatchesQuery} from '../src/lib/whatsapp/dispatch-query.ts';
 const batch={batchId:'12345678-1234-1234-1234-123456789abc',source:'inbox_bulk',size:10,campaignName:' Botox '};
 test('escopo é a caixa real ou contato de Todas, nunca unidade fornecida no lote',()=>{
   assert.equal(dispatchUnitEnabled('Osasco','SCS'),true);
-  for(const unit of ['Osasco','SBC','SCS']) {
+  for(const unit of ['Osasco','SBC']) {
     assert.equal(dispatchUnitEnabled(unit,'Osasco'),true);
     assert.deepEqual(dispatchMetadataForSend({...batch,unit:'Osasco'},unit,'Osasco'),{version:1,unit,batchId:batch.batchId,source:'inbox_bulk',campaignName:'Botox'});
     assert.deepEqual(dispatchMetadataForSend(batch,'Todas',unit),{version:1,unit,batchId:batch.batchId,source:'inbox_bulk',campaignName:'Botox'});

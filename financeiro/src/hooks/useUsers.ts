@@ -42,7 +42,6 @@ export interface UserPermissions {
   multiUnit: boolean;
   admin: boolean;
   // Unidades (acesso individual)
-  unitSCS: boolean;
   unitSBC: boolean;
   unitOsasco: boolean;
 }
@@ -61,7 +60,7 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
   financeiro: false, finAdiantamento: false, finPremiacao: false, finReembolso: false, finCustos: false, finAnalise: false,
   cancelamento: false, termos: false, deleteOrcamento: false,
   perfil: true, usuarios: false, multiUnit: false, admin: false,
-  unitSCS: false, unitSBC: false, unitOsasco: false,
+  unitSBC: false, unitOsasco: false,
 };
 
 export const PERMISSION_LABELS: Record<string, string> = {
@@ -80,7 +79,7 @@ export const PERMISSION_LABELS: Record<string, string> = {
   finReembolso: 'Reembolso', finCustos: 'Custos', finAnalise: 'Análise Financeira',
   cancelamento: 'Cancelamentos', termos: 'Termos e Contratos', deleteOrcamento: 'Excluir Orçamentos',
   perfil: 'Meu Perfil', usuarios: 'Gestão de Usuários', multiUnit: 'Acesso Multi-Unidade', admin: 'Administrador Total',
-  unitSCS: 'São Caetano do Sul', unitSBC: 'São Bernardo do Campo', unitOsasco: 'Osasco',
+  unitSBC: 'São Bernardo do Campo', unitOsasco: 'Osasco',
 };
 
 export const PERMISSION_ICONS: Record<string, string> = {
@@ -95,7 +94,7 @@ export const PERMISSION_ICONS: Record<string, string> = {
   finReembolso: 'receipt_long', finCustos: 'account_balance', finAnalise: 'analytics',
   cancelamento: 'cancel', termos: 'description', deleteOrcamento: 'delete_forever',
   perfil: 'person', usuarios: 'manage_accounts', multiUnit: 'apartment', admin: 'shield_person',
-  unitSCS: 'location_on', unitSBC: 'location_on', unitOsasco: 'location_on',
+  unitSBC: 'location_on', unitOsasco: 'location_on',
 };
 
 export interface PermissionCategory {
@@ -122,7 +121,7 @@ export const PERMISSION_CATEGORIES: PermissionCategory[] = [
   { label: 'Sistema', icon: 'settings', color: '#8b5cf6', description: 'Configurações de acesso e administração',
     keys: ['perfil', 'usuarios', 'multiUnit', 'admin'] },
   { label: 'Unidades', icon: 'apartment', color: '#0ea5e9', description: 'Habilite o acesso individual a cada unidade',
-    keys: ['unitSCS', 'unitSBC', 'unitOsasco'] },
+    keys: ['unitSBC', 'unitOsasco'] },
 ];
 
 export function useUsers() {
@@ -139,7 +138,7 @@ export function useUsers() {
   const [formPassword, setFormPassword] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formRole, setFormRole] = useState('VENDEDOR');
-  const [formUnit, setFormUnit] = useState('SCS');
+  const [formUnit, setFormUnit] = useState('Osasco');
   const [formIsActive, setFormIsActive] = useState(true);
   const [formPermissions, setFormPermissions] = useState<UserPermissions>({ ...DEFAULT_PERMISSIONS });
   const [formWhatsappInstances, setFormWhatsappInstances] = useState<string[]>([]); // instanceName[]
@@ -156,14 +155,14 @@ export function useUsers() {
 
   function openCreateModal() {
     setEditingUser(null); setFormName(''); setFormEmail(''); setFormPassword('');
-    setFormPhone(''); setFormRole('VENDEDOR'); setFormUnit('SCS');
+    setFormPhone(''); setFormRole('VENDEDOR'); setFormUnit('Osasco');
     setFormIsActive(true); setFormPermissions({ ...DEFAULT_PERMISSIONS }); setFormWhatsappInstances([]); setShowModal(true);
   }
 
   function openEditModal(user: UserData) {
     setEditingUser(user); setFormName(user.name); setFormEmail(user.email);
     setFormPassword(''); setFormPhone(user.phone || ''); setFormRole(user.role);
-    setFormUnit(user.unit || 'SCS'); setFormIsActive(user.isActive);
+    setFormUnit(user.unit || 'Osasco'); setFormIsActive(user.isActive);
     setFormPermissions(user.permissions ? { ...DEFAULT_PERMISSIONS, ...user.permissions } : { ...DEFAULT_PERMISSIONS });
     // Load whatsapp instances from permissions JSON (stored as whatsappInstances array)
     const perms = user.permissions as any;
@@ -178,7 +177,6 @@ export function useUsers() {
     let derivedUnit = isAdmin ? 'Todas' : formUnit;
     if (!isAdmin && formPermissions.unitOsasco) derivedUnit = 'Osasco';
     else if (!isAdmin && formPermissions.unitSBC) derivedUnit = 'SBC';
-    else if (!isAdmin && formPermissions.unitSCS) derivedUnit = 'SCS';
     
     const { unitBarueri: _deprecatedUnit, ...activePermissions } = formPermissions as UserPermissions & { unitBarueri?: boolean };
     const payload: any = { name: formName, email: formEmail, phone: formPhone, role: formRole, unit: derivedUnit, isActive: formIsActive, permissions: { ...activePermissions, whatsappInstances: formWhatsappInstances } };

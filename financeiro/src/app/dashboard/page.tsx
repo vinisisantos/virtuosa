@@ -47,7 +47,7 @@ const DASH_TABS:{key:Tab;label:string;icon:string;color:string}[] = [
   {key:'communications',label:'Comunicações',icon:'forum',color:'#25d366'},
 ];
 
-const UNIT_COLORS:Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981','SCS':'#ef4444'};
+const UNIT_COLORS:Record<string,string> = {'Barueri':'#6366f1','Osasco':'#f59e0b','SBC':'#10b981'};
 const CAT_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#8b5cf6','#ec4899','#14b8a6','#f97316'];
 
 /* ── Stagger animation variants ── */

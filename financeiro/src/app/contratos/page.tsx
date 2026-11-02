@@ -33,7 +33,7 @@ export default function ContratosPage() {
   const [showEmailModal, setShowEmailModal] = useState<Contract | null>(null);
   const [emailTo, setEmailTo] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
-  const [form, setForm] = useState({ clientName: '', clientCpf: '', clientEmail: '', templateName: '', unit: 'SCS', procedimento: '', valor: '', pagamento: '' });
+  const [form, setForm] = useState({ clientName: '', clientCpf: '', clientEmail: '', templateName: '', unit: 'Osasco', procedimento: '', valor: '', pagamento: '' });
   const [selectedPatient, setSelectedPatient] = useState<PatientData | null>(null);
   const [sendingAutentique, setSendingAutentique] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -211,7 +211,7 @@ export default function ContratosPage() {
           title="📑 Contratos Digitais"
           description="Gere, assine e gerencie contratos e termos"
           action={(
-            <AdminPrimaryAction icon="note_add" data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: globalUnit || 'SCS', procedimento: '', valor: '', pagamento: '' }); setSelectedPatient(null); setShowModal(true); }}>
+            <AdminPrimaryAction icon="note_add" data-tour="cont-novo" onClick={() => { setForm({ clientName: '', clientCpf: '', clientEmail: '', templateName: templates[0] || '', unit: globalUnit || 'Osasco', procedimento: '', valor: '', pagamento: '' }); setSelectedPatient(null); setShowModal(true); }}>
               Novo Contrato
             </AdminPrimaryAction>
           )}
@@ -311,7 +311,7 @@ export default function ContratosPage() {
               <div>
                 <label style={{ display: 'block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: 6, textTransform: 'uppercase' as const }}>Unidade</label>
                 <select value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} style={inputS}>
-                  {[ 'Osasco', 'SBC', 'SCS'].map(u => <option key={u}>{u}</option>)}
+                  {['Osasco', 'SBC'].map(u => <option key={u}>{u}</option>)}
                 </select>
               </div>
             </div>

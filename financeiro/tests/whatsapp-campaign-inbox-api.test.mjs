@@ -24,9 +24,9 @@ const {NextRequest}=await import('next/server.js');
 const phone='5511999991234';
 beforeEach(()=>{
   queries=0;clientWhere=null;dispatchQueries=[];
-  globalThis.campaignInstances=['SBC','SCS','Osasco'].map(unit=>({id:unit,unit,canReply:true}));
-  clients=['SBC','SCS','Osasco'].map((unit,i)=>({phone,unit,originUnit:unit,campaignName:['Glúteo Perfeito','Harmonização de Mamas','Botox'][i],campaignId:null,fbclid:null,updatedAt:new Date(2026,8,8,i)}));
-  conversations=globalThis.campaignInstances.map(instance=>({id:'chat-'+instance.id,instanceId:instance.id,status:'open',followUps:[],contact:{id:'contact',phone,unit:'SCS'},lastMessageAt:new Date().toISOString()}));
+  globalThis.campaignInstances=['SBC','Osasco'].map(unit=>({id:unit,unit,canReply:true}));
+  clients=['SBC','Osasco'].map((unit,i)=>({phone,unit,originUnit:unit,campaignName:['Glúteo Perfeito','Harmonização de Mamas'][i],campaignId:null,fbclid:null,updatedAt:new Date(2026,8,8,i)}));
+  conversations=globalThis.campaignInstances.map(instance=>({id:'chat-'+instance.id,instanceId:instance.id,status:'open',followUps:[],contact:{id:'contact',phone,unit:'Osasco'},lastMessageAt:new Date().toISOString()}));
 });
 const load=async(query='')=>{
   const res=await GET(new NextRequest('http://localhost/api/whatsapp/conversations'+query,{headers:{'x-user-id':'synthetic','x-user-role':'ADMINISTRADOR','x-user-unit':'SBC'}}));
@@ -34,11 +34,11 @@ const load=async(query='')=>{
 };
 test('Inbox retorna três tags independentes para o mesmo telefone em uma única consulta',async()=>{
   const data=await load('?unit=SBC');
-  assert.deepEqual(data.conversations.map(c=>c.campaignName),['Glúteo Perfeito','Harmonização de Mamas','Botox']);
-  assert.equal(queries,1);assert.deepEqual(clientWhere.unit.in,['SBC','SCS','Osasco']);
+  assert.deepEqual(data.conversations.map(c=>c.campaignName),['Glúteo Perfeito','Harmonização de Mamas']);
+  assert.equal(queries,1);assert.deepEqual(clientWhere.unit.in,['SBC','Osasco']);
 });
 test('sem cadastro da unidade, não herda campanha da outra',async()=>{
-  clients=clients.filter(c=>c.unit==='SCS');conversations=conversations.filter(c=>c.instanceId==='SBC');
+  clients=clients.filter(c=>c.unit==='Osasco');conversations=conversations.filter(c=>c.instanceId==='SBC');
   const data=await load();assert.equal(data.conversations[0].campaignName,null);assert.equal(queries,1);
 });
 test('telefone com mesmo sufixo mas DDD distinto não recebe tag alheia',async()=>{
@@ -48,15 +48,15 @@ test('telefone com mesmo sufixo mas DDD distinto não recebe tag alheia',async()
 test('caixa compartilhada usa unidade selecionada, sem seleção arbitrária global',async()=>{
   globalThis.campaignInstances=[{id:'shared',unit:'Todas'}];
   conversations=[{...conversations[0],instanceId:'shared'}];
-  assert.equal((await load('?unit=Osasco')).conversations[0].campaignName,'Botox');
+  assert.equal((await load('?unit=Osasco')).conversations[0].campaignName,'Harmonização de Mamas');
   conversations[0].contact.unit=null;
   queries=0;assert.equal((await load()).conversations[0].campaignName,null);assert.equal(queries,0);
 });
-test('selo tem uma única leitura agrupada para as conversas reais das três unidades',async()=>{
-  const data=await load('?unit=SCS');
+test('selo tem uma única leitura agrupada para as conversas reais das duas unidades',async()=>{
+  const data=await load('?unit=Osasco');
   assert.equal(dispatchQueries.length,1);
-  assert.deepEqual(dispatchQueries[0].values,['chat-SBC','chat-SCS','chat-Osasco']);
-  for(const unit of ['Osasco','SCS','SBC']) {
+  assert.deepEqual(dispatchQueries[0].values,['chat-SBC','chat-Osasco']);
+  for(const unit of ['Osasco','SBC']) {
     assert.equal(data.conversations.find(c=>c.instanceId===unit).lastDispatch.metadata.unit,unit);
   }
 });
