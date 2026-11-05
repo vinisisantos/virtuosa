@@ -16,11 +16,13 @@ import {
   GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME,
   GLUTEOS_PERFEITOS_120ML_PARENT_CAMPAIGN_ID,
   GLUTEOS_PERFEITOS_120ML_SBC_PARENT_CAMPAIGN_ID,
+  GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME,
   HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME,
   HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID,
 } from "../src/lib/campaign-track-mapping.ts";
 
 const exactAdCases = [
+  ["Osasco", "120253651248050494", GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME],
   ["SBC", "120250178920860006", GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME],
   ["SBC", "120250180063610006", "Glúteo Perfeito"],
   ["SBC", "120250180269700006", HARMONIZACAO_DE_MAMAS_CAMPAIGN_NAME],
@@ -45,6 +47,18 @@ const exactAdCases = [
   ["SBC", "120247237450560077", "Glúteo Perfeito"],
   ["SBC", "120247237187760077", "Harmonização de Glúteos"],
 ];
+
+test("identifica o anúncio Esquenta Pink Friday exclusivamente em Osasco", () => {
+  const id = "120253651248050494";
+  assert.equal(campaignNameFromMetaAdAndTrackSignals(id, null, null, "Osasco"), GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME);
+  assert.equal(campaignNameFromMetaAdAndTrackSignals(null, id, null, "Osasco"), GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME);
+  const reusedSource = "https://www.instagram.com/p/Dc2YOMms4wI/";
+  assert.equal(campaignNameFromMetaAdAndTrackSignals(id, null, reusedSource, "Osasco"), GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME);
+  assert.equal(campaignNameFromMetaAdAndTrackSignals(null, id, reusedSource, "Osasco"), GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME);
+  for (const unit of ["SBC", "SCS", "Todas", null]) {
+    assert.equal(campaignNameFromMetaSignals(id, null, unit), null);
+  }
+});
 
 test("classifica anúncios canônicos pelo ID oficial e unidade", () => {
   for (const [unit, adId, expectedCampaign] of exactAdCases) {

@@ -14,6 +14,7 @@ export const HARMONIZACAO_DE_MAMAS_OSASCO_PARENT_CAMPAIGN_ID = "1202499515294800
 export const COMBO_BARRIGA_CHAPADA_CAMPAIGN_NAME = "Combo Barriga Chapada";
 export const BOTOX_DYSPORT_3_REGIOES_CAMPAIGN_NAME = "Botox Dysport 3 Regiões";
 export const BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME = "Botox Terço Superior";
+export const GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME = "GLÚTEO ESQUENTA PINK FRIDAY";
 
 export type PrefilledMetaLeadCampaign = {
   campaignName: string;
@@ -232,6 +233,7 @@ const CAMPAIGN_SOURCE_URL_RULES: CampaignSourceUrlRule[] = [
 ];
 
 const CAMPAIGN_AD_ID_RULES: CampaignAdIdRule[] = [
+  { adId: "120253651248050494", campaignName: GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME, unit: "Osasco" },
   { adId: "120250430919180006", campaignName: BOTOX_TERCO_SUPERIOR_CAMPAIGN_NAME, unit: "SBC" },
   { adId: "120250178920860006", campaignName: GLUTEOS_PERFEITOS_120ML_CAMPAIGN_NAME, unit: "SBC" },
   { adId: "120250180063610006", campaignName: "Glúteo Perfeito", unit: "SBC" },
@@ -344,6 +346,8 @@ export function campaignNameFromMetaSignals(
   sourceUrl?: string | null,
   unit?: string | null,
 ) {
+  const exactCampaign = campaignNameFromExactMetaAdId(trackId, unit);
+  if (exactCampaign === GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME) return exactCampaign;
   const lipoLaserCampaign = lipoLaserCampaignFromAdId(trackId, unit);
   if (lipoLaserCampaign) return lipoLaserCampaign;
   const exactSourceCampaignName = campaignNameFromExactMetaSourceUrl(sourceUrl, unit);
@@ -368,6 +372,10 @@ export function campaignNameFromMetaAdAndTrackSignals(
   sourceUrl?: string | null,
   unit?: string | null,
 ) {
+  const exactCampaign = [adId, trackId]
+    .map((id) => campaignNameFromExactMetaAdId(id, unit))
+    .find((name) => name === GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME);
+  if (exactCampaign) return exactCampaign;
   return campaignNameFromMetaSignals(adId, sourceUrl, unit)
     || campaignNameFromMetaSignals(trackId, sourceUrl, unit);
 }
