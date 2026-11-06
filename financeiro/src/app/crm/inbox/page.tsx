@@ -3639,6 +3639,8 @@ export default function InboxPage() {
   const [instanceListError, setInstanceListError] = useState<string | null>(null);
   const [instanceListRetry, setInstanceListRetry] = useState(0);
   const instanceListScopeRef = useRef("");
+  const loadedInstanceListScopeRef = useRef("");
+  const initialInstanceScopeRef = useRef("");
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
   const [targetInstanceId, setTargetInstanceId] = useState<string | null>(null);
   const [selectedCollaborator, setSelectedCollaborator] = useState<CollaboratorInstance | null>(null);
@@ -3775,6 +3777,7 @@ export default function InboxPage() {
       })
       .then((data) => {
         if (cancelled) return;
+        loadedInstanceListScopeRef.current = scope;
         if (canViewCollaborators) {
           setCollaborators(data.instances);
           setCollaboratorsLoaded(true);
@@ -3815,7 +3818,9 @@ export default function InboxPage() {
     return latest?.id === dispatchTarget.id ? latest : dispatchTarget;
   }, [dispatchTarget, messages, conversations]);
   useEffect(() => { setDispatchTarget(null); }, [effectiveUnit, targetInstanceId, selectedConversationId]);
-  const canSwitchInboxInstance = canViewCollaborators || ownInstances.length > 1;
+  const hasSingleSharedInstance = ownInstances.length === 1
+    && Boolean(ownInstances[0].accessRole && ownInstances[0].accessRole !== "OWNER");
+  const canSwitchInboxInstance = canViewCollaborators || ownInstances.length > 1 || hasSingleSharedInstance;
   const canReplyToConversation = useCallback((conversation: Pick<Conversation, "instanceId"> | null | undefined) => {
     if (isAdmin) return true;
     if (!inboxInstanceOptionsLoaded || !conversation?.instanceId) return false;
@@ -3840,6 +3845,31 @@ export default function InboxPage() {
     setTargetInstanceId(urlTargetInstanceId);
     setTargetUserId(urlTargetUserId);
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!currentUser || canViewCollaborators || !ownInstancesLoaded) return;
+    const listScope = `${currentUser.id}:${canViewCollaborators}:${effectiveUnit || "all"}`;
+    if (loadedInstanceListScopeRef.current !== listScope) return;
+    const scope = `${currentUser.id}:${effectiveUnit || currentUser.unit || "all"}`;
+    if (initialInstanceScopeRef.current === scope) return;
+    initialInstanceScopeRef.current = scope;
+
+    const unit = effectiveUnit || currentUser.unit;
+    if (
+      !["Osasco", "SBC"].includes(unit || "") ||
+      !hasSingleSharedInstance ||
+      targetInstanceId || targetUserId ||
+      searchParams.get("targetInstanceId") || searchParams.get("targetUserId")
+    ) return;
+
+    const instance = ownInstances[0];
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("targetInstanceId", instance.id);
+    setTargetInstanceId(instance.id);
+    setSelectedCollaborator(instance);
+    router.replace(`/crm/inbox?${params.toString()}`);
+  }, [canViewCollaborators, currentUser, effectiveUnit, hasSingleSharedInstance, ownInstances,
+    ownInstancesLoaded, router, searchParams, targetInstanceId, targetUserId]);
 
   // Atualizar a instância selecionada quando o alvo mudar.
   useEffect(() => {
