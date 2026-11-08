@@ -157,6 +157,17 @@ test("instruções priorizam a queixa e não pedem nome antes do agendamento em 
   assert.match(request.instructions, /Nas demais unidades, pergunte o nome/);
 });
 
+test("SBC recebe orientações de escrita natural e considera respostas posteriores da equipe", () => {
+  const sbc = buildAliceAssistantRequest({ UNIDADE: "SBC" });
+  const osasco = buildAliceAssistantRequest({ UNIDADE: "Osasco" });
+  assert.match(sbc.instructions, /tom de WhatsApp de SBC/i);
+  assert.match(sbc.instructions, /travessões/i);
+  assert.match(sbc.instructions, /dois-pontos/i);
+  assert.match(sbc.instructions, /respostas posteriores da equipe/i);
+  assert.match(sbc.instructions, /saudação.*não significa/i);
+  assert.doesNotMatch(osasco.instructions, /tom de WhatsApp de SBC/i);
+});
+
 test("mensagem sobre saúde encaminha localmente e evita avaliação clínica", () => {
   assert.equal(classifyAliceHandoff({ unit: "SBC", incomingMessages: ["Tenho diabetes e uso remédio. Posso fazer?"] }), "clinical_safety");
   assert.equal(classifyAliceHandoff({ unit: "Osasco", incomingMessages: ["Estou grávida, o que faço?"] }), "clinical_safety");

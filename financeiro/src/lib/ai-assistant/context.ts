@@ -72,7 +72,7 @@ export async function loadAliceSuggestionContext(params: {
   })).reverse() as ContextMessage[];
   const latest = messages.at(-1);
   if (!latest) throw new AiAssistantError("A conversa ainda não possui mensagens de texto.", 409);
-  if (!params.targetMessageId && latest.fromMe) {
+  if (unit !== "SBC" && !params.targetMessageId && latest.fromMe) {
     throw new AiAssistantError("A última mensagem já é da equipe. Aguarde uma nova resposta do cliente.", 409);
   }
 
@@ -91,6 +91,10 @@ export async function loadAliceSuggestionContext(params: {
     : null;
   if (params.targetMessageId && !targetMessage) {
     throw new AiAssistantError("A mensagem selecionada não está mais disponível para resposta.", 409);
+  }
+  const latestCustomerMessage = [...messages].reverse().find((message) => !message.fromMe);
+  if (unit === "SBC" && !targetMessage && !latestCustomerMessage) {
+    throw new AiAssistantError("Não foi encontrada uma mensagem recente da cliente para analisar.", 409);
   }
 
   const names = [
@@ -118,10 +122,16 @@ export async function loadAliceSuggestionContext(params: {
     id: targetMessage.id,
     text: sanitizeAiAssistantText(targetMessage.body, names),
   } : null;
+  const sanitizedLatestCustomerMessage = unit === "SBC" && latestCustomerMessage ? {
+    id: latestCustomerMessage.id,
+    text: sanitizeAiAssistantText(latestCustomerMessage.body, names),
+  } : null;
   const campaignName = sanitizeAiAssistantText(params.campaignName || "", names).slice(0, 160);
   const safetyMessages = [
     ...pendingRawMessages.map((message) => message.body),
     ...(targetMessage ? [targetMessage.body] : []),
+    ...(unit === "SBC" && !pendingRawMessages.length && latestCustomerMessage
+      ? [latestCustomerMessage.body] : []),
   ];
   const handoffReason = classifyAliceHandoff({ unit, campaignName, incomingMessages: safetyMessages });
   const config = await loadAiAssistantConfig();
@@ -129,6 +139,7 @@ export async function loadAliceSuggestionContext(params: {
 
   const contactName = resolveAiAssistantContactName(conversation.contact.name);
   const sourceFingerprint = aiAssistantDigest({
+    ...(unit === "SBC" ? { promptRevision: "sbc-contexto-e-tom-v1" } : {}),
     messages: messages.map((message) => [message.id, message.body, message.fromMe, message.timestamp.toISOString()]),
     targetMessage: targetMessage ? [targetMessage.id, targetMessage.body, targetMessage.timestamp.toISOString()] : null,
   });
@@ -139,7 +150,12 @@ export async function loadAliceSuggestionContext(params: {
     aliceKnowledge = buildAliceKnowledgeContext({
       unit,
       campaignName,
-      messageText: [...pendingMessages, ...(sanitizedTargetMessage ? [sanitizedTargetMessage] : [])].map((message) => message.text).join(" "),
+      messageText: [
+        ...pendingMessages,
+        ...(sanitizedTargetMessage ? [sanitizedTargetMessage] : []),
+        ...(!pendingMessages.length && !sanitizedTargetMessage && sanitizedLatestCustomerMessage
+          ? [sanitizedLatestCustomerMessage] : []),
+      ].map((message) => message.text).join(" "),
     });
     if (!aliceKnowledge) throw new AiAssistantError("A base privada da Alice não está disponível neste momento", 503);
   }
@@ -159,6 +175,7 @@ export async function loadAliceSuggestionContext(params: {
       CAMPANHA: campaignName || "Não identificada",
       CONTATO: { nomeSalvoDisponivel: Boolean(contactName) },
       MENSAGEM_ALVO: sanitizedTargetMessage,
+      ...(unit === "SBC" ? { ULTIMA_MENSAGEM_CLIENTE: sanitizedLatestCustomerMessage } : {}),
       MENSAGENS_RECENTES_SEM_RESPOSTA: pendingMessages,
       CONVERSA: dialogue,
     },
