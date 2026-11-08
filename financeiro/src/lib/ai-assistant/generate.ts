@@ -7,6 +7,9 @@ import { routeAliceHandoff } from "@/lib/ai-assistant/handoff";
 import { requireAliceLiveRuntime } from "@/lib/ai-assistant/runtime";
 import { aliceLocalHandoffReply, classifyAliceHandoff } from "@/lib/ai-assistant/safety";
 import { generateAiAssistantReply } from "@/lib/ai-assistant/provider";
+import { generateClaudeReply } from "@/lib/ai-assistant/claude-provider";
+import { reserveClaudeMonthlyBudget } from "@/lib/ai-assistant/claude-budget";
+import { saveAliceDraft } from "@/lib/ai-assistant/save-draft";
 import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
 import {
   AI_ASSISTANT_MODEL,
@@ -44,6 +47,7 @@ export async function generateConversationSuggestion(params: {
   campaignName?: string | null;
   targetMessageId?: string | null;
   force?: boolean;
+  compare?: boolean;
 }) {
   requireAliceLiveRuntime();
   const context = await loadAliceSuggestionContext(params);
@@ -60,6 +64,7 @@ export async function generateConversationSuggestion(params: {
     && isCurrentAliceDraft
     && current
     && current.sourceFingerprint === context.sourceFingerprint
+    && (!params.compare || Boolean(usageRecord.comparison))
     && ["active", "inserted"].includes(current.status)
   ) {
     const handoff = await routeForDraft({
@@ -88,14 +93,46 @@ export async function generateConversationSuggestion(params: {
   });
   const usage = { input: 0, output: 0 };
   try {
-    const result = context.handoffReason
+    let comparison: Prisma.InputJsonObject | null = null;
+    const localResult = context.handoffReason
       ? {
         response: aliceLocalHandoffReply(context.handoffReason),
         confidence: "high" as const,
         needsHuman: true,
         usedKnowledge: [`safety:${context.handoffReason}`],
       }
-      : await generateAiAssistantReply(context.prompt, usage);
+      : null;
+    let result;
+    if (localResult) {
+      result = localResult;
+    } else if (params.compare) {
+      const claudeUsage = { input: 0, output: 0 };
+      const [codex, claude] = await Promise.allSettled([
+        generateAiAssistantReply(context.prompt, usage),
+        (async () => {
+          if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new AiAssistantError("Claude não configurado", 503);
+          await reserveClaudeMonthlyBudget(context.prompt);
+          return generateClaudeReply(context.prompt, claudeUsage);
+        })(),
+      ]);
+      if (codex.status === "rejected" && claude.status === "rejected") {
+        throw new AiAssistantError("Não foi possível gerar sugestões agora. Tente novamente mais tarde.", 502);
+      }
+      const codexResult = codex.status === "fulfilled" ? codex.value : null;
+      const claudeResult = claude.status === "fulfilled" ? claude.value : null;
+      result = { ...(codexResult || claudeResult!), needsHuman: Boolean(codexResult?.needsHuman || claudeResult?.needsHuman) };
+      comparison = {
+        codex: codexResult ? { ...codexResult, response: personalizeAiAssistantResponse(codexResult.response, context.contactName) } : null,
+        claude: claudeResult ? { ...claudeResult, response: personalizeAiAssistantResponse(claudeResult.response, context.contactName) } : null,
+        codexError: codexResult ? null : "Codex indisponível neste momento.",
+        claudeError: claudeResult ? null : claude.status === "rejected" && claude.reason instanceof AiAssistantError && claude.reason.status === 429
+          ? "Limite mensal do Claude atingido." : "Claude indisponível neste momento.",
+        claudeUsage,
+        selected: codexResult ? "codex" : "claude",
+      };
+    } else {
+      result = await generateAiAssistantReply(context.prompt, usage);
+    }
     const personalizedResponse = personalizeAiAssistantResponse(result.response, context.contactName);
     if (!personalizedResponse) throw new AiAssistantError("A Alice devolveu uma sugestão vazia", 502);
 
@@ -153,9 +190,10 @@ export async function generateConversationSuggestion(params: {
         : null,
       targetMessageId: context.targetMessageId,
       handoffReason,
+      ...(comparison ? { comparison } : {}),
     };
-    const draft = await prisma.aiAssistantDraft.upsert({
-      where: { conversationId: params.conversationId },
+    const draft = await saveAliceDraft({
+      current,
       create: {
         conversationId: params.conversationId,
         unit: context.unit,

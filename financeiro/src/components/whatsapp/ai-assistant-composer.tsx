@@ -23,6 +23,13 @@ type AiAssistantDraft = {
   usage?: {
     confidence?: "high" | "medium" | "low";
     needsHuman?: boolean;
+    comparison?: {
+      codex: { response: string } | null;
+      claude: { response: string } | null;
+      codexError?: string | null;
+      claudeError?: string | null;
+      selected?: "codex" | "claude";
+    };
   } | null;
 };
 type HandoffStatus = { notified: number; assigned: boolean } | null;
@@ -69,8 +76,13 @@ export function AiAssistantComposer({
   const [changingMode, setChangingMode] = useState(false);
   const handledGenerationRequestRef = useRef<number | null>(null);
   const generationInFlightRef = useRef(false);
+  const mountedRef = useRef(false);
   const activeConversationRef = useRef(conversationId);
   activeConversationRef.current = conversationId;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const apiUrl = useMemo(
     () => endpoint(scopeQuery, conversationId),
     [conversationId, scopeQuery],
@@ -133,12 +145,14 @@ export function AiAssistantComposer({
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, campaignName, force, targetMessageId: selectedTargetMessageId }),
+        body: JSON.stringify({ conversationId, campaignName, force, compare: true, targetMessageId: selectedTargetMessageId }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível gerar a sugestão.");
-      setDraft(data.draft || null);
-      setHandoffStatus(data.handoff || null);
+      if (mountedRef.current && activeConversationRef.current === conversationId) {
+        setDraft(data.draft || null);
+        setHandoffStatus(data.handoff || null);
+      }
     } catch (error) {
       toast(error instanceof Error ? error.message : "Não foi possível gerar a sugestão.", "error");
     } finally {
@@ -190,6 +204,7 @@ export function AiAssistantComposer({
             conversationId: requestConversationId,
             campaignName,
             force: true,
+            compare: true,
             targetMessageId,
           }),
         });
@@ -225,18 +240,21 @@ export function AiAssistantComposer({
     unit,
   ]);
 
-  const insertSuggestion = useCallback(async () => {
+  const insertSuggestion = useCallback(async (provider?: "codex" | "claude") => {
     if (!draft) return;
     try {
       const response = await fetch(apiUrl, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId, action: "use", draftId: draft.id, draftVersion: draft.version }),
+        body: JSON.stringify({ conversationId, action: "use", draftId: draft.id, draftVersion: draft.version, provider }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "A sugestão não está mais disponível.");
-      onUseSuggestion(draft.content, draft.id, draft.version);
-      setDraft((current) => current ? { ...current, status: "inserted" } : current);
+      if (!mountedRef.current || activeConversationRef.current !== conversationId) return;
+      const content = typeof data.content === "string" ? data.content : draft.content;
+      const version = Number.isSafeInteger(data.draftVersion) ? data.draftVersion : draft.version;
+      onUseSuggestion(content, draft.id, version);
+      setDraft((current) => current ? { ...current, content, version, status: "inserted" } : current);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Não foi possível usar a sugestão.", "error");
     }
@@ -309,8 +327,8 @@ export function AiAssistantComposer({
                 <Sparkles className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-foreground">Alice está preparando a sugestão</span>
-                <span className="mt-0.5 block text-xs text-muted-foreground">Analisando o contexto da conversa</span>
+                <span className="block text-sm font-semibold text-foreground">Preparando sugestões</span>
+                <span className="mt-0.5 block text-xs text-muted-foreground">Codex e Claude estão analisando a conversa</span>
               </span>
               <span className={styles.thinkingDots} aria-hidden="true">
                 <span />
@@ -320,10 +338,26 @@ export function AiAssistantComposer({
             </div>
           ) : draft ? (
             <>
-              <div className="flex items-start gap-2">
+              {draft.usage?.comparison ? (
+                <div className={styles.comparison} tabIndex={0} aria-label="Comparação das sugestões">
+                  {(["codex", "claude"] as const).map((provider) => {
+                    const suggestion = draft.usage?.comparison?.[provider];
+                    const failure = provider === "codex" ? draft.usage?.comparison?.codexError : draft.usage?.comparison?.claudeError;
+                    return (
+                      <section className={styles.comparisonOption} key={provider} aria-label={`Sugestão ${provider === "codex" ? "Codex" : "Claude"}`}>
+                        <h3 className={styles.comparisonTitle}>{provider === "codex" ? "Codex" : "Claude"}</h3>
+                        <p className={`${styles.comparisonText} mt-1 text-sm leading-5 text-foreground`} tabIndex={0}>{suggestion?.response || failure || "Sugestão indisponível."}</p>
+                        {suggestion && <button type="button" onClick={() => void insertSuggestion(provider)} disabled={loading || draft.status === "inserted"} className={styles.useButton}>
+                          <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Usar e editar
+                        </button>}
+                      </section>
+                    );
+                  })}
+                </div>
+              ) : <div className="flex items-start gap-2">
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
                 <p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm leading-5 text-foreground">{draft.content}</p>
-              </div>
+              </div>}
               {draft.usage?.needsHuman && (
                 <p className="mt-2 rounded-lg bg-amber-500/10 px-2 py-1.5 text-xs text-amber-800 dark:text-amber-300">
                   A Alice identificou que este atendimento precisa de apoio humano. {handoffStatus
@@ -334,15 +368,16 @@ export function AiAssistantComposer({
                 </p>
               )}
               <div className="mt-2 flex flex-wrap gap-2">
-                <button type="button" onClick={() => void insertSuggestion()} disabled={draft.status === "inserted"} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-default disabled:bg-emerald-700/70">
+                {!draft.usage?.comparison && <button type="button" onClick={() => void insertSuggestion()} disabled={draft.status === "inserted"} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-default disabled:bg-emerald-700/70">
                   {draft.status === "inserted" ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
                   {draft.status === "inserted" ? "Inserida no campo" : "Usar e editar"}
-                </button>
+                </button>}
+                {draft.usage?.comparison && draft.status === "inserted" && <span className="text-xs text-foreground">Sugestão inserida no campo para revisão.</span>}
                 <button type="button" onClick={() => void generate(true)} disabled={loading} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted disabled:opacity-60">
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Gerar outra
                 </button>
                 {draft.status !== "inserted" && (
-                  <button type="button" onClick={() => void discard()} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Descartar sugestão">
+                  <button type="button" onClick={() => void discard()} disabled={loading} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Descartar sugestão">
                     <Trash2 className="h-3.5 w-3.5" /> Descartar
                   </button>
                 )}
@@ -352,11 +387,11 @@ export function AiAssistantComposer({
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                 <span className={styles.readyDot} aria-hidden="true" />
-                <span><strong className="font-semibold text-foreground">Alice pronta para sugestão.</strong> Ela só é consultada quando você pedir.</span>
+                <span><strong className="font-semibold text-foreground">Alice pronta para sugestão.</strong> Codex e Claude são consultados somente quando você pedir.</span>
               </div>
               <button type="button" onClick={() => void generate(false)} disabled={loading} className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:opacity-60">
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                {loading ? "Gerando..." : "Gerar sugestão"}
+                {loading ? "Gerando..." : "Comparar sugestões"}
               </button>
             </div>
           )}

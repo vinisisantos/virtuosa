@@ -96,6 +96,7 @@ export async function POST(req: NextRequest) {
       campaignName: typeof input.campaignName === "string" ? input.campaignName.slice(0, 240) : null,
       targetMessageId: targetMessageIdFrom(input.targetMessageId),
       force: input.force === true,
+      compare: input.compare === true,
     });
     return NextResponse.json({ draft: serializeDraft(result.draft), cached: result.cached, handoff: result.handoff });
   } catch (error) {
@@ -138,10 +139,24 @@ export async function PATCH(req: NextRequest) {
       if (Number.isSafeInteger(input.draftVersion) && input.draftVersion !== draft.version) {
         throw new AiAssistantError("A sugestão mudou; gere outra", 409);
       }
+      const usage = draft.usage && typeof draft.usage === "object" && !Array.isArray(draft.usage)
+        ? draft.usage as Record<string, unknown> : {};
+      const comparison = usage.comparison && typeof usage.comparison === "object" && !Array.isArray(usage.comparison)
+        ? usage.comparison as Record<string, unknown> : null;
+      const provider = input.provider === "codex" || input.provider === "claude" ? input.provider : null;
+      const candidate = provider && comparison && comparison[provider] && typeof comparison[provider] === "object"
+        ? comparison[provider] as Record<string, unknown> : null;
+      if (provider && (typeof candidate?.response !== "string" || !candidate.response.trim() || candidate.response.length > 1200)) {
+        throw new AiAssistantError("Esta sugestão não está disponível", 409);
+      }
+      const selectedContent = typeof candidate?.response === "string" ? candidate.response : draft.content;
+      const selectedVersion = provider ? draft.version + 1 : draft.version;
       await prisma.$transaction(async (tx) => {
         const updated = await tx.aiAssistantDraft.updateMany({
           where: { id: draftId, conversationId, version: draft.version, status: { in: ["active", "inserted"] } },
-          data: { status: "inserted", usedBy: user.userId, usedAt: new Date() },
+          data: { status: "inserted", usedBy: user.userId, usedAt: new Date(),
+            ...(provider ? { content: selectedContent, version: { increment: 1 }, usage: { ...usage, comparison: { ...comparison, selected: provider } } } : {}),
+          },
         });
         if (!updated.count) throw new AiAssistantError("A sugestão mudou; gere outra", 409);
         await tx.aiAssistantOperation.updateMany({
@@ -152,10 +167,10 @@ export async function PATCH(req: NextRequest) {
             draftVersion: draft.version,
             draftOutcome: { in: ["pending", "inserted"] },
           },
-          data: { draftOutcome: "inserted" },
+          data: { draftOutcome: "inserted", ...(provider ? { draftVersion: selectedVersion } : {}) },
         });
       });
-      return NextResponse.json({ success: true });
+      return NextResponse.json({ success: true, content: selectedContent, draftId, draftVersion: selectedVersion });
     }
     if (input.action === "discard") {
       const requestedVersion = Number.isSafeInteger(input.draftVersion) ? input.draftVersion as number : undefined;

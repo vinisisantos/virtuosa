@@ -90,6 +90,50 @@
   background: color-mix(in srgb, var(--primary) 4%, var(--background));
 }
 
+.comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.comparisonOption {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+}
+
+.comparisonTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.comparisonText {
+  max-height: 14rem;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.useButton {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 0 12px;
+  border-radius: 8px;
+  background: #047857;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.useButton:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.useButton:disabled { opacity: 0.6; }
+
 .assistantSurface.processing {
   border-color: color-mix(in srgb, var(--primary) 40%, var(--border));
 }
@@ -161,6 +205,12 @@
 }
 
 @media (max-width: 430px) {
+  .comparison {
+    grid-template-columns: minmax(0, 1fr);
+    max-height: min(40dvh, 22rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
   .modeBar {
     gap: 5px 8px;
   }

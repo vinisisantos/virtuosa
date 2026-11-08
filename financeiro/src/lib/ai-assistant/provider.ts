@@ -22,7 +22,7 @@ const RESPONSE_SCHEMA = {
   required: ["response", "confidence", "needsHuman", "usedKnowledge"],
 };
 
-function parseGeneration(value: unknown): AiAssistantGeneration {
+export function parseGeneration(value: unknown): AiAssistantGeneration {
   const result = value as AiAssistantGeneration;
   if (
     !result
