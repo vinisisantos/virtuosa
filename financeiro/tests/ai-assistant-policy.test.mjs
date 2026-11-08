@@ -148,6 +148,15 @@ test("requisição da Alice usa Luna, schema de saída e sem IDs do CRM", () => 
   assert.match(request.instructions, /SAFETY\.md/);
 });
 
+test("instruções priorizam a queixa e não pedem nome antes do agendamento em SBC", () => {
+  const request = buildAliceAssistantRequest({ UNIDADE: "SBC" });
+  assert.match(request.instructions, /Em SBC, se o nome não estiver disponível.*somente ao preparar o agendamento/);
+  assert.match(request.instructions, /Em SBC, se a cliente já informou a queixa/);
+  assert.match(request.instructions, /semana ou no sábado/);
+  assert.match(request.instructions, /não invente horários nem confirme reserva sem validação real/);
+  assert.match(request.instructions, /Nas demais unidades, pergunte o nome/);
+});
+
 test("mensagem sobre saúde encaminha localmente e evita avaliação clínica", () => {
   assert.equal(classifyAliceHandoff({ unit: "SBC", incomingMessages: ["Tenho diabetes e uso remédio. Posso fazer?"] }), "clinical_safety");
   assert.equal(classifyAliceHandoff({ unit: "Osasco", incomingMessages: ["Estou grávida, o que faço?"] }), "clinical_safety");
@@ -155,6 +164,13 @@ test("mensagem sobre saúde encaminha localmente e evita avaliação clínica", 
     assert.equal(classifyAliceHandoff({ unit: "SBC", incomingMessages: [message] }), "clinical_safety", message);
   }
   assert.match(aliceLocalHandoffReply("clinical_safety"), /profissional habilitada/i);
+});
+
+test("dúvidas breves de risco, dor, anestesia ou Anvisa em SBC vão para profissional", () => {
+  for (const message of ["Dói?", "Tem risco?", "Usa anestesia?", "Tem Anvisa?"]) {
+    assert.equal(classifyAliceHandoff({ unit: "SBC", incomingMessages: [message] }), "clinical_safety", message);
+  }
+  assert.equal(classifyAliceHandoff({ unit: "Osasco", incomingMessages: ["Dói?"] }), null);
 });
 
 test("escopo inativo vai para equipe; fala comercial sobre volume não dispara alerta clínico", () => {

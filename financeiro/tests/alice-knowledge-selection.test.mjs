@@ -9,6 +9,7 @@ const documents = [
   { path: "PENDENCIAS-RESPOSTAS-OFICIAIS.md", content: "Barriga trincada. ".repeat(2_000) },
   { path: "knowledge/clinic.md", content: "Endereço e unidades." },
   { path: "knowledge/prices.md", content: "Valores oficiais das campanhas." },
+  { path: "knowledge/manual-atendimento-sbc.md", content: "Orientações específicas de SBC." },
   { path: "knowledge/payments.md", content: "Condições de pagamento." },
   { path: "knowledge/gluteos-perfeitos.md", content: "Glúteos Perfeitos." },
   { path: "knowledge/gluteos-perfeitos-120ml.md", content: "Glúteos Perfeitos 120 ml." },
@@ -55,4 +56,32 @@ test("base incompleta falha fechada", () => {
     ? { ...document, content: "A".repeat(36_001) }
     : document);
   assert.equal(selectAliceKnowledgeDocuments({ documents: oversizedCore, campaignName: "", messageText: "Olá" }), null);
+});
+
+test("manual completo de SBC é obrigatório e nunca entra no contexto de Osasco", () => {
+  const args = { documents, campaignName: "Glúteos Perfeitos", messageText: "Qual o valor?" };
+  const sbc = selectAliceKnowledgeDocuments({ ...args, unit: "SBC" });
+  assert.ok(sbc?.some((document) => document.source === "knowledge/manual-atendimento-sbc.md"));
+  assert.ok(sbc?.some((document) => document.source === "knowledge/clinic.md"));
+  const osasco = selectAliceKnowledgeDocuments({ ...args, unit: "Osasco", messageText: "SBC orientações específicas" });
+  assert.ok(osasco);
+  assert.equal(osasco.some((document) => document.source === "knowledge/manual-atendimento-sbc.md"), false);
+  assert.equal(selectAliceKnowledgeDocuments({ ...args, unit: "SBC", documents: documents.filter((document) => document.path !== "knowledge/manual-atendimento-sbc.md") }), null);
+  assert.equal(selectAliceKnowledgeDocuments({ ...args, unit: "SBC", documents: documents.filter((document) => document.path !== "knowledge/clinic.md") }), null);
+  const oversizedManual = documents.map((document) => document.path === "knowledge/manual-atendimento-sbc.md" ? { ...document, content: "A".repeat(36_001) } : document);
+  assert.equal(selectAliceKnowledgeDocuments({ ...args, unit: "SBC", documents: oversizedManual }), null);
+});
+
+test("seleção falha fechada quando os valores oficiais não estão disponíveis", () => {
+  const withoutPrices = documents.filter((document) => document.path !== "knowledge/prices.md");
+  assert.equal(selectAliceKnowledgeDocuments({ documents: withoutPrices, unit: "SBC", campaignName: "", messageText: "Olá" }), null);
+});
+
+test("preços e manual de SBC têm prioridade quando há muitas fichas e pouco espaço", () => {
+  const largeContext = documents.map((document) => document.path === "knowledge/reticulado-corporal.md"
+    ? { ...document, content: "conteúdo ".repeat(3_000) }
+    : document);
+  const selected = selectAliceKnowledgeDocuments({ documents: largeContext, unit: "SBC", campaignName: "Glúteos Perfeitos", messageText: "Ácido reticulado e avaliação" });
+  assert.ok(selected?.some((document) => document.source === "knowledge/prices.md"));
+  assert.ok(selected?.some((document) => document.source === "knowledge/manual-atendimento-sbc.md"));
 });

@@ -1,6 +1,7 @@
 type AliceDocument = { path: string; content: string };
 
 const CORE_DOCUMENTS = ["AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "MEMORY.md"];
+const SBC_MANUAL = "knowledge/manual-atendimento-sbc.md";
 const GENERAL_DOCUMENTS = [
   "knowledge/clinic.md",
   "knowledge/prices.md",
@@ -44,13 +45,17 @@ export function selectAliceKnowledgeDocuments(params: {
   documents: readonly AliceDocument[];
   campaignName: string;
   messageText: string;
+  unit?: string;
 }) {
   const byPath = new Map(params.documents.map((document) => [document.path, document]));
   if (!CORE_DOCUMENTS.every((path) => byPath.has(path))) return null;
+  const unitDocuments = params.unit === "SBC" ? [SBC_MANUAL] : [];
+  if (!unitDocuments.every((path) => byPath.has(path))) return null;
 
   const campaignPaths = procedurePaths(params.campaignName);
   const messagePaths = procedurePaths(`${params.campaignName} ${params.messageText}`);
-  const essentialPaths = new Set([...CORE_DOCUMENTS, ...campaignPaths, "knowledge/prices.md"]);
+  const unitContext = params.unit === "SBC" ? ["knowledge/clinic.md"] : [];
+  const essentialPaths = new Set([...CORE_DOCUMENTS, ...unitDocuments, ...unitContext, ...campaignPaths, "knowledge/prices.md"]);
   const text = normalized(`${params.campaignName} ${params.messageText}`);
   const contextualPaths = [
     ...campaignPaths,
@@ -62,6 +67,7 @@ export function selectAliceKnowledgeDocuments(params: {
   const requestedTerms = terms(`${params.campaignName} ${params.messageText}`);
   const secondary = params.documents
     .filter((document) => document.path !== "PENDENCIAS-RESPOSTAS-OFICIAIS.md"
+      && (document.path !== SBC_MANUAL || params.unit === "SBC")
       && (!PROCEDURE_DOCUMENTS.has(document.path) || contextualSet.has(document.path)))
     .map((document) => ({
       path: document.path,
@@ -73,6 +79,10 @@ export function selectAliceKnowledgeDocuments(params: {
 
   const orderedPaths = [...new Set([
     ...CORE_DOCUMENTS,
+    ...unitDocuments,
+    ...campaignPaths,
+    "knowledge/prices.md",
+    ...unitContext,
     ...contextualPaths,
     ...GENERAL_DOCUMENTS,
     ...secondary,
@@ -91,6 +101,9 @@ export function selectAliceKnowledgeDocuments(params: {
     remaining -= content.length;
   }
   if (!CORE_DOCUMENTS.every((path) => selected.some((document) => document.source === path))) return null;
+  if (!unitDocuments.every((path) => selected.some((document) => document.source === path))) return null;
+  if (!unitContext.every((path) => selected.some((document) => document.source === path))) return null;
+  if (!selected.some((document) => document.source === "knowledge/prices.md")) return null;
   if (campaignPaths.some((path) => byPath.has(path) && !selected.some((document) => document.source === path))) return null;
   return selected;
 }

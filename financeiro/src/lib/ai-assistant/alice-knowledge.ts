@@ -26,6 +26,7 @@ export function buildAliceKnowledgeContext(params: {
 
   const selected = selectAliceKnowledgeDocuments({
     documents: ALICE_KNOWLEDGE.documents,
+    unit: params.unit,
     campaignName: params.campaignName,
     messageText: params.messageText,
   });

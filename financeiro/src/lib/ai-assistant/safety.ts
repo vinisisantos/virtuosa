@@ -26,6 +26,8 @@ export function classifyAliceHandoff(params: {
 }): AliceHandoffReason | null {
   const text = normalizeForSafety([...params.incomingMessages, params.campaignName || ""].join(" "));
   if (UNSUPPORTED_PROCEDURE_PATTERNS.some((pattern) => pattern.test(text))) return "unsupported_procedure";
+  const incoming = normalizeForSafety(params.incomingMessages.join(" "));
+  if (params.unit === "SBC" && /\b(?:doi|dor|riscos?|anestesi\w*|anvisa)\b/.test(incoming)) return "clinical_safety";
   if (CLINICAL_SAFETY_PATTERNS.some((pattern) => pattern.test(text))) return "clinical_safety";
   return null;
 }
