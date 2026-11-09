@@ -100,6 +100,7 @@ export interface Message {
   mediaFileName?: string | null;
   mediaMimeType?: string | null;
   mediaSizeBytes?: number | null;
+  audioTranscript?: { status: string; text: string | null; durationMs: number | null } | null;
   linkPreviewUrl?: string | null;
   linkPreviewTitle?: string | null;
   linkPreviewDescription?: string | null;

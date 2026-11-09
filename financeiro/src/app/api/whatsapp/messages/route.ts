@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { aliceAudioTranscripts } from "@/lib/alice/audio/history";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 
 import { prisma } from "@/lib/db";
@@ -562,7 +563,10 @@ export async function GET(req: Request) {
       markedAsRead = true;
     }
 
-    const payloadSafeMessages = constrainInlineMediaPayload([...handoffHistory, ...messages]);
+    const transcripts = await aliceAudioTranscripts(conversationId, conversation.instanceId,
+      messages.filter((message) => !message.fromMe && ["audio", "ptt"].includes(message.type)).map((message) => message.id));
+    const payloadSafeMessages = constrainInlineMediaPayload([...handoffHistory, ...messages.map((message) => ({ ...message,
+      audioTranscript: transcripts.get(message.id) || null }))]);
     const signedMessages = await signPrivateMediaUrls(payloadSafeMessages);
     return NextResponse.json({ messages: signedMessages, limit, markedAsRead });
   } catch (error: any) {

@@ -128,6 +128,10 @@ export async function recoverAliceAutonomousTurns(database = prisma, now = new D
       WHERE turn.id=snapshot.id AND turn.status IN ('processing','sending') AND turn."claimedAt"<${stale}
       RETURNING turn."conversationId",turn.status`);
     const unhealthy = recovered.filter((item) => item.status !== "sent");
+    if (unhealthy.length) await tx.$queryRaw(Prisma.sql`
+      UPDATE "AliceAudioTranscript" SET status='failed',error='audio_interrupted_no_retry',"completedAt"=${now}
+      WHERE "instanceId"=${ALICE_AUTONOMY_INSTANCE_ID} AND status='processing' AND "createdAt"<${stale}
+        AND "conversationId" IN (${Prisma.join(unhealthy.map((item) => item.conversationId))}) RETURNING "messageId"`);
     if (unhealthy.length) await tx.whatsAppConversation.updateMany({
       where: { id: { in: unhealthy.map((item) => item.conversationId) }, instanceId: ALICE_AUTONOMY_INSTANCE_ID, aiMode: "agent" },
       data: { aiMode: "manual", aiModeUpdatedAt: now, aiModeUpdatedBy: "alice-interrupted" },

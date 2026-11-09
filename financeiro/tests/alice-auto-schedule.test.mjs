@@ -7,6 +7,7 @@ import * as autonomyPolicy from "../src/lib/ai-assistant/autonomy/policy.ts";
 import * as assistantPolicy from "../src/lib/ai-assistant/policy.ts";
 import { buildSbcEvaluationOptions } from "#lib/ai-assistant/sbc-scheduling-policy";
 import { selectSbcSchedulingExchange } from "#lib/ai-assistant/sbc-scheduling-exchange";
+import { projectAliceAudioHistory } from "../src/lib/alice/audio/history.ts";
 
 function fixture(options = {}) {
   const now = options.now ? Date.parse(options.now) : Date.now();
@@ -70,6 +71,7 @@ function fixture(options = {}) {
   };
   class NextResponse {}
   const modules = {
+    "@/lib/alice/audio/history": { projectAliceAudioHistory },
     "@/lib/ai-assistant/autonomy/policy": autonomyPolicy,
     "@/lib/ai-assistant/policy": assistantPolicy,
     "@/lib/ai-assistant/autonomy/booking-authorization": { validateAliceBookingClaim: async () => options.claimValid !== false },

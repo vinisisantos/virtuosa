@@ -60,6 +60,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20261108230000_alice_auto_schedule/migration.sql",
     "prisma/migrations/20261109010000_alice_autonomous_turns/migration.sql",
     "prisma/migrations/20261109100000_alice_conversation_memory/migration.sql",
+    "prisma/migrations/20261109180000_alice_audio_transcription/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {
@@ -68,6 +69,9 @@ if (process.env.VERCEL_ENV === "production") {
       // O SQL idempotente usa o Supavisor em modo sessão (5432); o runtime mantém 6543.
     });
   }
+  run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/check-alice-audio-provider.mjs"], {
+    ...process.env, DATABASE_URL: migrationUrl,
+  });
   run(process.execPath, ["scripts/ensure-whatsapp-full-search-indexes.mjs"], {
     ...process.env,
     DATABASE_URL: migrationUrl,

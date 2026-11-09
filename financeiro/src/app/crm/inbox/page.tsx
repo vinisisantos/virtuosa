@@ -20,6 +20,7 @@ import { normalizeEvaluationProcedure, usesEvaluationProcedure } from "@/lib/eva
 import { EmojiPicker } from "@/components/whatsapp/emoji-picker";
 import { ReactionPicker } from "@/components/whatsapp/reaction-picker";
 import { RecordedAudioPreview } from "@/components/whatsapp/recorded-audio-preview";
+import { AudioTranscript } from "@/components/whatsapp/audio-transcript";
 import { InboxChatHeader } from "@/components/whatsapp/inbox-chat-header";
 import { ClientReportDialog } from "@/components/whatsapp/client-report-dialog";
 import { AiAssistantComposer } from "@/components/whatsapp/ai-assistant-composer";
@@ -2880,6 +2881,7 @@ function MessageBubble({
               isRecoveringMedia={recoveringMediaId === msg.id}
             />
           )}
+          {!isMe && <AudioTranscript transcript={msg.audioTranscript} />}
 
           {/* Document */}
           {documentMeta && (

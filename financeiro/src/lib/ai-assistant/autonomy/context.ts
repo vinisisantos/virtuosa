@@ -8,6 +8,7 @@ import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-pol
 import { aliceAutonomyConversationEligible } from "@/lib/ai-assistant/autonomy/policy";
 import { aliceMemoryEnabled } from "@/lib/alice/runtime-memory";
 import { loadAliceMemoryContext, type AliceMemoryRuntime } from "@/lib/alice/runtime-context";
+import { projectAliceAudioHistory, isAliceTextInput } from "@/lib/alice/audio/history";
 
 async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = prisma, now = new Date()) {
   const conversation = await database.whatsAppConversation.findFirst({
@@ -21,11 +22,12 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
   });
   if (!conversation || !aliceAutonomyConversationEligible(conversation) || conversation.instance.unit !== "SBC"
     || conversation.instance.status !== "connected" || conversation.commercialHolds.length) return null;
-  const messages = (await database.whatsAppMessage.findMany({
+  const rows = (await database.whatsAppMessage.findMany({
     where: { conversationId: turn.conversationId, status: { not: "deleted" } },
     select: { id: true, messageId: true, body: true, type: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true },
     orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30,
   })).reverse();
+  const messages = await projectAliceAudioHistory(rows, turn.conversationId, turn.instanceId, database);
   const source = messages.findLast((message) => !message.fromMe);
   if (!source || source.id !== turn.sourceMessageId) return null;
   const ownMessages = Array.isArray(turn.providerMessageIds) ? turn.providerMessageIds.filter((id): id is string => typeof id === "string") : [];
@@ -42,11 +44,11 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
   const matches = clients.filter((client) => phoneLookupKey(client.phone) === phoneKey);
   const campaignName = matches.length === 1 ? matches[0].campaignName || "Não identificada" : "Não identificada";
   const names = [conversation.contact.name || "", ...messages.map((message) => message.respondedByName || "")];
-  const textMessages = messages.filter((message) => message.type === "text" && message.body.trim()).slice(-12);
+  const textMessages = messages.filter((message) => isAliceTextInput(message) && message.body.trim()).slice(-12);
   const lastTeam = textMessages.findLastIndex((message) => message.fromMe);
   const pending = textMessages.slice(lastTeam + 1).filter((message) => !message.fromMe);
   const safeIncoming = messages.filter((message) => !message.fromMe).map((message) => message.body);
-  const handoffReason = continuation ? null : source.type !== "text" ? "model_requested" as const
+  const handoffReason = continuation ? null : !isAliceTextInput(source) ? "model_requested" as const
     : classifyAliceHandoff({ unit: "SBC", campaignName, incomingMessages: safeIncoming });
   const knowledge = handoffReason || continuation ? null : buildAliceKnowledgeContext({
     unit: "SBC", campaignName, messageText: (pending.length ? pending : [source]).map((message) => message.body).join(" "),
@@ -59,7 +61,8 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
       HORARIOS_SBC: buildSbcEvaluationOptions(now), CONTATO: { nomeSalvoDisponivel: Boolean(resolveAiAssistantContactName(conversation.contact.name)) },
       MENSAGEM_ALVO: null, ULTIMA_MENSAGEM_CLIENTE: { id: source.id, text: sanitizeAiAssistantText(source.body, names) },
       MENSAGENS_RECENTES_SEM_RESPOSTA: pending.map((message) => ({ id: message.id, text: sanitizeAiAssistantText(message.body, names) })),
-      CONVERSA: textMessages.map((message) => ({ role: message.fromMe ? "atendente" : "cliente", text: sanitizeAiAssistantText(message.body, names) })),
+      CONVERSA: textMessages.map((message) => ({ role: message.fromMe ? "atendente" : "cliente", text: sanitizeAiAssistantText(message.body, names),
+        ...(message.audioTranscribed ? { origem: "transcricao_audio" } : {}) })),
       ATENDIMENTO_AUTONOMO: true,
     } as Prisma.InputJsonObject,
   };

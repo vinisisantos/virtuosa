@@ -11,6 +11,7 @@ import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-pol
 import type { AliceGuardContext } from "@/lib/alice/guards";
 import type { AliceAutonomousContext, LegacyAliceAutonomousContext } from "@/lib/ai-assistant/autonomy/context";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
+import { projectAliceAudioHistory, isAliceTextInput } from "@/lib/alice/audio/history";
 
 export type AliceMemoryRuntime = { scope: AliceMemoryScope; guard: AliceGuardContext };
 type HistoryRow = AliceContextMessage & { messageId: string; createdAt: Date };
@@ -35,14 +36,17 @@ export async function loadAliceMemoryContext(context: LegacyAliceAutonomousConte
   const scope: AliceMemoryScope = { conversationId: turn.conversationId, instanceId: turn.instanceId, unidade: "SBC" };
   // Orçamento antes de transferir corpos: nunca trazer mídia base64 nem truncar histórico silenciosamente.
   const [size] = await database.$queryRaw<{ count: number; bytes: number }[]>(Prisma.sql`
-    SELECT count(*)::int AS count, COALESCE(sum(octet_length(body)),0)::int AS bytes
-    FROM "WhatsAppMessage" WHERE "conversationId"=${scope.conversationId} AND status<>'deleted'
-      AND (type='text' OR body NOT LIKE 'data:%;base64,%')`);
+    SELECT count(*)::int AS count, COALESCE(sum(octet_length(p.body)+COALESCE(octet_length(a.text),0)),0)::int AS bytes
+    FROM "WhatsAppMessage" p LEFT JOIN "AliceAudioTranscript" a ON a."messageId"=p.id
+      AND a."conversationId"=p."conversationId" AND a."instanceId"=${scope.instanceId} AND a.status='ready'
+    WHERE p."conversationId"=${scope.conversationId} AND p.status<>'deleted'
+      AND (p.type='text' OR p.body NOT LIKE 'data:%;base64,%')`);
   if (!size || size.count > 1_000 || size.bytes > 65_000) throw new Error("alice_history_budget_exceeded");
-  const history = await database.$queryRaw<HistoryRow[]>(Prisma.sql`
+  const rows = await database.$queryRaw<HistoryRow[]>(Prisma.sql`
     SELECT id,"conversationId","messageId",CASE WHEN type<>'text' AND body LIKE 'data:%;base64,%' THEN '' ELSE body END AS body,
       type,"fromMe",status,timestamp,"createdAt","respondedByName" FROM "WhatsAppMessage"
     WHERE "conversationId"=${scope.conversationId} AND status<>'deleted' ORDER BY timestamp,id LIMIT 1001`);
+  const history = await projectAliceAudioHistory(rows, scope.conversationId, scope.instanceId, database);
   if (history.length > 1_000) throw new Error("alice_history_budget_exceeded");
   if (history.findLast((message) => !message.fromMe)?.id !== turn.sourceMessageId) throw new Error("alice_history_source_changed");
   const campaign = typeof context.prompt.CAMPANHA === "string" ? context.prompt.CAMPANHA : "Não identificada";
@@ -66,7 +70,7 @@ export async function loadAliceMemoryContext(context: LegacyAliceAutonomousConte
       .replace(/\b(?:dor|doi|riscos?|reac\w*|rejeic\w*|contraindic\w*)\b/gu, "")) }) : clinical;
   const handoffReason = memory.escalarHumano || fear?.requiresHuman ? "clinical_safety" as const
     : clinical === "clinical_safety" && fear?.generalInformationOnly && !remainingClinical ? null : clinical;
-  return { ...context, messages: history.filter((message) => message.type === "text" && message.body.trim()), prompt,
-    handoffReason: handoffReason || (context.source.type !== "text" || !knowledge ? "model_requested" : null),
+  return { ...context, messages: history.filter((message) => isAliceTextInput(message) && message.body.trim()), prompt,
+    handoffReason: handoffReason || (!isAliceTextInput(context.source) || !knowledge ? "model_requested" : null),
     memoryRuntime: { scope, guard: { scope, presentationAt: memory.apresentacaoFeitaEm, appointment, contactName: context.contactName, fear } } };
 }

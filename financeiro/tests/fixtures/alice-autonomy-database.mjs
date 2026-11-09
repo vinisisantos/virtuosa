@@ -97,7 +97,8 @@ export async function database({ memory = false } = {}) {
       "timestamp" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "status" TEXT NOT NULL DEFAULT 'received', "body" TEXT NOT NULL DEFAULT 'Olá',
-      "type" TEXT NOT NULL DEFAULT 'text', "respondedByName" TEXT, "respondedBy" TEXT
+      "type" TEXT NOT NULL DEFAULT 'text', "respondedByName" TEXT, "respondedBy" TEXT,
+      "mediaUrl" TEXT, "mediaMimeType" TEXT, "mediaSizeBytes" INT
     );
     CREATE TABLE "AliceAutoSchedule" (
       "id" TEXT PRIMARY KEY, "conversationId" TEXT NOT NULL, "replyMessageId" TEXT NOT NULL,
@@ -110,6 +111,7 @@ export async function database({ memory = false } = {}) {
   `);
   const migration = await readFile(migrationUrl, "utf8");
   await pg.exec(migration);
+  await pg.exec(await readFile(new URL("../../prisma/migrations/20261109180000_alice_audio_transcription/migration.sql", import.meta.url), "utf8"));
   if (memory) {
     await pg.exec(await readFile(new URL("../../prisma/migrations/20261109100000_alice_conversation_memory/migration.sql", import.meta.url), "utf8"));
     await pg.exec(`CREATE TABLE "Agendamento" (id TEXT, unit TEXT, "clientPhone" TEXT, procedimento TEXT, status TEXT, "startTime" TIMESTAMP);

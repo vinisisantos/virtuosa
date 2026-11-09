@@ -17,6 +17,7 @@ import { readAliceTurnPayload, legacyAliceTurnPayload, guardAliceTurn, auditAlic
 import { getOrCreateMemory, recordAliceSentMessage } from "@/lib/alice/memory";
 import { applyCurrentAliceMemory } from "@/lib/alice/runtime-memory";
 import { currentAliceAppointment, type AliceMemoryRuntime } from "@/lib/alice/runtime-context";
+import { prepareAliceAudioTurn } from "@/lib/alice/audio/prepare";
 
 export type AliceAutonomyDependencies = {
   database: typeof prisma;
@@ -25,6 +26,7 @@ export type AliceAutonomyDependencies = {
   loadConfig: typeof loadAliceAutonomyConfig;
   loadContext: typeof loadAliceAutonomousContext;
   validate: typeof validateAliceAutonomousTurn;
+  prepareAudio: typeof prepareAliceAudioTurn;
   generate: typeof generateAliceAutonomousReply;
   send: typeof sendAutomationText;
   handoff: typeof routeAliceHandoff;
@@ -35,6 +37,7 @@ const defaults: AliceAutonomyDependencies = {
   database: prisma, now: () => new Date(), runtimeStatus: aliceAutonomyRuntimeStatus, loadConfig: loadAliceAutonomyConfig,
   loadContext: loadAliceAutonomousContext, validate: validateAliceAutonomousTurn, generate: generateAliceAutonomousReply,
   send: sendAutomationText, handoff: routeAliceHandoff,
+  prepareAudio: prepareAliceAudioTurn,
 };
 
 export async function processAliceAutonomousTurn(
@@ -56,6 +59,14 @@ export async function processAliceAutonomousTurn(
   let externalSendStarted = false;
   try {
     if (!await deps.validate(turn, token, "processing", database)) { await finish("skipped", "conversation_changed"); return "skipped"; }
+    const audio = await deps.prepareAudio(turn, database, now());
+    if (audio === "review") return human("model_requested", "audio_requires_review");
+    if (audio === "prepared") {
+      if (!await deps.validate(turn, token, "processing", database)) { await finish("skipped", "conversation_changed_during_audio"); return "skipped"; }
+      const deferred = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
+        data: { status: "queued", claimToken: null, claimedAt: null, availableAt: now() } });
+      return deferred.count ? "queued" : "skipped";
+    }
     const context = await deps.loadContext(turn, database, now());
     if (!context) { await finish("skipped", "context_changed"); return "skipped"; }
     memoryRuntime = context.memoryRuntime;

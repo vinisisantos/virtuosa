@@ -1323,6 +1323,7 @@ model WhatsAppInstance {
   defaultAssigneeId       String?
   conversations           WhatsAppConversation[]
   inboundPostProcessJobs  WhatsAppInboundPostProcessJob[]
+  audioTranscripts       AliceAudioTranscript[]
   statusReceipts          WhatsAppStatusReceipt[]
   members                 WhatsAppInstanceMember[]
   notificationPreferences WhatsAppInstanceNotificationPreference[]
@@ -1431,6 +1432,7 @@ model WhatsAppConversation {
   instance                  WhatsAppInstance                   @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   messages                  WhatsAppMessage[]
   inboundPostProcessJobs    WhatsAppInboundPostProcessJob[]
+  audioTranscripts         AliceAudioTranscript[]
   followUps                 WhatsAppConversationFollowUp[]
   callbackAttempts          WhatsAppCallbackAttempt[]
   internalNotes             WhatsAppConversationInternalNote[]
@@ -1725,11 +1727,32 @@ model WhatsAppMessage {
   respondedBy             String?
   respondedByName         String?
   dispatchMetadata        Json?
+  audioTranscript         AliceAudioTranscript?
   conversation            WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@unique([conversationId, messageId])
   @@index([conversationId, timestamp])
   @@index([timestamp])
+}
+
+model AliceAudioTranscript {
+  /// ID interno da mensagem, nunca o identificador do provedor isoladamente.
+  messageId      String @id
+  conversationId String
+  instanceId     String
+  status         String @default("processing")
+  text           String?
+  model          String @default("gpt-transcribe")
+  durationMs     Int?
+  costMicroUsd   Int?
+  error          String?
+  createdAt      DateTime @default(now())
+  completedAt    DateTime?
+  message        WhatsAppMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  conversation   WhatsAppConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  instance       WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
 }
 
 model WhatsAppInboundPostProcessJob {

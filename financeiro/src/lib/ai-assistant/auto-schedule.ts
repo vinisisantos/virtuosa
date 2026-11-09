@@ -17,6 +17,7 @@ import { selectSbcSchedulingExchange } from "@/lib/ai-assistant/sbc-scheduling-e
 import { validateAliceBookingClaim, type AliceBookingClaim } from "@/lib/ai-assistant/autonomy/booking-authorization";
 import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_LEASE_MS, parseAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/policy";
 import { AI_ASSISTANT_CONFIG_KEY, parseAiAssistantConfig } from "@/lib/ai-assistant/policy";
+import { projectAliceAudioHistory } from "@/lib/alice/audio/history";
 
 type RecentMessage = { id: string; body: string; status: string; fromMe: boolean; timestamp: Date; createdAt: Date };
 export type AliceAutoScheduleResult =
@@ -155,7 +156,8 @@ export async function tryAliceAutoSchedule(params: {
       select: { id: true, body: true, type: true, status: true, fromMe: true, timestamp: true, createdAt: true },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30,
     });
-    const currentExchange = selectSbcSchedulingExchange(messages.reverse());
+    const currentMessages = autonomy ? await projectAliceAudioHistory(messages.reverse(), params.conversationId, params.instanceId, tx) : messages.reverse();
+    const currentExchange = selectSbcSchedulingExchange(currentMessages);
     if (!currentExchange || currentExchange.reply.id !== reply.id || currentExchange.offer.id !== offer.id
       || currentExchange.slot !== slot || currentExchange.asksEvaluationCost !== exchange.asksEvaluationCost
       || currentExchange.replies.length !== replies.length
