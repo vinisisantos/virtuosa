@@ -25,7 +25,7 @@ function dateMatches(key: string, date: RegExpMatchArray): boolean {
 /** Interpreta somente datas/horários presentes na oferta aceita, dentro da grade do servidor. */
 export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string, permitted: readonly string[]): string | null {
   const offer = normalize(offerBody);
-  const reply = normalize(replyBody).trim();
+  const reply = normalize(replyBody).replace(/\s+/gu, ' ').trim();
   if (!/\b(agend\w*|avaliac\w*|horari\w*|vagas?|marcar|prefere|pode ser|tenho|opcao|opcoes)\b/u.test(offer)
     || /\b(nao|indisponivel|indisponiveis|cancelad\w*|fechad\w*)\b/u.test(offer) || reply.includes('?')) return null;
   const dates = [...offer.matchAll(datePattern)];
@@ -33,6 +33,7 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
   const dateKeys = [...new Set(permitted.map((slot) => slot.slice(0, 10)))];
   if (!dateKeys.length) return null;
   const offered = new Set<string>();
+  const nonGridStart = new Set<string>();
   let requiresExplicitTime = false;
   for (const [index, date] of dates.entries()) {
     const matching = dateKeys.filter((key) => dateMatches(key, date));
@@ -43,10 +44,15 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
     const times = clocks(segment);
     if (!times?.length || times.length > 6) return null;
     const beforeTime = segment.slice(0, times[0].index);
-    const isRange = /\b(?:das|de|entre)\s*$/u.test(beforeTime) && !/\ba partir (?:das|de)\s*$/u.test(beforeTime);
+    const between = times.length > 1 ? segment.slice(times[0].index + times[0].length, times[1].index).trim() : '';
+    const bounded = /^(?:as|a|ate(?: as?)?|e|[-–—])$/u.test(between);
+    const from = /\ba partir (?:das?|de)\s*$/u.test(beforeTime);
+    const isRange = /\b(?:das|de|entre)\s*$/u.test(beforeTime) && (!from || bounded);
+    if (from && !isRange) requiresExplicitTime = true;
     if (isRange) {
       if (times.length !== 2 || times[0].minute >= times[1].minute
-        || !/^\s*(?:as|a|ate|e|[-–—])\s*$/u.test(segment.slice(times[0].index + times[0].length, times[1].index))) return null;
+        || !bounded) return null;
+      if (times[0].minute % 30 !== 0) nonGridStart.add(key);
       requiresExplicitTime = true;
       for (let minute = Math.ceil(times[0].minute / 30) * 30; minute <= times[1].minute; minute += 30) {
         offered.add(`${key}T${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`);
@@ -62,11 +68,13 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
   const replyDays = [...reply.matchAll(weekdayPattern)];
   const replyTimes = clocks(reply);
   if (!replyTimes || replyDates.length > 1 || replyDays.length > 1 || replyTimes.length > 1) return null;
-  if (requiresExplicitTime && !replyTimes.length) return null;
-  const remaining = reply.replace(datePattern, '').replace(weekdayPattern, '').replace(clockPattern, '')
+  const firstHour = /\b(?:o |no )?primeiro horario\b/u;
+  const earliest = firstHour.test(reply);
+  if ((earliest && replyTimes.length) || (requiresExplicitTime && !replyTimes.length && !earliest)) return null;
+  const remaining = reply.replace(firstHour, '').replace(datePattern, '').replace(weekdayPattern, '').replace(clockPattern, '')
     .replace(/\b(?:as|na|no|dia)\b/gu, '').replace(/[,.!\s]+/gu, ' ').trim();
   const affirmative = /^(sim|pode|pode ser|pode sim|sim pode|sim pode ser|ok|certo|combinado|confirmo|fechado|ta bom|esta bom|prefiro|eu prefiro|quero|eu quero|quero agendar|pode agendar|pode marcar)$/u.test(remaining);
-  if (!affirmative && (remaining || !(replyDates.length || replyDays.length || replyTimes.length))) return null;
+  if (!affirmative && (remaining || !(earliest || replyDates.length || replyDays.length || replyTimes.length))) return null;
   const choices = [...offered].filter((slot) => {
     const key = slot.slice(0, 10);
     if (replyDates.length && !dateMatches(key, replyDates[0])) return false;
@@ -74,5 +82,9 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
     return !replyTimes.length || slot.slice(11) === replyTimes[0].time;
   });
   // Desambiguar antes de filtrar disponibilidade evita converter “sim” em escolha de uma opção restante.
+  if (earliest && new Set(choices.map((slot) => slot.slice(0, 10))).size === 1) {
+    const first = choices.sort()[0];
+    return !nonGridStart.has(first.slice(0, 10)) && permitted.includes(first) ? first : null;
+  }
   return choices.length === 1 && permitted.includes(choices[0]) ? choices[0] : null;
 }

@@ -7,6 +7,20 @@ const now = new Date('2026-11-09T15:00:00Z');
 const offer = (body) => ({ body, fromMe: true, status: 'delivered' });
 const reply = (body) => ({ body, fromMe: false, status: 'received' });
 
+test('primeiro horário refere-se à primeira hora ofertada de um dia, não à primeira vaga ainda no futuro', () => {
+  const pick = (text, answer, clock = now) => deriveSbcEvaluationChoice({ offer: offer(text), reply: reply(answer), now: clock });
+  const range = '14/11/2026 temos horários a partir das 8h até às 13h. Alguma preferência?';
+  assert.equal(pick(range, 'Primeiro horário'), '2026-11-14T08:00');
+  assert.equal(pick(range, '10h30'), '2026-11-14T10:30');
+  for (const answer of ['não quero o primeiro horário', 'tem o primeiro horário?', 'se der no primeiro horário', 'primeiro horário ou 10h', 'pode ser']) {
+    assert.equal(pick(range, answer), null, answer);
+  }
+  assert.equal(pick(range, 'o primeiro horário', new Date('2026-11-14T11:15Z')), null);
+  const options = 'Opções: 11/11 às 14h ou 13h e 14/11 às 9h ou 8h.';
+  assert.equal(pick(options, 'primeiro horário'), null);
+  assert.equal(pick(options, 'sábado no primeiro horário'), '2026-11-14T08:00');
+});
+
 test('escolhe quarta às 14h entre três dias realmente oferecidos, sem inventar data', () => {
   const offered = offer('Aqui vão algumas opções à tarde\n09/11 (segunda) às 14h\n10/11 (terça) às 14h\n11/11 (quarta) às 14h\nQual delas fica melhor pra você?');
   assert.equal(deriveSbcEvaluationChoice({ offer: offered, reply: reply('quarta às 14h'), now }), '2026-11-11T14:00');
@@ -15,6 +29,10 @@ test('escolhe quarta às 14h entre três dias realmente oferecidos, sem inventar
 });
 
 const message = (id, body, fromMe) => ({ id, body, fromMe, status: fromMe ? 'delivered' : 'received', type: 'text' });
+test('preferência só pelo sábado com vários horários mantém o diálogo, sem gravar nem escalar', () => {
+  const offered = message('offer', 'Sábado 14/11 temos horários das 8h às 13h.', true);
+  assert.equal(selectSbcSchedulingExchange([offered, message('reply', 'Prefiro sábado', false)], now), null);
+});
 test('une saudação e escolha mantendo a oferta enviada e a última entrada como origem', () => {
   const messages = [
     message('offer', 'Na quarta-feira (11/11) temos horários disponíveis a partir das 13h. Você prefere 13h, 13h30 ou 14h?', true),

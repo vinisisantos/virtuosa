@@ -57,3 +57,12 @@ test("PATCH para assumir atendimento cancela pendências antes de mudar o modo",
   assert.equal((await mode("manual")).status, 200);
   assert.deepEqual(state.events, ["pause", "mode:manual"]);
 });
+
+test("só retoma revisão de agendamento quando o próprio handoff anterior deixou o chat manual", async () => {
+  for (const [previous, by, expected] of [["manual", "alice-handoff", "operator"], ["manual", "another-operator", undefined], ["suggestions", "alice-handoff", undefined]]) {
+    Object.assign(state.access.conversation, { aiMode: previous, aiModeUpdatedBy: by });
+    state.events = [];
+    assert.equal((await mode("agent")).status, 200);
+    assert.equal(state.events[1].resumeBookingBy, expected);
+  }
+});

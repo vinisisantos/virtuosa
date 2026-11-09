@@ -8,6 +8,7 @@ import * as assistantPolicy from "../src/lib/ai-assistant/policy.ts";
 import { buildSbcEvaluationOptions } from "#lib/ai-assistant/sbc-scheduling-policy";
 import { selectSbcSchedulingExchange } from "#lib/ai-assistant/sbc-scheduling-exchange";
 import { projectAliceAudioHistory } from "../src/lib/alice/audio/history.ts";
+import { campaignFromPrefilledMetaLeadMessage } from "../src/lib/campaign-track-mapping.ts";
 
 function fixture(options = {}) {
   const now = options.now ? Date.parse(options.now) : Date.now();
@@ -20,6 +21,8 @@ function fixture(options = {}) {
   const offer = { id: "offer", body: options.offerBody || `Podemos agendar em ${day}/${month}/${year} às ${hour}h${minute}?`, fromMe: true, status: "delivered", timestamp: new Date(now - 30_000), createdAt: new Date(now - 30_000) };
   const reply = { id: "reply", body: options.replyBody || "Pode ser", fromMe: false, status: "read", timestamp: new Date(now - 10_000), createdAt: new Date(now - 10_000) };
   const extraReplies = (options.beforeReply || []).map((body, index) => ({ ...reply, id: `part-${index}`, body, timestamp: new Date(now - 20_000 + index) }));
+  const sourceMessage = { ...reply, id: "source", body: options.sourceBody || "Olá, vim pelo Botox Terço Superior", timestamp: new Date(now - 40_000) };
+  const prior = [sourceMessage, ...(options.beforeOffer || []).map((body, i) => ({ ...sourceMessage, id: `prior-${i}`, body }))];
   const state = { ledger: null, appointment: null, sent: 0, updates: 0, locks: [], after: [], groupNotices: [], appointmentInput: null, confirmationInput: null };
   const deal = { id: "deal", clientId: "client", clientName: "Cliente Teste", unit: "SBC", stage: options.stage || "novo_lead", commercialStatus: null, pipelineId: "pipeline", updatedAt: new Date(now - 100_000), notes: null };
   const tx = {
@@ -41,6 +44,7 @@ function fixture(options = {}) {
       throw new Error(`unexpected SQL ${query}`);
     },
     whatsAppMessage: { findFirst: async (query) => query.where.id ? (options.changedCampaignMessage ? null : { id: query.where.id }) : ({ id: options.newMedia ? "new-audio" : reply.id }), findMany: async () => [
+      ...prior,
       options.changedMessage ? { ...offer, id: "different" } : offer,
       ...extraReplies.map((message) => options.changedPart ? { ...message, body: 'Não quero mais' } : message), reply,
     ].reverse() },
@@ -71,6 +75,7 @@ function fixture(options = {}) {
   };
   class NextResponse {}
   const modules = {
+    "@/lib/campaign-track-mapping": { campaignFromPrefilledMetaLeadMessage },
     "@/lib/alice/audio/history": { projectAliceAudioHistory },
     "@/lib/ai-assistant/autonomy/policy": autonomyPolicy,
     "@/lib/ai-assistant/policy": assistantPolicy,
@@ -104,8 +109,7 @@ function fixture(options = {}) {
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   const exports = {};
   vm.runInNewContext(code, { exports, Date: Clock, console, require: (id) => { assert.ok(modules[id], `dependência não simulada: ${id}`); return modules[id]; } });
-  const sourceMessage = { ...reply, id: "source", body: options.sourceBody || "Olá, vim pelo Botox Terço Superior", timestamp: new Date(now - 40_000) };
-  const params = { req: {}, unit: "SBC", instanceId: options.autonomy ? autonomyPolicy.ALICE_AUTONOMY_INSTANCE_ID : "sbc-instance", instanceUnit: "SBC", contactUnit: "SBC", conversationId: "conversation", phone: "5511999999999", targetMessageId: null, messages: [sourceMessage, offer, ...extraReplies, reply], safetyHold: false,
+  const params = { req: {}, unit: "SBC", instanceId: options.autonomy ? autonomyPolicy.ALICE_AUTONOMY_INSTANCE_ID : "sbc-instance", instanceUnit: "SBC", contactUnit: "SBC", conversationId: "conversation", phone: "5511999999999", targetMessageId: null, messages: [...prior, offer, ...extraReplies, reply], safetyHold: false,
     ...(options.autonomy ? { autonomyClaim: { turnId: "turn", claimToken: "claim", sourceMessageId: reply.id } } : {}) };
   return { run: (changes = {}) => exports.tryAliceAutoSchedule({ ...params, ...changes }), state, offer, reply };
 }
@@ -121,6 +125,10 @@ test("registra uma vez e confirma uma vez mesmo com solicitações concorrentes"
 });
 
 const schedulingCases = [
+  { name: 'primeiro horário após faixa e complemento de trabalho, sem perder campanha comprovada',
+    offerBody: 'O próximo sábado disponível é 14/11/2026. Temos horários a partir das 8h até as 13h. Algum horário de preferência?',
+    noProcedure: true, campaignName: 'Botox Terço Superior', beforeOffer: ['Gostaria sim de fazer uma avaliação', 'Para mim é melhor de sábado'],
+    beforeReply: ['Pode ser no  primeiro horário saio do trabalho e vou direto'], replyBody: 'Trabalho a noite', expected: '2026-11-14T11:00:00.000Z', cost: false },
   { name: 'dia escolhido entre três datas e dúvida complementar',
     offerBody: 'Aqui vão algumas opções à tarde\n09/11 (segunda) às 14h\n10/11 (terça) às 14h\n11/11 (quarta) às 14h\nQual delas fica melhor?',
     beforeReply: ['quarta às 14h'], replyBody: 'Tem algum custo a avaliação?', expected: '2026-11-11T17:00:00.000Z', cost: true },
@@ -139,6 +147,7 @@ for (const sample of schedulingCases) test(`conclui ${sample.name} uma vez, com 
   assert.equal(result.startTime, sample.expected);
   assert.equal(f.state.ledger.replyMessageId, 'reply', 'origem continua sendo a última entrada real');
   assert.equal(f.state.confirmationInput.evaluationCostQuestion, sample.cost);
+  if (sample.campaignName) assert.equal(f.state.appointmentInput.evaluationProcedure, sample.campaignName);
   assert.equal(f.state.sent, 1);
   await f.state.after[0]();
   assert.deepEqual(f.state.groupNotices, ['notice']);
@@ -159,7 +168,9 @@ test("usa campanha registrada apenas quando a cliente a mencionou e os dados nã
   const options = { noProcedure: true, campaignName: "Botox Terço Superior" };
   const valid = fixture(options);
   assert.equal((await valid.run()).status, "booked");
-  for (const changes of [{ sourceBody: "Quero saber sobre lipo laser" }, { campaignName: "Campanha Desconhecida" }, { changedCampaign: true }, { changedCampaignMessage: true }]) {
+  for (const changes of [{ sourceBody: "Quero saber sobre lipo laser" }, { campaignName: "Campanha Desconhecida" }, { changedCampaign: true }, { changedCampaignMessage: true },
+    { beforeOffer: ["Vim pelo LIPO LASER 699,00, posso ter mais informações sobre isso?", "Prefiro sábado"] },
+    { beforeOffer: ["Na verdade não quero mais Botox", "Prefiro sábado"] }]) {
     const f = fixture({ ...options, ...changes });
     assert.equal((await f.run()).status, "review");
     assert.equal(f.state.sent, 0);

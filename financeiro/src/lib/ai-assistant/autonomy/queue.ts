@@ -31,6 +31,7 @@ export async function pauseAliceForHuman(conversationId: string, database = pris
 
 export async function enqueueAliceAutonomousTurn(params: {
   conversationId: string; instanceId: string; sourceMessageId: string; timestamp: Date; origin: "inbound" | "backlog";
+  resumeBookingBy?: string;
 }, database = prisma, now = new Date()) {
   if (params.instanceId !== ALICE_AUTONOMY_INSTANCE_ID) return { queued: false, reason: "scope" };
   const config = await loadAliceAutonomyConfig(database);
@@ -77,6 +78,21 @@ export async function enqueueAliceAutonomousTurn(params: {
         origin: params.origin, availableAt: aliceAutonomyAvailableAt(source.createdAt, now, params.origin === "backlog") }, update: {},
       select: { id: true, status: true },
     });
+    // Apenas a retomada explícita do operador pode reutilizar o turno que
+    // parou ANTES de gravar a avaliação. Nunca repetir um envio incerto.
+    if (turn.status === "needs_human" && params.origin === "backlog" && params.resumeBookingBy
+      && conversation.aiModeUpdatedBy === params.resumeBookingBy) {
+      const resumed = await tx.$executeRaw`
+        UPDATE "AliceAutonomousTurn" t SET status='queued',error=NULL,"completedAt"=NULL,"claimedAt"=NULL,
+          "availableAt"=${aliceAutonomyAvailableAt(source.createdAt, now, true)},"updatedAt"=${now}
+        WHERE t.id=${turn.id} AND t.status='needs_human' AND t.error='booking_requires_review'
+          AND t."claimToken" IS NULL AND t."nextMessageIndex"=0 AND t."firstSentAt" IS NULL AND t."appointmentId" IS NULL
+          AND t."generationStartedAt" IS NULL AND t."providerMessageIds"='[]'::jsonb
+          AND NOT EXISTS (SELECT 1 FROM "AliceAutoSchedule" b WHERE b."conversationId"=t."conversationId" AND b."replyMessageId"=t."sourceMessageId")
+          AND t."sourceMessageId"=(SELECT id FROM "WhatsAppMessage" WHERE "conversationId"=t."conversationId"
+            AND status<>'deleted' ORDER BY timestamp DESC,id DESC LIMIT 1)`;
+      if (resumed === 1) return { queued: true, turnId: turn.id, reason: "queued" };
+    }
     return { queued: turn.status === "queued", turnId: turn.id, reason: turn.status };
   }, { timeout: 10_000 });
 }

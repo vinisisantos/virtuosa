@@ -171,6 +171,26 @@ test("retomada humana cancela o pendente e uma nova entrada não reativa a Alice
   } finally { await pg.close(); }
 });
 
+test("retomada explícita reaproveita só a escolha sem envio nem avaliação, nunca por replay do webhook", async () => {
+  const { pg, adapter } = await database();
+  const now = new Date();
+  const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a", timestamp: now, origin: "backlog", resumeBookingBy: "operator" };
+  try {
+    await activateFixture(pg, input.instanceId, now);
+    await pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
+    await insertTurn(pg, { instanceId: input.instanceId, status: "needs_human" });
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='booking_requires_review'`);
+    for (const changes of [{ origin: 'inbound' }, { resumeBookingBy: undefined }, { resumeBookingBy: 'someone-else' }]) {
+      assert.equal((await enqueueAliceAutonomousTurn({ ...input, ...changes }, adapter, now)).queued, false);
+    }
+    await pg.exec(`INSERT INTO "AliceAutoSchedule"(id,"conversationId","replyMessageId",state) VALUES ('proof','conversation-a','source-a','uncertain')`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`DELETE FROM "AliceAutoSchedule" WHERE id='proof'`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
+    assert.deepEqual((await pg.query(`SELECT id,status FROM "AliceAutonomousTurn"`)).rows, [{ id: 'turn-a', status: 'queued' }]);
+  } finally { await pg.close(); }
+});
+
 test("worker interrompido encerra processamento, deixa envio incerto sem retentar e pausa a conversa", async () => {
   const { pg, adapter } = await database();
   const now = new Date();

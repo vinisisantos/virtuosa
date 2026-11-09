@@ -54,7 +54,7 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
     unit: "SBC", campaignName, messageText: (pending.length ? pending : [source]).map((message) => message.body).join(" "),
   });
   return {
-    conversation, messages: textMessages, source, contactName: resolveAiAssistantContactName(conversation.contact.name),
+    conversation, messages, source, contactName: resolveAiAssistantContactName(conversation.contact.name),
     handoffReason: handoffReason || (!knowledge && !continuation ? "model_requested" as const : null),
     prompt: {
       BASE_ALICE: knowledge, UNIDADE: "SBC", CAMPANHA: sanitizeAiAssistantText(campaignName, names),

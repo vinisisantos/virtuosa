@@ -8,6 +8,7 @@ import { canAccessPipelineDeal, resolvePipelineOwnerScope } from "@/lib/pipeline
 import { getPipelineProcedureSelections } from "@/lib/pipeline/procedure-audit";
 import { formatProcedureNames } from "@/lib/pipeline/procedure-names";
 import { evaluationProcedureDraft } from "@/lib/evaluation-procedure-draft";
+import { campaignFromPrefilledMetaLeadMessage } from "@/lib/campaign-track-mapping";
 import { isDiscardPipelineStage, pipelineStageKeyFromName } from "@/lib/pipeline/stages";
 import { pausesCommercialCallbacks } from "@/lib/pipeline/commercial-status";
 import { recordPipelineScheduledStageEvent } from "@/lib/pipeline/scheduled-stage-events";
@@ -34,9 +35,21 @@ function procedureFromConfirmedCampaign(campaignName: string | null, messages: R
     .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   const campaign = normalize(candidate);
   if (campaign.length < 4) return null;
-  const source = messages.slice(0, messages.findIndex((message) => message.id === offerId)).findLast((message) => !message.fromMe);
-  return source && (` ${normalize(source.body)} `).includes(` ${campaign} `)
-    ? { procedure: candidate, source } : null;
+  const index = messages.findIndex((message) => message.id === offerId);
+  if (index < 0) return null;
+  const incoming = messages.slice(Math.max(0, index - 25), index).filter((message) => !message.fromMe).reverse();
+  for (const message of incoming) {
+    const text = normalize(message.body);
+    if (/\b(?:nao quero|nao tenho interesse|desisti|em vez de|ao inves de|mudei de ideia|trocar (?:o|de) procedimento)\b/u.test(text)) return null;
+    const origin = campaignFromPrefilledMetaLeadMessage(message.body, "SBC");
+    if (origin || /^(?:(?:ola|oi) )?(?:eu )?vim pel[oa]s? /u.test(text)) {
+      const sameEpisode = messages[index].timestamp.getTime() - message.timestamp.getTime() < 24 * 60 * 60_000;
+      return sameEpisode && (origin ? normalize(origin.campaignName) === campaign : message === incoming[0] && (` ${text} `).includes(` ${campaign} `))
+        ? { procedure: candidate, source: message } : null;
+    }
+    if (message === incoming[0] && (` ${text} `).includes(` ${campaign} `)) return { procedure: candidate, source: message };
+  }
+  return null;
 }
 
 export function looksLikeSchedulingExchange(messages: RecentMessage[]) {
@@ -175,6 +188,8 @@ export async function tryAliceAutoSchedule(params: {
       || normalizeAppointmentClientName(currentClient.name) !== clientName
       || (!procedureNames.length && currentClient.campaignName !== client.campaignName)) return null;
     if (campaignProcedure) {
+      const verified = procedureFromConfirmedCampaign(currentClient.campaignName, currentMessages, currentExchange.offer.id);
+      if (verified?.source.id !== campaignProcedure.source.id) return null;
       const source = await tx.whatsAppMessage.findFirst({
         where: { id: campaignProcedure.source.id, conversationId: params.conversationId, fromMe: false, type: "text", status: { not: "deleted" }, body: campaignProcedure.source.body },
         select: { id: true },

@@ -150,6 +150,7 @@ export async function PATCH(req: NextRequest) {
         if (latest && !latest.fromMe) await enqueueAliceAutonomousTurn({
           conversationId, instanceId: accessibleConversation.instanceId,
           sourceMessageId: latest.id, timestamp: latest.timestamp, origin: "backlog",
+          resumeBookingBy: accessibleConversation.aiMode === "manual" && accessibleConversation.aiModeUpdatedBy === "alice-handoff" ? user.userId : undefined,
         });
       }
       return NextResponse.json({ mode: conversation.aiMode });
