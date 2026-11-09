@@ -21,7 +21,7 @@ test('runtime não contém integrações, rotas ou modelos retirados', () => {
   assert.doesNotMatch(read('src/lib/ai-assistant/provider.ts'), /api\.deepseek\.com|deepseek-chat/);
   assert.doesNotMatch(read('prisma/schema.prisma'), /model (Ai(?!(?:Learning(?:Observation|Candidate|Operation)|Assistant(?:Draft|Operation))\b)\w+|CrmSilentAnalysisSetting|CrmConversationInsight|WhatsAppMessageTranscript|InsumoUpload)\b/);
   assert.doesNotMatch(read('scripts/vercel-build.mjs'), /_ai_(?!(?:learning|assistant_suggestions)_sbc|readiness_feedback)|approved_campaign_knowledge|prepare-ai-inbox/);
-  assert.doesNotMatch(read('middleware.ts'), /ai-inbox|ai-test|testar-ia/);
+  assert.doesNotMatch(read('src/middleware.ts'), /ai-inbox|ai-test|testar-ia/);
   assert.equal(existsSync(new URL('public/ai-training', root)), false);
   for(const route of ['chat','insumos','crm/ai-shadow','crm/ai-insights','testar-ia/[token]']) {
     assert.equal(existsSync(new URL(`src/app/${route}/page.tsx`, root)), false);
