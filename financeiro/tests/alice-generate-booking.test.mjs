@@ -7,14 +7,14 @@ import { AiAssistantError } from "#lib/ai-assistant/policy";
 import { normalizeAiAssistantMessageLayout } from "#lib/ai-assistant/provider";
 import { isSbcOpeningSequenceContext } from "#lib/ai-assistant/message-sequence";
 
-function fixture({ bookingStatus = "booked", failSave = false, flowPrompt = null, compare = false } = {}) {
+function fixture({ bookingStatus = "booked", failSave = false, flowPrompt = null, compare = false, generatedResponse = "Resposta provisória" } = {}) {
   const state = { contexts: 0, saved: null, bookingCalls: 0 };
   const context = (latest) => ({
     conversation: { id: "conversation", aiMode: "suggestions", instanceId: "instance", instance: { unit: "SBC" }, contact: { phone: "5511999999999", unit: "SBC" } },
     unit: "SBC", latestMessageId: latest, targetMessageId: null, recentMessages: [], sourceFingerprint: `fingerprint-${latest}`,
     contactName: null, handoffReason: null, config: { dailyBudgetMicroUsd: 1000000 }, prompt: flowPrompt || { UNIDADE: "SBC", BASE_ALICE: { documents: [] }, CONVERSA: [] },
   });
-  const result = { response: "Resposta provisória", messages: ["Resposta provisória"], confidence: "high", needsHuman: false, usedKnowledge: [] };
+  const result = { response: generatedResponse, messages: [generatedResponse], confidence: "high", needsHuman: false, usedKnowledge: [] };
   const prisma = {
     aiAssistantDraft: { findUnique: async () => null },
     whatsAppMessage: { findFirst: async () => ({ id: "incoming", fromMe: false }) },
@@ -56,6 +56,27 @@ test("após agendar, o rascunho aponta para a mensagem de confirmação e regist
   assert.equal(result.draft.sourceMessageId, "confirmation");
   assert.equal(result.draft.usage.booking.status, "booked");
   assert.doesNotMatch(result.draft.content, /Resposta provisória/);
+});
+
+test("comparação salva os parágrafos dos dois modelos sem trocar explicação por resumo", async () => {
+  const previous = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "synthetic-test-only";
+  const explanation = "Uma explicação completa mantém todas as informações relevantes — sem perder as condições apresentadas. ".repeat(7).trim();
+  try {
+    const f = fixture({ bookingStatus: "not_applicable", compare: true, generatedResponse: explanation, flowPrompt: {
+      UNIDADE: "SBC", CAMPANHA: "Lipo Laser", BASE_ALICE: { documents: [] },
+      CONVERSA: [{ role: "atendente", text: "Sou a Alice, da Virtuosa." }, { role: "cliente", text: "Pode explicar?" }],
+    } });
+    const { draft } = await f.run();
+    for (const result of [draft.usage.comparison.codex, draft.usage.comparison.claude]) {
+      assert.match(result.response, /\n\n/);
+      assert.doesNotMatch(result.response, /—/);
+      assert.deepEqual(result.response.match(/[\p{L}]+/gu), explanation.match(/[\p{L}]+/gu));
+    }
+  } finally {
+    if (previous === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = previous;
+  }
 });
 
 test("fluxo real de geração aplica apresentação e volume a ambos os provedores antes de salvar", async () => {

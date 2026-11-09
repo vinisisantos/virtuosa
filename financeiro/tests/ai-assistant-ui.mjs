@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import puppeteer from "puppeteer";
+import { formatAliceResponse } from "../src/lib/ai-assistant/response-format.ts";
 
 // Todas as APIs e saídas externas são simuladas; este teste não toca dados reais.
 const origin = "http://127.0.0.1:3210";
@@ -41,6 +42,7 @@ try {
     const sendCalls = [];
     let delayUse = false;
     let sequenceFixture = false;
+    const readableExplanation = formatAliceResponse("Olá! Qual região você gostaria de cuidar? " + "Esta é uma explicação de teste que mantém as informações completas para conferir a leitura em celular e computador. ".repeat(6));
     const sequenceMessages = ["Olá, sou a Alice, atendente da Virtuosa!", "Me conta, você busca um ganho de volume médio ou grande, mais marcante?"];
     let sequenceStep = 0;
     let conversationMode = "manual";
@@ -96,8 +98,8 @@ try {
         } else if (request.method() === "POST") {
           const claudeFailure = unit === "Osasco" && width === 390;
           const longClaude = unit === "Osasco" && width === 1440;
-          data = { draft: { id: "draft-1", content: "Entendi. Para eu te orientar melhor, qual região você gostaria de tratar?", status: "active", version: 1, updatedAt: now, usage: { confidence: "high", needsHuman: false, comparison: { codex: { response: "Entendi. Para eu te orientar melhor, qual região você gostaria de tratar?" }, claude: claudeFailure ? null : { response: longClaude ? "Olá! ".repeat(160) : "Olá! Qual região você gostaria de cuidar?" }, claudeError: claudeFailure ? "Claude indisponível neste momento." : null } } } };
-        } else if (request.method() === "PATCH" && input.action === "use") data = { success: true, content: input.provider === "claude" ? "Olá! Qual região você gostaria de cuidar?" : "Entendi. Para eu te orientar melhor, qual região você gostaria de tratar?", draftVersion: 2 };
+          data = { draft: { id: "draft-1", content: "Entendi. Para eu te orientar melhor, qual região você gostaria de tratar?", status: "active", version: 1, updatedAt: now, usage: { confidence: "high", needsHuman: false, comparison: { codex: { response: "Entendi. Para eu te orientar melhor, qual região você gostaria de tratar?" }, claude: claudeFailure ? null : { response: unit === "SBC" ? readableExplanation : longClaude ? "Olá! ".repeat(160) : "Olá! Qual região você gostaria de cuidar?" }, claudeError: claudeFailure ? "Claude indisponível neste momento." : null } } } };
+        } else if (request.method() === "PATCH" && input.action === "use") data = { success: true, content: input.provider === "claude" ? unit === "SBC" ? readableExplanation : "Olá! Qual região você gostaria de cuidar?" : "Entendi. Para eu te orientar melhor, qual região você gostaria de tratar?", draftVersion: 2 };
         else if (request.method() === "PATCH") data = { success: true };
         else data = { mode: conversationMode, draft: null };
       } else if (url.pathname === "/api/whatsapp/send") {
@@ -154,6 +156,12 @@ try {
     assert.match(await page.$eval("body", (element) => element.innerText), /Claude/);
     if (unit === "Osasco" && width === 390) assert.match(await page.$eval("body", (element) => element.innerText), /Claude indisponível/);
     if (unit === "Osasco" && width === 1440) assert.ok(await page.$eval('section[aria-label="Sugestão Claude"] p', (element) => element.scrollHeight > element.clientHeight), "texto longo permite rolagem");
+    if (unit === "SBC") {
+      const displayed = await page.$eval('section[aria-label="Sugestão Claude"] p', (element) => ({ text: element.textContent, whiteSpace: getComputedStyle(element).whiteSpace }));
+      assert.match(displayed.text, /\n\n/);
+      assert.equal(displayed.whiteSpace, "pre-wrap");
+      await page.screenshot({ path: join(output, `paragraphs-${width}.png`), fullPage: true });
+    }
     const chosenProvider = width === 430 ? "claude" : "codex";
     await page.focus(`section[aria-label="Sugestão ${chosenProvider === "codex" ? "Codex" : "Claude"}"] button`);
     await page.keyboard.press("Enter");
@@ -162,6 +170,7 @@ try {
     assert.equal(JSON.parse(assistantCalls.find((call) => call.method === "POST").body).compare, true);
     assert.equal(JSON.parse(assistantCalls.find((call) => call.method === "PATCH" && call.body.includes('"action":"use"')).body).provider, chosenProvider);
     assert.match(await page.$eval('textarea[placeholder="Digite uma mensagem"]', (element) => element.value), /qual região/i);
+    if (unit === "SBC" && chosenProvider === "claude") assert.match(await page.$eval('textarea[placeholder="Digite uma mensagem"]', (element) => element.value), /\n\n/);
 
     await page.click('button[aria-label="Opções da mensagem"]');
     await page.waitForFunction(() => document.body.innerText.includes("Pedir à Alice"));
