@@ -142,7 +142,7 @@ export async function loadAliceSuggestionContext(params: {
 
   const contactName = resolveAiAssistantContactName(conversation.contact.name);
   const sourceFingerprint = aiAssistantDigest({
-    promptRevision: "sbc-paragrafos-legiveis-v4",
+    promptRevision: "sbc-validade-promocional-v5",
     messages: messages.map((message) => [message.id, message.body, message.fromMe, message.timestamp.toISOString()]),
     targetMessage: targetMessage ? [targetMessage.id, targetMessage.body, targetMessage.timestamp.toISOString()] : null,
   });

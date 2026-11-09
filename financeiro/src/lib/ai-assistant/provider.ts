@@ -3,6 +3,7 @@ import { AI_ASSISTANT_MODEL, AiAssistantError } from "@/lib/ai-assistant/policy"
 import { sbcGluteoConversationFlow, sbcGluteoFlowInstructions } from "@/lib/ai-assistant/gluteo-conversation-flow";
 import { containsAliceIntroduction, sbcConversationPresentation } from "@/lib/ai-assistant/conversation-presentation";
 import { formatAliceResponse } from "@/lib/ai-assistant/response-format";
+import { applySbcPromotionValidity, SBC_PROMOTION_VALIDITY_INSTRUCTIONS } from "@/lib/ai-assistant/promotion-validity";
 
 export type AiAssistantUsage = { input: number; output: number };
 
@@ -52,7 +53,7 @@ export function parseGeneration(value: unknown): AiAssistantGeneration {
 }
 
 export function normalizeAiAssistantMessageLayout(value: AiAssistantGeneration, allowSeparateMessages: boolean, input?: unknown): AiAssistantGeneration {
-  const result = applyAiAssistantMessageLayout(value, allowSeparateMessages, input);
+  const result = applyAiAssistantMessageLayout(applySbcPromotionValidity(value, input), allowSeparateMessages, input);
   if (!input || typeof input !== "object" || (input as Record<string, unknown>).UNIDADE !== "SBC") return result;
   const messages = result.messages.map((message) => formatAliceResponse(message));
   return { ...result, response: messages[0], messages };
@@ -149,6 +150,7 @@ export function buildAliceAssistantRequest(input: unknown) {
       "Use o procedimento/campanha de origem quando estiver identificado. Primeiro entenda o objetivo e a necessidade da pessoa; explique como a informação oficial do procedimento pode se relacionar ao que ela contou, sem perguntar qual objetivo deve priorizar.",
       "Não repita apresentação, nome, pergunta ou informação que já apareceu. Em SBC, se o nome não estiver disponível, não o pergunte na descoberta nem após responder à queixa ou ao preço: pergunte somente ao preparar o agendamento. Nas demais unidades, pergunte o nome apenas se ainda não estiver disponível.",
       ...(conversationInput.UNIDADE === "SBC" ? [
+        SBC_PROMOTION_VALIDITY_INSTRUCTIONS,
         "FORMATO_LEGIVEL_SBC. Mantenha a explicação útil e completa, sem encurtá-la só para parecer conversa de WhatsApp. Separe assuntos em parágrafos curtos com uma linha em branco: explicação, condições relevantes e pergunta final. Use em geral uma ou duas frases por parágrafo, sem transformar cada frase em um envio separado. Não entregue explicações longas em um único bloco. Não use travessão, traço duplo ou barra vertical como separador decorativo de ideias; prefira ponto, vírgula e parágrafos. Preserve hífens legítimos, preços, datas e horários.",
         "PADRAO_DE_ATENDIMENTO_SBC, válido para todos os procedimentos ativos. Recepção institucional automática não é apresentação pessoal da Alice. Se ela ainda não se apresentou nas mensagens enviadas, apresente-a como atendente da Virtuosa, que dará seguimento ao atendimento; retorne a apresentação em uma mensagem separada da próxima pergunta ou resposta. Não repita apresentação enviada nem use apenas um rascunho como evidência de envio.",
         "Conduza uma etapa por vez. Primeiro entenda o objetivo já informado; esclareça somente o detalhe relevante que faltar, com uma pergunta por vez apropriada ao procedimento e à base aprovada. Não explique o produto nem convide para avaliação antes dessa qualificação. Após a resposta, explique brevemente como a oferta documentada se relaciona ao objetivo, sem prometer resultados ou indicação individual. Só depois convide para avaliação. Se o contexto já contém essas etapas, continue sem repeti-las.",

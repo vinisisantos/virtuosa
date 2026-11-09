@@ -7,14 +7,14 @@ import { AiAssistantError } from "#lib/ai-assistant/policy";
 import { normalizeAiAssistantMessageLayout } from "#lib/ai-assistant/provider";
 import { isSbcOpeningSequenceContext } from "#lib/ai-assistant/message-sequence";
 
-function fixture({ bookingStatus = "booked", failSave = false, flowPrompt = null, compare = false, generatedResponse = "Resposta provisória" } = {}) {
-  const state = { contexts: 0, saved: null, bookingCalls: 0 };
+function fixture({ bookingStatus = "booked", failSave = false, flowPrompt = null, compare = false, generatedResponse = "Resposta provisória", generatedNeedsHuman = false } = {}) {
+  const state = { contexts: 0, saved: null, bookingCalls: 0, handoffs: 0 };
   const context = (latest) => ({
     conversation: { id: "conversation", aiMode: "suggestions", instanceId: "instance", instance: { unit: "SBC" }, contact: { phone: "5511999999999", unit: "SBC" } },
     unit: "SBC", latestMessageId: latest, targetMessageId: null, recentMessages: [], sourceFingerprint: `fingerprint-${latest}`,
     contactName: null, handoffReason: null, config: { dailyBudgetMicroUsd: 1000000 }, prompt: flowPrompt || { UNIDADE: "SBC", BASE_ALICE: { documents: [] }, CONVERSA: [] },
   });
-  const result = { response: generatedResponse, messages: [generatedResponse], confidence: "high", needsHuman: false, usedKnowledge: [] };
+  const result = { response: generatedResponse, messages: [generatedResponse], confidence: "high", needsHuman: generatedNeedsHuman, usedKnowledge: [] };
   const prisma = {
     aiAssistantDraft: { findUnique: async () => null },
     whatsAppMessage: { findFirst: async () => ({ id: "incoming", fromMe: false }) },
@@ -26,7 +26,7 @@ function fixture({ bookingStatus = "booked", failSave = false, flowPrompt = null
     "@/lib/ai-assistant/budget": { reserveAiAssistantOperation: async () => ({ id: "operation" }), failAiAssistantOperation: async () => {}, finishAiAssistantOperation: async () => {} },
     "@/lib/ai-assistant/context": { loadAliceSuggestionContext: async () => context(++state.contexts === 1 ? "incoming" : "confirmation") },
     "@/lib/ai-assistant/alice-knowledge": { buildAliceKnowledgeContext: () => ({}) },
-    "@/lib/ai-assistant/handoff": { routeAliceHandoff: async () => null },
+    "@/lib/ai-assistant/handoff": { routeAliceHandoff: async () => { state.handoffs++; return null; } },
     "@/lib/ai-assistant/runtime": { requireAliceLiveRuntime: () => {} },
     "@/lib/ai-assistant/safety": { aliceLocalHandoffReply: () => "Equipe", classifyAliceHandoff: () => null },
     "@/lib/ai-assistant/provider": { generateAiAssistantReply: async () => result, normalizeAiAssistantMessageLayout },
@@ -56,6 +56,29 @@ test("após agendar, o rascunho aponta para a mensagem de confirmação e regist
   assert.equal(result.draft.sourceMessageId, "confirmation");
   assert.equal(result.draft.usage.booking.status, "booked");
   assert.doesNotMatch(result.draft.content, /Resposta provisória/);
+});
+
+test("prazo promocional reconhecido não notifica equipe, mas dúvida clínica mantém o aviso", async () => {
+  const previous = process.env.ANTHROPIC_API_KEY;
+  process.env.ANTHROPIC_API_KEY = "synthetic-test-only";
+  try {
+    for (const [question, expectedHandoffs] of [["Essa promoção vai até quando?", 0], ["Essa promoção vai até quando? Estou grávida, posso fazer?", 1]]) {
+      const f = fixture({ bookingStatus: "not_applicable", compare: true, generatedNeedsHuman: true, generatedResponse: "Vou encaminhar para a equipe.", flowPrompt: {
+        UNIDADE: "SBC", CAMPANHA: "Lipo Laser", BASE_ALICE: { documents: [] },
+        CONVERSA: [{ role: "atendente", text: "Sou a Alice, da Virtuosa." }, { role: "cliente", text: question }],
+      } });
+      const { draft } = await f.run();
+      assert.equal(f.state.handoffs, expectedHandoffs);
+      assert.equal(draft.usage.needsHuman, Boolean(expectedHandoffs));
+      if (!expectedHandoffs) {
+        assert.match(draft.usage.comparison.codex.response, /marketing/);
+        assert.match(draft.usage.comparison.claude.response, /marketing/);
+      }
+    }
+  } finally {
+    if (previous === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = previous;
+  }
 });
 
 test("comparação salva os parágrafos dos dois modelos sem trocar explicação por resumo", async () => {
