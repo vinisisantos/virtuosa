@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "../src/lib/ai-assistant/autonomy/policy.ts";
 
 globalThis.prisma = { $queryRaw: () => { throw new Error("Banco real proibido no teste"); } };
-const { getOrCreateMemory, applyMemoryUpdate, markPresentationDone } = await import("../src/lib/alice/memory.ts");
+const { getOrCreateMemory, applyMemoryUpdate, markPresentationDone, recordAliceSentMessage } = await import("../src/lib/alice/memory.ts");
 const scope = { conversationId: "chat-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, unidade: "SBC" };
 const introduction = "Olá! Sou a Alice, assistente virtual da Virtuosa.";
 const firstSentAt = new Date("2026-11-08T12:00:00.000Z");
@@ -18,7 +18,7 @@ async function fixture() {
     CREATE TABLE "WhatsAppInstance" (id TEXT PRIMARY KEY, unit TEXT);
     CREATE TABLE "WhatsAppConversation" (id TEXT PRIMARY KEY, "contactId" TEXT, "instanceId" TEXT, "aiMode" TEXT DEFAULT 'agent');
     CREATE TABLE "WhatsAppMessage" (id TEXT PRIMARY KEY, "conversationId" TEXT, "messageId" TEXT,
-      body TEXT, "fromMe" BOOLEAN, type TEXT DEFAULT 'text', status TEXT DEFAULT 'sent', timestamp TIMESTAMP(3), "respondedByName" TEXT);
+      body TEXT, "fromMe" BOOLEAN, type TEXT DEFAULT 'text', status TEXT DEFAULT 'sent', timestamp TIMESTAMP(3), "respondedByName" TEXT, "respondedBy" TEXT);
   `);
   await pg.query('INSERT INTO "WhatsAppInstance" VALUES ($1,\'SBC\'),(\'other-box\',\'SBC\'),(\'osasco\',\'Osasco\')', [scope.instanceId]);
   await pg.query('INSERT INTO "WhatsAppConversation" (id,"contactId","instanceId") VALUES (\'chat-a\',\'contact-a\',$1),(\'chat-b\',\'contact-b\',$1),(\'same-contact-other-box\',\'contact-a\',\'other-box\'),(\'chat-osasco\',\'contact-c\',\'osasco\')', [scope.instanceId]);
@@ -33,8 +33,8 @@ async function fixture() {
 
 async function addMessage(pg, changes = {}) {
   const message = { id: "intro", conversationId: "chat-a", messageId: "provider-id", body: introduction,
-    fromMe: true, type: "text", status: "sent", timestamp: firstSentAt, respondedByName: "Alice", ...changes };
-  await pg.query('INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId",body,"fromMe",type,status,timestamp,"respondedByName") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', Object.values(message));
+    fromMe: true, type: "text", status: "sent", timestamp: firstSentAt, respondedByName: "Alice", respondedBy: null, ...changes };
+  await pg.query('INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId",body,"fromMe",type,status,timestamp,"respondedByName","respondedBy") VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', Object.values(message));
 }
 
 test("repositório de memória em PostgreSQL isolado: escopo, merge atômico e prova de apresentação", async (t) => {
@@ -196,6 +196,87 @@ test("repositório de memória em PostgreSQL isolado: escopo, merge atômico e p
       } };
       await assert.rejects(markPresentationDone(scope, "intro", changing), { code: "presentation_unproven" });
       assert.equal((await getOrCreateMemory(scope, {}, f.db)).apresentacaoFeitaEm, null);
+    });
+
+    await run("resposta aceita da Alice atualiza sua última saída sem inventar apresentação", async () => {
+      await getOrCreateMemory(scope, {}, f.db);
+      await addMessage(f.pg, { body: "De nada! Estou por aqui 😊" });
+      const updated = await recordAliceSentMessage(scope, "intro", f.db);
+      assert.equal(updated.ultimaMensagemAliceEm.getTime(), firstSentAt.getTime());
+      assert.equal(updated.apresentacaoFeitaEm, null);
+      assert.deepEqual(await recordAliceSentMessage(scope, "intro", f.db), updated);
+    });
+
+    await run("nome Alice em mensagem de uma usuária humana não prova saída autônoma", async () => {
+      await getOrCreateMemory(scope, {}, f.db);
+      await addMessage(f.pg, { respondedBy: "human-user-id" });
+      await assert.rejects(recordAliceSentMessage(scope, "intro", f.db), { code: "message_unproven" });
+      assert.equal((await getOrCreateMemory(scope, {}, f.db)).ultimaMensagemAliceEm, null);
+    });
+
+    await run("apresentação aceita com nome formatado e legado é comprovada pelo próprio texto", async () => {
+      await getOrCreateMemory(scope, {}, f.db);
+      await addMessage(f.pg, { body: "Olá! Sou a *Alice*, da Clínica Virtuosa." });
+      const recorded = await recordAliceSentMessage(scope, "intro", f.db);
+      assert.equal(recorded.apresentacaoFeitaEm.getTime(), firstSentAt.getTime());
+      assert.equal(recorded.ultimaMensagemAliceEm.getTime(), firstSentAt.getTime());
+    });
+
+    await run("recibo pendente, de cliente, humano ou outra conversa não atualiza a memória", async () => {
+      await getOrCreateMemory(scope, {}, f.db);
+      for (const [index, patch] of [{ status: "pending" }, { status: "error" }, { status: "deleted" }, { fromMe: false },
+        { respondedByName: "Claudenice" }, { respondedByName: "Automação de recepção" }, { type: "audio" }, { conversationId: "chat-b" }].entries()) {
+        await addMessage(f.pg, { id: `not-accepted-${index}`, ...patch });
+        await assert.rejects(recordAliceSentMessage(scope, `not-accepted-${index}`, f.db), { code: "message_unproven" });
+      }
+      await assert.rejects(recordAliceSentMessage(scope, "provider-id", f.db), { code: "message_unproven" });
+      const untouched = await getOrCreateMemory(scope, {}, f.db);
+      assert.equal(untouched.ultimaMensagemAliceEm, null);
+      assert.equal(untouched.apresentacaoFeitaEm, null);
+    });
+
+    await run("última saída avança monotonicamente sem trocar a primeira apresentação", async () => {
+      await getOrCreateMemory(scope, {}, f.db);
+      await addMessage(f.pg);
+      await recordAliceSentMessage(scope, "intro", f.db);
+      const later = new Date("2026-11-09T12:00:00.000Z");
+      await addMessage(f.pg, { id: "later", body: "De nada!", timestamp: later, respondedByName: "Alice (automação)" });
+      f.calls.length = 0;
+      const updated = await recordAliceSentMessage(scope, "later", f.db);
+      assert.equal(f.calls.length, 2);
+      assert.equal(updated.apresentacaoFeitaEm.getTime(), firstSentAt.getTime());
+      assert.equal(updated.ultimaMensagemAliceEm.getTime(), later.getTime());
+      assert.deepEqual(await recordAliceSentMessage(scope, "intro", f.db), updated);
+    });
+
+    await run("mudança de autoria, conteúdo, status ou unidade entre leitura e escrita invalida recibo", async () => {
+      await getOrCreateMemory(scope, {}, f.db);
+      const alterations = [
+        'UPDATE "WhatsAppMessage" SET "respondedBy"=\'human-user\' WHERE id=\'changed\'',
+        'UPDATE "WhatsAppMessage" SET "respondedByName"=\'Claudenice\' WHERE id=\'changed\'',
+        'UPDATE "WhatsAppMessage" SET body=\'Outro texto\' WHERE id=\'changed\'',
+        'UPDATE "WhatsAppMessage" SET status=\'error\' WHERE id=\'changed\'',
+        `UPDATE "WhatsAppInstance" SET unit='Osasco' WHERE id='${scope.instanceId}'`,
+      ];
+      for (const alteration of alterations) {
+        await f.pg.exec('DELETE FROM "WhatsAppMessage"');
+        await addMessage(f.pg, { id: "changed" });
+        let calls = 0;
+        const changing = { async $queryRaw(query) {
+          if (calls++ === 1) await f.pg.exec(alteration);
+          return f.db.$queryRaw(query);
+        } };
+        try { await assert.rejects(recordAliceSentMessage(scope, "changed", changing), { code: "message_unproven" }); }
+        finally { await f.pg.query('UPDATE "WhatsAppInstance" SET unit=\'SBC\' WHERE id=$1', [scope.instanceId]); }
+      }
+      assert.equal((await getOrCreateMemory(scope, {}, f.db)).ultimaMensagemAliceEm, null);
+    });
+
+    await run("a mesma apresentação reconhecida pela trava é comprovada após envio aceito", async () => {
+      await getOrCreateMemory(scope, {}, f.db);
+      await addMessage(f.pg, { body: "Aqui é a Alice, da Clínica Virtuosa." });
+      const recorded = await recordAliceSentMessage(scope, "intro", f.db);
+      assert.equal(recorded.apresentacaoFeitaEm?.getTime(), firstSentAt.getTime());
     });
   } finally { await f.pg.close(); }
 });

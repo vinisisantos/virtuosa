@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type LeadMemory } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
-import { containsAliceIntroduction } from "@/lib/ai-assistant/conversation-presentation";
+import { containsPersonalPresentation } from "@/lib/alice/presentation-filter";
 import { inboxMessageAuthorName } from "@/lib/whatsapp/inbox-attendant";
 import { AliceMemoryError, MEMORY_FIELDS, prepareMemoryUpdate, type AliceMemoryScope, type AliceMemoryUpdate, type MemoryField } from "@/lib/alice/memory-input";
 
@@ -91,28 +91,32 @@ export async function applyMemoryUpdate(
   return rows[0];
 }
 
-type PresentationProof = { id: string; body: string; timestamp: Date; respondedByName: string | null };
+type AcceptedMessageProof = { id: string; body: string; timestamp: Date; respondedByName: string | null; respondedBy: string | null };
+type ProofErrorCode = "presentation_unproven" | "message_unproven";
 
-export async function markPresentationDone(
-  scope: AliceMemoryScope, sentMessageRowId: string, database: MemoryDatabase = prisma,
-): Promise<LeadMemory> {
+async function readAcceptedMessage(scope: AliceMemoryScope, sentMessageRowId: string,
+  database: MemoryDatabase, errorCode: ProofErrorCode): Promise<AcceptedMessageProof> {
   const condition = scopeCondition(scope);
-  if (typeof sentMessageRowId !== "string" || !sentMessageRowId.trim()) throw new AliceMemoryError("presentation_unproven");
-  const proof = (await database.$queryRaw<PresentationProof[]>(Prisma.sql`
-    SELECT p.id, p.body, p.timestamp, p."respondedByName" FROM "WhatsAppMessage" p
+  if (typeof sentMessageRowId !== "string" || !sentMessageRowId.trim()) throw new AliceMemoryError(errorCode);
+  const proof = (await database.$queryRaw<AcceptedMessageProof[]>(Prisma.sql`
+    SELECT p.id, p.body, p.timestamp, p."respondedByName", p."respondedBy" FROM "WhatsAppMessage" p
     JOIN "WhatsAppConversation" c ON c.id=p."conversationId"
     JOIN "WhatsAppInstance" i ON i.id=c."instanceId"
     WHERE ${condition} AND p.id=${sentMessageRowId} AND p."fromMe"=TRUE
       AND p.type='text' AND p.status IN ('sent','delivered','read','played')`))[0];
-  const normalized = proof?.body.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  if (!proof || (!containsAliceIntroduction(proof.body)
-    && !/\b(?:sou|me chamo|meu nome e)\s+(?:a\s+)?claudenice\b/u.test(normalized || ""))) throw new AliceMemoryError("presentation_unproven");
-  const aliceAt = inboxMessageAuthorName(proof) === "Alice" ? proof.timestamp : null;
+  if (!proof) throw new AliceMemoryError(errorCode);
+  return proof;
+}
+
+async function persistMessageProof(scope: AliceMemoryScope, proof: AcceptedMessageProof, presentation: boolean,
+  database: MemoryDatabase, errorCode: ProofErrorCode): Promise<LeadMemory> {
+  const condition = scopeCondition(scope);
+  const aliceAt = proof.respondedBy === null && inboxMessageAuthorName(proof) === "Alice" ? proof.timestamp : null;
   const rows = await database.$queryRaw<LeadMemory[]>(Prisma.sql`
     UPDATE "LeadMemory" m SET
-      "apresentacaoFeitaEm"=COALESCE(m."apresentacaoFeitaEm", p.timestamp),
+      "apresentacaoFeitaEm"=CASE WHEN ${presentation} THEN COALESCE(m."apresentacaoFeitaEm", p.timestamp) ELSE m."apresentacaoFeitaEm" END,
       "ultimaMensagemAliceEm"=GREATEST(m."ultimaMensagemAliceEm", ${aliceAt}::TIMESTAMP(3)),
-      "updatedAt"=CASE WHEN m."apresentacaoFeitaEm" IS NULL
+      "updatedAt"=CASE WHEN (${presentation} AND m."apresentacaoFeitaEm" IS NULL)
         OR (m."ultimaMensagemAliceEm" IS NULL AND ${aliceAt}::TIMESTAMP(3) IS NOT NULL)
         OR m."ultimaMensagemAliceEm"<${aliceAt}::TIMESTAMP(3) THEN clock_timestamp() ELSE m."updatedAt" END
     FROM "WhatsAppConversation" c JOIN "WhatsAppInstance" i ON i.id=c."instanceId"
@@ -120,8 +124,26 @@ export async function markPresentationDone(
     WHERE ${condition} AND m."conversationId"=c.id AND m.unidade='SBC'
       AND p.id=${proof.id} AND p.body=${proof.body} AND p.timestamp=${proof.timestamp}
       AND p."respondedByName" IS NOT DISTINCT FROM ${proof.respondedByName}
+      AND p."respondedBy" IS NOT DISTINCT FROM ${proof.respondedBy}
       AND p."fromMe"=TRUE AND p.type='text' AND p.status IN ('sent','delivered','read','played')
     RETURNING m.*`);
-  if (!rows[0]) throw new AliceMemoryError("presentation_unproven");
+  if (!rows[0]) throw new AliceMemoryError(errorCode);
   return rows[0];
+}
+
+export async function markPresentationDone(
+  scope: AliceMemoryScope, sentMessageRowId: string, database: MemoryDatabase = prisma,
+): Promise<LeadMemory> {
+  const proof = await readAcceptedMessage(scope, sentMessageRowId, database, "presentation_unproven");
+  if (!containsPersonalPresentation(proof.body)) throw new AliceMemoryError("presentation_unproven");
+  return persistMessageProof(scope, proof, true, database, "presentation_unproven");
+}
+
+// O ID precisa ser de uma saída já aceita e persistida; o rascunho/flag do modelo não é recibo.
+export async function recordAliceSentMessage(
+  scope: AliceMemoryScope, sentMessageRowId: string, database: MemoryDatabase = prisma,
+): Promise<LeadMemory> {
+  const proof = await readAcceptedMessage(scope, sentMessageRowId, database, "message_unproven");
+  if (proof.respondedBy !== null || inboxMessageAuthorName(proof) !== "Alice") throw new AliceMemoryError("message_unproven");
+  return persistMessageProof(scope, proof, containsPersonalPresentation(proof.body), database, "message_unproven");
 }

@@ -22,7 +22,7 @@ export type AliceMemoryUpdate = {
 };
 
 export class AliceMemoryError extends Error {
-  readonly code: "invalid_scope" | "invalid_update" | "memory_unavailable" | "presentation_unproven";
+  readonly code: "invalid_scope" | "invalid_update" | "memory_unavailable" | "presentation_unproven" | "message_unproven";
 
   constructor(code: AliceMemoryError["code"]) {
     super(`alice_memory_${code}`);
