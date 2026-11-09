@@ -39,7 +39,7 @@ function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
 }
 
-// Apenas gera uma proposta; não envia, não chama repositório e não liga este módulo ao worker ativo.
+// Apenas gera uma proposta; a validação final, persistência e envio pertencem ao worker.
 export async function generateAliceStructuredReply(context: AliceStructuredContext,
   dependencies: AliceStructuredDependencies = {}): Promise<AliceStructuredGeneration> {
   const now = dependencies.now ?? (() => performance.now());
@@ -63,7 +63,7 @@ export async function generateAliceStructuredReply(context: AliceStructuredConte
   if (dependencies.signal?.aborted) return handoff("cancelled");
   const remaining = GENERATION_BUDGET_MS - elapsed();
   if (remaining <= 0) return handoff("deadline");
-  // Uma única janela para ambas as tentativas: nunca 48s + 48s dentro do worker de 60s.
+  // Uma única janela para ambas as tentativas; o worker também impõe seu orçamento ponta a ponta.
   const timeout = AbortSignal.timeout(Math.ceil(remaining));
   const signal = dependencies.signal ? AbortSignal.any([timeout, dependencies.signal]) : timeout;
   const fetcher = dependencies.fetcher ?? fetch;

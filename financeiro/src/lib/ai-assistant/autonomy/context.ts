@@ -6,8 +6,10 @@ import { sanitizeAiAssistantText, resolveAiAssistantContactName } from "@/lib/ai
 import { classifyAliceHandoff } from "@/lib/ai-assistant/safety";
 import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-policy";
 import { aliceAutonomyConversationEligible } from "@/lib/ai-assistant/autonomy/policy";
+import { aliceMemoryEnabled } from "@/lib/alice/runtime-memory";
+import { loadAliceMemoryContext, type AliceMemoryRuntime } from "@/lib/alice/runtime-context";
 
-export async function loadAliceAutonomousContext(turn: AliceAutonomousTurn, database = prisma, now = new Date()) {
+async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = prisma, now = new Date()) {
   const conversation = await database.whatsAppConversation.findFirst({
     where: { id: turn.conversationId, instanceId: turn.instanceId },
     select: {
@@ -31,7 +33,7 @@ export async function loadAliceAutonomousContext(turn: AliceAutonomousTurn, data
   const intervention = messages.slice(sourceIndex + 1).some((message) => message.fromMe
     && !ownMessages.includes(message.messageId) && message.respondedByName !== "Automação de recepção");
   if (intervention) return null;
-  const continuation = turn.nextMessageIndex > 0 && Array.isArray(turn.messagesJson);
+  const continuation = turn.nextMessageIndex > 0 && turn.messagesJson !== null;
   const phoneKey = phoneLookupKey(conversation.contact.phone);
   const clients = phoneKey && !continuation ? await database.client.findMany({
     where: { unit: "SBC", isActive: true, phone: { contains: phoneKey.slice(-8) } },
@@ -63,4 +65,12 @@ export async function loadAliceAutonomousContext(turn: AliceAutonomousTurn, data
   };
 }
 
-export type AliceAutonomousContext = NonNullable<Awaited<ReturnType<typeof loadAliceAutonomousContext>>>;
+export type LegacyAliceAutonomousContext = NonNullable<Awaited<ReturnType<typeof loadLegacyAliceContext>>>;
+export type AliceAutonomousContext = LegacyAliceAutonomousContext & { memoryRuntime?: AliceMemoryRuntime };
+
+export async function loadAliceAutonomousContext(turn: AliceAutonomousTurn, database = prisma,
+  now = new Date()): Promise<AliceAutonomousContext | null> {
+  const context = await loadLegacyAliceContext(turn, database, now);
+  if (!context || !aliceMemoryEnabled()) return context;
+  return loadAliceMemoryContext(context, turn, database, now);
+}

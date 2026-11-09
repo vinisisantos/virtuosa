@@ -227,9 +227,7 @@ test("envelope sem objeto ou texto não vira resposta vazia ou custo contabiliza
   assert.equal(noText.metrics.costMicroUsd, cost);
 });
 
-test("novo módulo não participa do worker ativo, não importa repositório nem função de envio", async () => {
-  const worker = await readFile(new URL("../src/lib/ai-assistant/autonomy/generate.ts", import.meta.url), "utf8");
+test("geração estruturada continua sem repositório ou envio mesmo integrada ao worker", async () => {
   const structured = await readFile(new URL("../src/lib/alice/structured-generation.ts", import.meta.url), "utf8");
-  assert.doesNotMatch(worker, /structured-generation|generateAliceStructuredReply/);
   assert.doesNotMatch(structured, /sendAutomationText|applyMemoryUpdate|markPresentationDone|@\/lib\/db|@\/lib\/alice\/memory["']/);
 });

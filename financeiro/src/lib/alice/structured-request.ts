@@ -25,6 +25,7 @@ const structuredInstructions = [
   "perguntasFeitas deve conter somente temas realmente perguntados no histórico enviado, não perguntas desta resposta ainda não enviada. Uma pergunta feita não comprova resposta recebida. Uma objeção já registrada não precisa ser repetida no patch.",
   "Se faltar base factual, houver baixa confiança, ambiguidade essencial ou risco clínico, marque escalarHumano=true e explique brevemente em motivoEscalonamento. Não repita uma pergunta ainda sem resposta para preencher silêncio. Não inclua diagnósticos ou orientações médicas individuais.",
   "Mantenha escrita natural, parágrafos e contexto, sem reapresentar quando já houver prova. Se ainda não se apresentou, use a identidade Alice, assistente virtual da Virtuosa; nunca imite a identidade de uma pessoa humana.",
+  "ATENDIMENTO_AUTONOMO, quando verdadeiro nos controles do servidor: estas mensagens aprovadas podem ser enviadas sem revisão prévia. Não repita perguntas para preencher silêncio; use escalarHumano quando não houver próximo passo pertinente. Respeite no máximo 120 palavras por mensagem, além do limite de caracteres.",
 ].join("\n");
 
 const repairInstruction = "CORRECAO_DE_FORMATO: a tentativa anterior não passou pela validação local. Gere novamente a partir do mesmo contexto, respeitando todos os tipos, campos permitidos, resumo obrigatório, limites e motivo de escalonamento quando necessário. Não adicione fatos novos nem afirme que houve envio.";

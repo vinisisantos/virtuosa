@@ -13,6 +13,7 @@ import { isSchedulingSuggestionExpired } from "@/lib/ai-assistant/sbc-scheduling
 import { loadAliceAutonomyConfig, aliceAutonomyRuntimeStatus } from "@/lib/ai-assistant/autonomy/config";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 import { enqueueAliceAutonomousTurn, pauseAliceForHuman } from "@/lib/ai-assistant/autonomy/queue";
+import { clearAliceEscalationOnResume } from "@/lib/alice/runtime-memory";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -131,6 +132,7 @@ export async function PATCH(req: NextRequest) {
         if (!(await loadAliceAutonomyConfig()).enabled || !aliceAutonomyRuntimeStatus().ready) {
           throw new AiAssistantError("O atendimento autônomo precisa estar ativo e disponível no painel da Alice.", 409);
         }
+        await clearAliceEscalationOnResume({ conversationId, instanceId: accessibleConversation.instanceId, unidade: "SBC" });
       } else if (accessibleConversation.aiMode === "agent") {
         await pauseAliceForHuman(conversationId);
       }

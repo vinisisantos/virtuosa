@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 import { containsPersonalPresentation } from "@/lib/alice/presentation-filter";
 import { inboxMessageAuthorName } from "@/lib/whatsapp/inbox-attendant";
+import { observedAliceQuestions } from "@/lib/alice/observed-questions";
 import { AliceMemoryError, MEMORY_FIELDS, prepareMemoryUpdate, type AliceMemoryScope, type AliceMemoryUpdate, type MemoryField } from "@/lib/alice/memory-input";
 
 export { AliceMemoryError, type AliceMemoryScope, type AliceMemoryUpdate } from "@/lib/alice/memory-input";
@@ -116,6 +117,8 @@ async function persistMessageProof(scope: AliceMemoryScope, proof: AcceptedMessa
     UPDATE "LeadMemory" m SET
       "apresentacaoFeitaEm"=CASE WHEN ${presentation} THEN COALESCE(m."apresentacaoFeitaEm", p.timestamp) ELSE m."apresentacaoFeitaEm" END,
       "ultimaMensagemAliceEm"=GREATEST(m."ultimaMensagemAliceEm", ${aliceAt}::TIMESTAMP(3)),
+      "perguntasFeitas"=ARRAY(SELECT DISTINCT value FROM unnest(m."perguntasFeitas" ||
+        ARRAY[${observedAliceQuestions(proof.body).length ? Prisma.join(observedAliceQuestions(proof.body)) : Prisma.empty}]::TEXT[]) AS value ORDER BY value),
       "updatedAt"=CASE WHEN (${presentation} AND m."apresentacaoFeitaEm" IS NULL)
         OR (m."ultimaMensagemAliceEm" IS NULL AND ${aliceAt}::TIMESTAMP(3) IS NOT NULL)
         OR m."ultimaMensagemAliceEm"<${aliceAt}::TIMESTAMP(3) THEN clock_timestamp() ELSE m."updatedAt" END

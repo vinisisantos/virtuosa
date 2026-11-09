@@ -3,12 +3,13 @@ import type { AliceMemoryScope } from "@/lib/alice/memory-input";
 import { aliceStructuredOutputSchema, type AliceStructuredOutput } from "@/lib/alice/schema";
 import { containsPersonalPresentation, stripRepeatedPresentation } from "@/lib/alice/presentation-filter";
 import { ALICE_AUTONOMY_INSTANCE_ID, aliceAutonomyResponseClaimsBooking } from "@/lib/ai-assistant/autonomy/policy";
+import { validateAliceFearReply, type AliceFearPolicy, type AliceFearViolation } from "@/lib/alice/fear-policy";
 
 export type AliceGuardContext = {
   scope: AliceMemoryScope; presentationAt: Date | null;
-  appointment: AliceRegisteredAppointment | null; contactName: string | null;
+  appointment: AliceRegisteredAppointment | null; contactName: string | null; fear?: AliceFearPolicy | null;
 };
-export type AliceGuardFailure = "invalid_context" | "invalid_proposal" | "presentation_not_separable" | "internal_content" | "word_limit" | "price_after_booking" | "human_review" | "unproven_booking";
+export type AliceGuardFailure = "invalid_context" | "invalid_proposal" | "presentation_not_separable" | "internal_content" | "word_limit" | "price_after_booking" | "human_review" | "unproven_booking" | AliceFearViolation;
 export type AliceGuardEvent = { code: AliceGuardFailure | "presentation_removed" | "markdown_normalized" | "presentation_flag_corrected"; messageIndex?: number };
 export type AliceGuardDecision =
   | { status: "ready"; proposal: AliceStructuredOutput; events: AliceGuardEvent[] }
@@ -56,6 +57,8 @@ export function guardAliceReply(proposal: unknown, context: AliceGuardContext): 
     if (formatted) messages.push(formatted);
   }
   if (!messages.length) return { status: "skip", reason: "empty_after_guard", proposal: null, events };
+  const fearViolation = validateAliceFearReply(messages, context.fear || null, context.contactName);
+  if (fearViolation) return { status: "handoff", reason: fearViolation, proposal: null, events: [...events, { code: fearViolation }] };
   if (aliceAutonomyResponseClaimsBooking(messages)) return { status: "handoff", reason: "unproven_booking", proposal: null, events: [...events, { code: "unproven_booking" }] };
   const presented = messages.some(containsPersonalPresentation);
   if (presented !== parsed.data.seApresentouNestaResposta) events.push({ code: "presentation_flag_corrected" });

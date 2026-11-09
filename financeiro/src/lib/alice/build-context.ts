@@ -1,6 +1,6 @@
 import { Prisma, type LeadMemory } from "@prisma/client";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
-import { containsAliceIntroduction } from "@/lib/ai-assistant/conversation-presentation";
+import { containsPersonalPresentation } from "@/lib/alice/presentation-filter";
 import { resolveAiAssistantContactName } from "@/lib/ai-assistant/privacy";
 import { aliceContinuityQuestionKeys, type AliceContinuityControls } from "@/lib/alice/context-controls";
 import type { AliceMemoryScope } from "@/lib/alice/memory-input";
@@ -39,9 +39,8 @@ export class AliceContextError extends Error {
 
 const acceptedStatuses = new Set(["sent", "delivered", "read", "played"]);
 const validDate = (date: unknown): date is Date => date instanceof Date && Number.isFinite(date.getTime());
-const normalize = (text: string): string => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 const hasPresentation = (message: AliceContextMessage): boolean => message.fromMe && message.type === "text"
-  && (containsAliceIntroduction(message.body) || /\b(?:sou|me chamo|meu nome e)\s+(?:a\s+)?claudenice\b/u.test(normalize(message.body)));
+  && containsPersonalPresentation(message.body);
 
 function orderedHistory(input: AliceContextInput): AliceContextMessage[] {
   const ids = new Set<string>();

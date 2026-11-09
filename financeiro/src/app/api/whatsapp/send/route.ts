@@ -33,6 +33,7 @@ import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
 import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
 import { whatsAppConversationPreview } from "@/lib/whatsapp/message-content";
 import { pauseAliceForHuman } from "@/lib/ai-assistant/autonomy/queue";
+import { rememberHumanPresentation } from "@/lib/alice/runtime-memory";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 import { firstWhatsAppLink, loadWhatsAppLinkPreview } from "@/lib/whatsapp/link-preview";
 import { evolutionMessageLidCandidates } from "@/lib/whatsapp/chat-action-identifiers";
@@ -953,6 +954,10 @@ export async function POST(req: Request) {
     });
 
     after(async () => {
+      try {
+        await rememberHumanPresentation({ conversationId: conversation.id, instanceId: dbInstance.id,
+          messageRowId: message.id, body: message.body, type: message.type, status: message.status });
+      } catch { console.error("[AliceMemory] human presentation reconciliation unavailable"); }
       const previewTask = linkPreviewPromise.then(async (linkPreview) => {
         if (!linkPreview) return;
         await prisma.whatsAppMessage.updateMany({

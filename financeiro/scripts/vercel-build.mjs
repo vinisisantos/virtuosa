@@ -59,6 +59,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20261020120000_evaluation_group_osasco_destination/migration.sql",
     "prisma/migrations/20261108230000_alice_auto_schedule/migration.sql",
     "prisma/migrations/20261109010000_alice_autonomous_turns/migration.sql",
+    "prisma/migrations/20261109100000_alice_conversation_memory/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {

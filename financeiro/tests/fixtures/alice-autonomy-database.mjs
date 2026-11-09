@@ -51,6 +51,8 @@ export function queueDatabase(pg) {
     },
     whatsAppMessage: { findFirst: findFirst("WhatsAppMessage"), findMany: findMany("WhatsAppMessage") },
     client: { findMany: async () => [] },
+    auditLog: { create: async ({ data }) => query(Prisma.sql`INSERT INTO "AuditLog" ("userName",action,entity,"entityId",details,unit)
+      VALUES (${data.userName},${data.action},${data.entity},${data.entityId},${data.details},${data.unit})`) },
     aliceAutonomousTurn: {
       updateMany: updateMany("AliceAutonomousTurn"),
       update: async (args) => { await updateMany("AliceAutonomousTurn")(args); return findFirst("AliceAutonomousTurn")({ where: args.where }); },
@@ -69,7 +71,7 @@ export function queueDatabase(pg) {
   return database;
 }
 
-export async function database() {
+export async function database({ memory = false } = {}) {
   const pg = new PGlite({ parsers: { 1114: (value) => new Date(`${value}Z`) } });
   await pg.exec(`
     SET TIME ZONE 'UTC';
@@ -94,7 +96,7 @@ export async function database() {
       "timestamp" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "status" TEXT NOT NULL DEFAULT 'received', "body" TEXT NOT NULL DEFAULT 'Olá',
-      "type" TEXT NOT NULL DEFAULT 'text', "respondedByName" TEXT
+      "type" TEXT NOT NULL DEFAULT 'text', "respondedByName" TEXT, "respondedBy" TEXT
     );
     CREATE TABLE "AliceAutoSchedule" (
       "id" TEXT PRIMARY KEY, "conversationId" TEXT NOT NULL, "replyMessageId" TEXT NOT NULL,
@@ -107,6 +109,11 @@ export async function database() {
   `);
   const migration = await readFile(migrationUrl, "utf8");
   await pg.exec(migration);
+  if (memory) {
+    await pg.exec(await readFile(new URL("../../prisma/migrations/20261109100000_alice_conversation_memory/migration.sql", import.meta.url), "utf8"));
+    await pg.exec(`CREATE TABLE "Agendamento" (id TEXT, unit TEXT, "clientPhone" TEXT, procedimento TEXT, status TEXT, "startTime" TIMESTAMP);
+      CREATE TABLE "AuditLog" ("userName" TEXT, action TEXT, entity TEXT, "entityId" TEXT, details TEXT, unit TEXT);`);
+  }
   return { pg, migration, adapter: queueDatabase(pg) };
 }
 

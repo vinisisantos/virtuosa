@@ -4,14 +4,34 @@ import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
 import { isSbcOpeningSequenceContext } from "@/lib/ai-assistant/message-sequence";
 import type { AliceAutonomousContext } from "@/lib/ai-assistant/autonomy/context";
 import { ALICE_AUTONOMY_MODEL, aliceAutonomyCostMicroUsd, aliceAutonomyResponseClaimsBooking } from "@/lib/ai-assistant/autonomy/policy";
+import { generateAliceStructuredReply } from "@/lib/alice/structured-generation";
+import type { AliceStructuredOutput } from "@/lib/alice/schema";
 
 export type AutonomousGeneration = {
   messages: string[]; needsHuman: boolean; model: string; inputTokens: number; outputTokens: number;
   cacheReadInputTokens: number; cacheCreationInputTokens: number; costMicroUsd: number; generationMs: number;
   usageRecorded: boolean;
+  proposal?: AliceStructuredOutput;
+  generationFailure?: string;
 };
 
-export async function generateAliceAutonomousReply(context: AliceAutonomousContext, fetcher = fetch): Promise<AutonomousGeneration> {
+export async function generateAliceAutonomousReply(context: AliceAutonomousContext, fetcher = fetch,
+  signal?: AbortSignal): Promise<AutonomousGeneration> {
+  if (context.memoryRuntime) {
+    const generated = await generateAliceStructuredReply({ scope: context.memoryRuntime.scope, prompt: context.prompt }, { fetcher, signal });
+    const { model, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, generationMs, usageRecorded, knownCostMicroUsd } = generated.metrics;
+    const metrics = { model, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens,
+      generationMs: Math.ceil(generationMs), usageRecorded, costMicroUsd: knownCostMicroUsd };
+    if (generated.status !== "draft") return { ...metrics, messages: [], needsHuman: true, generationFailure: generated.reason };
+    try {
+      const proposal = generated.proposal;
+      const normalized = normalizeAiAssistantMessageLayout({ response: proposal.resposta[0], messages: proposal.resposta,
+        confidence: proposal.confidence, needsHuman: proposal.escalarHumano, usedKnowledge: proposal.usedKnowledge }, true, context.prompt);
+      const messages = normalized.messages.map((message) => personalizeAiAssistantResponse(message, context.contactName));
+      return { ...metrics, messages, needsHuman: normalized.needsHuman,
+        proposal: { ...proposal, resposta: messages } };
+    } catch { return { ...metrics, messages: [], needsHuman: true, generationFailure: "formatting_requires_review" }; }
+  }
   const request = buildClaudeRequest(context.prompt);
   request.system += "\nATENDIMENTO AUTÔNOMO: as mensagens válidas serão enviadas pelo sistema. Use uma ou no máximo duas mensagens, cada uma com até 1.200 caracteres. "
     + "Neste canal a autorização de envio já existe, mas não há revisão humana prévia: as referências anteriores a envio manual pertencem somente ao comparador de sugestões. "
@@ -25,7 +45,7 @@ export async function generateAliceAutonomousReply(context: AliceAutonomousConte
   const startedAt = Date.now();
   const response = await fetcher("https://api.anthropic.com/v1/messages", {
     method: "POST", headers: { "content-type": "application/json", "anthropic-version": "2023-06-01", "x-api-key": process.env.ANTHROPIC_API_KEY?.trim() || "" },
-    body, cache: "no-store", signal: AbortSignal.timeout(48_000),
+    body, cache: "no-store", signal: signal ? AbortSignal.any([AbortSignal.timeout(48_000), signal]) : AbortSignal.timeout(48_000),
   });
   if (!response.ok) throw new Error(`provider_http_${response.status}`);
   const result = await response.json();

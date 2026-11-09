@@ -68,7 +68,7 @@ export async function sendAutomationText(params: {
     ? `auto_waha_${params.conversationId}_${Date.now()}` : `auto_${params.conversationId}_${Date.now()}`);
   const sentAt = new Date();
 
-  await prisma.whatsAppMessage.create({
+  const savedMessage = await prisma.whatsAppMessage.create({
     data: {
       conversationId: params.conversationId,
       messageId,
@@ -79,6 +79,7 @@ export async function sendAutomationText(params: {
       timestamp: sentAt,
       respondedByName: params.respondedByName || "Automação",
     },
+    select: { id: true },
   });
 
   await prisma.whatsAppConversation.update({
@@ -86,5 +87,5 @@ export async function sendAutomationText(params: {
     data: { lastMessage: params.message, lastMessageAt: sentAt },
   });
 
-  return { messageId, sentAt };
+  return { messageId, messageRowId: savedMessage.id, sentAt };
 }

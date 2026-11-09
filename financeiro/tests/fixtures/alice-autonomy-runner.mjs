@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { activateFixture, database, insertTurn } from "./alice-autonomy-database.mjs";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "../../src/lib/ai-assistant/autonomy/policy.ts";
 
-export async function runnerFixture(claimTurn) {
-  const { pg, adapter } = await database();
+export async function runnerFixture(claimTurn, options) {
+  const { pg, adapter } = await database(options);
   const state = { clock: new Date(), generations: 0, sends: [], handoffs: [], transactionOpen: false };
   await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, state.clock);
   await pg.query('UPDATE "WhatsAppConversation" SET "aiMode"=\'agent\' WHERE id=\'conversation-a\'');
@@ -40,9 +40,9 @@ export async function runnerFixture(claimTurn) {
       if (state.failSend) throw new Error("simulated network timeout after request began");
       const messageId = `provider-fixture-${state.sends.length}`;
       const sentAt = new Date(state.clock);
-      await pg.query('INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp,"createdAt","respondedByName",body) VALUES ($1,$2,$1,TRUE,$3,$3,$4,$5)',
+      await pg.query('INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp,"createdAt","respondedByName",body,status) VALUES ($1,$2,$1,TRUE,$3,$3,$4,$5,\'sent\')',
         [messageId, params.conversationId, sentAt, params.respondedByName, params.message]);
-      return { messageId, sentAt };
+      return { messageId, messageRowId: messageId, sentAt };
     },
     handoff: async (params) => { state.handoffs.push(params); },
   };

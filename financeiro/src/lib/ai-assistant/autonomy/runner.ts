@@ -13,6 +13,10 @@ import { validateAliceAutonomousTurn, AliceAutonomyStopped } from "@/lib/ai-assi
 import { finishAliceAutonomousTurn, notifyAliceAutonomousHandoff } from "@/lib/ai-assistant/autonomy/lifecycle";
 import { ALICE_AUTONOMY_COMPLEMENT_MS } from "@/lib/ai-assistant/autonomy/policy";
 import { aliceAutonomySchedulingTextValid } from "@/lib/ai-assistant/autonomy/content-policy";
+import { readAliceTurnPayload, legacyAliceTurnPayload, guardAliceTurn, auditAliceGuardEvents, type AliceTurnPayload } from "@/lib/alice/turn-payload";
+import { getOrCreateMemory, recordAliceSentMessage } from "@/lib/alice/memory";
+import { applyCurrentAliceMemory } from "@/lib/alice/runtime-memory";
+import { currentAliceAppointment, type AliceMemoryRuntime } from "@/lib/alice/runtime-context";
 
 export type AliceAutonomyDependencies = {
   database: typeof prisma;
@@ -39,9 +43,13 @@ export async function processAliceAutonomousTurn(
   const deps = { ...defaults, ...overrides };
   const { database, now } = deps;
   const { turn, token } = claim;
+  const deadline = Date.now() + 55_000;
+  let memoryRuntime: AliceMemoryRuntime | undefined;
   const finish = (status: "skipped" | "needs_human" | "uncertain" | "failed", reason: string) =>
     finishAliceAutonomousTurn({ turn, token, status, reason, database, now: now() });
   const human = async (reason: "clinical_safety" | "unsupported_procedure" | "model_requested", error: string = reason) => {
+    if (memoryRuntime && reason === "clinical_safety") await applyCurrentAliceMemory(memoryRuntime.scope, turn.sourceMessageId,
+      { escalarHumano: true, motivoEscalonamento: reason }, database);
     if (await finish("needs_human", error)) await notifyAliceAutonomousHandoff(turn, reason, deps.handoff);
     return "needs_human";
   };
@@ -50,10 +58,16 @@ export async function processAliceAutonomousTurn(
     if (!await deps.validate(turn, token, "processing", database)) { await finish("skipped", "conversation_changed"); return "skipped"; }
     const context = await deps.loadContext(turn, database, now());
     if (!context) { await finish("skipped", "context_changed"); return "skipped"; }
+    memoryRuntime = context.memoryRuntime;
     if (context.handoffReason) return human(context.handoffReason);
-    let messages = Array.isArray(turn.messagesJson) ? turn.messagesJson.filter((value): value is string => typeof value === "string") : [];
+    let payload: AliceTurnPayload | null = readAliceTurnPayload(turn.messagesJson);
+    let messages = payload?.proposal.resposta || (Array.isArray(turn.messagesJson) ? turn.messagesJson.filter((value): value is string => typeof value === "string") : []);
+    if (turn.messagesJson !== null && !messages.length) return human("model_requested", "invalid_persisted_sequence");
+    // Turnos antigos passam pelas travas, mas não recebem resumo inventado nem nova geração.
+    if (memoryRuntime && messages.length && !payload) payload = legacyAliceTurnPayload(messages);
+    if (payload && !memoryRuntime) return human("model_requested", "memory_path_disabled");
     if (!messages.length) {
-      if (looksLikeSchedulingExchange(context.messages)) {
+      if (!context.memoryRuntime?.guard.fear && looksLikeSchedulingExchange(context.messages)) {
         if (!deps.schedule) return human("model_requested", "trusted_booking_unavailable");
         // O serviço de agenda pode enviar a confirmação antes de devolver seu resultado.
         externalSendStarted = true;
@@ -77,14 +91,37 @@ export async function processAliceAutonomousTurn(
       }
       const generating = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: { generationStartedAt: now() } });
       if (!generating.count) return "skipped";
-      const generated = await deps.generate(context);
-      const { messages: generatedMessages, needsHuman, ...metrics } = generated;
+      if (Date.now() >= deadline - 20_000) return human("model_requested", "worker_budget_exhausted");
+      const generated = await deps.generate(context, undefined, AbortSignal.timeout(Math.max(1, deadline - Date.now() - 20_000)));
+      const { messages: generatedMessages, needsHuman, proposal, generationFailure, ...metrics } = generated;
       // O custo pertence ao turno mesmo quando uma intervenção durante a geração cancela a resposta.
       await database.aliceAutonomousTurn.update({ where: { id: turn.id }, data: metrics });
-      if (needsHuman || !generatedMessages.length) return human("model_requested", "generation_requires_review");
+      if (needsHuman || !generatedMessages.length) return human("model_requested", generationFailure || "generation_requires_review");
       messages = generatedMessages;
-      const saved = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: { messagesJson: messages } });
+      if (memoryRuntime) {
+        if (!proposal) return human("model_requested", "structured_proposal_missing");
+        payload = { version: 1, proposal };
+      }
+      const saved = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: { messagesJson: payload || messages } });
       if (!saved.count) return "skipped";
+    }
+    if (memoryRuntime && payload) {
+      const memory = await getOrCreateMemory(memoryRuntime.scope, {}, database);
+      memoryRuntime.guard.presentationAt = memory.apresentacaoFeitaEm;
+      memoryRuntime.guard.appointment = await currentAliceAppointment(memoryRuntime.scope, context.conversation.contact.phone, database);
+      const guarded = guardAliceTurn(payload, memoryRuntime, turn.nextMessageIndex);
+      await auditAliceGuardEvents(turn.id, guarded.events, database);
+      if (guarded.status === "handoff") return human("model_requested", guarded.reason);
+      if (guarded.status === "skip") {
+        if (turn.nextMessageIndex > 0 && turn.firstSentAt) {
+          const completed = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
+            data: { status: "sent", completedAt: now(), claimToken: null, messagesJson: Prisma.JsonNull, error: null } });
+          return completed.count ? "sent" : "skipped";
+        }
+        await finish("skipped", guarded.reason); return "skipped";
+      }
+      payload = guarded.payload;
+      messages = payload.proposal.resposta;
     }
     const message = messages[turn.nextMessageIndex];
     if (!message || messages.length > 2 || message.length > 1_200) return human("model_requested", "invalid_message_sequence");
@@ -96,19 +133,33 @@ export async function processAliceAutonomousTurn(
       contactPhone: context.conversation.contact.phone, lastKnownJid: context.conversation.lastKnownJid,
       message, respondedByName: ALICE_ATTENDANT_NAME, requireProviderMessageId: true, providerTimeoutMs: 15_000,
       beforeSend: async () => {
+        if (memoryRuntime && payload) {
+          const latest = await getOrCreateMemory(memoryRuntime.scope, {}, database);
+          const appointment = await currentAliceAppointment(memoryRuntime.scope, context.conversation.contact.phone, database);
+          const final = guardAliceTurn(payload, { ...memoryRuntime, guard: { ...memoryRuntime.guard,
+            presentationAt: latest.apresentacaoFeitaEm, appointment } }, turn.nextMessageIndex);
+          if (latest.escalarHumano || final.status !== "ready" || final.payload.proposal.resposta[turn.nextMessageIndex] !== message) {
+            throw new Error("alice_final_guard_changed");
+          }
+        }
         if (!await deps.validate(turn, token, "sending", database) || !aliceAutonomySchedulingTextValid([message], now())) throw new AliceAutonomyStopped();
+        if (Date.now() > deadline - 16_000) throw new AliceAutonomyStopped();
         externalSendStarted = true;
       },
     });
     const ids = Array.isArray(turn.providerMessageIds) ? turn.providerMessageIds : [];
     const nextIndex = turn.nextMessageIndex + 1;
     const hasComplement = nextIndex < messages.length;
+    if (memoryRuntime && payload) {
+      await recordAliceSentMessage(memoryRuntime.scope, sent.messageRowId, database);
+      if (!hasComplement && payload.persistMemory !== false) await applyCurrentAliceMemory(memoryRuntime.scope, turn.sourceMessageId, payload.proposal.memoria, database);
+    }
     await database.$transaction(async (tx) => {
       await tx.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "sending" }, data: {
         status: hasComplement ? "queued" : "sent", claimToken: null, claimedAt: null,
         nextMessageIndex: nextIndex, providerMessageIds: [...ids, sent.messageId], firstSentAt: turn.firstSentAt || sent.sentAt,
         availableAt: new Date(sent.sentAt.getTime() + ALICE_AUTONOMY_COMPLEMENT_MS),
-        messagesJson: hasComplement ? messages : Prisma.JsonNull, completedAt: hasComplement ? null : now(), error: null,
+        messagesJson: hasComplement ? payload || messages : Prisma.JsonNull, completedAt: hasComplement ? null : now(), error: null,
       } });
       await tx.whatsAppConversation.updateMany({
         where: { id: turn.conversationId, instanceId: turn.instanceId, aiMode: "agent", status: context.conversation.status },
