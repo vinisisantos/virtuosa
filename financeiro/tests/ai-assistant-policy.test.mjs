@@ -219,6 +219,30 @@ test("dúvidas breves de risco, dor, anestesia ou Anvisa em SBC vão para profis
   assert.equal(classifyAliceHandoff({ unit: "Osasco", incomingMessages: ["Dói?"] }), null);
 });
 
+test("em SBC um pedido de informação não torna a identificação de um procedimento uma consulta clínica", () => {
+  const info = "Olá! Vim pelo LIPO LASER 699,00, posso ter mais informações sobre isso?";
+  for (const incomingMessages of [
+    [info, "Esse procedimento seria o Endolaser ?"],
+    ["Posso ter mais informações sobre esse procedimento?"],
+    ["Pode me passar detalhes", "desse procedimento?"],
+    ["Pode me dizer o nome do procedimento?"],
+    ["Posso saber o valor desse procedimento?"],
+    ["Posso ter mais informações", "Esse procedimento seria o Endolaser?"],
+  ]) assert.equal(classifyAliceHandoff({ unit: "SBC", incomingMessages }), null);
+});
+
+test("em SBC a intenção de realizar ou a dúvida de saúde continua protegida, mesmo entre mensagens", () => {
+  for (const incomingMessages of [
+    ["Posso fazer", "o procedimento?"],
+    ["Posso ter mais informações? Tenho pressão", "alta"],
+    ["Pode me dar detalhes? É seguro fazer esse procedimento?"],
+    ["Posso ter mais informações e saber se posso fazer o procedimento?"],
+    ["Posso ter mais informações sobre fazer esse procedimento no meu caso?"],
+    ["Esse procedimento seria o Endolaser? Estou grávida."],
+  ]) assert.equal(classifyAliceHandoff({ unit: "SBC", incomingMessages }), "clinical_safety");
+  assert.equal(classifyAliceHandoff({ unit: "Osasco", incomingMessages: ["Posso ter mais informações sobre esse procedimento?"] }), "clinical_safety");
+});
+
 test("escopo inativo vai para equipe; fala comercial sobre volume não dispara alerta clínico", () => {
   assert.equal(classifyAliceHandoff({ unit: "SBC", campaignName: "Preenchimento Facial", incomingMessages: ["Quero saber mais"] }), "unsupported_procedure");
   assert.equal(classifyAliceHandoff({ unit: "SBC", campaignName: "Harmonização de Mamas", incomingMessages: ["Quero saber mais"] }), "unsupported_procedure");

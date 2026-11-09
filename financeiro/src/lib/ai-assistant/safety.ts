@@ -7,8 +7,18 @@ const CLINICAL_SAFETY_PATTERNS = [
   /\b(?:remedi\w*|medicac\w*|medicament\w*|anticoagul\w*|uso [^.!?]{0,40}medic\w*)\b/,
   /\b(?:gravid\w*|gestant\w*|gravidez|amament\w*|lactant\w*)\b/,
   /\b(?:alerg\w*|anafilax\w*|reac\w*|efeito colateral|contraindic\w*|pos[- ]procedimento|complicac\w*|infecc\w*|sangram\w*|febre|cirurg\w*)\b/,
-  /\b(?:posso|pode|segur\w*|risc\w*)\b.{0,55}\b(?:doenc\w*|remedi\w*|medic\w*|gravid\w*|amament\w*|alerg\w*|procedimento)\b/,
+  /\b(?:posso|pode|segur\w*|risc\w*)\b.{0,55}\b(?:doenc\w*|remedi\w*|medic\w*|gravid\w*|amament\w*|alerg\w*)\b/,
 ];
+
+const PROCEDURE_ELIGIBILITY = /\b(?:posso|pode|segur\w*|risc\w*)\b.{0,55}\bprocedimento\b/;
+// "Posso ter informações" pede uma explicação, não autorização para fazer o
+// procedimento. A exceção só neutraliza o verbo desse pedido, não o restante da fala.
+const informationRequest = /(?:ter|receber|pedir|passar|mandar|enviar|dar|obter)\s+(?:(?:mais|algumas?|alguns)\s+)?(?:informac(?:ao|oes)|detalhes?)/;
+const commercialQuestion = /(?:saber|informar|dizer)\s+o\s+(?:preco|valor|nome)/;
+const offerReference = /(?:sobre\s+(?:isso|(?:esse|este|o)\s+(?:procedimento|tratamento|anuncio))|(?:desse|deste|do)\s+(?:procedimento|tratamento|anuncio))/;
+const INFORMATION_REQUEST_VERB = new RegExp(
+  String.raw`\b(?:posso|pode)\b(?=\s+(?:(?:me|nos)\s+)?(?:${informationRequest.source}|${commercialQuestion.source})(?:\s+${offerReference.source})?\s*(?:[?!.]|$))`, "g",
+);
 
 const UNSUPPORTED_PROCEDURE_PATTERNS = [
   /\bharmonizacao\s+de\s+mamas?\b/,
@@ -29,6 +39,10 @@ export function classifyAliceHandoff(params: {
   const incoming = normalizeForSafety(params.incomingMessages.join(" "));
   if (params.unit === "SBC" && /\b(?:doi|dor|riscos?|anestesi\w*|anvisa)\b/.test(incoming)) return "clinical_safety";
   if (CLINICAL_SAFETY_PATTERNS.some((pattern) => pattern.test(text))) return "clinical_safety";
+  if (params.unit === "SBC") {
+    const eligibilityText = params.incomingMessages.map((message) => normalizeForSafety(message).replace(INFORMATION_REQUEST_VERB, "")).join(" ");
+    if (PROCEDURE_ELIGIBILITY.test(eligibilityText)) return "clinical_safety";
+  } else if (PROCEDURE_ELIGIBILITY.test(text)) return "clinical_safety";
   return null;
 }
 
