@@ -1438,6 +1438,7 @@ model WhatsAppConversation {
   aiLearningObservation     AiLearningObservation?
   aiLearningCandidates      AiLearningCandidate[]
   aiAssistantDraft          AiAssistantDraft?
+  aliceMemory               LeadMemory?
 
   @@unique([contactId, instanceId])
   @@index([instanceId])
@@ -1449,6 +1450,58 @@ model WhatsAppConversation {
   @@index([unreadCount])
   @@index([callbackDueAt, callbackStreakCount, status])
   @@index([instanceId, callbackQueueStatus, lastMessageAt])
+}
+
+enum LeadMemoryResultLevel {
+  NATURAL
+  MEDIO
+  EVIDENTE
+  NAO_INFORMADO
+}
+
+enum LeadMemoryFunnelStage {
+  NOVO
+  QUEIXA_DEFINIDA
+  EXPLICADO
+  CONVIDADO
+  AGENDADO
+  CONFIRMADO
+  FALTOU
+  FECHOU
+  PERDIDO
+}
+
+// O contato é compartilhado entre caixas; a memória pertence à conversa exata.
+// Agenda e apresentação efetivamente enviada serão controladas pelo código,
+// não por uma atualização livre do modelo. Esta estrutura ainda não é consumida.
+model LeadMemory {
+  id                       String                @id @default(uuid())
+  conversationId           String                @unique
+  /// O escritor deve validar a unidade da instância; piloto restrito a SBC no SQL.
+  unidade                  String
+  nome                     String?
+  nomeConfirmado           Boolean               @default(false)
+  campanhaOrigem           String?
+  procedimentoInteresse    String?
+  queixaPrincipal          String?
+  nivelResultado           LeadMemoryResultLevel @default(NAO_INFORMADO)
+  primeiraVez              Boolean?
+  saudeObservacoes         String?
+  precoPerguntado          Boolean               @default(false)
+  precoInformado           String?
+  objecoes                 String[]              @default([])
+  etapaFunil               LeadMemoryFunnelStage @default(NOVO)
+  avaliacaoData            DateTime?
+  apresentacaoFeitaEm       DateTime?
+  perguntasFeitas           String[]              @default([])
+  resumo                   String?               @db.VarChar(600)
+  ultimaMensagemClienteEm   DateTime?
+  ultimaMensagemAliceEm     DateTime?
+  escalarHumano            Boolean               @default(false)
+  motivoEscalonamento       String?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
+  conversation             WhatsAppConversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 }
 
 model AiAssistantDraft {
