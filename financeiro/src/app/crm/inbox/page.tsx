@@ -105,6 +105,7 @@ import {
   type RecordingDurationClock,
 } from "@/lib/whatsapp/recording-duration";
 import { inboxSlaSnapshot } from "@/lib/whatsapp/inbox-sla";
+import { aliceIsAttending, inboxAttendantName, inboxMessageAuthorKey, inboxMessageAuthorName } from "@/lib/whatsapp/inbox-attendant";
 import { withInboxAppointment, type InboxAppointmentSnapshot } from "@/lib/whatsapp/inbox-appointments";
 import { renderWhatsAppMessageTemplate } from "@/lib/whatsapp/message-template";
 import {
@@ -1928,10 +1929,10 @@ function ContactSidebar({
               <span className="text-muted-foreground">Status</span>
               <span className={`font-medium ${statusInfo.color}`}>{statusInfo.label}</span>
             </div>
-            {conversation.assignedToName && (
+            {inboxAttendantName(conversation) && (
               <div className="flex items-center justify-between text-xs">
                 <span className="text-muted-foreground">Atendente</span>
-                <span className="font-medium text-foreground">{conversation.assignedToName}</span>
+                <span className="font-medium text-foreground">{inboxAttendantName(conversation)}</span>
               </div>
             )}
             {conversation.resolution && (
@@ -3157,7 +3158,11 @@ function ConversationItem({
             {conv.status === 'waiting_customer' && (
               <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-400">Aguardando</span>
             )}
-            {(conv.status === 'waiting_response' || (!conv.assignedTo && conv.status === 'open')) && (
+            {aliceIsAttending(conv) ? (
+              <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300" title="Atendimento em andamento pela Alice">
+                Alice
+              </span>
+            ) : (conv.status === 'waiting_response' || (!conv.assignedTo && conv.status === 'open')) && (
               <span className="relative flex items-center gap-1 rounded-full bg-orange-500/10 px-1.5 py-0.5 text-[10px] font-medium text-orange-700 dark:text-orange-400">
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
@@ -6430,6 +6435,7 @@ export default function InboxPage() {
         const updatedConv = {
           ...selectedConv,
           status: 'open',
+          ...(selectedConv.aiMode === "agent" ? { aiMode: "manual" as const, aliceAttending: false } : {}),
           assignedTo: currentUser.id,
           assignedToName: currentUser.name || 'Operador',
           unreadCount: 0,
@@ -8064,11 +8070,13 @@ export default function InboxPage() {
                   const operatorChanged = Boolean(msg.fromMe && prevMsg?.fromMe &&
                     msg.respondedBy && prevMsg.respondedBy &&
                     msg.respondedBy !== prevMsg.respondedBy);
-                  const showOperatorName = msg.fromMe && msg.respondedByName && (
-                    !prevMsg?.fromMe || prevMsg?.respondedBy !== msg.respondedBy
+                  const authorName = inboxMessageAuthorName(msg);
+                  const authorChanged = Boolean(prevMsg?.fromMe && inboxMessageAuthorKey(prevMsg) !== inboxMessageAuthorKey(msg));
+                  const showOperatorName = msg.fromMe && authorName && (
+                    !prevMsg?.fromMe || authorChanged
                   );
                   const showMessageTail = showDateDivider || !prevMsg || prevMsg.type === "handoff_divider" ||
-                    prevMsg.fromMe !== msg.fromMe || operatorChanged;
+                    prevMsg.fromMe !== msg.fromMe || authorChanged;
                   const audioAvatarContact = msg.fromMe ? outgoingAudioContact : selectedConv.contact;
                   const audioAvatarFetchUrl = msg.fromMe
                     ? outgoingAudioAvatarUrl
@@ -8082,7 +8090,7 @@ export default function InboxPage() {
                         <div className="flex items-center gap-3 py-2 px-4">
                           <div className="flex-1 h-px bg-border" />
                           <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                            🔄 Transferido para {msg.respondedByName}
+                            🔄 Transferido para {authorName}
                           </span>
                           <div className="flex-1 h-px bg-border" />
                         </div>
@@ -8092,10 +8100,10 @@ export default function InboxPage() {
                         <div className="flex justify-end px-4 mb-0.5">
                           <div className="flex items-center gap-1.5">
                             <span className="flex h-4 w-4 items-center justify-center rounded-full bg-primary/20 text-primary text-[8px] font-bold">
-                              {msg.respondedByName!.charAt(0).toUpperCase()}
+                              {authorName!.charAt(0).toUpperCase()}
                             </span>
-                            <span className="text-[10px] text-primary font-medium">
-                              {msg.respondedByName}
+                            <span data-message-author className="text-[10px] font-medium text-purple-700 dark:text-purple-300">
+                              {authorName}
                             </span>
                           </div>
                         </div>
@@ -8384,20 +8392,20 @@ export default function InboxPage() {
               </div>
             )}
 
-            {/* Botão Iniciar Atendimento — se a conversa não tem atendente */}
+            {/* A retomada pela equipe continua explícita, sem confundir a Alice com ausência de atendimento. */}
             {selectedConversationNeedsStart && (
               <div className="shrink-0 border-t border-border bg-gradient-to-r from-primary/5 to-primary/10 p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm font-medium text-foreground">Atendimento ainda não iniciado</p>
-                    <p className="text-xs text-muted-foreground">Inicie o atendimento para marcar as mensagens como lidas e responder.</p>
+                    <p className="text-sm font-medium text-foreground">{aliceIsAttending(selectedConv) ? "Alice está atendendo esta conversa" : "Atendimento ainda não iniciado"}</p>
+                    <p className="text-xs text-muted-foreground">{aliceIsAttending(selectedConv) ? "Ao assumir, você pausa a Alice e continua o atendimento." : "Inicie o atendimento para marcar as mensagens como lidas e responder."}</p>
                   </div>
                   <button
                     onClick={handleStartService}
                     className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg sm:w-auto sm:hover:scale-105"
                   >
                     <Play className="h-4 w-4" />
-                    Iniciar Atendimento
+                    {aliceIsAttending(selectedConv) ? "Assumir atendimento" : "Iniciar Atendimento"}
                   </button>
                 </div>
               </div>

@@ -3,6 +3,8 @@ import { NextResponse } from 'next/server';
 import { prisma } from "@/lib/db";
 import { advanceNewLeadToServiceStage } from "@/lib/pipeline/service-start";
 import { findAuthorizedConversation } from "@/lib/whatsapp/conversation-access";
+import { pauseAliceForHuman } from "@/lib/ai-assistant/autonomy/queue";
+import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 
 // PATCH — Reabrir conversa
 export async function PATCH(
@@ -43,6 +45,10 @@ export async function PATCH(
     const userName = req.headers.get("x-user-name") || "Operador";
     if (assignedTo && assignedTo !== userId) {
       return NextResponse.json({ error: "Não é permitido atribuir a conversa em nome de outra pessoa" }, { status: 403 });
+    }
+
+    if (startService === true && assignedTo === userId && conversation.instanceId === ALICE_AUTONOMY_INSTANCE_ID) {
+      await pauseAliceForHuman(id);
     }
 
     const dataUpdate: any = {

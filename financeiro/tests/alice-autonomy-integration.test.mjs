@@ -232,6 +232,17 @@ test("duas mensagens usam uma única geração, mantêm custo e o complemento es
   } finally { await f.pg.close(); }
 });
 
+test("a resposta autônoma identifica Alice como autora interna, sem atribuir o envio a uma pessoa", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    await f.pg.query('UPDATE "WhatsAppConversation" SET status=\'waiting_response\' WHERE id=\'conversation-a\'');
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "queued");
+    const message = (await f.pg.query('SELECT "respondedByName" FROM "WhatsAppMessage" WHERE "fromMe"=TRUE')).rows[0];
+    assert.equal(message.respondedByName, "Alice");
+    assert.equal((await f.pg.query('SELECT status FROM "WhatsAppConversation" WHERE id=\'conversation-a\'')).rows[0].status, "open");
+  } finally { await f.pg.close(); }
+});
+
 test("timeout depois do início do envio exige revisão humana e nunca repete a tentativa", async () => {
   const f = await runnerFixture(claimAliceAutonomousTurn);
   try {

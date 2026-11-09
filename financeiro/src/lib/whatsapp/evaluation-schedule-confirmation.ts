@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { phoneLookupKey } from "@/lib/phone";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
+import { ALICE_ATTENDANT_NAME } from "@/lib/whatsapp/inbox-attendant";
 import { validateAliceBookingClaim, type AliceBookingClaim } from "@/lib/ai-assistant/autonomy/booking-authorization";
 import {
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
@@ -90,6 +91,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
       },
       select: {
         id: true,
+        status: true,
         lastKnownJid: true,
         contact: {
           select: {
@@ -119,7 +121,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
         startTime: params.startTime,
         template: messageTemplate,
       }),
-      respondedByName: "Automação de agendamento",
+      respondedByName: proof ? ALICE_ATTENDANT_NAME : "Automação de agendamento",
       requireProviderMessageId: params.requireProviderMessageId,
       beforeSend: proof ? async () => {
         if (!await validateAliceBookingClaim({ claim: proof, conversationId: conversation.id, instanceId: instance.id })) {
@@ -128,7 +130,8 @@ export async function sendEvaluationScheduleConfirmation(params: {
       } : undefined,
     });
     if (proof) await prisma.whatsAppConversation.updateMany({
-      where: { id: conversation.id, instanceId: instance.id }, data: { lastOutboundAt: sent.sentAt },
+      where: { id: conversation.id, instanceId: instance.id, aiMode: "agent", status: conversation.status },
+      data: { lastOutboundAt: sent.sentAt, ...(conversation.status === "waiting_response" ? { status: "open" } : {}) },
     });
 
     if (automation) {

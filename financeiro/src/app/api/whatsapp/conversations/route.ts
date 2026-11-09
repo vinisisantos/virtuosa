@@ -16,6 +16,7 @@ import {
   campaignAccountOriginFromTrackId,
 } from "@/lib/campaign-account-origin";
 import { prisma } from "@/lib/db";
+import { aliceAttendingConversationIds } from "@/lib/ai-assistant/autonomy/inbox-attendance";
 import { inboxAppointmentsQuery, inboxAppointmentSnapshot } from "@/lib/whatsapp/inbox-appointments-query";
 import {
   WHATSAPP_CALLBACK_LOST_STATUS,
@@ -923,6 +924,7 @@ export async function GET(req: NextRequest) {
       ? await prisma.$queryRaw<Array<Parameters<typeof dispatchSnapshot>[0]>>(latestDispatchesQuery(dispatchConversationIds))
       : [];
     const dispatchByConversation = new Map(dispatchRows.map(row => [row.conversationId, dispatchSnapshot(row)]));
+    const aliceAttending = await aliceAttendingConversationIds(visibleConversations);
     const conversationsWithTags = visibleConversations.map((c) => {
       const { followUps, ...conversation } = c;
       const campaign = campaignByPhone.get(campaignClientKey(c.contact?.phone, resolveInboxConversationUnit(
@@ -934,6 +936,7 @@ export async function GET(req: NextRequest) {
       );
       return {
         ...conversation,
+        aliceAttending: aliceAttending.has(c.id),
         lastDispatch: dispatchByConversation.get(c.id) || null,
         scheduledEvaluation: appointmentSnapshot[c.id] || null,
         activeFollowUp: followUps[0] || null,

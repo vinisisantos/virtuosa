@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import * as attendant from "../src/lib/whatsapp/inbox-attendant.ts";
 
 function fixture({ instanceUnit = "SBC", contactUnit = "SBC", contactPhone = "5511999999999", autonomy = false, invalidClaim = false, expiresAtSend = false } = {}) {
   const calls = [];
@@ -15,6 +16,7 @@ function fixture({ instanceUnit = "SBC", contactUnit = "SBC", contactPhone = "55
   };
   const config = { unit: "SBC", scheduledTemplate: "mensagem" };
   const modules = {
+    "@/lib/whatsapp/inbox-attendant": attendant,
     "@/lib/ai-assistant/autonomy/booking-authorization": { validateAliceBookingClaim: async () => { state.validations++; return !invalidClaim && (!expiresAtSend || state.validations === 1); } },
     "@/lib/db": { prisma },
     "@/lib/phone": { phoneLookupKey: (phone) => phone?.replace(/\D/g, "").slice(-11) || null },
@@ -44,6 +46,7 @@ test("caixa adicional só envia quando a exceção SBC é solicitada explicitame
   assert.equal((await f.run({ allowAuthorizedSbcInstance: true, requireProviderMessageId: true })).status, "sent");
   assert.equal(f.calls.length, 1);
   assert.equal(f.calls[0].requireProviderMessageId, true);
+  assert.equal(f.calls[0].respondedByName, "Automação de agendamento", "agenda humana conserva a autoria anterior");
 });
 
 test("não permite caixa de outra unidade, contato de outra unidade em caixa compartilhada ou telefone divergente", async () => {
@@ -61,6 +64,7 @@ test("confirmação autônoma revalida a lease antes do HTTP sem fabricar uma se
   assert.equal(f.state.validations, 2);
   assert.equal(f.state.outboundUpdates, 1);
   assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].respondedByName, "Alice", "confirmação do agendamento da Alice tem a autoria da Alice");
   for (const option of [{ invalidClaim: true }, { expiresAtSend: true }]) {
     const blocked = fixture({ autonomy: true, ...option });
     assert.equal((await blocked.run({ allowAuthorizedSbcInstance: true })).status, "failed");

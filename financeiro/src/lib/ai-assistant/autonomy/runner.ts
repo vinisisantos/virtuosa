@@ -2,6 +2,7 @@ import { Prisma, type AliceAutonomousTurn } from "@prisma/client";
 import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
+import { ALICE_ATTENDANT_NAME } from "@/lib/whatsapp/inbox-attendant";
 import { routeAliceHandoff } from "@/lib/ai-assistant/handoff";
 import { looksLikeSchedulingExchange, type AliceAutoScheduleResult } from "@/lib/ai-assistant/auto-schedule";
 import { loadAliceAutonomyConfig, aliceAutonomyRuntimeStatus } from "@/lib/ai-assistant/autonomy/config";
@@ -93,7 +94,7 @@ export async function processAliceAutonomousTurn(
     const sent = await deps.send({
       dbInstance: context.conversation.instance, conversationId: turn.conversationId,
       contactPhone: context.conversation.contact.phone, lastKnownJid: context.conversation.lastKnownJid,
-      message, respondedByName: "Alice (automação)", requireProviderMessageId: true, providerTimeoutMs: 15_000,
+      message, respondedByName: ALICE_ATTENDANT_NAME, requireProviderMessageId: true, providerTimeoutMs: 15_000,
       beforeSend: async () => {
         if (!await deps.validate(turn, token, "sending", database) || !aliceAutonomySchedulingTextValid([message], now())) throw new AliceAutonomyStopped();
         externalSendStarted = true;
@@ -109,7 +110,10 @@ export async function processAliceAutonomousTurn(
         availableAt: new Date(sent.sentAt.getTime() + ALICE_AUTONOMY_COMPLEMENT_MS),
         messagesJson: hasComplement ? messages : Prisma.JsonNull, completedAt: hasComplement ? null : now(), error: null,
       } });
-      await tx.whatsAppConversation.updateMany({ where: { id: turn.conversationId, instanceId: turn.instanceId }, data: { lastOutboundAt: sent.sentAt } });
+      await tx.whatsAppConversation.updateMany({
+        where: { id: turn.conversationId, instanceId: turn.instanceId, aiMode: "agent", status: context.conversation.status },
+        data: { lastOutboundAt: sent.sentAt, ...(context.conversation.status === "waiting_response" ? { status: "open" } : {}) },
+      });
     });
     return hasComplement ? "queued" : "sent";
   } catch (error) {

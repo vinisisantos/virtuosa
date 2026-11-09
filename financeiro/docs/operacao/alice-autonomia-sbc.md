@@ -26,6 +26,16 @@ Após a gravação, o fluxo existente envia a confirmação com endereço, data 
 
 Conteúdo clínico, falta de base, dúvida de interpretação, resposta inválida ou baixa confiança interrompem o agente e encaminham à equipe. Isso não representa uma falha de entrega nem autoriza inventar uma resposta.
 
+## Identificação do atendimento no Inbox
+
+Após a primeira saída aceita na ativação atual da conversa, a lista identifica a atendente como Alice, em vez de “Sem atendente”. Apenas entrar na fila não comprova atendimento. A prova vem de `AliceAutonomousTurn.firstSentAt`, com a mesma conversa/instância, e deixa de valer ao mudar para Manual, pausar comercialmente, bloquear ou encerrar o chat. Não se cria uma usuária fictícia nem se altera `assignedTo` para conceder acessos. Leituras anteriores à atualização permanecem sujeitas ao intervalo normal de refresh do Inbox.
+
+Novas respostas e confirmações de agenda autônomas registram `respondedByName = Alice`, sem ID de usuária humana. A interface também reconhece o nome legado “Alice (automação)”; não reescreve mensagens de operadores humanos nem renomeia genericamente as outras automações. A mudança de autoria é mostrada mesmo quando recepção e Alice têm `respondedBy` nulo. Os indicadores históricos de respostas humanas não passam a contabilizar a Alice como pessoa.
+
+O botão “Assumir atendimento” pausa o agente e cancela as próximas saídas antes de atribuir a pessoa autorizada. A confirmação automática de uma agenda humana mantém sua identificação anterior. Uma nova avaliação criada pela Alice reutiliza a outbox e o aviso ao grupo existentes, com a origem da caixa de SBC e a mesma deduplicação; não há segunda automação ou reenvio de avisos antigos.
+
+A lista acrescenta no máximo uma consulta de prova de atendimento por página/atualização com chats autônomos da caixa de SBC; não faz consulta por item, não acrescenta polling e não acessa o modelo ou a Evolution para obter esse rótulo. A retomada humana de SBC usa a barreira de pausa existente (duas atualizações curtas); as demais caixas preservam o caminho anterior.
+
 ## Painel e custos
 
 O painel reúne conversas, fila, turnos com envio aceito, encaminhamentos, falhas, situações incertas e agendamentos registrados. “Envio aceito” não comprova entrega ou leitura. Agendamento não comprova comparecimento nem venda.

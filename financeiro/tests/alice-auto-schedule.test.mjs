@@ -16,7 +16,7 @@ function fixture(options = {}) {
   const activation = JSON.stringify({ enabled: true, activatedAt: new Date(now - 60_000).toISOString() });
   const offer = { id: "offer", body: `Podemos agendar em ${day}/${month}/${year} às ${hour}h${minute}?`, fromMe: true, status: "delivered", timestamp: new Date(now - 30_000), createdAt: new Date(now - 30_000) };
   const reply = { id: "reply", body: "Pode ser", fromMe: false, status: "read", timestamp: new Date(now - 10_000), createdAt: new Date(now - 10_000) };
-  const state = { ledger: null, appointment: null, sent: 0, updates: 0, locks: [], after: [] };
+  const state = { ledger: null, appointment: null, sent: 0, updates: 0, locks: [], after: [], groupNotices: [], appointmentInput: null };
   const deal = { id: "deal", clientId: "client", clientName: "Cliente Teste", unit: "SBC", stage: options.stage || "novo_lead", commercialStatus: null, pipelineId: "pipeline", updatedAt: new Date(now - 100_000), notes: null };
   const tx = {
     $queryRaw: async (strings) => {
@@ -72,7 +72,11 @@ function fixture(options = {}) {
     "@/lib/evaluation-scheduling": {
       getEvaluationAssigneeUsers: async () => [{ id: "gabriela", name: "Gabriela Anselmo" }],
       pipelineEvaluationMarker: (id) => `[pipelineDealId:${id}]`,
-      upsertPipelineEvaluationAppointment: async (input) => { state.appointment = { id: "appointment", startTime: input.startTime, evaluationGroupNoticeId: null }; return state.appointment; },
+      upsertPipelineEvaluationAppointment: async (input) => {
+        state.appointmentInput = input;
+        state.appointment = { id: "appointment", startTime: input.startTime, evaluationGroupNoticeId: options.groupNoticeId || null };
+        return state.appointment;
+      },
     },
     "@/lib/pipeline-owner-scope": { canAccessPipelineDeal: async () => !options.noPermission, resolvePipelineOwnerScope: async () => ({}) },
     "@/lib/pipeline/procedure-audit": { getPipelineProcedureSelections: async () => new Map([["deal", options.noProcedure ? [] : ["Botox"]]]) },
@@ -82,7 +86,7 @@ function fixture(options = {}) {
     "@/lib/pipeline/commercial-status": { pausesCommercialCallbacks: () => false },
     "@/lib/pipeline/scheduled-stage-events": { recordPipelineScheduledStageEvent: async () => {} },
     "@/lib/whatsapp/evaluation-schedule-confirmation": { sendEvaluationScheduleConfirmation: async () => { state.sent++; return { status: options.sendFails ? "failed" : "sent" }; } },
-    "@/lib/whatsapp/evaluation-group-notice": { dispatchEvaluationGroupNotice: async () => {} },
+    "@/lib/whatsapp/evaluation-group-notice": { dispatchEvaluationGroupNotice: async (id) => { state.groupNotices.push(id); } },
     "@/lib/ai-assistant/sbc-scheduling-policy": { deriveSbcEvaluationChoice },
   };
   const source = readFileSync(new URL("../src/lib/ai-assistant/auto-schedule.ts", import.meta.url), "utf8");
@@ -156,4 +160,18 @@ test("agendamento autônomo é idempotente e relê lease, pausa global e modo hu
     assert.equal(f.state.sent, 0);
     assert.equal(f.state.appointment, null);
   }
+});
+
+test("agendamento da Alice preserva a caixa de origem e dispara um único aviso de grupo após o commit", async () => {
+  const f = fixture({ autonomy: true, groupNoticeId: "notice-sbc" });
+  const results = await Promise.all([f.run(), f.run()]);
+  assert.equal(results.filter((result) => result.status === "booked").length, 1);
+  assert.equal(f.state.appointmentInput.sourceInstanceId, autonomyPolicy.ALICE_AUTONOMY_INSTANCE_ID);
+  assert.equal(f.state.appointmentInput.assigneeUserId, "gabriela");
+  assert.equal(f.state.appointmentInput.evaluationProcedure, "Botox");
+  assert.equal(f.state.after.length, 1);
+  assert.deepEqual(f.state.groupNotices, [], "nenhum HTTP antes do pós-commit");
+  await f.state.after[0]();
+  assert.deepEqual(f.state.groupNotices, ["notice-sbc"]);
+  assert.equal(f.state.sent, 1, "confirmação individual não se duplica");
 });

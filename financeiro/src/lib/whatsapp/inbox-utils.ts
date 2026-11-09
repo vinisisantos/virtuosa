@@ -50,6 +50,7 @@ export interface Conversation {
   lastCallbackAttempt?: WhatsAppCallbackAttempt | null;
   activeFollowUp?: WhatsAppConversationFollowUp | null;
   aiMode?: "manual" | "suggestions" | "agent";
+  aliceAttending?: boolean;
   aiModeUpdatedAt?: string | null;
   aiModeUpdatedBy?: string | null;
 }
