@@ -55,3 +55,5 @@ Falha ou envio incerto ativa um respiro operacional de cinco minutos no worker. 
 ## Publicação
 
 A migração aditiva cria `AliceAutonomousTurn` com unicidade por conversa/fonte, índices de fila, RLS e acesso público revogado. O build de produção reaplica as migrações idempotentes já usadas pelo projeto e provisiona o agendador; não ativa o piloto nem escolhe a coorte histórica por conta própria. O estado real da publicação e da ativação deve ser confirmado em produção, não inferido deste documento.
+
+Como o build reaplica arquivos antigos, a migração inicial do copiloto não pode recriar uma restrição mais estreita após existir `agent`. Ela cria a restrição inicial somente se ausente e preserva a ampliação posterior; a migração da autonomia continua responsável por autorizar o terceiro modo. O teste de replay cobre a sequência antiga → autonomia → conversa ativa → antiga → autonomia, repetida sem reescrever o modo do chat.

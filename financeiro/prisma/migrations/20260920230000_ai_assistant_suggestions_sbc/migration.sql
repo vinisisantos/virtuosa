@@ -4,11 +4,19 @@ ALTER TABLE "WhatsAppConversation"
   ADD COLUMN IF NOT EXISTS "aiModeUpdatedAt" TIMESTAMP(3),
   ADD COLUMN IF NOT EXISTS "aiModeUpdatedBy" TEXT;
 
-ALTER TABLE "WhatsAppConversation"
-  DROP CONSTRAINT IF EXISTS "WhatsAppConversation_aiMode_check";
-ALTER TABLE "WhatsAppConversation"
-  ADD CONSTRAINT "WhatsAppConversation_aiMode_check"
-  CHECK ("aiMode" IN ('manual', 'suggestions'));
+-- O build reaplica este arquivo. Não estreitar a regra já ampliada por
+-- uma migração posterior (por exemplo, o piloto autônomo autorizado).
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'WhatsAppConversation_aiMode_check'
+      AND conrelid = '"WhatsAppConversation"'::regclass
+  ) THEN
+    ALTER TABLE "WhatsAppConversation"
+      ADD CONSTRAINT "WhatsAppConversation_aiMode_check"
+      CHECK ("aiMode" IN ('manual', 'suggestions'));
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS "AiAssistantDraft" (
   "id" TEXT PRIMARY KEY,
