@@ -8,12 +8,15 @@ import { requireAliceLiveRuntime } from "@/lib/ai-assistant/runtime";
 import { classifyAliceHandoff } from "@/lib/ai-assistant/safety";
 import { AiAssistantError, aiAssistantDigest } from "@/lib/ai-assistant/policy";
 import { resolveAiAssistantContactName, sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
+import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-policy";
 
 type ContextMessage = {
   id: string;
   body: string;
   fromMe: boolean;
   timestamp: Date;
+  createdAt: Date;
+  status: string;
   respondedByName: string | null;
 };
 
@@ -31,7 +34,7 @@ export async function loadAccessibleAliceConversation(req: Request, conversation
       status: true,
       assignedTo: true,
       assignedToName: true,
-      contact: { select: { name: true, unit: true } },
+      contact: { select: { name: true, phone: true, unit: true } },
       instance: { select: { id: true, unit: true, userId: true } },
     },
   });
@@ -66,7 +69,7 @@ export async function loadAliceSuggestionContext(params: {
       status: { not: "deleted" },
       body: { not: "" },
     },
-    select: { id: true, body: true, fromMe: true, timestamp: true, respondedByName: true },
+    select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true },
     orderBy: [{ timestamp: "desc" }, { id: "desc" }],
     take: 12,
   })).reverse() as ContextMessage[];
@@ -86,7 +89,7 @@ export async function loadAliceSuggestionContext(params: {
         status: { not: "deleted" },
         body: { not: "" },
       },
-      select: { id: true, body: true, fromMe: true, timestamp: true, respondedByName: true },
+      select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true },
     }) as ContextMessage | null
     : null;
   if (params.targetMessageId && !targetMessage) {
@@ -139,7 +142,7 @@ export async function loadAliceSuggestionContext(params: {
 
   const contactName = resolveAiAssistantContactName(conversation.contact.name);
   const sourceFingerprint = aiAssistantDigest({
-    ...(unit === "SBC" ? { promptRevision: "sbc-contexto-e-tom-v1" } : {}),
+    promptRevision: "mensagens-naturais-e-sequencia-v2",
     messages: messages.map((message) => [message.id, message.body, message.fromMe, message.timestamp.toISOString()]),
     targetMessage: targetMessage ? [targetMessage.id, targetMessage.body, targetMessage.timestamp.toISOString()] : null,
   });
@@ -165,6 +168,7 @@ export async function loadAliceSuggestionContext(params: {
     unit,
     latestMessageId: latest.id,
     targetMessageId: targetMessage?.id || null,
+    recentMessages: messages,
     sourceFingerprint,
     contactName,
     handoffReason,
@@ -172,6 +176,7 @@ export async function loadAliceSuggestionContext(params: {
     prompt: handoffReason ? null : {
       BASE_ALICE: aliceKnowledge,
       UNIDADE: unit,
+      ...(unit === "SBC" ? { HORARIOS_SBC: buildSbcEvaluationOptions(new Date()) } : {}),
       CAMPANHA: campaignName || "Não identificada",
       CONTATO: { nomeSalvoDisponivel: Boolean(contactName) },
       MENSAGEM_ALVO: sanitizedTargetMessage,

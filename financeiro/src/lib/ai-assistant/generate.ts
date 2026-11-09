@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/db";
 import { reserveAiAssistantOperation, failAiAssistantOperation, finishAiAssistantOperation } from "@/lib/ai-assistant/budget";
 import { loadAliceSuggestionContext } from "@/lib/ai-assistant/context";
@@ -6,11 +7,14 @@ import { buildAliceKnowledgeContext } from "@/lib/ai-assistant/alice-knowledge";
 import { routeAliceHandoff } from "@/lib/ai-assistant/handoff";
 import { requireAliceLiveRuntime } from "@/lib/ai-assistant/runtime";
 import { aliceLocalHandoffReply, classifyAliceHandoff } from "@/lib/ai-assistant/safety";
-import { generateAiAssistantReply } from "@/lib/ai-assistant/provider";
+import { generateAiAssistantReply, normalizeAiAssistantMessageLayout } from "@/lib/ai-assistant/provider";
 import { generateClaudeReply } from "@/lib/ai-assistant/claude-provider";
 import { reserveClaudeMonthlyBudget } from "@/lib/ai-assistant/claude-budget";
 import { saveAliceDraft } from "@/lib/ai-assistant/save-draft";
 import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
+import { isSbcBotoxOpeningContext } from "@/lib/ai-assistant/message-sequence";
+import { looksLikeSchedulingExchange, tryAliceAutoSchedule, type AliceAutoScheduleResult } from "@/lib/ai-assistant/auto-schedule";
+import { isSchedulingSuggestionExpired, schedulingSuggestionExpiry } from "@/lib/ai-assistant/sbc-scheduling-policy";
 import {
   AI_ASSISTANT_MODEL,
   AI_ASSISTANT_RESERVED_MICRO_USD,
@@ -41,7 +45,7 @@ async function routeForDraft(params: {
 }
 
 export async function generateConversationSuggestion(params: {
-  req: Request;
+  req: NextRequest;
   conversationId: string;
   userId: string;
   campaignName?: string | null;
@@ -50,7 +54,7 @@ export async function generateConversationSuggestion(params: {
   compare?: boolean;
 }) {
   requireAliceLiveRuntime();
-  const context = await loadAliceSuggestionContext(params);
+  let context = await loadAliceSuggestionContext(params);
   if (context.conversation.aiMode !== "suggestions") {
     throw new AiAssistantError("Ative o modo Sugestões nesta conversa", 409);
   }
@@ -61,6 +65,8 @@ export async function generateConversationSuggestion(params: {
   const isCurrentAliceDraft = current?.model === AI_ASSISTANT_MODEL && current.unit === context.unit;
   if (
     !params.force
+    && !(context.unit === "SBC" && looksLikeSchedulingExchange(context.recentMessages))
+    && !isSchedulingSuggestionExpired(usageRecord)
     && isCurrentAliceDraft
     && current
     && current.sourceFingerprint === context.sourceFingerprint
@@ -92,27 +98,31 @@ export async function generateConversationSuggestion(params: {
     dailyLimit: context.config.dailyBudgetMicroUsd,
   });
   const usage = { input: 0, output: 0 };
+  const allowSeparateMessages = isSbcBotoxOpeningContext(context.unit, context.prompt);
+  let booking: AliceAutoScheduleResult = { status: "not_applicable" };
   try {
     let comparison: Prisma.InputJsonObject | null = null;
     const localResult = context.handoffReason
       ? {
         response: aliceLocalHandoffReply(context.handoffReason),
+        messages: [aliceLocalHandoffReply(context.handoffReason)],
         confidence: "high" as const,
         needsHuman: true,
         usedKnowledge: [`safety:${context.handoffReason}`],
       }
       : null;
     let result;
+    let suggestionTexts: string[] = [];
     if (localResult) {
       result = localResult;
     } else if (params.compare) {
       const claudeUsage = { input: 0, output: 0 };
       const [codex, claude] = await Promise.allSettled([
-        generateAiAssistantReply(context.prompt, usage),
+        generateAiAssistantReply(context.prompt, usage).then((value) => normalizeAiAssistantMessageLayout(value, allowSeparateMessages)),
         (async () => {
           if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new AiAssistantError("Claude não configurado", 503);
           await reserveClaudeMonthlyBudget(context.prompt);
-          return generateClaudeReply(context.prompt, claudeUsage);
+          return normalizeAiAssistantMessageLayout(await generateClaudeReply(context.prompt, claudeUsage), allowSeparateMessages);
         })(),
       ]);
       if (codex.status === "rejected" && claude.status === "rejected") {
@@ -120,10 +130,11 @@ export async function generateConversationSuggestion(params: {
       }
       const codexResult = codex.status === "fulfilled" ? codex.value : null;
       const claudeResult = claude.status === "fulfilled" ? claude.value : null;
+      suggestionTexts = [...(codexResult?.messages || []), ...(claudeResult?.messages || [])];
       result = { ...(codexResult || claudeResult!), needsHuman: Boolean(codexResult?.needsHuman || claudeResult?.needsHuman) };
       comparison = {
-        codex: codexResult ? { ...codexResult, response: personalizeAiAssistantResponse(codexResult.response, context.contactName) } : null,
-        claude: claudeResult ? { ...claudeResult, response: personalizeAiAssistantResponse(claudeResult.response, context.contactName) } : null,
+        codex: codexResult ? { ...codexResult, response: personalizeAiAssistantResponse(codexResult.response, context.contactName), messages: codexResult.messages.map((message) => personalizeAiAssistantResponse(message, context.contactName)) } : null,
+        claude: claudeResult ? { ...claudeResult, response: personalizeAiAssistantResponse(claudeResult.response, context.contactName), messages: claudeResult.messages.map((message) => personalizeAiAssistantResponse(message, context.contactName)) } : null,
         codexError: codexResult ? null : "Codex indisponível neste momento.",
         claudeError: claudeResult ? null : claude.status === "rejected" && claude.reason instanceof AiAssistantError && claude.reason.status === 429
           ? "Limite mensal do Claude atingido." : "Claude indisponível neste momento.",
@@ -131,10 +142,10 @@ export async function generateConversationSuggestion(params: {
         selected: codexResult ? "codex" : "claude",
       };
     } else {
-      result = await generateAiAssistantReply(context.prompt, usage);
+      result = normalizeAiAssistantMessageLayout(await generateAiAssistantReply(context.prompt, usage), allowSeparateMessages);
+      suggestionTexts = result.messages;
     }
-    const personalizedResponse = personalizeAiAssistantResponse(result.response, context.contactName);
-    if (!personalizedResponse) throw new AiAssistantError("A Alice devolveu uma sugestão vazia", 502);
+    if (!personalizeAiAssistantResponse(result.response, context.contactName)) throw new AiAssistantError("A Alice devolveu uma sugestão vazia", 502);
 
     const latest = await prisma.whatsAppMessage.findFirst({
       where: {
@@ -164,6 +175,33 @@ export async function generateConversationSuggestion(params: {
       if (!targetStillAvailable) throw new AiAssistantError("A mensagem selecionada mudou durante a geração.", 409);
     }
 
+    try {
+      booking = await tryAliceAutoSchedule({
+        req: params.req, unit: context.unit, conversationId: params.conversationId,
+        instanceId: context.conversation.instanceId, instanceUnit: context.conversation.instance.unit,
+        contactUnit: context.conversation.contact.unit, phone: context.conversation.contact.phone,
+        targetMessageId: context.targetMessageId, messages: context.recentMessages,
+        safetyHold: Boolean(context.handoffReason || result.needsHuman),
+      });
+    } catch (error) {
+      console.error("[Alice] Não foi possível verificar o agendamento:", error);
+      booking = { status: "review", reason: "Não foi possível concluir a verificação. Confira a agenda antes de tentar novamente." };
+    }
+    if (booking.status === "booked") {
+      try { context = await loadAliceSuggestionContext(params); }
+      catch { throw new AiAssistantError("A avaliação foi salva, mas a conversa não pôde ser atualizada. Confira a agenda e a confirmação antes de tentar novamente.", 409); }
+      const response = "Se precisar de alguma informação até o dia da avaliação, pode me chamar 😊";
+      result = { response, messages: [response], confidence: "high", needsHuman: false, usedKnowledge: ["system:appointment"] };
+      comparison = null;
+      suggestionTexts = result.messages;
+    } else if (booking.status === "review") {
+      const response = "Vou verificar os detalhes do agendamento e já retorno para você.";
+      result = { response, messages: [response], confidence: "medium", needsHuman: false, usedKnowledge: ["system:appointment_review"] };
+      comparison = null;
+      suggestionTexts = result.messages;
+    }
+    const personalizedResponse = personalizeAiAssistantResponse(result.response, context.contactName);
+
     const previousHistory = Array.isArray(current?.history) ? current.history : [];
     const history = current ? [
       ...previousHistory,
@@ -190,6 +228,9 @@ export async function generateConversationSuggestion(params: {
         : null,
       targetMessageId: context.targetMessageId,
       handoffReason,
+      schedulingValidUntil: context.unit === "SBC" ? schedulingSuggestionExpiry(suggestionTexts) : null,
+      ...(booking.status !== "not_applicable" ? { booking } : {}),
+      sequenceAllowed: isSbcBotoxOpeningContext(context.unit, context.prompt),
       ...(comparison ? { comparison } : {}),
     };
     const draft = await saveAliceDraft({
@@ -243,6 +284,9 @@ export async function generateConversationSuggestion(params: {
     return { draft, cached: false, handoff };
   } catch (error) {
     await failAiAssistantOperation(operation.id).catch(() => {});
+    if (booking.status === "booked") {
+      throw new AiAssistantError("A avaliação foi salva, mas não foi possível atualizar a sugestão. Confira a agenda e a confirmação antes de tentar novamente.", 409);
+    }
     throw error;
   }
 }

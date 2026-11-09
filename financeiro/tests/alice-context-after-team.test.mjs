@@ -22,6 +22,7 @@ function fixture(unit, messages, target = null) {
     "@/lib/ai-assistant/runtime": { requireAliceLiveRuntime: () => {} },
     "@/lib/ai-assistant/safety": { classifyAliceHandoff },
     "@/lib/ai-assistant/privacy": { resolveAiAssistantContactName: () => null, sanitizeAiAssistantText: (value) => value },
+    "@/lib/ai-assistant/sbc-scheduling-policy": { buildSbcEvaluationOptions: () => ["2026-11-09T10:30"] },
   };
   const source = readFileSync(new URL("../src/lib/ai-assistant/context.ts", import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;

@@ -125,10 +125,10 @@ export default function AiAssistantSettingsPage() {
               <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary">Copiloto · SBC e Osasco</p>
                 <h1 className="mt-1 text-xl font-bold text-foreground sm:text-2xl">Alice no CRM</h1>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">A Alice usa os arquivos oficiais da base privada para preparar sugestões. Você revisa, pode editar e decide se envia.</p>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">A Alice prepara sugestões para revisão. Em SBC, ao gerar uma sugestão, um agendamento identificado com segurança pode ser salvo e receber confirmação automática.</p>
               </div>
             </div>
-            <span className="inline-flex min-h-10 w-fit items-center gap-2 rounded-full bg-muted px-3 text-xs font-bold text-muted-foreground"><LockKeyhole className="h-4 w-4" /> Envio automático bloqueado</span>
+            <span className="inline-flex min-h-10 w-fit items-center gap-2 rounded-full bg-muted px-3 text-xs font-bold text-muted-foreground"><LockKeyhole className="h-4 w-4" /> Sugestões com envio manual</span>
           </div>
         </section>
 

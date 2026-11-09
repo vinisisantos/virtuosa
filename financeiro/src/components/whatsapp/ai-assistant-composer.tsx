@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "@/components/toast";
 import { isAliceUnit } from "@/lib/ai-assistant/scope";
+import { readAliceMessageSequence } from "@/lib/ai-assistant/message-sequence";
 import type { Conversation } from "@/lib/whatsapp/inbox-utils";
 import styles from "./ai-assistant-composer.module.css";
 
@@ -23,9 +24,12 @@ type AiAssistantDraft = {
   usage?: {
     confidence?: "high" | "medium" | "low";
     needsHuman?: boolean;
+    sequenceAllowed?: boolean;
+    sequence?: { provider: "codex" | "claude"; index: number; messages: [string, string] };
+    booking?: { status: "review"; reason: string } | { status: "booked"; confirmation: "submitted" | "uncertain"; startTime: string };
     comparison?: {
-      codex: { response: string } | null;
-      claude: { response: string } | null;
+      codex: { response: string; messages?: string[] } | null;
+      claude: { response: string; messages?: string[] } | null;
       codexError?: string | null;
       claudeError?: string | null;
       selected?: "codex" | "claude";
@@ -107,7 +111,7 @@ export function AiAssistantComposer({
       .then(async (response) => {
         const data = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(data.error || "Não foi possível carregar a sugestão.");
-        setDraft(data.draft?.status === "active" || data.draft?.status === "inserted" ? data.draft : null);
+        setDraft(data.draft?.status === "active" || data.draft?.status === "inserted" || data.draft?.status === "sent" ? data.draft : null);
       })
       .catch((error) => {
         if (error?.name !== "AbortError") setDraft(null);
@@ -301,7 +305,7 @@ export function AiAssistantComposer({
           </button>
         </div>
         <span className={styles.modeBarCaption} role="status">
-          {changingMode ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Atualizando modo...</> : "Envio sempre manual"}
+          {changingMode ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Atualizando modo...</> : unit === "SBC" ? "Sugestões manuais; confirmação de agenda pode ser automática" : "Envio sempre manual"}
         </span>
       </div>
 
@@ -338,7 +342,21 @@ export function AiAssistantComposer({
             </div>
           ) : draft ? (
             <>
-              {draft.usage?.comparison ? (
+              {draft.usage?.booking?.status === "review" && <p role="status" className="mb-2 rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-foreground">{draft.usage.booking.reason}</p>}
+              {draft.usage?.booking?.status === "booked" && <p role="status" className="mb-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-sm text-foreground">
+                Avaliação agendada para {new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(new Date(draft.usage.booking.startTime))}.
+                {draft.usage.booking.confirmation === "submitted" ? " Confirmação encaminhada ao WhatsApp." : " Não foi possível confirmar o envio; confira o WhatsApp antes de reenviar."}
+              </p>}
+              {draft.status === "sent" && readAliceMessageSequence(draft.usage)?.index === 0 ? (() => {
+                const sequence = readAliceMessageSequence(draft.usage)!;
+                return <section className={styles.comparisonOption} aria-label="Segunda mensagem sugerida">
+                  <h3 className={styles.comparisonTitle}>Segunda mensagem</h3>
+                  <p className={`${styles.comparisonText} mt-1 text-sm leading-5 text-foreground`}>{sequence.messages[1]}</p>
+                  <button type="button" onClick={() => void insertSuggestion(sequence.provider)} disabled={loading} className={styles.useButton}>
+                    <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Usar e editar
+                  </button>
+                </section>;
+              })() : draft.usage?.comparison ? (
                 <div className={styles.comparison} tabIndex={0} aria-label="Comparação das sugestões">
                   {(["codex", "claude"] as const).map((provider) => {
                     const suggestion = draft.usage?.comparison?.[provider];
@@ -346,7 +364,12 @@ export function AiAssistantComposer({
                     return (
                       <section className={styles.comparisonOption} key={provider} aria-label={`Sugestão ${provider === "codex" ? "Codex" : "Claude"}`}>
                         <h3 className={styles.comparisonTitle}>{provider === "codex" ? "Codex" : "Claude"}</h3>
-                        <p className={`${styles.comparisonText} mt-1 text-sm leading-5 text-foreground`} tabIndex={0}>{suggestion?.response || failure || "Sugestão indisponível."}</p>
+                        {suggestion && draft.usage?.sequenceAllowed && suggestion.messages?.length === 2
+                          ? suggestion.messages.map((message, index) => <div key={index}>
+                            <p className="mt-2 text-xs font-semibold text-muted-foreground">Mensagem {index + 1}</p>
+                            <p className={`${styles.comparisonText} mt-1 text-sm leading-5 text-foreground`} tabIndex={0}>{message}</p>
+                          </div>)
+                          : <p className={`${styles.comparisonText} mt-1 text-sm leading-5 text-foreground`} tabIndex={0}>{suggestion?.response || failure || "Sugestão indisponível."}</p>}
                         {suggestion && <button type="button" onClick={() => void insertSuggestion(provider)} disabled={loading || draft.status === "inserted"} className={styles.useButton}>
                           <Pencil className="h-3.5 w-3.5" aria-hidden="true" /> Usar e editar
                         </button>}
@@ -376,7 +399,7 @@ export function AiAssistantComposer({
                 <button type="button" onClick={() => void generate(true)} disabled={loading} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-semibold hover:bg-muted disabled:opacity-60">
                   {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Gerar outra
                 </button>
-                {draft.status !== "inserted" && (
+                {draft.status !== "inserted" && draft.status !== "sent" && (
                   <button type="button" onClick={() => void discard()} disabled={loading} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Descartar sugestão">
                     <Trash2 className="h-3.5 w-3.5" /> Descartar
                   </button>

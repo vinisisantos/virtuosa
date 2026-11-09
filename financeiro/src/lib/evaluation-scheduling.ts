@@ -179,6 +179,7 @@ export async function upsertPipelineEvaluationAppointment(params: {
   durationMinutes?: number | null;
   evaluationProcedure?: unknown;
   sourceInstanceId?: string | null;
+  rejectExistingAppointment?: boolean;
 }, database: EvaluationAppointmentTransaction) {
   const startTime = new Date(params.startTime);
   if (Number.isNaN(startTime.getTime())) {
@@ -215,6 +216,9 @@ export async function upsertPipelineEvaluationAppointment(params: {
     },
     orderBy: { updatedAt: "desc" },
   });
+  if (existing && params.rejectExistingAppointment) {
+    throw new EvaluationSchedulingError("Já existe uma avaliação vinculada a esta oportunidade. Confira a agenda.");
+  }
 
   const scheduleChanged = !existing || existing.startTime.getTime() !== startTime.getTime();
   const nameChanged = existing && params.deal.clientName !== existing.clientName;

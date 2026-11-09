@@ -15,7 +15,7 @@ import {
   resolveAiAssistantContactName,
   sanitizeAiAssistantText,
 } from "#lib/ai-assistant/privacy";
-import { buildAliceAssistantRequest } from "#lib/ai-assistant/provider";
+import { buildAliceAssistantRequest, normalizeAiAssistantMessageLayout, parseGeneration } from "#lib/ai-assistant/provider";
 import { canUseAliceSuggestions, requireAliceAuthorizedUser } from "#lib/ai-assistant/access";
 import { aliceLocalHandoffReply, classifyAliceHandoff } from "#lib/ai-assistant/safety";
 
@@ -166,6 +166,24 @@ test("SBC recebe orientações de escrita natural e considera respostas posterio
   assert.match(sbc.instructions, /respostas posteriores da equipe/i);
   assert.match(sbc.instructions, /saudação.*não significa/i);
   assert.doesNotMatch(osasco.instructions, /tom de WhatsApp de SBC/i);
+});
+
+test("ambas as unidades recebem orientação para escrita natural sem pontuação artificial", () => {
+  for (const unit of ["SBC", "Osasco"]) {
+    const { instructions } = buildAliceAssistantRequest({ UNIDADE: unit });
+    assert.match(instructions, /em todas as unidades.*travessões.*dois-pontos/i);
+  }
+});
+
+test("sugestões podem trazer duas mensagens separadas sem alterar respostas antigas", () => {
+  const basic = { response: "Olá!", confidence: "high", needsHuman: false, usedKnowledge: [] };
+  assert.deepEqual(parseGeneration(basic).messages, ["Olá!"]);
+  assert.deepEqual(parseGeneration({ ...basic, messages: ["Olá!", "É sua primeira vez?"] }).messages, ["Olá!", "É sua primeira vez?"]);
+  assert.throws(() => parseGeneration({ ...basic, messages: ["Olá!", "  "] }));
+  assert.throws(() => parseGeneration({ ...basic, messages: ["A", "B", "C"] }));
+  const combined = normalizeAiAssistantMessageLayout(parseGeneration({ ...basic, messages: ["Olá!", "Tudo bem?"] }), false);
+  assert.equal(combined.response, "Olá!\n\nTudo bem?");
+  assert.equal(combined.messages.length, 1);
 });
 
 test("mensagem sobre saúde encaminha localmente e evita avaliação clínica", () => {

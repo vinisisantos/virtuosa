@@ -65,6 +65,13 @@ test('editar ou reagendar avaliação antiga com gate desligado não exige campo
   assert.equal(settingsReads, 1);
 });
 
+test('automação não substitui avaliação existente depois de revalidar o negócio', async () => {
+  existing = { id: 'old', createdAt: new Date(0), updatedAt: new Date(), unit: 'SBC', evaluationProcedure: 'Tratamento anterior', startTime: new Date(0), status: 'pendente' };
+  await assert.rejects(upsertPipelineEvaluationAppointment(request({ evaluationProcedure: 'Botox', rejectExistingAppointment: true }), database()), /já existe uma avaliação/i);
+  assert.equal(updated.length, 0);
+  assert.equal(created.length, 0);
+});
+
 test('outra caixa SBC e outras unidades preservam criação sem procedimento adicional', async () => {
   const otherInstanceDb = database();
   otherInstanceDb.agendamento.findFirst = async () => existing;

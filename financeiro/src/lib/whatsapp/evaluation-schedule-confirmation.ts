@@ -6,6 +6,7 @@ import {
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
   buildEvaluationScheduleConfirmationMessage,
   getEvaluationScheduleUnitConfig,
+  getEvaluationScheduleUnitConfigByUnit,
   getEvaluationScheduleAutomationMessage,
 } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 
@@ -21,11 +22,13 @@ export async function sendEvaluationScheduleConfirmation(params: {
   clientName: string;
   clientPhone?: string | null;
   startTime: Date;
+  allowAuthorizedSbcInstance?: boolean;
+  requireProviderMessageId?: boolean;
 }): Promise<EvaluationScheduleConfirmationResult> {
   const unitConfig = getEvaluationScheduleUnitConfig({
     unit: params.unit,
     instanceId: params.instanceId,
-  });
+  }) || (params.unit === "SBC" && params.allowAuthorizedSbcInstance ? getEvaluationScheduleUnitConfigByUnit("SBC") : null);
   if (!unitConfig) {
     return { status: "not_applicable" };
   }
@@ -70,6 +73,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
     if (!instance || instance.canReply !== true || instance.status !== "connected") {
       return { status: "failed" };
     }
+    if (params.allowAuthorizedSbcInstance && params.unit === "SBC" && !["SBC", "Todas"].includes(instance.unit)) return { status: "failed" };
 
     const conversation = await prisma.whatsAppConversation.findFirst({
       where: {
@@ -82,11 +86,13 @@ export async function sendEvaluationScheduleConfirmation(params: {
         contact: {
           select: {
             phone: true,
+            unit: true,
           },
         },
       },
     });
     if (!conversation) return { status: "failed" };
+    if (params.allowAuthorizedSbcInstance && instance.unit === "Todas" && conversation.contact.unit !== "SBC") return { status: "failed" };
 
     const contactPhoneKey = phoneLookupKey(conversation.contact.phone);
     const clientPhoneKey = phoneLookupKey(params.clientPhone);
@@ -106,6 +112,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
         template: messageTemplate,
       }),
       respondedByName: "Automação de agendamento",
+      requireProviderMessageId: params.requireProviderMessageId,
     });
 
     if (automation) {

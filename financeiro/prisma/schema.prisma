@@ -1496,6 +1496,20 @@ model AiAssistantOperation {
   @@index([draftId, draftVersion], map: "AiAssistantOperation_draft_version_idx")
 }
 
+model AliceAutoSchedule {
+  id              String   @id @default(uuid())
+  conversationId  String
+  replyMessageId  String
+  offerMessageId  String
+  appointmentId   String   @unique
+  state           String   @default("sending")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([conversationId, replyMessageId])
+  @@index([conversationId, createdAt])
+}
+
 model WhatsAppCallbackAttempt {
   id                String               @id @default(uuid())
   conversationId    String

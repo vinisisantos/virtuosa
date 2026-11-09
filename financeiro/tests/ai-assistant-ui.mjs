@@ -40,6 +40,8 @@ try {
     const assistantCalls = [];
     const sendCalls = [];
     let delayUse = false;
+    let sequenceFixture = false;
+    let sequenceStep = 0;
     let conversationMode = "manual";
     const instance = { id: `instance-${unit.toLowerCase()}`, name: `Comercial ${unit}`, instanceName: `Comercial ${unit}`, unit, status: "connected", userId: user.id, ownerId: user.id, canReply: true };
     const conversation = {
@@ -79,7 +81,14 @@ try {
       else if (url.pathname === "/api/crm/ai-assistant/suggestions") {
         assistantCalls.push({ method: request.method(), body: request.postData() || "" });
         const input = request.postData() ? JSON.parse(request.postData()) : {};
-        if (request.method() === "PATCH" && input.action === "mode") {
+        if (sequenceFixture && request.method() === "POST") {
+          data = { draft: { id: "sequence-draft", content: "Olá, sou a Alice!", status: "active", version: 1, updatedAt: now, usage: { sequenceAllowed: true, comparison: { codex: { response: "Olá, sou a Alice!", messages: ["Olá, sou a Alice!", "É sua primeira vez?"] }, claude: null } } } };
+        } else if (sequenceFixture && request.method() === "GET" && sequenceStep >= 2) {
+          data = { mode: "suggestions", draft: { id: "sequence-draft", content: "Olá, sou a Alice!", status: "sent", version: 2, updatedAt: now, usage: { sequenceAllowed: true, sequence: { provider: "codex", index: 0, messages: ["Olá, sou a Alice!", "É sua primeira vez?"] }, comparison: { codex: { response: "Olá, sou a Alice!", messages: ["Olá, sou a Alice!", "É sua primeira vez?"] }, claude: null } } } };
+        } else if (sequenceFixture && request.method() === "PATCH" && input.action === "use") {
+          data = { success: true, content: sequenceStep === 0 ? "Olá, sou a Alice!" : "É sua primeira vez?", draftVersion: sequenceStep === 0 ? 2 : 3 };
+          if (sequenceStep === 0) sequenceStep = 1;
+        } else if (request.method() === "PATCH" && input.action === "mode") {
           conversationMode = input.mode;
           conversation.aiMode = input.mode;
           data = { mode: input.mode };
@@ -92,6 +101,11 @@ try {
         else data = { mode: conversationMode, draft: null };
       } else if (url.pathname === "/api/whatsapp/send") {
         sendCalls.push({ method: request.method(), body: request.postData() || "" });
+        if (sequenceFixture) {
+          sequenceStep = 2;
+          conversation.lastMessageAt = new Date(Date.now() + 1000).toISOString();
+          data = { success: true, message: { id: "sent-first", messageId: "sent-first", body: "Olá, sou a Alice!", type: "text", fromMe: true, status: "sent", timestamp: conversation.lastMessageAt } };
+        }
       } else if (url.pathname.includes("/instances")) data = { instances: [instance], users: [user] };
       else if (url.pathname === "/api/whatsapp/status") data = { connected: true, instance, status: "connected" };
       else if (url.pathname === "/api/whatsapp/conversations") data = { conversations: [{ ...conversation, aiMode: conversationMode }, otherConversation], appointmentSnapshot: {}, serverTime: now, hasMore: false, queueCounts: { open: 2 } };
@@ -110,7 +124,7 @@ try {
 
     await page.goto(`${origin}/crm/assistente-ia`, { waitUntil: "networkidle0" });
     await page.waitForFunction(() => document.body.innerText.includes("Alice no CRM"));
-    assert.match(await page.$eval("body", (element) => element.innerText), /Envio automático bloqueado/);
+    assert.match(await page.$eval("body", (element) => element.innerText), /Sugestões com envio manual/);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `configuração sem overflow em ${width}`);
     await page.screenshot({ path: join(output, `settings-${width}.png`), fullPage: true });
 
@@ -122,7 +136,7 @@ try {
     const modeBounds = await modeButton.boundingBox();
     assert.ok(modeBounds.height >= 44, `botão Manual tocável em ${width}`);
     assert.equal(await page.$eval('button[aria-label="Resposta manual"]', (element) => element.getAttribute("aria-pressed")), "true");
-    assert.match(await page.$eval('[role="group"][aria-label="Modo de resposta"]', (element) => element.parentElement.innerText), /Envio sempre manual/);
+    assert.match(await page.$eval('[role="group"][aria-label="Modo de resposta"]', (element) => element.parentElement.innerText), unit === "SBC" ? /confirmação de agenda pode ser automática/i : /Envio sempre manual/);
     await page.screenshot({ path: join(output, `manual-${unit}-${width}.png`), fullPage: true });
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 0, "modo manual não consulta o provedor");
     await page.click('button[aria-label="Sugestões da Alice"]');
@@ -179,6 +193,26 @@ try {
     await page.waitForFunction(() => !document.body.innerText.includes("Gerar outra"));
     assert.equal(await page.$eval('button[aria-label="Resposta manual"]', (element) => element.getAttribute("aria-pressed")), "true");
     assert.equal(assistantCalls.filter((call) => call.method === "POST").length, 2, "retornar ao modo manual não gera sugestão");
+    if (unit === "SBC") {
+      sequenceFixture = true;
+      await page.click('button[aria-label="Sugestões da Alice"]');
+      await page.waitForFunction(() => document.body.innerText.includes("Comparar sugestões"));
+      await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Comparar sugestões"))?.click());
+      await page.waitForFunction(() => document.body.innerText.includes("Mensagem 2"));
+      assert.match(await page.$eval('section[aria-label="Sugestão Codex"]', (element) => element.innerText), /É sua primeira vez/);
+      await page.click('section[aria-label="Sugestão Codex"] button');
+      await page.waitForFunction(() => document.querySelector('textarea[placeholder="Digite uma mensagem"]')?.value.includes("sou a Alice"));
+      assert.equal(sendCalls.length, 0, "a apresentação ainda não foi enviada automaticamente");
+      await page.click('button[aria-label="Enviar mensagem"]');
+      await page.waitForFunction(() => document.body.innerText.includes("Segunda mensagem"), { timeout: 10000 });
+      await page.click('section[aria-label="Segunda mensagem sugerida"] button');
+      await page.waitForFunction(() => document.querySelector('textarea[placeholder="Digite uma mensagem"]')?.value.includes("primeira vez"));
+      assert.equal(sendCalls.length, 1, "a segunda mensagem continua aguardando envio manual");
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `sequência sem overflow em ${width}`);
+      await page.screenshot({ path: join(output, `sequence-${width}.png`), fullPage: true });
+      await page.click('button[aria-label="Resposta manual"]');
+      sequenceFixture = false;
+    }
     if (unit === "SBC" && width === 1440) {
       await page.click('button[aria-label="Sugestões da Alice"]');
       await page.waitForFunction(() => document.body.innerText.includes("Comparar sugestões"));

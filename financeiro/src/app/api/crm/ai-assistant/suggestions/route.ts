@@ -8,9 +8,11 @@ import { aiAssistantErrorResponse } from "@/lib/ai-assistant/http";
 import { AI_ASSISTANT_MODEL, AiAssistantError, normalizeAiAssistantMode } from "@/lib/ai-assistant/policy";
 import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
 import { requireAliceLiveRuntime } from "@/lib/ai-assistant/runtime";
+import { aliceSequenceCanContinue, readAliceMessageSequence } from "@/lib/ai-assistant/message-sequence";
+import { isSchedulingSuggestionExpired } from "@/lib/ai-assistant/sbc-scheduling-policy";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 function requireUser(req: NextRequest) {
   const user = getUserFromHeaders(req);
@@ -68,11 +70,16 @@ export async function GET(req: NextRequest) {
         orderBy: [{ timestamp: "desc" }, { id: "desc" }],
       }),
     ]);
+    const sequenceLatest = draft?.status === "sent" ? await prisma.whatsAppMessage.findFirst({
+      where: { conversationId, status: { not: "deleted" } }, select: { id: true },
+      orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+    }) : latestMessage;
     const currentDraft = draft
-      && latestMessage?.id === draft.sourceMessageId
+      && !isSchedulingSuggestionExpired(draft.usage)
+      && (latestMessage?.id === draft.sourceMessageId || aliceSequenceCanContinue(draft, sequenceLatest?.id))
       && draft.unit === unit
       && draft.model === AI_ASSISTANT_MODEL
-      && ["active", "inserted"].includes(draft.status)
+      && (["active", "inserted"].includes(draft.status) || aliceSequenceCanContinue(draft, sequenceLatest?.id))
       ? draft
       : null;
     return NextResponse.json({
@@ -133,7 +140,7 @@ export async function PATCH(req: NextRequest) {
           orderBy: [{ timestamp: "desc" }, { id: "desc" }],
         }),
       ]);
-      if (!draft || latestMessage?.id !== draft.sourceMessageId) {
+      if (!draft || (latestMessage?.id !== draft.sourceMessageId && !aliceSequenceCanContinue(draft, latestMessage?.id))) {
         throw new AiAssistantError("A conversa mudou; gere uma nova sugestão", 409);
       }
       if (Number.isSafeInteger(input.draftVersion) && input.draftVersion !== draft.version) {
@@ -141,6 +148,9 @@ export async function PATCH(req: NextRequest) {
       }
       const usage = draft.usage && typeof draft.usage === "object" && !Array.isArray(draft.usage)
         ? draft.usage as Record<string, unknown> : {};
+      if (isSchedulingSuggestionExpired(usage)) throw new AiAssistantError("Os horários podem ter mudado; gere uma nova sugestão.", 409);
+      const sequence = readAliceMessageSequence(usage);
+      const continuingSequence = aliceSequenceCanContinue(draft, latestMessage?.id);
       const comparison = usage.comparison && typeof usage.comparison === "object" && !Array.isArray(usage.comparison)
         ? usage.comparison as Record<string, unknown> : null;
       const provider = input.provider === "codex" || input.provider === "claude" ? input.provider : null;
@@ -149,13 +159,34 @@ export async function PATCH(req: NextRequest) {
       if (provider && (typeof candidate?.response !== "string" || !candidate.response.trim() || candidate.response.length > 1200)) {
         throw new AiAssistantError("Esta sugestão não está disponível", 409);
       }
-      const selectedContent = typeof candidate?.response === "string" ? candidate.response : draft.content;
+      const candidateMessages = Array.isArray(candidate?.messages) && candidate.messages.length === 2
+        && candidate.messages.every((message) => typeof message === "string" && message.trim())
+        ? candidate.messages as [string, string] : null;
+      const initialSequence = usage.sequenceAllowed === true && provider && candidateMessages && !continuingSequence
+        ? { provider, index: 0, messages: candidateMessages } : null;
+      const selectedContent = continuingSequence && sequence ? sequence.messages[1]
+        : initialSequence ? initialSequence.messages[0]
+          : typeof candidate?.response === "string" ? candidate.response : draft.content;
+      if (continuingSequence && (!sequence || provider !== sequence.provider)) {
+        throw new AiAssistantError("Continue com o mesmo provedor da primeira mensagem", 409);
+      }
       const selectedVersion = provider ? draft.version + 1 : draft.version;
       await prisma.$transaction(async (tx) => {
+        if (continuingSequence) {
+          await tx.$queryRaw`SELECT "id" FROM "WhatsAppConversation" WHERE "id" = ${conversationId} FOR UPDATE`;
+          const currentMessage = await tx.whatsAppMessage.findFirst({
+            where: { conversationId, status: { not: "deleted" } }, select: { id: true },
+            orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+          });
+          if (currentMessage?.id !== draft.sentMessageId) throw new AiAssistantError("A conversa mudou; gere uma nova sugestão", 409);
+        }
         const updated = await tx.aiAssistantDraft.updateMany({
-          where: { id: draftId, conversationId, version: draft.version, status: { in: ["active", "inserted"] } },
+          where: { id: draftId, conversationId, version: draft.version, status: { in: continuingSequence ? ["sent"] : ["active", "inserted"] } },
           data: { status: "inserted", usedBy: user.userId, usedAt: new Date(),
-            ...(provider ? { content: selectedContent, version: { increment: 1 }, usage: { ...usage, comparison: { ...comparison, selected: provider } } } : {}),
+            ...(provider ? { content: selectedContent, version: { increment: 1 }, usage: {
+              ...usage, comparison: { ...comparison, selected: provider },
+              ...(continuingSequence && sequence ? { sequence: { ...sequence, index: 1 } } : initialSequence ? { sequence: initialSequence } : {}),
+            } } : {}),
           },
         });
         if (!updated.count) throw new AiAssistantError("A sugestão mudou; gere outra", 409);

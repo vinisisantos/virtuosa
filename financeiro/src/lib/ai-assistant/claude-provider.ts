@@ -14,10 +14,10 @@ export function buildClaudeRequest(input: unknown) {
     output_config: { format: { type: "json_schema", schema: {
       type: "object", additionalProperties: false,
       properties: {
-        response: { type: "string" }, confidence: { type: "string", enum: ["high", "medium", "low"] },
+        response: { type: "string" }, messages: { type: "array", items: { type: "string" } }, confidence: { type: "string", enum: ["high", "medium", "low"] },
         needsHuman: { type: "boolean" }, usedKnowledge: { type: "array", items: { type: "string" } },
       },
-      required: ["response", "confidence", "needsHuman", "usedKnowledge"],
+      required: ["response", "messages", "confidence", "needsHuman", "usedKnowledge"],
     } } },
   };
 }
