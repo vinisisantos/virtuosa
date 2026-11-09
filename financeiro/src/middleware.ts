@@ -13,6 +13,8 @@ const PUBLIC_API_ROUTES = [
   '/api/webhooks/meta/lead',
   '/api/webhooks/meta/messages',
   '/api/integrations/zapier/meta-leads',
+  // Esta integração valida o token de serviço dedicado na própria rota.
+  '/api/integrations/openmausbot/alice-report',
   '/api/whatsapp/webhook',
   '/api/whatsapp/evolution/webhook',
   '/api/whatsapp/mega/webhook',
