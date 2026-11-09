@@ -7,7 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "npx prisma generate && next build",
+    "build": "npx prisma generate && next build --webpack",
     "vercel-build": "node scripts/vercel-build.mjs",
     "start": "next start",
     "lint": "eslint",
