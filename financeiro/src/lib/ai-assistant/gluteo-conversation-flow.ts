@@ -1,6 +1,5 @@
 import { sbcConversationPresentation } from "@/lib/ai-assistant/conversation-presentation";
-
-type DialogueMessage = { role: string; text: string };
+import { readAliceContextDialogue, readAliceContinuityControls } from "@/lib/alice/context-controls";
 
 const normalize = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 const volumeQuestion = "Me conta, você busca um ganho de volume médio ou grande, mais marcante?";
@@ -9,8 +8,7 @@ export function sbcGluteoConversationFlow(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const prompt = input as Record<string, unknown>;
   if (prompt.UNIDADE !== "SBC") return null;
-  const dialogue = (Array.isArray(prompt.CONVERSA) ? prompt.CONVERSA : []).filter((item): item is DialogueMessage =>
-    Boolean(item && typeof item === "object" && typeof item.role === "string" && typeof item.text === "string"));
+  const dialogue = readAliceContextDialogue(input);
   const campaign = typeof prompt.CAMPANHA === "string" ? prompt.CAMPANHA : "";
   const lastClient = dialogue.findLast((item) => item.role === "cliente");
   if (!/\bgluteos?\b/u.test(normalize(campaign || lastClient?.text || ""))) return null;
@@ -24,7 +22,8 @@ export function sbcGluteoConversationFlow(input: unknown) {
       && (/\b(?:volum\w*|bumbum|resultado|ganho)\b/u.test(text) || /^(?:quero |prefiro |busco |um |mais |bem )*(?:medio|moderado|grande|maior|marcante|discreto|pequeno|sutil|natural)[.!\s]*$/u.test(text));
   });
   // Uma negação ou dúvida mais recente não confirma a preferência anterior.
-  const volumeKnown = Boolean(preference && !/\b(?:nao|nem|talvez|duvida|ou)\b|\?/u.test(normalize(preference.text)));
+  const volumeKnown = preference ? !/\b(?:nao|nem|talvez|duvida|ou)\b|\?/u.test(normalize(preference.text))
+    : Boolean(readAliceContinuityControls(input)?.resultLevelKnown);
   const hasVolumeGoal = Boolean(preference || clientMessages.some((item) => /\b(?:volum\w*|aument\w*|projecao)\b/u.test(normalize(item.text))));
   const awaitingVolume = dialogue.at(-1)?.role === "atendente" && team.some((item) =>
     /\b(?:medio|moderado)\b/u.test(normalize(item.text)) && /\b(?:grande|maior|marcante)\b/u.test(normalize(item.text)) && /\?/u.test(item.text));
