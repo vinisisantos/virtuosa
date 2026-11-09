@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import {
   AlertTriangle,
+  ArrowRight,
   Bot,
   Check,
   CircleOff,
@@ -132,13 +134,17 @@ export default function AiAssistantSettingsPage() {
           </div>
         </section>
 
+        <Link href="/crm/alice" className="mt-4 flex min-h-12 items-center justify-between gap-3 rounded-xl border border-border bg-card px-4 py-3 text-sm font-semibold text-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+          <span>Acompanhamento da Alice em SBC</span><ArrowRight className="h-4 w-4 shrink-0" aria-hidden="true" />
+        </Link>
+
         {loading || !data ? (
           <div className="flex min-h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
         ) : (
           <div className="mt-4 grid gap-4">
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Estado do CRM</p><p className="mt-2 text-lg font-bold">{enabled ? "Ativado" : "Pausado"}</p><p className="mt-1 text-xs text-muted-foreground">Ainda sujeito aos bloqueios de segurança</p></div>
-              <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Modelo</p><p className="mt-2 text-lg font-bold">GPT-6 Luna</p><p className="mt-1 text-xs text-muted-foreground">Sugestões, sem agente automático</p></div>
+              <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Modelos das sugestões</p><p className="mt-2 text-lg font-bold">Luna e Claude</p><p className="mt-1 text-xs text-muted-foreground">Comparação para revisão e envio manual</p></div>
               <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Documentos ativos</p><p className="mt-2 text-lg font-bold">{data.knowledge.activeDocuments}</p><p className="mt-1 text-xs text-muted-foreground">Revisão {data.knowledge.revision.slice(0, 8)}</p></div>
               <div className="rounded-2xl border border-border bg-card p-4"><p className="text-xs text-muted-foreground">Sugestões hoje</p><p className="mt-2 text-lg font-bold">{data.usage.requestsToday}</p><p className="mt-1 text-xs text-muted-foreground">Máximo de 300 solicitações por dia</p></div>
             </section>
@@ -164,7 +170,7 @@ export default function AiAssistantSettingsPage() {
                 <div className="rounded-xl border border-border bg-background p-4"><p className="text-sm font-semibold">Unidades habilitadas</p><p className="mt-1 text-sm text-muted-foreground">{data.knowledge.activeUnits.join(" · ")}</p><p className="mt-3 text-sm font-semibold">SBC</p><p className="mt-1 text-sm text-muted-foreground">Encaminha para Gabriela com acesso somente à conversa atribuída, sem liberar a caixa inteira.</p></div>
                 <div className="rounded-xl border border-border bg-background p-4"><p className="text-sm font-semibold">Osasco</p><p className="mt-1 text-sm text-muted-foreground">Notifica a equipe local que já tem acesso à instância; nenhuma permissão nova é concedida.</p><p className="mt-3 text-sm font-semibold">Fora do escopo ativo</p><p className="mt-1 text-sm text-muted-foreground">{data.knowledge.excludedTopics.join(" · ")}</p></div>
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">Notificações são internas. A Alice nunca envia mensagem de WhatsApp nem agenda automaticamente.</p>
+              <p className="mt-3 text-xs text-muted-foreground">As sugestões desta página exigem revisão e envio manual. Em SBC, o atendimento autônomo usa Sonnet e tem ativação e acompanhamento próprios no painel da Alice; agendamentos identificados com segurança podem receber confirmação automática. Osasco permanece com sugestões de envio manual.</p>
             </section>
 
             <section className="rounded-2xl border border-primary/25 bg-primary/5 p-4 sm:p-6">

@@ -8,7 +8,8 @@ import { EVALUATION_SCHEDULE_UNIT_CONFIGS as units } from '../src/lib/whatsapp/e
 import { DEFAULT_WELCOME_GREETING, DEFAULT_WELCOME_REPLIES, WELCOME_LIBRARY_USER_ID, WELCOME_SCHEDULER_KEY, WELCOME_AUTHOR, welcomeConfig, welcomePair, isFreshWelcomeEvent } from '../src/lib/whatsapp/campaign-welcome-policy.ts';
 import { claimWelcomeQuery } from '../src/lib/whatsapp/campaign-welcome-query.ts';
 import { welcomeDispatchCommand } from '../src/lib/whatsapp/campaign-welcome-cron.ts';
-import { findWelcomeReception, enqueueWelcome, processCampaignWelcomes } from '../src/lib/whatsapp/campaign-welcome.ts';
+globalThis.prisma = {};
+const { findWelcomeReception, enqueueWelcome, processCampaignWelcomes } = await import('../src/lib/whatsapp/campaign-welcome.ts');
 
 // PostgreSQL descartável e provedor simulado. Sem .env, pacientes ou envios externos.
 const pg = new PGlite({ parsers: { 1114: value => new Date(`${value}Z`) } });
@@ -22,6 +23,7 @@ function adapter({ hook, failReceipt=false }={}) {
   return {
     $queryRaw: async (...args) => { const q=sql(args); operations++; await hook?.(q); return query(q); },
     $executeRaw: async (...args) => { const q=sql(args); operations++; await hook?.(q); return (await pg.query(q.text,q.values)).affectedRows; },
+    appSetting: { findMany:async({where})=>{operations++;return (await pg.query('SELECT key,value FROM "AppSetting" WHERE key=ANY($1::text[])',[where.key.in])).rows;} },
     whatsAppSavedReply: { findMany:async()=>{operations++;return library;} },
     whatsAppWelcomeJob: {
       findMany:async({where,take})=>{operations++;return (await pg.query('SELECT * FROM "WhatsAppWelcomeJob" WHERE status=$1 AND "claimedAt"<$2 LIMIT $3',[where.status,where.claimedAt.lt,take])).rows;},

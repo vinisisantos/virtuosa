@@ -11,7 +11,7 @@ export const AI_ASSISTANT_DAILY_BUDGET_MICRO_USD = 1_000_000;
 export const AI_ASSISTANT_MAX_DAILY_REQUESTS = 300;
 export const AI_ASSISTANT_RESERVED_MICRO_USD = 0;
 
-export type AiAssistantMode = "manual" | "suggestions";
+export type AiAssistantMode = "manual" | "suggestions" | "agent";
 export type AiAssistantConfig = {
   enabled: boolean;
   activatedAt: string;
@@ -131,7 +131,7 @@ export function aiAssistantPublicConfig(config: AiAssistantConfig, selectedUnit:
 }
 
 export function normalizeAiAssistantMode(value: unknown): AiAssistantMode {
-  if (value === "manual" || value === "suggestions") return value;
+  if (value === "manual" || value === "suggestions" || value === "agent") return value;
   throw new AiAssistantError("Modo de atendimento inválido");
 }
 

@@ -14,6 +14,9 @@ import { recordPipelineScheduledStageEvent } from "@/lib/pipeline/scheduled-stag
 import { sendEvaluationScheduleConfirmation } from "@/lib/whatsapp/evaluation-schedule-confirmation";
 import { dispatchEvaluationGroupNotice } from "@/lib/whatsapp/evaluation-group-notice";
 import { deriveSbcEvaluationChoice } from "@/lib/ai-assistant/sbc-scheduling-policy";
+import { validateAliceBookingClaim, type AliceBookingClaim } from "@/lib/ai-assistant/autonomy/booking-authorization";
+import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_LEASE_MS, parseAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/policy";
+import { AI_ASSISTANT_CONFIG_KEY, parseAiAssistantConfig } from "@/lib/ai-assistant/policy";
 
 type RecentMessage = { id: string; body: string; status: string; fromMe: boolean; timestamp: Date; createdAt: Date };
 export type AliceAutoScheduleResult =
@@ -55,6 +58,7 @@ export async function tryAliceAutoSchedule(params: {
   targetMessageId: string | null;
   messages: RecentMessage[];
   safetyHold: boolean;
+  autonomyClaim?: AliceBookingClaim;
 }): Promise<AliceAutoScheduleResult> {
   if (params.unit !== "SBC" || params.safetyHold || !params.instanceUnit || !["SBC", "Todas"].includes(params.instanceUnit)
     || (params.instanceUnit === "Todas" && params.contactUnit !== "SBC")) return { status: "not_applicable" };
@@ -72,9 +76,13 @@ export async function tryAliceAutoSchedule(params: {
       || offer.timestamp <= activatedAt || offer.createdAt <= activatedAt || reply.timestamp <= activatedAt || reply.createdAt <= activatedAt) return { status: "not_applicable" };
   } catch { return { status: "not_applicable" }; }
   if (!slot) return review("A escolha de data e horário precisa ser confirmada pela equipe antes do agendamento.");
-  const guard = requireUnitGuard(params.req, { requestedUnit: "SBC" });
+  const autonomy = params.autonomyClaim;
+  if (autonomy && (autonomy.sourceMessageId !== reply.id || !await validateAliceBookingClaim({
+    claim: autonomy, conversationId: params.conversationId, instanceId: params.instanceId,
+  }))) return review("A Alice não tem mais autorização para agendar nesta conversa.");
+  const guard = autonomy ? null : requireUnitGuard(params.req, { requestedUnit: "SBC" });
   if (guard instanceof NextResponse) return review("Não foi possível verificar a permissão para agendar.");
-  try { guard.enforceUnit("SBC"); } catch { return review("Sem permissão para agendar nesta unidade."); }
+  try { guard?.enforceUnit("SBC"); } catch { return review("Sem permissão para agendar nesta unidade."); }
   const phoneKey = phoneLookupKey(params.phone);
   if (!phoneKey || !/^\d{10,11}$/.test(phoneKey)) return review("Não foi possível identificar o telefone da cliente.");
 
@@ -91,9 +99,11 @@ export async function tryAliceAutoSchedule(params: {
   const [deals, assignees, scope] = await Promise.all([
     prisma.salesPipeline.findMany({ where: { unit: "SBC", clientId: client.id, closedAt: null, lostReason: null }, take: 3 }),
     getEvaluationAssigneeUsers("SBC"),
-    resolvePipelineOwnerScope(params.req, guard),
+    guard ? resolvePipelineOwnerScope(params.req, guard) : null,
   ]);
-  if (deals.length !== 1 || !(await canAccessPipelineDeal(deals[0], scope))) return review("Não foi possível identificar uma única oportunidade acessível no funil.");
+  // A lease autoriza somente o cadastro SBC da conversa exata; não concede
+  // acesso HTTP a funis de outro dono ou unidade.
+  if (deals.length !== 1 || (!autonomy && (!scope || !(await canAccessPipelineDeal(deals[0], scope))))) return review("Não foi possível identificar uma única oportunidade acessível no funil.");
   const deal = deals[0];
   if (["agendado", "fechado"].includes(deal.stage) || isDiscardPipelineStage(deal.stage)) return review("A oportunidade já está agendada ou encerrada. Confira o funil antes de prosseguir.");
   if (pausesCommercialCallbacks(deal.commercialStatus)) return review("O atendimento está pausado no funil.");
@@ -113,12 +123,27 @@ export async function tryAliceAutoSchedule(params: {
   if (!stage) return review("Não foi encontrada a etapa Agendado no funil da cliente.");
 
   const booked = await prisma.$transaction(async (tx) => {
+    if (autonomy) {
+      const settings = await tx.$queryRaw<{ key: string; value: string }[]>`
+        SELECT "key", "value" FROM "AppSetting" WHERE "key" IN (${ALICE_AUTONOMY_CONFIG_KEY},${AI_ASSISTANT_CONFIG_KEY}) ORDER BY "key" FOR SHARE`;
+      if (params.instanceId !== ALICE_AUTONOMY_INSTANCE_ID
+        || !parseAliceAutonomyConfig(settings.find((item) => item.key === ALICE_AUTONOMY_CONFIG_KEY)?.value).enabled
+        || !parseAiAssistantConfig(settings.find((item) => item.key === AI_ASSISTANT_CONFIG_KEY)?.value).enabled) return null;
+    }
     const lockedConversations = await tx.$queryRaw<{ instanceId: string; contactId: string; aiMode: string; blockedAt: Date | null; archivedAt: Date | null; status: string }[]>`
       SELECT "instanceId", "contactId", "aiMode", "blockedAt", "archivedAt", "status"
       FROM "WhatsAppConversation" WHERE "id" = ${params.conversationId} FOR UPDATE`;
     const locked = lockedConversations[0];
-    if (!locked || locked.instanceId !== params.instanceId || locked.aiMode !== "suggestions"
+    if (!locked || locked.instanceId !== params.instanceId || locked.aiMode !== (autonomy ? "agent" : "suggestions")
       || locked.blockedAt || locked.archivedAt || ["closed", "resolved", "lost"].includes(locked.status)) return null;
+    if (autonomy) {
+      const lease = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "AliceAutonomousTurn" WHERE "id"=${autonomy.turnId}
+          AND "conversationId"=${params.conversationId} AND "instanceId"=${params.instanceId}
+          AND "sourceMessageId"=${reply.id} AND "claimToken"=${autonomy.claimToken}
+          AND "status"='processing' AND "claimedAt">=NOW()-(${ALICE_AUTONOMY_LEASE_MS} * interval '1 millisecond') FOR UPDATE`;
+      if (!lease.length) return null;
+    }
     const instances = await tx.$queryRaw<{ unit: string }[]>`SELECT "unit" FROM "WhatsAppInstance" WHERE "id" = ${locked.instanceId} FOR SHARE`;
     const instance = instances[0];
     if (!instance || instance.unit !== params.instanceUnit) return null;
@@ -172,7 +197,7 @@ export async function tryAliceAutoSchedule(params: {
       assigneeUserId: gabrielas[0].id, evaluationProcedure: procedure, sourceInstanceId: params.instanceId,
       rejectExistingAppointment: true,
     }, tx);
-    await recordPipelineScheduledStageEvent(tx, { dealId: deal.id, clientName, unit: "SBC", userName: guard.userName || "Alice" });
+    await recordPipelineScheduledStageEvent(tx, { dealId: deal.id, clientName, unit: "SBC", userName: guard?.userName || "Alice" });
     await tx.client.updateMany({ where: { id: client.id, unit: "SBC" }, data: { stage: "em_andamento" } });
     await tx.aliceAutoSchedule.create({ data: {
       conversationId: params.conversationId, offerMessageId: offer.id, replyMessageId: reply.id,
@@ -191,6 +216,7 @@ export async function tryAliceAutoSchedule(params: {
     request: params.req, unit: "SBC", instanceId: params.instanceId, conversationId: params.conversationId,
     clientName: booked.clientName, clientPhone: params.phone, startTime: booked.appointment.startTime, allowAuthorizedSbcInstance: true,
     requireProviderMessageId: true,
+    autonomyClaim: autonomy,
   });
   const confirmationState = confirmation.status === "sent" ? "submitted" : "uncertain";
   try {

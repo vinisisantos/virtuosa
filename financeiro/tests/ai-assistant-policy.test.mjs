@@ -62,10 +62,11 @@ test("alterar somente a ativação preserva as orientações comerciais existent
   assert.equal(updated.agentEnabled, false);
 });
 
-test("modo aceita apenas escrita manual ou sugestão revisável", () => {
+test("modo reconhece agente, cuja ativação depende da autorização específica da rota SBC", () => {
   assert.equal(normalizeAiAssistantMode("manual"), "manual");
   assert.equal(normalizeAiAssistantMode("suggestions"), "suggestions");
-  assert.throws(() => normalizeAiAssistantMode("agent"));
+  assert.equal(normalizeAiAssistantMode("agent"), "agent");
+  assert.throws(() => normalizeAiAssistantMode("autonomous"));
 });
 
 test("contexto enviado ao provedor mascara dados pessoais", () => {

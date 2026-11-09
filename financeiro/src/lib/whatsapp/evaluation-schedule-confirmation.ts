@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { phoneLookupKey } from "@/lib/phone";
 import { getInstancesForRequest } from "@/lib/whatsapp/instance-resolver";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
+import { validateAliceBookingClaim, type AliceBookingClaim } from "@/lib/ai-assistant/autonomy/booking-authorization";
 import {
   EVALUATION_SCHEDULED_AUTOMATION_TRIGGER,
   buildEvaluationScheduleConfirmationMessage,
@@ -24,6 +25,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
   startTime: Date;
   allowAuthorizedSbcInstance?: boolean;
   requireProviderMessageId?: boolean;
+  autonomyClaim?: AliceBookingClaim;
 }): Promise<EvaluationScheduleConfirmationResult> {
   const unitConfig = getEvaluationScheduleUnitConfig({
     unit: params.unit,
@@ -68,9 +70,15 @@ export async function sendEvaluationScheduleConfirmation(params: {
       return { status: "failed" };
     }
 
-    const { instances } = await getInstancesForRequest(params.request);
-    const instance = instances.find((candidate) => candidate.id === params.instanceId);
-    if (!instance || instance.canReply !== true || instance.status !== "connected") {
+    const proof = params.autonomyClaim;
+    if (proof && (params.unit !== "SBC" || !params.instanceId || !await validateAliceBookingClaim({
+      claim: proof, conversationId: params.conversationId, instanceId: params.instanceId,
+    }))) return { status: "failed" };
+    const instance = proof
+      ? await prisma.whatsAppInstance.findFirst({ where: { id: params.instanceId!, unit: "SBC", status: "connected" },
+        select: { id: true, name: true, unit: true, provider: true, status: true } })
+      : (await getInstancesForRequest(params.request)).instances.find((candidate) => candidate.id === params.instanceId);
+    if (!instance || (!proof && (!("canReply" in instance) || instance.canReply !== true)) || instance.status !== "connected") {
       return { status: "failed" };
     }
     if (params.allowAuthorizedSbcInstance && params.unit === "SBC" && !["SBC", "Todas"].includes(instance.unit)) return { status: "failed" };
@@ -100,7 +108,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
       return { status: "failed" };
     }
 
-    await sendAutomationText({
+    const sent = await sendAutomationText({
       dbInstance: instance,
       conversationId: conversation.id,
       contactPhone: conversation.contact.phone,
@@ -113,6 +121,14 @@ export async function sendEvaluationScheduleConfirmation(params: {
       }),
       respondedByName: "Automação de agendamento",
       requireProviderMessageId: params.requireProviderMessageId,
+      beforeSend: proof ? async () => {
+        if (!await validateAliceBookingClaim({ claim: proof, conversationId: conversation.id, instanceId: instance.id })) {
+          throw new Error("A conversa mudou antes da confirmação; não reenviar automaticamente.");
+        }
+      } : undefined,
+    });
+    if (proof) await prisma.whatsAppConversation.updateMany({
+      where: { id: conversation.id, instanceId: instance.id }, data: { lastOutboundAt: sent.sentAt },
     });
 
     if (automation) {

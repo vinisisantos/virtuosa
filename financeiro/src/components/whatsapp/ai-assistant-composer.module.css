@@ -8,7 +8,7 @@
 
 .modeBarLabel {
   flex: none;
-  color: var(--muted-foreground);
+  color: color-mix(in srgb, var(--foreground) 80%, var(--background));
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.09em;
@@ -19,7 +19,7 @@
 .modeSwitch {
   display: inline-flex;
   max-width: 100%;
-  flex: none;
+  flex: 0 1 auto;
   gap: 2px;
   border: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
   border-radius: 12px;
@@ -30,17 +30,40 @@
 .modeSwitchButton {
   display: inline-flex;
   min-height: 44px;
-  min-width: 92px;
+  min-width: 0;
   align-items: center;
   justify-content: center;
   gap: 7px;
   border-radius: 9px;
   padding: 0 12px;
-  color: var(--muted-foreground);
+  color: color-mix(in srgb, var(--foreground) 80%, var(--background));
   font-size: 12px;
   font-weight: 600;
   transition: background-color 160ms ease, color 160ms ease;
 }
+
+.agentState {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 8px 0 2px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.agentState strong { font-weight: 650; }
+.agentState p { max-width: 75ch; margin: 4px 0 0; color: color-mix(in srgb, var(--foreground) 78%, var(--background)); }
+.agentActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.agentButton, .agentLink { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; gap: 6px; padding: 8px 10px; border-radius: 8px; color: var(--foreground); font-weight: 600; }
+.agentButton { border: 1px solid var(--border); background: var(--background); }
+.agentButton:hover { background: var(--muted); }
+.agentLink { text-decoration: underline; text-underline-offset: 3px; }
+.agentButton:focus-visible, .agentLink:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.agentButton:disabled { opacity: .6; }
 
 .modeSwitchButton:hover:not(:disabled) {
   background: var(--muted);
@@ -48,7 +71,7 @@
 }
 
 .modeSwitchButton:focus-visible {
-  outline: 2px solid var(--primary);
+  outline: 2px solid var(--foreground);
   outline-offset: -2px;
 }
 
@@ -71,7 +94,7 @@
   gap: 5px;
   border-left: 1px solid var(--border);
   padding-left: 12px;
-  color: var(--muted-foreground);
+  color: color-mix(in srgb, var(--foreground) 80%, var(--background));
   font-size: 11px;
   line-height: 16px;
 }

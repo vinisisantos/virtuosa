@@ -12,6 +12,7 @@ import {
 import { toast } from "@/components/toast";
 import { isAliceUnit } from "@/lib/ai-assistant/scope";
 import { readAliceMessageSequence } from "@/lib/ai-assistant/message-sequence";
+import { AiAssistantModeBar, type AliceConversationMode } from "./ai-assistant-mode-bar";
 import type { Conversation } from "@/lib/whatsapp/inbox-utils";
 import styles from "./ai-assistant-composer.module.css";
 
@@ -48,7 +49,7 @@ type Props = {
   targetMessage?: { id: string; preview: string } | null;
   generationRequest?: { requestId: number; conversationId: string; targetMessageId: string } | null;
   onGenerationRequestHandled?: (requestId: number) => void;
-  onModeChange: (mode: "manual" | "suggestions") => void;
+  onModeChange: (mode: AliceConversationMode) => void;
   onUseSuggestion: (content: string, draftId: string, draftVersion: number) => void;
 };
 
@@ -71,8 +72,8 @@ export function AiAssistantComposer({
   onModeChange,
   onUseSuggestion,
 }: Props) {
-  const [mode, setMode] = useState<"manual" | "suggestions">(
-    initialMode === "suggestions" ? "suggestions" : "manual",
+  const [mode, setMode] = useState<AliceConversationMode>(
+    initialMode === "suggestions" ? "suggestions" : String(initialMode) === "agent" && unit === "SBC" ? "agent" : "manual",
   );
   const [draft, setDraft] = useState<AiAssistantDraft | null>(null);
   const [handoffStatus, setHandoffStatus] = useState<HandoffStatus>(null);
@@ -93,11 +94,11 @@ export function AiAssistantComposer({
   );
 
   useEffect(() => {
-    setMode(initialMode === "suggestions" ? "suggestions" : "manual");
+    setMode(initialMode === "suggestions" ? "suggestions" : String(initialMode) === "agent" && unit === "SBC" ? "agent" : "manual");
     setDraft(null);
     setHandoffStatus(null);
     handledGenerationRequestRef.current = null;
-  }, [conversationId, initialMode]);
+  }, [conversationId, initialMode, unit]);
 
   useEffect(() => {
     setDraft(null);
@@ -119,7 +120,7 @@ export function AiAssistantComposer({
     return () => controller.abort();
   }, [activityVersion, apiUrl, mode, unit]);
 
-  const changeMode = useCallback(async (nextMode: "manual" | "suggestions") => {
+  const changeMode = useCallback(async (nextMode: AliceConversationMode) => {
     if (changingMode || nextMode === mode) return;
     setChangingMode(true);
     try {
@@ -130,10 +131,11 @@ export function AiAssistantComposer({
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || "Não foi possível alterar o modo.");
+      if (!mountedRef.current || activeConversationRef.current !== conversationId) return;
       setMode(nextMode);
       setDraft(null);
       onModeChange(nextMode);
-      toast(nextMode === "suggestions" ? "Sugestões ativadas nesta conversa." : "Resposta manual ativada.", "success");
+      toast(nextMode === "agent" ? "Modo autônomo ativado nesta conversa." : nextMode === "suggestions" ? "Sugestões ativadas nesta conversa." : "Resposta manual ativada. Alice pausada nesta conversa.", "success");
     } catch (error) {
       toast(error instanceof Error ? error.message : "Não foi possível alterar o modo.", "error");
     } finally {
@@ -278,36 +280,7 @@ export function AiAssistantComposer({
 
   return (
     <div className="relative mb-1 w-full">
-      <div className={styles.modeBar}>
-        <span className={styles.modeBarLabel}>Responder com</span>
-        <div className={styles.modeSwitch} role="group" aria-label="Modo de resposta" aria-busy={changingMode}>
-          <button
-            type="button"
-            onClick={() => void changeMode("manual")}
-            disabled={changingMode}
-            className={`${styles.modeSwitchButton} ${mode === "manual" ? styles.modeSwitchSelected : ""}`}
-            aria-label="Resposta manual"
-            aria-pressed={mode === "manual"}
-          >
-            <Pencil className="h-4 w-4" aria-hidden="true" />
-            Manual
-          </button>
-          <button
-            type="button"
-            onClick={() => void changeMode("suggestions")}
-            disabled={changingMode}
-            className={`${styles.modeSwitchButton} ${mode === "suggestions" ? styles.modeSwitchSelected : ""}`}
-            aria-label="Sugestões da Alice"
-            aria-pressed={mode === "suggestions"}
-          >
-            <Sparkles className="h-4 w-4" aria-hidden="true" />
-            Alice
-          </button>
-        </div>
-        <span className={styles.modeBarCaption} role="status">
-          {changingMode ? <><Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Atualizando modo...</> : unit === "SBC" ? "Sugestões manuais; confirmação de agenda pode ser automática" : "Envio sempre manual"}
-        </span>
-      </div>
+      <AiAssistantModeBar mode={mode} unit={unit} changingMode={changingMode} onChange={changeMode} />
 
       {mode === "suggestions" && (
         <div
@@ -316,7 +289,7 @@ export function AiAssistantComposer({
           aria-live="polite"
         >
           {targetMessage && (
-            <div className="mb-2 rounded-lg border-l-2 border-emerald-500 bg-background/65 px-2.5 py-1.5">
+            <div className="mb-2 rounded-lg border border-emerald-500/30 bg-background/65 px-2.5 py-1.5">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
                 Respondendo esta mensagem
               </p>

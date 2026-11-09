@@ -32,6 +32,8 @@ import { broadcastInboxRealtimeChange } from "@/lib/whatsapp/inbox-realtime";
 import { validateWhatsAppSendPayload } from "@/lib/whatsapp/send-payload";
 import { buildEvolutionAudioPayload } from "@/lib/whatsapp/audio-send";
 import { whatsAppConversationPreview } from "@/lib/whatsapp/message-content";
+import { pauseAliceForHuman } from "@/lib/ai-assistant/autonomy/queue";
+import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 import { firstWhatsAppLink, loadWhatsAppLinkPreview } from "@/lib/whatsapp/link-preview";
 import { evolutionMessageLidCandidates } from "@/lib/whatsapp/chat-action-identifiers";
 import { getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
@@ -446,6 +448,10 @@ export async function POST(req: Request) {
         ...(claimConversation ? { status: "open", unreadCount: 0 } : {}),
       };
     }
+
+    // A autenticação, o escopo da caixa e a autorização para responder já foram
+    // verificados. Pausar antes de qualquer HTTP também vale para sugestão revisada.
+    if (dbInstance.id === ALICE_AUTONOMY_INSTANCE_ID) await pauseAliceForHuman(conversation.id);
 
     const resolvedContact = contact!;
     const unitConfig = getEvaluationScheduleUnitConfigByUnit(dbInstance.unit || resolvedContact.unit);

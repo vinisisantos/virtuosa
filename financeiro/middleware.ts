@@ -39,6 +39,9 @@ const PUBLIC_PAGES = [
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  // Somente o worker exato usa CRON_SECRET; o painel e os demais endpoints
+  // de autonomia continuam exigindo a sessão normal do CRM.
+  if (pathname === '/api/crm/ai-assistant/autonomy/worker') return NextResponse.next();
 
   // Skip static assets, _next, favicon, etc.
   if (

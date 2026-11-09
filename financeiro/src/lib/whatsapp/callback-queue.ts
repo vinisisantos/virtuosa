@@ -13,6 +13,7 @@ export type WhatsAppCallbackQueueStatus =
 export type WhatsAppCallbackQueueView = "due" | "waiting_response" | "responded" | null;
 
 type CallbackQueueCandidate = {
+  aiMode?: string | null;
   commercialPaused?: boolean;
   status?: string | null;
   lastInboundAt?: Date | string | null;
@@ -37,6 +38,7 @@ export function whatsAppCallbackQueueView(
   minimumTeamSilenceMs = 0,
 ): WhatsAppCallbackQueueView {
   if (conversation.commercialPaused) return null;
+  if (conversation.aiMode === "agent") return null;
   if (CLOSED_CONVERSATION_STATUSES.has(conversation.status || "")) return null;
   if (conversation.callbackQueueStatus === WHATSAPP_CALLBACK_QUEUE_STATUS.suppressedClosedPackage) return null;
 

@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import ts from "typescript";
+import * as autonomyPolicy from "../src/lib/ai-assistant/autonomy/policy.ts";
+import * as assistantPolicy from "../src/lib/ai-assistant/policy.ts";
 import { buildSbcEvaluationOptions, deriveSbcEvaluationChoice } from "#lib/ai-assistant/sbc-scheduling-policy";
 
 function fixture(options = {}) {
@@ -19,10 +21,18 @@ function fixture(options = {}) {
   const tx = {
     $queryRaw: async (strings) => {
       const query = strings.join("?"); state.locks.push(query);
-      if (query.includes('"WhatsAppConversation"')) return [{ instanceId: "sbc-instance", contactId: "contact", aiMode: "suggestions", blockedAt: null, archivedAt: null, status: "open" }];
+      if (query.includes('"WhatsAppConversation"')) return [{ instanceId: options.autonomy ? autonomyPolicy.ALICE_AUTONOMY_INSTANCE_ID : "sbc-instance", contactId: "contact", aiMode: options.humanTakeover ? "manual" : options.autonomy ? "agent" : "suggestions", blockedAt: null, archivedAt: null, status: "open" }];
+      if (query.includes('"AliceAutonomousTurn"')) {
+        assert.match(query, /"claimedAt">=NOW\(\)/);
+        return options.expiredLease ? [] : [{ id: "turn" }];
+      }
       if (query.includes('"WhatsAppInstance"')) return [{ unit: "SBC" }];
       if (query.includes('"WhatsAppContact"')) return [{ phone: "5511999999999", unit: "SBC" }];
       if (query.includes('"Client"')) return [{ name: "Cliente Teste", phone: "5511999999999", unit: "SBC", isActive: true, campaignName: options.changedCampaign ? "Outra campanha" : options.campaignName || null }];
+      if (query.includes('"AppSetting"') && query.includes('"key", "value"')) return [
+        { key: autonomyPolicy.ALICE_AUTONOMY_CONFIG_KEY, value: JSON.stringify({ enabled: !options.pausedAutonomy, instanceId: autonomyPolicy.ALICE_AUTONOMY_INSTANCE_ID, activatedAt: new Date(now - 60_000).toISOString() }) },
+        { key: assistantPolicy.AI_ASSISTANT_CONFIG_KEY, value: JSON.stringify({ enabled: !options.pausedAssistant }) },
+      ];
       if (query.includes('"AppSetting"')) return [{ value: options.changedActivation ? "{}" : activation }];
       throw new Error(`unexpected SQL ${query}`);
     },
@@ -51,6 +61,9 @@ function fixture(options = {}) {
   };
   class NextResponse {}
   const modules = {
+    "@/lib/ai-assistant/autonomy/policy": autonomyPolicy,
+    "@/lib/ai-assistant/policy": assistantPolicy,
+    "@/lib/ai-assistant/autonomy/booking-authorization": { validateAliceBookingClaim: async () => options.claimValid !== false },
     "next/server": { NextResponse, after: (fn) => state.after.push(fn) },
     "@/lib/db": { prisma },
     "@/lib/unit-guard": { requireUnitGuard: () => ({ userName: "Operadora", enforceUnit: () => {} }) },
@@ -61,7 +74,7 @@ function fixture(options = {}) {
       pipelineEvaluationMarker: (id) => `[pipelineDealId:${id}]`,
       upsertPipelineEvaluationAppointment: async (input) => { state.appointment = { id: "appointment", startTime: input.startTime, evaluationGroupNoticeId: null }; return state.appointment; },
     },
-    "@/lib/pipeline-owner-scope": { canAccessPipelineDeal: async () => !options.noPermission, resolvePipelineOwnerScope: async () => null },
+    "@/lib/pipeline-owner-scope": { canAccessPipelineDeal: async () => !options.noPermission, resolvePipelineOwnerScope: async () => ({}) },
     "@/lib/pipeline/procedure-audit": { getPipelineProcedureSelections: async () => new Map([["deal", options.noProcedure ? [] : ["Botox"]]]) },
     "@/lib/pipeline/procedure-names": { formatProcedureNames: (names) => names.join(", ") },
     "@/lib/evaluation-procedure-draft": { evaluationProcedureDraft: ({ campaignName }) => campaignName === "Campanha Desconhecida" ? "" : campaignName || "" },
@@ -77,7 +90,8 @@ function fixture(options = {}) {
   const exports = {};
   vm.runInNewContext(code, { exports, Date, console, require: (id) => { assert.ok(modules[id], `dependência não simulada: ${id}`); return modules[id]; } });
   const sourceMessage = { ...reply, id: "source", body: options.sourceBody || "Olá, vim pelo Botox Terço Superior", timestamp: new Date(now - 40_000) };
-  const params = { req: {}, unit: "SBC", instanceId: "sbc-instance", instanceUnit: "SBC", contactUnit: "SBC", conversationId: "conversation", phone: "5511999999999", targetMessageId: null, messages: [sourceMessage, offer, reply], safetyHold: false };
+  const params = { req: {}, unit: "SBC", instanceId: options.autonomy ? autonomyPolicy.ALICE_AUTONOMY_INSTANCE_ID : "sbc-instance", instanceUnit: "SBC", contactUnit: "SBC", conversationId: "conversation", phone: "5511999999999", targetMessageId: null, messages: [sourceMessage, offer, reply], safetyHold: false,
+    ...(options.autonomy ? { autonomyClaim: { turnId: "turn", claimToken: "claim", sourceMessageId: reply.id } } : {}) };
   return { run: (changes = {}) => exports.tryAliceAutoSchedule({ ...params, ...changes }), state, offer, reply };
 }
 
@@ -129,4 +143,17 @@ test("escopo, desativação e alerta clínico impedem agendamento", async () => 
   old.offer.createdAt = new Date(Date.now() - 120_000);
   assert.equal((await old.run()).status, "not_applicable");
   assert.equal(old.state.sent, 0);
+});
+
+test("agendamento autônomo é idempotente e relê lease, pausa global e modo humano na escrita", async () => {
+  const enabled = fixture({ autonomy: true });
+  const results = await Promise.all([enabled.run(), enabled.run()]);
+  assert.equal(results.filter((result) => result.status === "booked").length, 1);
+  assert.equal(enabled.state.sent, 1);
+  for (const changed of [{ claimValid: false }, { expiredLease: true }, { pausedAutonomy: true }, { pausedAssistant: true }, { humanTakeover: true }]) {
+    const f = fixture({ autonomy: true, ...changed });
+    assert.equal((await f.run()).status, "review", JSON.stringify(changed));
+    assert.equal(f.state.sent, 0);
+    assert.equal(f.state.appointment, null);
+  }
 });

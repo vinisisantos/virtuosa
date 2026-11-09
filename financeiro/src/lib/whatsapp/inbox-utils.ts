@@ -49,7 +49,7 @@ export interface Conversation {
   callbackContext?: WhatsAppCallbackContext | null;
   lastCallbackAttempt?: WhatsAppCallbackAttempt | null;
   activeFollowUp?: WhatsAppConversationFollowUp | null;
-  aiMode?: "manual" | "suggestions";
+  aiMode?: "manual" | "suggestions" | "agent";
   aiModeUpdatedAt?: string | null;
   aiModeUpdatedBy?: string | null;
 }

@@ -58,6 +58,7 @@ if (process.env.VERCEL_ENV === "production") {
     "prisma/migrations/20261017150000_evaluation_group_reschedule_events/migration.sql",
     "prisma/migrations/20261020120000_evaluation_group_osasco_destination/migration.sql",
     "prisma/migrations/20261108230000_alice_auto_schedule/migration.sql",
+    "prisma/migrations/20261109010000_alice_autonomous_turns/migration.sql",
   ];
   for (const migration of requiredMigrations) {
     run("npx", ["prisma", "db", "execute", "--file", migration, "--url", migrationUrl], {
@@ -85,6 +86,9 @@ if (process.env.VERCEL_ENV === "production") {
     });
   }
   run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-whatsapp-inbound-postprocess-cron.mjs"], {
+    ...process.env, DATABASE_URL: migrationUrl,
+  });
+  run(process.execPath, ["--experimental-strip-types", "--import", "./tests/register-paths.mjs", "scripts/setup-alice-autonomy-cron.mjs"], {
     ...process.env, DATABASE_URL: migrationUrl,
   });
 }

@@ -6,6 +6,7 @@ import { savedReplyCampaignKey } from "@/lib/whatsapp/saved-replies";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
 import { WELCOME_AUTHOR, WELCOME_DELAY_MS, WELCOME_LIBRARY_USER_ID, welcomeConfig, welcomePair, welcomeUnit, type WelcomeReply } from "@/lib/whatsapp/campaign-welcome-policy";
 import { claimWelcomeQuery, finishWelcomeQuery, welcomeContextQuery, welcomeReceptionQuery } from "@/lib/whatsapp/campaign-welcome-query";
+import { isAliceAutonomyActive } from "@/lib/ai-assistant/autonomy/queue";
 
 type Database = typeof prisma;
 type ReceptionInput = Parameters<typeof welcomeReceptionQuery>[0];
@@ -54,11 +55,13 @@ class WelcomeCancelled extends Error {}
 
 export async function processCampaignWelcomes(deps: {
   database?: Database; send?: typeof sendAutomationText; now?: () => Date; budgetMs?: number;
+  isAliceActive?: typeof isAliceAutonomyActive;
   onError?: (error: unknown) => void;
 } = {}) {
   const database = deps.database || prisma;
   const send = deps.send || sendAutomationText;
   const now = deps.now || (() => new Date());
+  const isAliceActive = deps.isAliceActive || isAliceAutonomyActive;
   const deadline = now().getTime() + (deps.budgetMs ?? 45_000);
   const results: Record<string, number> = {};
   const count = (status: string) => { results[status] = (results[status] || 0) + 1; };
@@ -88,6 +91,9 @@ export async function processCampaignWelcomes(deps: {
     try {
       const [context] = await database.$queryRaw<WelcomeContext[]>(welcomeContextQuery(job.id));
       if (!context) { await finish('cancelled', 'context_missing'); continue; }
+      if (await isAliceActive({ conversationId: job.conversationId, instanceId: job.instanceId }, database)) {
+        await finish('cancelled', 'alice_autonomy_active'); continue;
+      }
       const reason = welcomeCancellation(context, now());
       if (reason) { await finish('cancelled', reason); continue; }
       if (context.instanceStatus !== 'connected') {
@@ -109,6 +115,7 @@ export async function processCampaignWelcomes(deps: {
         message: job.phase === 0 ? pair.greeting : job.question!, respondedByName: WELCOME_AUTHOR,
         providerTimeoutMs: 15_000, requireProviderMessageId: true,
         beforeSend: async () => {
+          if (await isAliceActive({ conversationId: job.conversationId, instanceId: job.instanceId }, database)) throw new WelcomeCancelled('alice_autonomy_active');
           const [latest] = await database.$queryRaw<WelcomeContext[]>(welcomeContextQuery(job.id));
           const reason = latest ? welcomeCancellation(latest, now()) : 'context_missing';
           if (reason || latest.instanceStatus !== 'connected') throw new WelcomeCancelled(reason || 'instance_disconnected');

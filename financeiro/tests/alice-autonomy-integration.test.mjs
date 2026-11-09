@@ -1,0 +1,317 @@
+import assert from "node:assert/strict";
+import { registerHooks } from "node:module";
+import { existsSync } from "node:fs";
+import test from "node:test";
+import { activateFixture, database, insertTurn } from "./fixtures/alice-autonomy-database.mjs";
+import { runnerFixture } from "./fixtures/alice-autonomy-runner.mjs";
+import {
+  ALICE_AUTONOMY_INSTANCE_ID,
+  aliceAutonomyAvailableAt,
+  aliceAutonomyConversationEligible,
+  aliceAutonomyCostMicroUsd,
+  parseAliceAutonomyConfig,
+} from "../src/lib/ai-assistant/autonomy/policy.ts";
+
+globalThis.prisma = {};
+globalThis.fetch = async () => { throw new Error("Rede externa proibida neste teste isolado"); };
+registerHooks({ resolve(specifier, context, next) {
+  if (specifier === "server-only") return { url: "data:text/javascript,export {};", shortCircuit: true };
+  if (specifier.startsWith(".") && context.parentURL?.startsWith("file:")) {
+    const source = new URL(`${specifier}.ts`, context.parentURL);
+    if (existsSync(source)) return next(source.href, context);
+  }
+  return next(["next/server", "next/headers"].includes(specifier) ? `${specifier}.js` : specifier, context);
+} });
+const { claimAliceAutonomousTurn, recoverAliceAutonomousTurns, enqueueAliceAutonomousTurn, pauseAliceForHuman } =
+  await import("../src/lib/ai-assistant/autonomy/queue.ts");
+const { validateAliceAutonomousTurn } = await import("../src/lib/ai-assistant/autonomy/guard.ts");
+const { loadAliceAutonomousContext } = await import("../src/lib/ai-assistant/autonomy/context.ts");
+const { processAliceAutonomousTurn, runAliceAutonomousBatch } = await import("../src/lib/ai-assistant/autonomy/runner.ts");
+
+test("migração autônoma pode ser reaplicada sem ativar a Alice ou criar mensagens", async () => {
+  const { pg, migration } = await database();
+  try {
+    const initial = await pg.query('SELECT "value" FROM "AppSetting" WHERE "key" = $1', ["alice_autonomous_sbc_v1"]);
+    assert.equal(initial.rows.length, 1);
+    assert.equal(JSON.parse(initial.rows[0].value).enabled, false);
+    const configured = JSON.stringify({ enabled: true, activatedAt: "2026-11-09T03:00:00.000Z", instanceId: "instance-a" });
+    await pg.query('UPDATE "AppSetting" SET "value" = $1 WHERE "key" = $2', [configured, "alice_autonomous_sbc_v1"]);
+    await insertTurn(pg);
+    await pg.exec(migration);
+    const repeated = await pg.query('SELECT "value" FROM "AppSetting" WHERE "key" = $1', ["alice_autonomous_sbc_v1"]);
+    assert.equal(repeated.rows[0].value, configured);
+    assert.deepEqual((await pg.query('SELECT "id", "status" FROM "AliceAutonomousTurn"')).rows, [{ id: "turn-a", status: "queued" }]);
+    assert.deepEqual((await pg.query('SELECT count(*)::int AS count FROM "WhatsAppMessage"')).rows, [{ count: 2 }]);
+  } finally { await pg.close(); }
+});
+
+test("evento repetido não cria segundo turno, mas o mesmo ID do provedor em outra conversa permanece isolado", async () => {
+  const { pg } = await database();
+  try {
+    await insertTurn(pg);
+    await assert.rejects(insertTurn(pg, { id: "duplicate" }), /unique|duplicate/i);
+    await insertTurn(pg, { id: "turn-b", conversationId: "conversation-b", instanceId: "instance-b", sourceMessageId: "source-b" });
+    assert.deepEqual((await pg.query('SELECT "conversationId", "sourceMessageId" FROM "AliceAutonomousTurn" ORDER BY "id"')).rows, [
+      { conversationId: "conversation-a", sourceMessageId: "source-a" },
+      { conversationId: "conversation-b", sourceMessageId: "source-b" },
+    ]);
+  } finally { await pg.close(); }
+});
+
+test("fila de respostas não fica disponível publicamente pelo Supabase", async () => {
+  const { pg } = await database();
+  try {
+    const relation = await pg.query(`
+      SELECT c.relrowsecurity,
+        (SELECT count(*)::int FROM pg_policy p WHERE p.polrelid=c.oid) AS public_policies
+      FROM pg_class c WHERE c.relname='AliceAutonomousTurn'
+    `);
+    assert.deepEqual(relation.rows, [{ relrowsecurity: true, public_policies: 0 }]);
+  } finally { await pg.close(); }
+});
+
+test("primeira resposta usa a última entrada como referência e o lote antigo também espera trinta segundos", () => {
+  const first = new Date("2026-11-09T03:00:00.000Z");
+  assert.equal(aliceAutonomyAvailableAt(first, new Date("2026-11-09T03:00:05.000Z")).toISOString(), "2026-11-09T03:00:30.000Z");
+  assert.equal(aliceAutonomyAvailableAt(new Date("2026-11-09T03:00:12.000Z"), new Date("2026-11-09T03:00:15.000Z")).toISOString(), "2026-11-09T03:00:42.000Z");
+  assert.equal(aliceAutonomyAvailableAt(first, new Date("2026-11-09T03:01:00.000Z")).toISOString(), "2026-11-09T03:01:00.000Z");
+  assert.equal(aliceAutonomyAvailableAt(first, new Date("2026-11-09T03:01:00.000Z"), true).toISOString(), "2026-11-09T03:01:30.000Z");
+});
+
+test("ativação exige a caixa de SBC e marco válido sem aceitar alterações nas regras aprovadas", () => {
+  const enabled = { enabled: true, instanceId: ALICE_AUTONOMY_INSTANCE_ID, activatedAt: "2026-11-09T03:00:00.000Z" };
+  assert.equal(parseAliceAutonomyConfig(JSON.stringify(enabled)).enabled, true);
+  assert.equal(parseAliceAutonomyConfig(JSON.stringify({ ...enabled, instanceId: "other-unit" })).enabled, false);
+  assert.equal(parseAliceAutonomyConfig(JSON.stringify({ ...enabled, activatedAt: "invalid" })).enabled, false);
+  assert.equal(parseAliceAutonomyConfig("invalid json").enabled, false);
+  const attemptedOverride = parseAliceAutonomyConfig(JSON.stringify({ ...enabled, initialDelayMs: 0, complementDelayMs: 0, monthlyLimitMicroUsd: 100 }));
+  assert.equal(attemptedOverride.initialDelayMs, 30_000);
+  assert.equal(attemptedOverride.complementDelayMs, 3_000);
+  assert.equal(attemptedOverride.monthlyLimitMicroUsd, null);
+});
+
+test("conversas manuais, bloqueadas, arquivadas, pausadas ou de outra caixa não são elegíveis", () => {
+  const ready = { instanceId: ALICE_AUTONOMY_INSTANCE_ID, status: "open", blockedAt: null, archivedAt: null, commercialPaused: false, aiMode: "agent" };
+  assert.equal(aliceAutonomyConversationEligible(ready), true);
+  for (const override of [
+    { instanceId: "other-unit" }, { aiMode: "manual" }, { aiMode: "suggestions" },
+    { status: "closed" }, { status: "resolved" }, { status: "lost" },
+    { blockedAt: new Date() }, { archivedAt: new Date() }, { commercialPaused: true },
+  ]) assert.equal(aliceAutonomyConversationEligible({ ...ready, ...override }), false);
+});
+
+test("custo corresponde aos tokens observados, inclusive saída e categorias de cache", () => {
+  // Exemplo independente: custo calculado do teste Sonnet documentado em 09/11.
+  assert.equal(aliceAutonomyCostMicroUsd({ input: 79_926, output: 903 }), 253_323);
+  assert.equal(aliceAutonomyCostMicroUsd({ input: 0, output: 0, cacheRead: 10_000, cacheCreation: 1_000 }), 6_750);
+});
+
+test("migração rejeita estado e unidade que não pertencem ao piloto", async () => {
+  const { pg } = await database();
+  try {
+    await assert.rejects(insertTurn(pg, { status: "retry_sending" }), /check/i);
+    await assert.rejects(insertTurn(pg, { unit: "Osasco" }), /check/i);
+  } finally { await pg.close(); }
+});
+
+test("claim só assume uma entrada vencida da caixa autorizada e bloqueia outro turno simultâneo da mesma conversa", async () => {
+  const { pg, adapter } = await database();
+  try {
+    await insertTurn(pg, { id: "other-unit" });
+    await insertTurn(pg, { id: "future", conversationId: "future", sourceMessageId: "future", instanceId: ALICE_AUTONOMY_INSTANCE_ID });
+    await pg.query('UPDATE "AliceAutonomousTurn" SET "availableAt"=NOW()+interval \'1 hour\' WHERE id=\'future\'');
+    await insertTurn(pg, { id: "ready", sourceMessageId: "current", instanceId: ALICE_AUTONOMY_INSTANCE_ID });
+    await insertTurn(pg, { id: "same-conversation", sourceMessageId: "later", instanceId: ALICE_AUTONOMY_INSTANCE_ID });
+    const claim = await claimAliceAutonomousTurn(adapter);
+    assert.equal(claim.turn.id, "ready");
+    assert.equal(claim.turn.status, "processing");
+    assert.equal(claim.turn.attempts, 1);
+    assert.equal(claim.turn.claimToken, claim.token);
+    assert.ok(claim.turn.claimedAt instanceof Date);
+    assert.equal(await claimAliceAutonomousTurn(adapter), null);
+  } finally { await pg.close(); }
+});
+
+test("replay conserva um único turno e nova entrada substitui a resposta pendente sem antecipar os trinta segundos", async () => {
+  const { pg, adapter } = await database();
+  const now = new Date();
+  const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a", timestamp: now, origin: "inbound" };
+  try {
+    await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    const first = await enqueueAliceAutonomousTurn(input, adapter, now);
+    assert.equal(first.queued, true);
+    const repeated = await enqueueAliceAutonomousTurn(input, adapter, now);
+    assert.equal(repeated.turnId, first.turnId);
+    assert.deepEqual((await pg.query('SELECT count(*)::int AS count FROM "AliceAutonomousTurn"')).rows, [{ count: 1 }]);
+    await pg.query('INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId",timestamp,"createdAt") VALUES (\'new-inbound\',\'conversation-a\',\'new-provider-id\',$1,$1)', [now]);
+    const next = await enqueueAliceAutonomousTurn({ ...input, sourceMessageId: "new-inbound" }, adapter, now);
+    assert.equal(next.queued, true);
+    assert.notEqual(next.turnId, first.turnId);
+    const rows = (await pg.query('SELECT "sourceMessageId",status,"availableAt",error FROM "AliceAutonomousTurn" ORDER BY "sourceMessageId"')).rows;
+    assert.equal(rows[0].status, "queued");
+    assert.equal(rows[0].availableAt.getTime(), now.getTime() + 30_000);
+    assert.equal(rows[1].status, "skipped");
+    assert.equal(rows[1].error, "new_customer_message");
+  } finally { await pg.close(); }
+});
+
+test("retomada humana cancela o pendente e uma nova entrada não reativa a Alice por conta própria", async () => {
+  const { pg, adapter } = await database();
+  const now = new Date();
+  const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a", timestamp: now, origin: "inbound" };
+  try {
+    await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    await enqueueAliceAutonomousTurn(input, adapter, now);
+    assert.equal(await pauseAliceForHuman(input.conversationId, adapter), 1);
+    assert.deepEqual((await pg.query('SELECT status,error FROM "AliceAutonomousTurn"')).rows, [{ status: "skipped", error: "human_takeover" }]);
+    const retry = await enqueueAliceAutonomousTurn(input, adapter, now);
+    assert.equal(retry.queued, false);
+    assert.equal(retry.reason, "conversation_paused");
+    assert.deepEqual((await pg.query('SELECT "aiMode" FROM "WhatsAppConversation" WHERE id=\'conversation-a\'')).rows, [{ aiMode: "manual" }]);
+  } finally { await pg.close(); }
+});
+
+test("worker interrompido encerra processamento, deixa envio incerto sem retentar e pausa a conversa", async () => {
+  const { pg, adapter } = await database();
+  const now = new Date();
+  try {
+    await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    await pg.query('UPDATE "WhatsAppConversation" SET "aiMode"=\'agent\' WHERE id=\'conversation-a\'');
+    await insertTurn(pg, { id: "stale-send", status: "sending", instanceId: ALICE_AUTONOMY_INSTANCE_ID });
+    await insertTurn(pg, { id: "stale-processing", status: "processing", sourceMessageId: "second", instanceId: ALICE_AUTONOMY_INSTANCE_ID });
+    await insertTurn(pg, { id: "fresh-processing", status: "processing", sourceMessageId: "third", instanceId: ALICE_AUTONOMY_INSTANCE_ID });
+    await pg.query('UPDATE "AliceAutonomousTurn" SET "claimToken"=id,"claimedAt"=$1', [new Date(now.getTime() - 121_000)]);
+    await pg.query('UPDATE "AliceAutonomousTurn" SET "claimedAt"=$1 WHERE id=\'fresh-processing\'', [now]);
+    assert.deepEqual(await recoverAliceAutonomousTurns(adapter, now), { uncertain: 1, failed: 1 });
+    assert.deepEqual((await pg.query('SELECT id,status FROM "AliceAutonomousTurn" ORDER BY id')).rows, [
+      { id: "fresh-processing", status: "processing" }, { id: "stale-processing", status: "failed" }, { id: "stale-send", status: "uncertain" },
+    ]);
+    assert.deepEqual((await pg.query('SELECT "aiMode" FROM "WhatsAppConversation" WHERE id=\'conversation-a\'')).rows, [{ aiMode: "manual" }]);
+    assert.deepEqual(await recoverAliceAutonomousTurns(adapter, now), { uncertain: 0, failed: 0 });
+    assert.equal(await claimAliceAutonomousTurn(adapter), null);
+  } finally { await pg.close(); }
+});
+
+test("checagem anterior ao envio aceita apenas a própria saída e interrompe com entrada ou resposta humana nova", async () => {
+  const { pg, adapter } = await database();
+  const now = new Date();
+  try {
+    await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    await pg.query('UPDATE "WhatsAppConversation" SET "aiMode"=\'agent\' WHERE id=\'conversation-a\'');
+    await insertTurn(pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID });
+    const claim = await claimAliceAutonomousTurn(adapter);
+    assert.equal(await validateAliceAutonomousTurn(claim.turn, claim.token, "processing", adapter), true);
+    await pg.query('INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp,"respondedByName") VALUES (\'own\',\'conversation-a\',\'own-provider-id\',TRUE,$1,\'Alice (automação)\')', [now]);
+    assert.equal(await validateAliceAutonomousTurn({ ...claim.turn, providerMessageIds: ["own-provider-id"] }, claim.token, "processing", adapter), true);
+    assert.equal(await validateAliceAutonomousTurn(claim.turn, claim.token, "processing", adapter), false);
+    await pg.query('DELETE FROM "WhatsAppMessage" WHERE id=\'own\'');
+    await pg.query('INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId",timestamp) VALUES (\'new-customer\',\'conversation-a\',\'new\',$1)', [now]);
+    assert.equal(await validateAliceAutonomousTurn(claim.turn, claim.token, "processing", adapter), false);
+  } finally { await pg.close(); }
+});
+
+test("duas mensagens usam uma única geração, mantêm custo e o complemento espera três segundos", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "queued");
+    const first = await f.readTurn();
+    assert.equal(first.nextMessageIndex, 1);
+    assert.equal(first.availableAt.getTime(), f.state.clock.getTime() + 3_000);
+    assert.equal(first.costMicroUsd, 4_500);
+    assert.equal(await claimAliceAutonomousTurn(f.adapter), null);
+    f.state.clock = new Date(f.state.clock.getTime() + 3_000);
+    await f.pg.query('UPDATE "AliceAutonomousTurn" SET "availableAt"=NOW()-interval \'1 second\' WHERE id=$1', [first.id]);
+    const secondClaim = await claimAliceAutonomousTurn(f.adapter);
+    assert.equal(await processAliceAutonomousTurn(secondClaim, {}, f.deps), "sent");
+    const complete = await f.readTurn();
+    assert.equal(f.state.generations, 1);
+    assert.deepEqual(f.state.sends, ["Olá, sou a Alice, assistente virtual da Virtuosa.", "Você já realizou esse procedimento antes?"]);
+    assert.equal(complete.costMicroUsd, 4_500);
+    assert.equal(complete.messagesJson, null);
+    assert.equal(complete.nextMessageIndex, 2);
+  } finally { await f.pg.close(); }
+});
+
+test("timeout depois do início do envio exige revisão humana e nunca repete a tentativa", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    f.state.failSend = true;
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "uncertain");
+    const turn = await f.readTurn();
+    assert.equal(turn.status, "uncertain");
+    assert.equal(turn.error, "provider_send_uncertain_no_retry");
+    assert.equal(turn.costMicroUsd, 4_500);
+    assert.equal(turn.messagesJson.length, 2, "sequência incerta fica apenas para conferência interna, nunca como retry");
+    assert.equal(f.state.handoffs.length, 1);
+    assert.equal(await claimAliceAutonomousTurn(f.adapter), null);
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "skipped");
+    assert.equal(f.state.sends.length, 1);
+    assert.equal((await f.readTurn()).status, "uncertain");
+  } finally { await f.pg.close(); }
+});
+
+test("intervenção imediatamente anterior à chamada externa barra a saída e conserva o custo da geração", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    f.state.onBeforeSend = () => pauseAliceForHuman(f.claim.turn.conversationId, f.adapter);
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "skipped");
+    assert.deepEqual(f.state.sends, []);
+    assert.equal((await f.readTurn()).costMicroUsd, 4_500);
+    assert.equal((await f.readTurn()).error, "conversation_changed_before_send");
+  } finally { await f.pg.close(); }
+});
+
+test("orientação clínica e procedimento sem base são triados antes de consultar o modelo", async () => {
+  for (const [body, reason] of [["Estou amamentando, posso fazer?", "clinical_safety"], ["Quero preenchimento facial", "unsupported_procedure"]]) {
+    const f = await runnerFixture(claimAliceAutonomousTurn);
+    try {
+      await f.pg.query('UPDATE "WhatsAppMessage" SET body=$1 WHERE id=\'source-a\'', [body]);
+      f.deps.loadContext = loadAliceAutonomousContext;
+      assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "needs_human");
+      assert.equal(f.state.generations, 0);
+      assert.deepEqual(f.state.sends, []);
+      assert.equal(f.state.handoffs[0].reason, reason);
+      assert.equal((await f.readTurn()).status, "needs_human");
+    } finally { await f.pg.close(); }
+  }
+});
+
+test("entrada nova durante a geração invalida a saída antiga e abre outro prazo de trinta segundos", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    f.state.onGenerate = async () => {
+      await f.pg.query('INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId",timestamp,"createdAt") VALUES (\'new-customer\',\'conversation-a\',\'new\',$1,$1)', [f.state.clock]);
+      await enqueueAliceAutonomousTurn({ conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID,
+        sourceMessageId: "new-customer", timestamp: f.state.clock, origin: "inbound" }, f.adapter, f.state.clock);
+    };
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "skipped");
+    assert.deepEqual(f.state.sends, []);
+    assert.equal((await f.readTurn()).costMicroUsd, 4_500);
+    assert.equal((await f.readTurn()).error, "new_customer_message");
+    const pending = (await f.pg.query('SELECT status,"availableAt" FROM "AliceAutonomousTurn" WHERE "sourceMessageId"=\'new-customer\'')).rows[0];
+    assert.equal(pending.status, "queued");
+    assert.equal(pending.availableAt.getTime(), f.state.clock.getTime() + 30_000);
+  } finally { await f.pg.close(); }
+});
+
+test("uma execução de worker não drena a fila inteira nem gera resposta extra para complemento", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    await f.pg.query('UPDATE "AliceAutonomousTurn" SET status=\'queued\',"claimToken"=NULL,"claimedAt"=NULL WHERE id=$1', [f.claim.turn.id]);
+    await insertTurn(f.pg, { id: "another", conversationId: "conversation-b", sourceMessageId: "source-b", instanceId: ALICE_AUTONOMY_INSTANCE_ID });
+    const batch = await runAliceAutonomousBatch({}, f.deps);
+    assert.equal(batch.processed, 1);
+    assert.equal(f.state.generations, 1);
+    assert.equal(f.state.sends.length, 1);
+  } finally { await f.pg.close(); }
+});
+
+test("claim expirada ou com conversa/fonte diferente não autoriza a chamada externa", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    assert.equal(await validateAliceAutonomousTurn({ ...f.claim.turn, sourceMessageId: "wrong-source" }, f.claim.token, "processing", f.adapter), false);
+    assert.equal(await validateAliceAutonomousTurn({ ...f.claim.turn, conversationId: "conversation-b" }, f.claim.token, "processing", f.adapter), false);
+    await f.pg.query('UPDATE "AliceAutonomousTurn" SET "claimedAt"=NOW()-interval \'121 seconds\' WHERE id=$1', [f.claim.turn.id]);
+    assert.equal(await validateAliceAutonomousTurn(f.claim.turn, f.claim.token, "processing", f.adapter), false);
+  } finally { await f.pg.close(); }
+});

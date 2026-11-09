@@ -10,6 +10,9 @@ import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
 import { requireAliceLiveRuntime } from "@/lib/ai-assistant/runtime";
 import { aliceSequenceCanContinue, readAliceMessageSequence } from "@/lib/ai-assistant/message-sequence";
 import { isSchedulingSuggestionExpired } from "@/lib/ai-assistant/sbc-scheduling-policy";
+import { loadAliceAutonomyConfig, aliceAutonomyRuntimeStatus } from "@/lib/ai-assistant/autonomy/config";
+import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
+import { enqueueAliceAutonomousTurn, pauseAliceForHuman } from "@/lib/ai-assistant/autonomy/queue";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 120;
@@ -116,16 +119,37 @@ export async function PATCH(req: NextRequest) {
     const user = requireUser(req);
     const input = await req.json();
     const conversationId = conversationIdFrom(input.conversationId);
-    const { unit } = await loadAccessibleAliceConversation(req, conversationId);
+    const { unit, conversation: accessibleConversation } = await loadAccessibleAliceConversation(req, conversationId);
 
     if (input.action === "mode") {
       const mode = normalizeAiAssistantMode(input.mode);
       if (mode === "suggestions") requireAliceLiveRuntime();
+      if (mode === "agent") {
+        if (unit !== "SBC" || accessibleConversation.instanceId !== ALICE_AUTONOMY_INSTANCE_ID) {
+          throw new AiAssistantError("O atendimento autônomo está disponível somente na caixa de leads de SBC.", 403);
+        }
+        if (!(await loadAliceAutonomyConfig()).enabled || !aliceAutonomyRuntimeStatus().ready) {
+          throw new AiAssistantError("O atendimento autônomo precisa estar ativo e disponível no painel da Alice.", 409);
+        }
+      } else if (accessibleConversation.aiMode === "agent") {
+        await pauseAliceForHuman(conversationId);
+      }
       const conversation = await prisma.whatsAppConversation.update({
         where: { id: conversationId },
         data: { aiMode: mode, aiModeUpdatedAt: new Date(), aiModeUpdatedBy: user.userId },
         select: { aiMode: true },
       });
+      if (mode === "agent") {
+        const latest = await prisma.whatsAppMessage.findFirst({
+          where: { conversationId, status: { not: "deleted" } },
+          select: { id: true, timestamp: true, fromMe: true },
+          orderBy: [{ timestamp: "desc" }, { id: "desc" }],
+        });
+        if (latest && !latest.fromMe) await enqueueAliceAutonomousTurn({
+          conversationId, instanceId: accessibleConversation.instanceId,
+          sourceMessageId: latest.id, timestamp: latest.timestamp, origin: "backlog",
+        });
+      }
       return NextResponse.json({ mode: conversation.aiMode });
     }
 

@@ -2,6 +2,8 @@ import { after, NextResponse } from "next/server";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { isFreshWelcomeEvent } from "@/lib/whatsapp/campaign-welcome-policy";
 import { enqueueWelcome, findWelcomeReception } from "@/lib/whatsapp/campaign-welcome";
+import { ensureLegacyReceptionAvailable, handleAliceInboundReception } from "@/lib/whatsapp/campaign-welcome-autonomy";
+import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 
 import { prisma } from "@/lib/db";
 import { addClientTag } from "@/lib/client-tags";
@@ -2495,7 +2497,17 @@ async function processMessage(
     }
   }
 
-  const welcomeInput = leadClient && leadUnit && isFreshWelcomeEvent({
+  const aliceSource = !isFromMe && isSendablePhone && dbInstance.id === ALICE_AUTONOMY_INSTANCE_ID
+    ? await prisma.whatsAppMessage.findUnique({
+        where: { conversationId_messageId: { conversationId: conversation.id, messageId } },
+        select: { id: true },
+      }) : null;
+  const aliceOwnsReception = aliceSource ? await handleAliceInboundReception({
+    conversationId: conversation.id, instanceId: dbInstance.id, sourceMessageId: aliceSource.id,
+    timestamp, receivedAt, fromMe: Boolean(isFromMe), sendable: isSendablePhone, payload,
+  }) : false;
+
+  const welcomeInput = !aliceOwnsReception && leadClient && leadUnit && isFreshWelcomeEvent({
     fromMe: Boolean(isFromMe), sendable: isSendablePhone, capturesLeads: canCaptureLead,
     unit: leadUnit, instanceId: dbInstance.id, conversationCreatedAt: conversation.createdAt, timestamp, payload,
   }) ? { conversationId: conversation.id, clientId: leadClient.id, instanceId: dbInstance.id,
@@ -2521,12 +2533,13 @@ async function processMessage(
           unit: leadUnit,
         });
 
-        if (!welcomeReception) await sendAutomationText({
+        if (!aliceOwnsReception && !welcomeReception) await sendAutomationText({
           dbInstance,
           conversationId: conversation.id,
           contactPhone,
           message: formLeadWelcomeMessage(leadUnit, directFormLeadName),
           respondedByName: "Automação Meta",
+          beforeSend: () => ensureLegacyReceptionAvailable({ conversationId: conversation.id, instanceId: dbInstance.id }),
         });
       } catch (e) {
         console.error("[Webhook] Erro na recepção de formulário direto:", e);
@@ -2535,7 +2548,7 @@ async function processMessage(
   }
 
   // ═══ 3.5 Automação nativa: saudação CTWA + captura de nome ═══
-  if (canCaptureLead && !isFromMe && isSendablePhone && !welcomeReception) {
+  if (canCaptureLead && !isFromMe && isSendablePhone && !aliceOwnsReception && !welcomeReception) {
     try {
       const automation = await findCtwaWelcomeAutomation(leadUnit);
       const previousWaitingLog = automation ? await prisma.automationLog.findFirst({
@@ -2615,6 +2628,7 @@ async function processMessage(
               conversationId: conversation.id,
               contactPhone,
               message: secondMessage,
+              beforeSend: () => ensureLegacyReceptionAvailable({ conversationId: conversation.id, instanceId: dbInstance.id }),
             });
           }
 
@@ -2688,6 +2702,7 @@ async function processMessage(
           conversationId: conversation.id,
           contactPhone,
           message: firstMessage,
+          beforeSend: () => ensureLegacyReceptionAvailable({ conversationId: conversation.id, instanceId: dbInstance.id }),
         });
 
         await prisma.automationLog.create({

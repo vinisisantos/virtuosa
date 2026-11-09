@@ -71,6 +71,7 @@ function getStatusFilter(status: string) {
 
   if (status === "callback") {
     return {
+      aiMode: { not: "agent" },
       callbackTrackingStartedAt: { not: null },
       commercialPaused: false,
       callbackDueAt: { lte: new Date() },
@@ -126,6 +127,7 @@ function isConversationVisibleForRequest(
     callbackDueAt?: Date | string | null;
     callbackStreakCount?: number | null;
     commercialPaused?: boolean;
+    aiMode?: string;
     followUps?: Array<{ status?: string | null; scheduledAt?: Date | string | null }>;
     contact?: { phone?: string | null } | null;
   },
@@ -159,6 +161,7 @@ function isConversationVisibleForRequest(
     const dueAt = conversation.callbackDueAt ? new Date(conversation.callbackDueAt).getTime() : Number.POSITIVE_INFINITY;
     return Boolean(
       conversation.callbackTrackingStartedAt
+      && conversation.aiMode !== "agent"
       && !conversation.commercialPaused
       && dueAt <= Date.now()
       && (conversation.callbackStreakCount || 0) < WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS
@@ -291,6 +294,7 @@ function fullSearchStatusSql(status: string, showArchived: boolean, requesterUse
   if (status === "callback") {
     return Prisma.sql`
       AND conversation."callbackTrackingStartedAt" IS NOT NULL
+      AND conversation."aiMode" <> 'agent'
       AND conversation."commercialPaused" = false
       AND conversation."callbackDueAt" <= NOW()
       AND conversation."callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
@@ -982,6 +986,7 @@ export async function GET(req: NextRequest) {
         ${dddQueueCountsSql}
         COUNT(*) FILTER (
           WHERE "callbackTrackingStartedAt" IS NOT NULL
+            AND "aiMode" <> 'agent'
             AND "commercialPaused" = false
             AND "callbackDueAt" <= NOW()
             AND "callbackStreakCount" < ${WHATSAPP_CALLBACK_MAX_TEAM_ATTEMPTS}
