@@ -1,5 +1,5 @@
 export type AliceDialogueMessage = { role: string; text: string; timestamp?: string; author?: string | null };
-const questionKeys = ["nome", "queixa", "nivel", "primeira_vez", "regiao", "procedimento", "preferencia_dia", "preferencia_horario"] as const;
+export const ALICE_CONTINUITY_QUESTION_KEYS = ["nome", "queixa", "nivel", "primeira_vez", "regiao", "procedimento", "preferencia_dia", "preferencia_horario"] as const;
 
 export type AliceContinuityControls = {
   version: 1;
@@ -25,12 +25,12 @@ export function readAliceContinuityControls(input: unknown): AliceContinuityCont
     || (typeof value.presentationAt === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value.presentationAt) && Number.isFinite(Date.parse(value.presentationAt))))) return null;
   const booleans = ["nameKnown", "complaintKnown", "firstTimeKnown", "resultLevelKnown", "returningAfter24h", "appointmentRegistered"];
   if (booleans.some((key) => typeof value[key] !== "boolean") || !Array.isArray(value.questionsAsked)
-    || value.questionsAsked.some((key) => typeof key !== "string" || !(questionKeys as readonly string[]).includes(key))) return null;
+    || value.questionsAsked.some((key) => typeof key !== "string" || !(ALICE_CONTINUITY_QUESTION_KEYS as readonly string[]).includes(key))) return null;
   return value as AliceContinuityControls;
 }
 
 export function aliceContinuityQuestionKeys(values: readonly string[]): string[] {
-  return questionKeys.filter((key) => values.includes(key));
+  return ALICE_CONTINUITY_QUESTION_KEYS.filter((key) => values.includes(key));
 }
 
 export function readAliceContextDialogue(input: unknown): AliceDialogueMessage[] {
