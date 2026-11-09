@@ -5,6 +5,7 @@ import vm from "node:vm";
 import ts from "typescript";
 import { AiAssistantError, aiAssistantDigest } from "#lib/ai-assistant/policy";
 import { classifyAliceHandoff } from "#lib/ai-assistant/safety";
+import { sbcConversationPresentation } from "#lib/ai-assistant/conversation-presentation";
 
 // Carrega o módulo real com dependências isoladas: sem banco, rede ou dados da clínica.
 function fixture(unit, messages, target = null) {
@@ -32,6 +33,15 @@ function fixture(unit, messages, target = null) {
 }
 
 const message = (id, body, fromMe) => ({ id, body, fromMe, timestamp: new Date("2026-11-08T12:00:00Z"), respondedByName: fromMe ? "Equipe" : null });
+
+test("contexto real distingue saudação automática da apresentação pessoal da Alice", async () => {
+  const greeting = message("welcome", "Olá! Seja bem-vinda à Clínica Virtuosa. Recebemos seu contato!", true);
+  const client = message("client", "Volume e flacidez", false);
+  const first = await fixture("SBC", [greeting, client]).load();
+  assert.equal(sbcConversationPresentation(first.prompt).introduced, false);
+  const next = await fixture("SBC", [greeting, message("intro", "Sou a Alice, atendente da Virtuosa.", true), client]).load();
+  assert.equal(sbcConversationPresentation(next.prompt).introduced, true);
+});
 
 test("SBC: saudação posterior não bloqueia e preserva pergunta para a análise", async () => {
   const f = fixture("SBC", [message("client", "Quero saber sobre Lipo Laser", false), message("greeting", "Olá, recebemos seu contato!", true)]);

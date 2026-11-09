@@ -151,7 +151,9 @@ test("requisição da Alice usa Luna, schema de saída e sem IDs do CRM", () => 
 test("instruções priorizam a queixa e não pedem nome antes do agendamento em SBC", () => {
   const request = buildAliceAssistantRequest({ UNIDADE: "SBC" });
   assert.match(request.instructions, /Em SBC, se o nome não estiver disponível.*somente ao preparar o agendamento/);
-  assert.match(request.instructions, /Em SBC, se a cliente já informou a queixa/);
+  assert.match(request.instructions, /Em SBC, acolha a queixa já informada/);
+  assert.match(request.instructions, /PADRAO_DE_ATENDIMENTO_SBC, válido para todos os procedimentos/);
+  assert.match(request.instructions, /detalhe relevante.*esclareça antes de explicar/);
   assert.match(request.instructions, /semana ou no sábado/);
   assert.match(request.instructions, /não invente horários nem confirme reserva sem validação real/);
   assert.match(request.instructions, /Nas demais unidades, pergunte o nome/);
@@ -184,6 +186,20 @@ test("sugestões podem trazer duas mensagens separadas sem alterar respostas ant
   const combined = normalizeAiAssistantMessageLayout(parseGeneration({ ...basic, messages: ["Olá!", "Tudo bem?"] }), false);
   assert.equal(combined.response, "Olá!\n\nTudo bem?");
   assert.equal(combined.messages.length, 1);
+});
+
+test("Glúteos SBC não pula apresentação e descoberta de volume após a recepção automática", () => {
+  const prompt = { UNIDADE: "SBC", CAMPANHA: "Glúteo Perfeito", CONVERSA: [
+    { role: "atendente", text: "Olá! Seja muito bem-vinda(o) à Clínica Virtuosa. Recebemos seu contato e vamos te ajudar por aqui." },
+    { role: "atendente", text: "O que mais te incomoda? Volume, assimetria, flacidez ou outra coisa?" },
+    { role: "cliente", text: "Volume e flacidez" },
+  ] };
+  const premature = parseGeneration({ response: "Entendi! O procedimento ajuda na projeção. Prefere durante a semana ou no sábado?", confidence: "high", needsHuman: false, usedKnowledge: [] });
+  const result = normalizeAiAssistantMessageLayout(premature, false, prompt);
+  assert.equal(result.messages.length, 2);
+  assert.match(result.messages[0], /Alice.*atendente.*Virtuosa/i);
+  assert.match(result.messages[1], /médio.*grande/i);
+  assert.doesNotMatch(result.messages.join(" "), /semana|sábado|projeção|agend|Versiol/i);
 });
 
 test("mensagem sobre saúde encaminha localmente e evita avaliação clínica", () => {

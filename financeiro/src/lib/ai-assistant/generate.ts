@@ -12,7 +12,7 @@ import { generateClaudeReply } from "@/lib/ai-assistant/claude-provider";
 import { reserveClaudeMonthlyBudget } from "@/lib/ai-assistant/claude-budget";
 import { saveAliceDraft } from "@/lib/ai-assistant/save-draft";
 import { personalizeAiAssistantResponse } from "@/lib/ai-assistant/privacy";
-import { isSbcBotoxOpeningContext } from "@/lib/ai-assistant/message-sequence";
+import { isSbcOpeningSequenceContext } from "@/lib/ai-assistant/message-sequence";
 import { looksLikeSchedulingExchange, tryAliceAutoSchedule, type AliceAutoScheduleResult } from "@/lib/ai-assistant/auto-schedule";
 import { isSchedulingSuggestionExpired, schedulingSuggestionExpiry } from "@/lib/ai-assistant/sbc-scheduling-policy";
 import {
@@ -98,7 +98,7 @@ export async function generateConversationSuggestion(params: {
     dailyLimit: context.config.dailyBudgetMicroUsd,
   });
   const usage = { input: 0, output: 0 };
-  const allowSeparateMessages = isSbcBotoxOpeningContext(context.unit, context.prompt);
+  const allowSeparateMessages = isSbcOpeningSequenceContext(context.unit, context.prompt);
   let booking: AliceAutoScheduleResult = { status: "not_applicable" };
   try {
     let comparison: Prisma.InputJsonObject | null = null;
@@ -118,11 +118,11 @@ export async function generateConversationSuggestion(params: {
     } else if (params.compare) {
       const claudeUsage = { input: 0, output: 0 };
       const [codex, claude] = await Promise.allSettled([
-        generateAiAssistantReply(context.prompt, usage).then((value) => normalizeAiAssistantMessageLayout(value, allowSeparateMessages)),
+        generateAiAssistantReply(context.prompt, usage).then((value) => normalizeAiAssistantMessageLayout(value, allowSeparateMessages, context.prompt)),
         (async () => {
           if (!process.env.ANTHROPIC_API_KEY?.trim()) throw new AiAssistantError("Claude não configurado", 503);
           await reserveClaudeMonthlyBudget(context.prompt);
-          return normalizeAiAssistantMessageLayout(await generateClaudeReply(context.prompt, claudeUsage), allowSeparateMessages);
+          return normalizeAiAssistantMessageLayout(await generateClaudeReply(context.prompt, claudeUsage), allowSeparateMessages, context.prompt);
         })(),
       ]);
       if (codex.status === "rejected" && claude.status === "rejected") {
@@ -142,7 +142,7 @@ export async function generateConversationSuggestion(params: {
         selected: codexResult ? "codex" : "claude",
       };
     } else {
-      result = normalizeAiAssistantMessageLayout(await generateAiAssistantReply(context.prompt, usage), allowSeparateMessages);
+      result = normalizeAiAssistantMessageLayout(await generateAiAssistantReply(context.prompt, usage), allowSeparateMessages, context.prompt);
       suggestionTexts = result.messages;
     }
     if (!personalizeAiAssistantResponse(result.response, context.contactName)) throw new AiAssistantError("A Alice devolveu uma sugestão vazia", 502);
@@ -230,7 +230,7 @@ export async function generateConversationSuggestion(params: {
       handoffReason,
       schedulingValidUntil: context.unit === "SBC" ? schedulingSuggestionExpiry(suggestionTexts) : null,
       ...(booking.status !== "not_applicable" ? { booking } : {}),
-      sequenceAllowed: isSbcBotoxOpeningContext(context.unit, context.prompt),
+      sequenceAllowed: isSbcOpeningSequenceContext(context.unit, context.prompt),
       ...(comparison ? { comparison } : {}),
     };
     const draft = await saveAliceDraft({

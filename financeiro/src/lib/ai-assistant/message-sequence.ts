@@ -1,3 +1,5 @@
+import { sbcConversationPresentation } from "@/lib/ai-assistant/conversation-presentation";
+
 type Sequence = { provider: "codex" | "claude"; index: number; messages: [string, string] };
 
 export function readAliceMessageSequence(usage: unknown): Sequence | null {
@@ -22,4 +24,7 @@ export function isSbcBotoxOpeningContext(unit: string, prompt: unknown) {
   const text = `${typeof input.CAMPANHA === "string" ? input.CAMPANHA : ""} ${JSON.stringify(dialogue)}`
     .normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
   return /\bbotox\b/u.test(text) && /\bterco\s+superior\b/u.test(text);
+}
+export function isSbcOpeningSequenceContext(unit: string, prompt: unknown) {
+  return unit === "SBC" && Boolean(sbcConversationPresentation(prompt));
 }

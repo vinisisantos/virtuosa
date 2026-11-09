@@ -41,6 +41,7 @@ try {
     const sendCalls = [];
     let delayUse = false;
     let sequenceFixture = false;
+    const sequenceMessages = ["Olá, sou a Alice, atendente da Virtuosa!", "Me conta, você busca um ganho de volume médio ou grande, mais marcante?"];
     let sequenceStep = 0;
     let conversationMode = "manual";
     const instance = { id: `instance-${unit.toLowerCase()}`, name: `Comercial ${unit}`, instanceName: `Comercial ${unit}`, unit, status: "connected", userId: user.id, ownerId: user.id, canReply: true };
@@ -82,11 +83,11 @@ try {
         assistantCalls.push({ method: request.method(), body: request.postData() || "" });
         const input = request.postData() ? JSON.parse(request.postData()) : {};
         if (sequenceFixture && request.method() === "POST") {
-          data = { draft: { id: "sequence-draft", content: "Olá, sou a Alice!", status: "active", version: 1, updatedAt: now, usage: { sequenceAllowed: true, comparison: { codex: { response: "Olá, sou a Alice!", messages: ["Olá, sou a Alice!", "É sua primeira vez?"] }, claude: null } } } };
+          data = { draft: { id: "sequence-draft", content: sequenceMessages[0], status: "active", version: 1, updatedAt: now, usage: { sequenceAllowed: true, comparison: { codex: { response: sequenceMessages[0], messages: sequenceMessages }, claude: null } } } };
         } else if (sequenceFixture && request.method() === "GET" && sequenceStep >= 2) {
-          data = { mode: "suggestions", draft: { id: "sequence-draft", content: "Olá, sou a Alice!", status: "sent", version: 2, updatedAt: now, usage: { sequenceAllowed: true, sequence: { provider: "codex", index: 0, messages: ["Olá, sou a Alice!", "É sua primeira vez?"] }, comparison: { codex: { response: "Olá, sou a Alice!", messages: ["Olá, sou a Alice!", "É sua primeira vez?"] }, claude: null } } } };
+          data = { mode: "suggestions", draft: { id: "sequence-draft", content: sequenceMessages[0], status: "sent", version: 2, updatedAt: now, usage: { sequenceAllowed: true, sequence: { provider: "codex", index: 0, messages: sequenceMessages }, comparison: { codex: { response: sequenceMessages[0], messages: sequenceMessages }, claude: null } } } };
         } else if (sequenceFixture && request.method() === "PATCH" && input.action === "use") {
-          data = { success: true, content: sequenceStep === 0 ? "Olá, sou a Alice!" : "É sua primeira vez?", draftVersion: sequenceStep === 0 ? 2 : 3 };
+          data = { success: true, content: sequenceMessages[sequenceStep === 0 ? 0 : 1], draftVersion: sequenceStep === 0 ? 2 : 3 };
           if (sequenceStep === 0) sequenceStep = 1;
         } else if (request.method() === "PATCH" && input.action === "mode") {
           conversationMode = input.mode;
@@ -104,7 +105,7 @@ try {
         if (sequenceFixture) {
           sequenceStep = 2;
           conversation.lastMessageAt = new Date(Date.now() + 1000).toISOString();
-          data = { success: true, message: { id: "sent-first", messageId: "sent-first", body: "Olá, sou a Alice!", type: "text", fromMe: true, status: "sent", timestamp: conversation.lastMessageAt } };
+          data = { success: true, message: { id: "sent-first", messageId: "sent-first", body: sequenceMessages[0], type: "text", fromMe: true, status: "sent", timestamp: conversation.lastMessageAt } };
         }
       } else if (url.pathname.includes("/instances")) data = { instances: [instance], users: [user] };
       else if (url.pathname === "/api/whatsapp/status") data = { connected: true, instance, status: "connected" };
@@ -199,14 +200,14 @@ try {
       await page.waitForFunction(() => document.body.innerText.includes("Comparar sugestões"));
       await page.evaluate(() => [...document.querySelectorAll("button")].find((button) => button.textContent.includes("Comparar sugestões"))?.click());
       await page.waitForFunction(() => document.body.innerText.includes("Mensagem 2"));
-      assert.match(await page.$eval('section[aria-label="Sugestão Codex"]', (element) => element.innerText), /É sua primeira vez/);
+      assert.match(await page.$eval('section[aria-label="Sugestão Codex"]', (element) => element.innerText), /volume médio ou grande/);
       await page.click('section[aria-label="Sugestão Codex"] button');
       await page.waitForFunction(() => document.querySelector('textarea[placeholder="Digite uma mensagem"]')?.value.includes("sou a Alice"));
       assert.equal(sendCalls.length, 0, "a apresentação ainda não foi enviada automaticamente");
       await page.click('button[aria-label="Enviar mensagem"]');
       await page.waitForFunction(() => document.body.innerText.includes("Segunda mensagem"), { timeout: 10000 });
       await page.click('section[aria-label="Segunda mensagem sugerida"] button');
-      await page.waitForFunction(() => document.querySelector('textarea[placeholder="Digite uma mensagem"]')?.value.includes("primeira vez"));
+      await page.waitForFunction(() => document.querySelector('textarea[placeholder="Digite uma mensagem"]')?.value.includes("volume médio ou grande"));
       assert.equal(sendCalls.length, 1, "a segunda mensagem continua aguardando envio manual");
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `sequência sem overflow em ${width}`);
       await page.screenshot({ path: join(output, `sequence-${width}.png`), fullPage: true });
