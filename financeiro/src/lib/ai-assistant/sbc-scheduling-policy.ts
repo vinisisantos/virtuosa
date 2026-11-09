@@ -1,5 +1,6 @@
 import { saoPauloDateKey } from "#lib/date-filter";
 import { normalizeWhatsAppMessageStatus } from "#lib/whatsapp/message-status";
+import { chooseOfferedEvaluationSlot } from "#lib/ai-assistant/evaluation-choice-parser";
 
 type Message = { body: string; fromMe: boolean; status: string };
 
@@ -60,33 +61,5 @@ export function deriveSbcEvaluationChoice(params: { offer: Message; reply: Messa
   const { offer, reply, now } = params;
   const sentStatus = normalizeWhatsAppMessageStatus(offer.status);
   if (!offer.fromMe || reply.fromMe || !sentStatus || !["sent", "delivered", "read", "played"].includes(sentStatus)) return null;
-  const normalizedOffer = offer.body.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  if (!/\b(agend\w*|avaliac\w*|horari\w*|vagas?|marcar|prefere|pode ser|tenho)\b/u.test(normalizedOffer)
-    || /\b(nao|indisponivel|indisponiveis|cancelad\w*|fechad\w*)\b/u.test(normalizedOffer)) return null;
-  if (/\b(?:das|entre)\s+\d/i.test(offer.body)) return null;
-
-  // Uma aceitação genérica só é suficiente quando a oferta tem exatamente uma data e um horário explícitos.
-  const dates = [...offer.body.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/g)];
-  const times = [...offer.body.matchAll(/\b(\d{1,2})(?:h(?:(\d{2}))?|:(\d{2}))(?!\d)/gi)];
-  if (dates.length !== 1 || !times.length || times.length > 6) return null;
-  const [, day, month, year] = dates[0];
-  const permitted = buildSbcEvaluationOptions(now);
-  const datesInWindow = [...new Set(permitted.map((slot) => slot.slice(0, 10)))].filter((key) => {
-    const [candidateYear, candidateMonth, candidateDay] = key.split("-");
-    return candidateMonth === month.padStart(2, "0") && candidateDay === day.padStart(2, "0") && (!year || year === candidateYear);
-  });
-  if (datesInWindow.length !== 1) return null;
-  const offeredTimes = times.map(([, hour, minutesH, minutesColon]) => `${hour.padStart(2, "0")}:${minutesH || minutesColon || "00"}`);
-  const normalizedReply = reply.body.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  if (/[?]/u.test(normalizedReply)) return null;
-  const replyTimes = [...normalizedReply.matchAll(/\b(\d{1,2})(?:h(?:(\d{2}))?|:(\d{2}))(?!\d)/gi)];
-  if (replyTimes.length > 1) return null;
-  const replyWithoutTime = normalizedReply.replace(/\b\d{1,2}(?:h(?:\d{2})?|:\d{2})(?!\d)/gi, "").replace(/\bas\b/gu, "").replace(/[,.!\s]+/gu, " ").trim();
-  const affirmative = /^(sim|pode|pode ser|pode sim|sim pode|sim pode ser|ok|certo|combinado|confirmo|fechado|ta bom|esta bom)$/u.test(replyWithoutTime);
-  if (!affirmative && !(replyTimes.length === 1 && !replyWithoutTime)) return null;
-  if (times.length > 1 && replyTimes.length !== 1) return null;
-  const [, hour, minutesH, minutesColon] = replyTimes[0] || times[0];
-  const chosenTime = `${hour.padStart(2, "0")}:${minutesH || minutesColon || "00"}`;
-  const result = `${datesInWindow[0]}T${chosenTime}`;
-  return offeredTimes.includes(chosenTime) && permitted.includes(result) ? result : null;
+  return chooseOfferedEvaluationSlot(offer.body, reply.body, buildSbcEvaluationOptions(now));
 }

@@ -13,7 +13,7 @@ import { pausesCommercialCallbacks } from "@/lib/pipeline/commercial-status";
 import { recordPipelineScheduledStageEvent } from "@/lib/pipeline/scheduled-stage-events";
 import { sendEvaluationScheduleConfirmation } from "@/lib/whatsapp/evaluation-schedule-confirmation";
 import { dispatchEvaluationGroupNotice } from "@/lib/whatsapp/evaluation-group-notice";
-import { deriveSbcEvaluationChoice } from "@/lib/ai-assistant/sbc-scheduling-policy";
+import { selectSbcSchedulingExchange } from "@/lib/ai-assistant/sbc-scheduling-exchange";
 import { validateAliceBookingClaim, type AliceBookingClaim } from "@/lib/ai-assistant/autonomy/booking-authorization";
 import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_LEASE_MS, parseAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/policy";
 import { AI_ASSISTANT_CONFIG_KEY, parseAiAssistantConfig } from "@/lib/ai-assistant/policy";
@@ -26,25 +26,20 @@ export type AliceAutoScheduleResult =
 
 const review = (reason: string): AliceAutoScheduleResult => ({ status: "review", reason });
 
-function procedureFromConfirmedCampaign(campaignName: string | null, messages: RecentMessage[]) {
+function procedureFromConfirmedCampaign(campaignName: string | null, messages: RecentMessage[], offerId: string) {
   const candidate = evaluationProcedureDraft({ campaignName });
   if (!candidate) return null;
   const normalize = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "")
     .toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
   const campaign = normalize(candidate);
   if (campaign.length < 4) return null;
-  const source = messages.slice(0, -2).findLast((message) => !message.fromMe);
+  const source = messages.slice(0, messages.findIndex((message) => message.id === offerId)).findLast((message) => !message.fromMe);
   return source && (` ${normalize(source.body)} `).includes(` ${campaign} `)
     ? { procedure: candidate, source } : null;
 }
 
 export function looksLikeSchedulingExchange(messages: RecentMessage[]) {
-  const reply = messages.at(-1);
-  const offer = messages.at(-2);
-  if (!reply || !offer || reply.fromMe || !offer.fromMe) return false;
-  const normalizedReply = reply.body.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
-  const looksLikeAcceptance = /^(sim|pode|ok|certo|combinado|confirmo|fechado|(?:as\s*)?\d{1,2}(?:h|:))\b/u.test(normalizedReply.trim());
-  return looksLikeAcceptance && /\b\d{1,2}\/\d{1,2}\b/u.test(offer.body) && /\b\d{1,2}(?:h|:\d{2})/iu.test(offer.body);
+  return selectSbcSchedulingExchange(messages) !== null;
 }
 
 export async function tryAliceAutoSchedule(params: {
@@ -62,18 +57,16 @@ export async function tryAliceAutoSchedule(params: {
 }): Promise<AliceAutoScheduleResult> {
   if (params.unit !== "SBC" || params.safetyHold || !params.instanceUnit || !["SBC", "Todas"].includes(params.instanceUnit)
     || (params.instanceUnit === "Todas" && params.contactUnit !== "SBC")) return { status: "not_applicable" };
-  const reply = params.messages.at(-1);
-  const offer = params.messages.at(-2);
-  if (!reply || !offer || reply.fromMe || !offer.fromMe || (params.targetMessageId && params.targetMessageId !== reply.id)) return { status: "not_applicable" };
-  const slot = deriveSbcEvaluationChoice({ offer, reply, now: new Date() });
-  if (!slot && !looksLikeSchedulingExchange(params.messages)) return { status: "not_applicable" };
+  const exchange = selectSbcSchedulingExchange(params.messages);
+  if (!exchange || (params.targetMessageId && params.targetMessageId !== exchange.reply.id)) return { status: "not_applicable" };
+  const { offer, reply, replies, slot } = exchange;
   const activation = await prisma.appSetting.findUnique({ where: { key: "alice_auto_schedule_sbc_v1" }, select: { value: true } });
   let activatedAt: Date;
   try {
     const config = JSON.parse(activation?.value || "{}");
     activatedAt = new Date(config.activatedAt);
     if (config.enabled !== true || !Number.isFinite(activatedAt.getTime())
-      || offer.timestamp <= activatedAt || offer.createdAt <= activatedAt || reply.timestamp <= activatedAt || reply.createdAt <= activatedAt) return { status: "not_applicable" };
+      || [offer, ...replies].some((message) => message.timestamp <= activatedAt || message.createdAt <= activatedAt)) return { status: "not_applicable" };
   } catch { return { status: "not_applicable" }; }
   if (!slot) return review("A escolha de data e horário precisa ser confirmada pela equipe antes do agendamento.");
   const autonomy = params.autonomyClaim;
@@ -113,7 +106,7 @@ export async function tryAliceAutoSchedule(params: {
   });
   if (gabrielas.length !== 1) return review("Não foi possível identificar Gabriela Anselmo como responsável ativa em SBC.");
   const procedureNames = (await getPipelineProcedureSelections(prisma, [deal.id])).get(deal.id) || [];
-  const campaignProcedure = procedureNames.length ? null : procedureFromConfirmedCampaign(client.campaignName, params.messages);
+  const campaignProcedure = procedureNames.length ? null : procedureFromConfirmedCampaign(client.campaignName, params.messages, offer.id);
   const procedure = formatProcedureNames(procedureNames) || campaignProcedure?.procedure;
   if (!procedure) return review("Informe o procedimento de interesse antes de agendar.");
   const pipeline = deal.pipelineId ? await prisma.pipeline.findUnique({
@@ -158,14 +151,19 @@ export async function tryAliceAutoSchedule(params: {
     });
     if (latestAny?.id !== reply.id) return null;
     const messages = await tx.whatsAppMessage.findMany({
-      where: { conversationId: params.conversationId, type: "text", status: { not: "deleted" }, body: { not: "" } },
-      select: { id: true, body: true, status: true, fromMe: true, timestamp: true, createdAt: true },
-      orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 2,
+      where: { conversationId: params.conversationId, status: { not: "deleted" } },
+      select: { id: true, body: true, type: true, status: true, fromMe: true, timestamp: true, createdAt: true },
+      orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30,
     });
-    if (messages[0]?.id !== reply.id || messages[1]?.id !== offer.id
-      || messages[0].timestamp <= activatedAt || messages[0].createdAt <= activatedAt
-      || messages[1].timestamp <= activatedAt || messages[1].createdAt <= activatedAt
-      || deriveSbcEvaluationChoice({ offer: messages[1], reply: messages[0], now: new Date() }) !== slot) return null;
+    const currentExchange = selectSbcSchedulingExchange(messages.reverse());
+    if (!currentExchange || currentExchange.reply.id !== reply.id || currentExchange.offer.id !== offer.id
+      || currentExchange.slot !== slot || currentExchange.asksEvaluationCost !== exchange.asksEvaluationCost
+      || currentExchange.replies.length !== replies.length
+      || [currentExchange.offer, ...currentExchange.replies].some((message, index) => {
+        const original = [offer, ...replies][index];
+        return message.id !== original.id || message.body !== original.body
+          || message.timestamp <= activatedAt || message.createdAt <= activatedAt;
+      })) return null;
     const previous = await tx.aliceAutoSchedule.findUnique({ where: { conversationId_replyMessageId: { conversationId: params.conversationId, replyMessageId: reply.id } } });
     if (previous) return null;
     const currentClients = await tx.$queryRaw<{ name: string; phone: string | null; unit: string; isActive: boolean; campaignName: string | null }[]>`
@@ -217,6 +215,7 @@ export async function tryAliceAutoSchedule(params: {
     clientName: booked.clientName, clientPhone: params.phone, startTime: booked.appointment.startTime, allowAuthorizedSbcInstance: true,
     requireProviderMessageId: true,
     autonomyClaim: autonomy,
+    evaluationCostQuestion: exchange.asksEvaluationCost,
   });
   const confirmationState = confirmation.status === "sent" ? "submitted" : "uncertain";
   try {

@@ -50,6 +50,7 @@ export function queueDatabase(pg) {
       updateMany: updateMany("WhatsAppConversation"),
     },
     whatsAppMessage: { findFirst: findFirst("WhatsAppMessage"), findMany: findMany("WhatsAppMessage") },
+    aliceAutoSchedule: { findUnique: ({ where }) => findFirst("AliceAutoSchedule")({ where: where.conversationId_replyMessageId }) },
     client: { findMany: async () => [] },
     auditLog: { create: async ({ data }) => query(Prisma.sql`INSERT INTO "AuditLog" ("userName",action,entity,"entityId",details,unit)
       VALUES (${data.userName},${data.action},${data.entity},${data.entityId},${data.details},${data.unit})`) },

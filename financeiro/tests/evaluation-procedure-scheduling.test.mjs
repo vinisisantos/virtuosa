@@ -72,6 +72,22 @@ test('automação não substitui avaliação existente depois de revalidar o neg
   assert.equal(created.length, 0);
 });
 
+test('Alice pode criar avaliações de clientes diferentes no mesmo horário, preservando a trava por negócio', async () => {
+  const db = database();
+  const startTime = new Date(Date.now() + 86400000);
+  db.agendamento.findFirst = async ({ where }) => {
+    assert.equal(where.startTime, undefined, 'não rejeita a ocupação de outra cliente');
+    assert.ok(where.notes.contains.includes('pipelineDealId:'), 'busca somente a avaliação do próprio negócio');
+    return null;
+  };
+  await upsertPipelineEvaluationAppointment(request({ startTime, evaluationProcedure: 'Botox', rejectExistingAppointment: true }), db);
+  await upsertPipelineEvaluationAppointment(request({ startTime, evaluationProcedure: 'Botox', rejectExistingAppointment: true,
+    deal: { id: 'other-deal', clientName: 'Outra Cliente', unit: 'SBC' }, clientPhone: '5511900000002' }), db);
+  assert.equal(created.length, 2);
+  assert.equal(created[0].startTime.toISOString(), created[1].startTime.toISOString());
+  assert.notEqual(created[0].notes, created[1].notes);
+});
+
 test('outra caixa SBC e outras unidades preservam criação sem procedimento adicional', async () => {
   const otherInstanceDb = database();
   otherInstanceDb.agendamento.findFirst = async () => existing;

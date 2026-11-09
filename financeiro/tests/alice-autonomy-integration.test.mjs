@@ -232,6 +232,34 @@ test("duas mensagens usam uma única geração, mantêm custo e o complemento es
   } finally { await f.pg.close(); }
 });
 
+test('worker reconhece escolha antes de pergunta complementar e conclui sem gerar outra resposta de IA', async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    const loadContext = f.deps.loadContext;
+    f.deps.loadContext = async (...args) => ({ ...await loadContext(...args), messages: [
+      { id: 'offer', fromMe: true, status: 'delivered', body: 'Opções: 10/11 às 14h ou 11/11 às 14h. Qual fica melhor?' },
+      { id: 'choice', fromMe: false, status: 'received', body: 'quarta às 14h' },
+      { id: 'source-a', fromMe: false, status: 'received', body: 'Tem algum custo a avaliação?' },
+    ] });
+    let bookings = 0;
+    f.deps.schedule = async ({ claimToken, turn }) => {
+      assert.equal(claimToken, f.claim.token);
+      assert.equal(turn.sourceMessageId, 'source-a');
+      bookings++;
+      await f.pg.query('INSERT INTO "AliceAutoSchedule"(id,"conversationId","replyMessageId","appointmentId",state) VALUES(\'ledger\',\'conversation-a\',\'source-a\',\'appointment\',\'submitted\')');
+      return { status: 'booked', confirmation: 'submitted', startTime: '2026-11-11T17:00:00Z' };
+    };
+    const result = await processAliceAutonomousTurn(f.claim, {}, f.deps);
+    assert.equal(result, 'sent', (await f.readTurn()).error);
+    assert.equal(bookings, 1);
+    assert.equal(f.state.generations, 0);
+    assert.deepEqual(f.state.sends, [], 'a confirmação pertence ao serviço de agenda, não a uma segunda saída do worker');
+    const complete = await f.readTurn();
+    assert.equal(complete.appointmentId, 'appointment');
+    assert.equal(complete.status, 'sent');
+  } finally { await f.pg.close(); }
+});
+
 test("a resposta autônoma identifica Alice como autora interna, sem atribuir o envio a uma pessoa", async () => {
   const f = await runnerFixture(claimAliceAutonomousTurn);
   try {

@@ -198,16 +198,19 @@ export function buildEvaluationScheduleConfirmationMessage(params: {
   clientName: string;
   startTime: Date;
   template?: string | null;
+  evaluationCostQuestion?: boolean;
 }) {
   const config = getEvaluationScheduleUnitConfigByUnit(params.unit);
   if (!config) throw new Error(`Unidade sem automação de agendamento: ${params.unit}`);
 
-  return buildEvaluationMessage({
+  const message = buildEvaluationMessage({
     unit: params.unit,
     clientName: params.clientName,
     startTime: params.startTime,
     template: params.template?.trim() || config.scheduledTemplate,
   });
+  return params.unit === "SBC" && params.evaluationCostQuestion
+    ? `A avaliação é gratuita e sem compromisso.\n\n${message}` : message;
 }
 
 export function buildEvaluationConfirmationRequestMessage(params: {

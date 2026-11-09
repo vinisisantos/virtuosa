@@ -70,6 +70,19 @@ test("confirmação fica restrita à caixa de leads da própria unidade", () => 
   }), null);
 });
 
+test('confirmação de SBC responde à pergunta de custo no mesmo envio sem perder agenda e localização', () => {
+  const params = { unit: 'SBC', clientName: 'Cliente Teste', startTime: new Date('2026-11-11T17:00:00Z') };
+  const original = buildEvaluationScheduleConfirmationMessage(params);
+  assert.equal(buildEvaluationScheduleConfirmationMessage({ ...params, evaluationCostQuestion: true }),
+    `A avaliação é gratuita e sem compromisso.\n\n${original}`);
+  assert.match(original, /11\/11\/2026/);
+  assert.match(original, /14:00/);
+  assert.match(original, /Avenida das Nações Unidas/);
+  assert.match(original, /Localização: https:\/\//);
+  const osasco = { ...params, unit: 'Osasco' };
+  assert.equal(buildEvaluationScheduleConfirmationMessage({ ...osasco, evaluationCostQuestion: true }), buildEvaluationScheduleConfirmationMessage(osasco));
+});
+
 test("mensagem editada na automação substitui os dados da agenda", () => {
   const message = buildEvaluationScheduleConfirmationMessage({
     unit: "Osasco",

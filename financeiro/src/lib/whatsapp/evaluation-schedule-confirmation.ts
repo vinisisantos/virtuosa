@@ -27,6 +27,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
   allowAuthorizedSbcInstance?: boolean;
   requireProviderMessageId?: boolean;
   autonomyClaim?: AliceBookingClaim;
+  evaluationCostQuestion?: boolean;
 }): Promise<EvaluationScheduleConfirmationResult> {
   const unitConfig = getEvaluationScheduleUnitConfig({
     unit: params.unit,
@@ -120,6 +121,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
         clientName: params.clientName,
         startTime: params.startTime,
         template: messageTemplate,
+        evaluationCostQuestion: params.evaluationCostQuestion,
       }),
       respondedByName: proof ? ALICE_ATTENDANT_NAME : "Automação de agendamento",
       requireProviderMessageId: params.requireProviderMessageId,
