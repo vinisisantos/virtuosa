@@ -120,5 +120,28 @@ export function useAliceMonitoring(days: number) {
     }
   };
 
-  return { data, loading, loadingMore, saving, error, lastUpdatedAt, load, loadMore, changeEnabled };
+  const retryTurn = async (turnId: string) => {
+    if (saving) return false;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(ENDPOINT, { method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "retry_turn", turnId }) });
+      const result = await response.json().catch(() => ({}));
+      if (response.status === 401 || response.status === 403) {
+        if (mountedRef.current) setData(null);
+        throw new Error(ACCESS_ERROR);
+      }
+      if (!response.ok) throw new Error(result.error || "Não foi possível retomar este atendimento.");
+      if (mountedRef.current) await load();
+      return true;
+    } catch (cause) {
+      if (mountedRef.current) setError(cause instanceof Error ? cause.message : "Não foi possível retomar este atendimento.");
+      return false;
+    } finally {
+      if (mountedRef.current) setSaving(false);
+    }
+  };
+
+  return { data, loading, loadingMore, saving, error, lastUpdatedAt, load, loadMore, changeEnabled, retryTurn };
 }

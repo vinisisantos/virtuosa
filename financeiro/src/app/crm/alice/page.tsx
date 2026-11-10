@@ -18,7 +18,7 @@ export default function AliceMonitoringPage() {
 
 function AliceMonitoringContent() {
   const [days, setDays] = useState(7);
-  const { data, loading, loadingMore, saving, error, lastUpdatedAt, load, loadMore, changeEnabled } = useAliceMonitoring(days);
+  const { data, loading, loadingMore, saving, error, lastUpdatedAt, load, loadMore, changeEnabled, retryTurn } = useAliceMonitoring(days);
   const summary = data?.summary;
 
   return <main className={styles.page} aria-busy={loading || saving}>
@@ -67,7 +67,8 @@ function AliceMonitoringContent() {
         <p className={styles.note}>Custos estimados pelo uso registrado de tokens, em dólares. Não são o faturamento final da Anthropic. Agendamentos registrados não representam comparecimento ou venda.</p>
         <p className={styles.note}>O tempo das mensagens novas parte da entrada do lead. Nas retomadas, o tempo começa quando a pendência entra na fila da Alice, sem incluir a espera anterior.</p>
       </section>
-      <AliceMonitoringList items={data.items} hasMore={Boolean(data.nextCursor)} loadingMore={loadingMore} onLoadMore={() => void loadMore()} />
+      <AliceMonitoringList items={data.items} hasMore={Boolean(data.nextCursor)} loadingMore={loadingMore} saving={saving}
+        onRetry={retryTurn} onLoadMore={() => void loadMore()} />
       <AliceMonitoringControls data={data} saving={saving} onActivate={(anchor, previewToken) => changeEnabled(true, anchor, previewToken)} />
     </> : null}
   </main>;

@@ -44,6 +44,7 @@ export type AliceTurn = {
   error: string | null;
   appointmentId: string | null;
   instanceId: string | null;
+  retryable: boolean;
 };
 
 export type AliceBacklogCandidate = {

@@ -166,7 +166,7 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
               AND m.unidade='SBC' AND m."escalarHumano")`;
         if (resumed === 1) return { queued: true, turnId: turn.id, reason: "queued" };
       }
-      if (resumeSchedule) {
+      if (resumeSchedule && recentSource && source.type === "text" && source.body.trim()) {
         const resumed = await tx.$executeRaw`
           UPDATE "AliceAutonomousTurn" t SET status='queued',error=NULL,"completedAt"=NULL,"claimedAt"=NULL,
             "availableAt"=${aliceAutonomyAvailableAt(source.createdAt, now, params.origin === "backlog")},"messagesJson"=NULL,"updatedAt"=${now}

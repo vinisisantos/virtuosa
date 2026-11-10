@@ -10,6 +10,7 @@ import {
   aliceAutonomyConversationEligible,
   aliceAutonomyCostMicroUsd,
   aliceAutonomyRequiresHumanOwnership,
+  aliceRetryableTurnError,
   parseAliceAutonomyConfig,
 } from "../src/lib/ai-assistant/autonomy/policy.ts";
 
@@ -110,6 +111,16 @@ test("falhas transitórias mantêm Alice ativa, mas segurança clínica e envio 
   }
   assert.equal(aliceAutonomyRequiresHumanOwnership("uncertain", "human_review"), true);
   assert.equal(aliceAutonomyRequiresHumanOwnership("skipped", "clinical_safety"), false);
+});
+
+test("retomada individual aceita somente falhas recuperáveis, nunca segurança clínica ou envio incerto", () => {
+  for (const error of ["human_review", "generation_requires_review", "word_limit", "worker_failed_before_send", "schedule_option_expired_or_invalid"]) {
+    assert.equal(aliceRetryableTurnError(error), true, error);
+  }
+  for (const error of ["clinical_safety", "unsupported_procedure", "booking_requires_review", "provider_send_uncertain_no_retry"]) {
+    assert.equal(aliceRetryableTurnError(error), false, error);
+  }
+  assert.equal(aliceRetryableTurnError(null), false);
 });
 
 test("custo corresponde aos tokens observados, inclusive saída e categorias de cache", () => {
@@ -309,6 +320,26 @@ test("falha recuperável recente só recebe uma nova tentativa textual explícit
     await pg.exec(`UPDATE "LeadMemory" SET "escalarHumano"=FALSE WHERE id='memory'`);
     await pg.exec(`UPDATE "WhatsAppMessage" SET type='secretEncryptedMessage',body='' WHERE id='source-a'`);
     assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+  } finally { await pg.close(); }
+});
+
+test("erro de horário expirado só pode ser retomado para uma entrada textual recente", async () => {
+  const { pg, adapter } = await database({ memory: true });
+  const now = new Date();
+  const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a",
+    timestamp: now, origin: "inbound", resumeScheduleBy: "operator" };
+  try {
+    await activateFixture(pg, input.instanceId, now);
+    await pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
+    await insertTurn(pg, { instanceId: input.instanceId, origin: "inbound", status: "needs_human" });
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='schedule_option_expired_or_invalid',"generationStartedAt"=NOW(),attempts=1`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
+
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='schedule_option_expired_or_invalid',"generationStartedAt"=NOW(),attempts=1`);
+    await pg.exec(`UPDATE "WhatsAppMessage" SET type='audio',body='' WHERE id='source-a'`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    assert.deepEqual((await pg.query(`SELECT status,error FROM "AliceAutonomousTurn"`)).rows,
+      [{ status: "needs_human", error: "schedule_option_expired_or_invalid" }]);
   } finally { await pg.close(); }
 });
 

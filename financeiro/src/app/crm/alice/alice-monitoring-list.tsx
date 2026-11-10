@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowUpRight, Loader2, MessageSquare } from "lucide-react";
+import { ArrowUpRight, Loader2, MessageSquare, Play } from "lucide-react";
 import { ALICE_STATUSES, aliceConversationUrl, formatAliceCost, formatAliceDate, type AliceTurn } from "./monitoring-types";
 import styles from "./page.module.css";
 
-type Props = { items: AliceTurn[]; hasMore: boolean; loadingMore: boolean; onLoadMore: () => void };
+type Props = { items: AliceTurn[]; hasMore: boolean; loadingMore: boolean; saving: boolean;
+  onRetry: (turnId: string) => Promise<boolean>; onLoadMore: () => void };
 
-export function AliceMonitoringList({ items, hasMore, loadingMore, onLoadMore }: Props) {
+export function AliceMonitoringList({ items, hasMore, loadingMore, saving, onRetry, onLoadMore }: Props) {
   const [filter, setFilter] = useState("all");
   const filtered = items.filter((item) => filter === "all" || (filter === "attention"
     ? ["needs_human", "uncertain", "failed"].includes(item.status)
@@ -52,9 +53,15 @@ export function AliceMonitoringList({ items, hasMore, loadingMore, onLoadMore }:
               <span>{item.costMicroUsd === null ? "Custo não apurado" : formatAliceCost(item.costMicroUsd)}</span>
               {item.firstSentAt && <span>Primeiro envio {formatAliceDate(item.firstSentAt)}</span>}
             </div>
-            <Link className={styles.conversationLink} href={aliceConversationUrl(item.conversationId, item.instanceId)} aria-label={`Abrir conversa de ${item.contactName || "contato sem nome"}, final ${item.phoneLast4 || "não informado"}`}>
-              Abrir conversa <ArrowUpRight size={16} aria-hidden="true" />
-            </Link>
+            <div className={styles.turnActions}>
+              <Link className={styles.conversationLink} href={aliceConversationUrl(item.conversationId, item.instanceId)} aria-label={`Abrir conversa de ${item.contactName || "contato sem nome"}, final ${item.phoneLast4 || "não informado"}`}>
+                Abrir conversa <ArrowUpRight size={16} aria-hidden="true" />
+              </Link>
+              {item.retryable && <button type="button" className={styles.retryButton} disabled={saving} onClick={() => void onRetry(item.id)}>
+                {saving ? <Loader2 className={styles.spinner} size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+                Retomar esta falha
+              </button>}
+            </div>
           </li>;
         })}
       </ul>

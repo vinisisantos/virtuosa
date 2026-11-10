@@ -4,7 +4,9 @@ import type { AuthPayload } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { AI_ASSISTANT_CONFIG_KEY, AiAssistantError, parseAiAssistantConfig } from "@/lib/ai-assistant/policy";
 import { loadAliceAutonomyConfig, aliceAutonomyRuntimeStatus } from "@/lib/ai-assistant/autonomy/config";
-import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_MODEL, parseAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/policy";
+import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_MODEL, aliceRetryableTurnError,
+  parseAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/policy";
+import { activateAliceConversation } from "@/lib/ai-assistant/autonomy/activate";
 import { aliceAutonomySummaryQuery, aliceBacklogQuery, type AliceBacklogRow } from "@/lib/ai-assistant/autonomy/admin-queries";
 import { createAliceBacklogPreview, verifyAliceBacklogPreview } from "@/lib/ai-assistant/autonomy/preview";
 import { ALICE_AUTONOMY_CRON_JOB, ALICE_AUTONOMY_WORKER_STATE_KEY } from "@/lib/ai-assistant/autonomy/scheduler";
@@ -57,11 +59,16 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
   const [summaries, rows, candidates] = await Promise.all([
     database.$queryRaw<Record<string, number>[]>(aliceAutonomySummaryQuery(since)),
     database.$queryRaw<Array<{ id: string; conversationId: string; contactName: string | null; phoneLast4: string | null; status: string; createdAt: Date;
-      firstSentAt: Date | null; costMicroUsd: number; error: string | null; appointmentId: string | null; instanceId: string; origin: string; usageRecorded: boolean; generationStartedAt: Date | null }>>(Prisma.sql`
+      firstSentAt: Date | null; costMicroUsd: number; error: string | null; appointmentId: string | null; instanceId: string; origin: string;
+      usageRecorded: boolean; generationStartedAt: Date | null; providerMessageIds: Prisma.JsonValue; nextMessageIndex: number;
+      sourceTimestamp: Date | null; sourceCreatedAt: Date | null; sourceType: string | null; sourceBody: string | null }>>(Prisma.sql`
       SELECT t.id,t."conversationId",contact.name AS "contactName",RIGHT(regexp_replace(contact.phone,'[^0-9]','','g'),4) AS "phoneLast4",
-        t.status,t."createdAt",t."firstSentAt",t."costMicroUsd",t.error,t."appointmentId",t."instanceId",t.origin,t."usageRecorded",t."generationStartedAt"
+        t.status,t."createdAt",t."firstSentAt",t."costMicroUsd",t.error,t."appointmentId",t."instanceId",t.origin,t."usageRecorded",t."generationStartedAt",
+        t."providerMessageIds",t."nextMessageIndex",source.timestamp AS "sourceTimestamp",source."createdAt" AS "sourceCreatedAt",
+        source.type AS "sourceType",source.body AS "sourceBody"
       FROM "AliceAutonomousTurn" t LEFT JOIN "WhatsAppConversation" c ON c.id=t."conversationId" AND c."instanceId"=t."instanceId"
       LEFT JOIN "WhatsAppContact" contact ON contact.id=c."contactId"
+      LEFT JOIN "WhatsAppMessage" source ON source.id=t."sourceMessageId" AND source."conversationId"=t."conversationId"
       WHERE t.unit='SBC' AND t."instanceId"=${ALICE_AUTONOMY_INSTANCE_ID} AND t."createdAt">=${since}
         ${cursor ? Prisma.sql`AND (t."createdAt",t.id)<(${cursor.createdAt},${cursor.id})` : Prisma.empty}
       ORDER BY t."createdAt" DESC,t.id DESC LIMIT 51`),
@@ -76,12 +83,49 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
     items: selected.map((row) => ({ ...row, createdAt: row.createdAt.toISOString(), firstSentAt: row.firstSentAt?.toISOString() || null,
       costMicroUsd: row.generationStartedAt && !row.usageRecorded ? null : row.costMicroUsd,
       costUnknown: Boolean(row.generationStartedAt && !row.usageRecorded), error: row.error ? publicAliceTurnError(row.error) : null,
+      retryable: (row.status === "needs_human" || row.status === "failed") && aliceRetryableTurnError(row.error)
+        && row.origin === "inbound" && row.sourceTimestamp !== null && row.sourceCreatedAt !== null
+        && row.sourceTimestamp >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
+        && row.sourceCreatedAt >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
+        && row.sourceType === "text" && Boolean(row.sourceBody?.trim())
+        && !row.firstSentAt && !row.appointmentId && row.nextMessageIndex === 0
+        && Array.isArray(row.providerMessageIds) && row.providerMessageIds.length === 0,
+      sourceTimestamp: undefined, sourceCreatedAt: undefined, providerMessageIds: undefined, nextMessageIndex: undefined,
+      sourceType: undefined, sourceBody: undefined,
       generationStartedAt: undefined })),
     nextCursor: rows.length > 50 && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id })).toString("base64url") : null,
     backlogCandidates: candidates.slice(0, 200).map((row) => ({ conversationId: row.conversationId, contactName: row.contactName,
       phoneLast4: row.phoneLast4, unreadCount: row.unreadCount, lastInboundAt: row.lastInboundAt.toISOString(), previewToken: createAliceBacklogPreview(row, now) })),
     backlogTruncated: candidates.length > 200,
   };
+}
+
+export async function retryAliceFailedTurn(turnId: string, actor: Pick<AuthPayload, "userId" | "name">, database = prisma, now = new Date()) {
+  if (!turnId.trim() || turnId.length > 100) throw new AiAssistantError("Atendimento inválido.", 400);
+  const config = await loadAliceAutonomyConfig(database);
+  if (!config.enabled || !config.activatedAt || !aliceAutonomyRuntimeStatus().ready) {
+    throw new AiAssistantError("A Alice precisa estar ativa e disponível em SBC para retomar este atendimento.", 409);
+  }
+  const turn = await database.aliceAutonomousTurn.findFirst({ where: { id: turnId, instanceId: ALICE_AUTONOMY_INSTANCE_ID,
+    unit: "SBC", status: { in: ["needs_human", "failed"] } }, select: { id: true, conversationId: true, instanceId: true,
+      sourceMessageId: true, status: true, error: true, origin: true, firstSentAt: true, appointmentId: true,
+      generationStartedAt: true, nextMessageIndex: true, providerMessageIds: true, claimToken: true } });
+  if (!turn || !aliceRetryableTurnError(turn.error) || turn.origin !== "inbound" || turn.firstSentAt || turn.appointmentId
+    || turn.nextMessageIndex !== 0 || !turn.generationStartedAt || turn.claimToken
+    || !Array.isArray(turn.providerMessageIds) || turn.providerMessageIds.length !== 0) {
+    throw new AiAssistantError("Esta falha não pode ser repetida automaticamente. Confira a conversa e o status do agendamento.", 409);
+  }
+  const conversation = await database.whatsAppConversation.findFirst({ where: { id: turn.conversationId, instanceId: turn.instanceId },
+    select: { id: true, aiMode: true, aiModeUpdatedBy: true, aiModeUpdatedAt: true, instanceId: true } });
+  if (!conversation || conversation.aiMode !== "agent") {
+    throw new AiAssistantError("A conversa não está mais no atendimento autônomo. Atualize antes de tentar novamente.", 409);
+  }
+  await activateAliceConversation(turn.conversationId, conversation, actor.userId, new Date(config.activatedAt), turn.sourceMessageId, database, now);
+  await database.activityLog.create({ data: { userId: actor.userId, userName: actor.name || "Administrador", action: "UPDATE",
+    entityType: "ALICE_AUTONOMY_TURN", entityId: turn.id, unit: "SBC",
+    description: "Tentativa individual da Alice retomada pelo acompanhamento em SBC.",
+    metadata: JSON.stringify({ status: turn.status, error: turn.error, sourceMessageId: turn.sourceMessageId }) } });
+  return { queued: true };
 }
 
 function publicAliceTurnError(code: string) {

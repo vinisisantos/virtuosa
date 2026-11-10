@@ -26,6 +26,10 @@ export function aliceCanContinueAfterSoftHandoff(error: string) {
   return SOFT_HANDOFF_ERRORS.has(error);
 }
 
+export function aliceRetryableTurnError(error: string | null | undefined) {
+  return Boolean(error && (SOFT_HANDOFF_ERRORS.has(error) || error === "schedule_option_expired_or_invalid"));
+}
+
 export type AliceAutonomyConfig = {
   enabled: boolean;
   activatedAt: string | null;

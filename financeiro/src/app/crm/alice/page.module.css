@@ -28,9 +28,9 @@
 .periods button { min-height: 44px; padding: 0 12px; border-radius: 8px; color: var(--alice-secondary); }
 .periods button[aria-pressed="true"] { background: var(--primary); color: var(--primary-foreground); font-weight: 600; }
 .periods button:not([aria-pressed="true"]):hover { background: var(--muted); color: var(--foreground); }
-.button, .primaryButton, .pauseButton, .conversationLink { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; gap: 8px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 10px; font-weight: 600; text-align: center; text-decoration: none; }
+.button, .primaryButton, .pauseButton, .conversationLink, .retryButton { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; gap: 8px; padding: 9px 14px; border: 1px solid var(--border); border-radius: 10px; font-weight: 600; text-align: center; text-decoration: none; }
 .button { background: var(--card); color: var(--foreground); }
-.button:hover, .conversationLink:hover { background: var(--muted); }
+.button:hover, .conversationLink:hover, .retryButton:hover { background: var(--muted); }
 .primaryButton { background: var(--primary); border-color: transparent; color: var(--primary-foreground); }
 .primaryButton:hover { background: var(--primary-hover); }
 .pauseButton { background: var(--background); border-color: color-mix(in srgb, var(--foreground) 40%, var(--border)); color: var(--foreground); white-space: nowrap; }
@@ -79,6 +79,9 @@
 .errorDetail { font-size: 12px; color: var(--alice-secondary); margin: 7px 0 0; line-height: 1.5; }
 .turnMeta { gap: 4px; }
 .conversationLink { justify-self: start; font-size: 13px; color: var(--foreground); }
+.turnActions { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.retryButton { font-size: 13px; color: var(--foreground); background: var(--muted); cursor: pointer; }
+.retryButton:disabled { opacity: .6; cursor: progress; }
 .pagination { margin-top: 16px; }
 .empty { padding: 28px 4px; color: var(--alice-secondary); }
 .empty svg { margin-bottom: 12px; }

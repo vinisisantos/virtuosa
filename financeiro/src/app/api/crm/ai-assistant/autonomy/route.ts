@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
 import { requireAliceAuthorizedUser } from "@/lib/ai-assistant/access";
 import { AiAssistantError } from "@/lib/ai-assistant/policy";
-import { getAliceAutonomyMonitoring, setAliceAutonomyEnabled } from "@/lib/ai-assistant/autonomy/admin";
+import { getAliceAutonomyMonitoring, retryAliceFailedTurn, setAliceAutonomyEnabled } from "@/lib/ai-assistant/autonomy/admin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -30,6 +30,10 @@ export async function PATCH(req: NextRequest) {
   try {
     const user = await requireAdmin(req);
     const input = await req.json().catch(() => { throw new AiAssistantError("Configuração inválida.", 400); });
+    if (input?.action === "retry_turn") {
+      if (typeof input.turnId !== "string") throw new AiAssistantError("Atendimento inválido.", 400);
+      return NextResponse.json(await retryAliceFailedTurn(input.turnId, user), { headers: { "Cache-Control": "private, no-store" } });
+    }
     return NextResponse.json(await setAliceAutonomyEnabled(input, user), { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) { return errorResponse(error); }
 }
