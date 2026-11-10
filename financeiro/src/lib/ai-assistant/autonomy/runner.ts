@@ -100,13 +100,20 @@ export async function processAliceAutonomousTurn(
           return state;
         }
       }
-      const generating = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: { generationStartedAt: now() } });
+      const generating = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
+        data: { generationStartedAt: now(), usageRecorded: false } });
       if (!generating.count) return "skipped";
       if (Date.now() >= deadline - 20_000) return human("model_requested", "worker_budget_exhausted");
       const generated = await deps.generate(context, undefined, AbortSignal.timeout(Math.max(1, deadline - Date.now() - 20_000)));
       const { messages: generatedMessages, needsHuman, proposal, generationFailure, ...metrics } = generated;
       // O custo pertence ao turno mesmo quando uma intervenção durante a geração cancela a resposta.
-      await database.aliceAutonomousTurn.update({ where: { id: turn.id }, data: metrics });
+      await database.aliceAutonomousTurn.update({ where: { id: turn.id }, data: {
+        ...metrics, usageRecorded: metrics.usageRecorded && (!turn.generationStartedAt || turn.usageRecorded),
+        costMicroUsd: turn.costMicroUsd + metrics.costMicroUsd, inputTokens: turn.inputTokens + metrics.inputTokens,
+        outputTokens: turn.outputTokens + metrics.outputTokens, generationMs: turn.generationMs + metrics.generationMs,
+        cacheReadInputTokens: turn.cacheReadInputTokens + metrics.cacheReadInputTokens,
+        cacheCreationInputTokens: turn.cacheCreationInputTokens + metrics.cacheCreationInputTokens,
+      } });
       if (needsHuman || !generatedMessages.length) return human("model_requested", generationFailure || "generation_requires_review");
       messages = generatedMessages;
       if (memoryRuntime) {

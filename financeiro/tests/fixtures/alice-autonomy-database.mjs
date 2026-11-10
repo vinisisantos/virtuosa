@@ -114,7 +114,7 @@ export async function database({ memory = false } = {}) {
   await pg.exec(await readFile(new URL("../../prisma/migrations/20261109180000_alice_audio_transcription/migration.sql", import.meta.url), "utf8"));
   if (memory) {
     await pg.exec(await readFile(new URL("../../prisma/migrations/20261109100000_alice_conversation_memory/migration.sql", import.meta.url), "utf8"));
-    await pg.exec(`CREATE TABLE "Agendamento" (id TEXT, unit TEXT, "clientPhone" TEXT, procedimento TEXT, status TEXT, "startTime" TIMESTAMP);
+    await pg.exec(`CREATE TABLE "Agendamento" (id TEXT, unit TEXT, "clientPhone" TEXT, procedimento TEXT, status TEXT, "startTime" TIMESTAMP, "endTime" TIMESTAMP NOT NULL);
       CREATE TABLE "AuditLog" ("userName" TEXT, action TEXT, entity TEXT, "entityId" TEXT, details TEXT, unit TEXT);`);
   }
   return { pg, migration, adapter: queueDatabase(pg) };

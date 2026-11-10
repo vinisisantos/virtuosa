@@ -1,7 +1,7 @@
 import { Prisma, type AliceAutonomousTurn } from "@prisma/client";
 import { prisma } from "@/lib/db";
-import { phoneLookupKey } from "@/lib/phone";
-import { buildAliceContext, type AliceContextMessage, type AliceRegisteredAppointment } from "@/lib/alice/build-context";
+import { buildAliceContext, type AliceContextMessage } from "@/lib/alice/build-context";
+import { currentAliceAppointment } from "@/lib/alice/current-appointment";
 import { getOrCreateMemory, type AliceMemoryScope } from "@/lib/alice/memory";
 import { observeAliceHistory } from "@/lib/alice/runtime-memory";
 import { aliceFearPolicy } from "@/lib/alice/fear-policy";
@@ -10,26 +10,12 @@ import { buildAliceKnowledgeContext } from "@/lib/ai-assistant/alice-knowledge";
 import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-policy";
 import type { AliceGuardContext } from "@/lib/alice/guards";
 import type { AliceAutonomousContext, LegacyAliceAutonomousContext } from "@/lib/ai-assistant/autonomy/context";
-import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 import { projectAliceAudioHistory, isAliceTextInput } from "@/lib/alice/audio/history";
 
 export type AliceMemoryRuntime = { scope: AliceMemoryScope; guard: AliceGuardContext };
 type HistoryRow = AliceContextMessage & { messageId: string; createdAt: Date };
 
-export async function currentAliceAppointment(scope: AliceMemoryScope, phone: string,
-  database: Pick<typeof prisma, "$queryRaw"> = prisma): Promise<AliceRegisteredAppointment | null> {
-  if (scope.unidade !== "SBC" || scope.instanceId !== ALICE_AUTONOMY_INSTANCE_ID || !scope.conversationId) throw new Error("alice_appointment_invalid_scope");
-  const key = phoneLookupKey(phone);
-  if (!key || key.length < 10) return null;
-  const rows = await database.$queryRaw<{ startTime: Date; status: string }[]>(Prisma.sql`
-    SELECT "startTime", status FROM "Agendamento" WHERE unit='SBC' AND procedimento ILIKE '%avalia%'
-      AND status IN ('pendente','confirmado','nao_confirmou')
-      AND regexp_replace(COALESCE("clientPhone",''),'[^0-9]','','g') IN (${key},${`55${key}`})
-    ORDER BY CASE WHEN "startTime">=CURRENT_TIMESTAMP THEN 0 ELSE 1 END,
-      CASE WHEN "startTime">=CURRENT_TIMESTAMP THEN "startTime" END ASC,"startTime" DESC LIMIT 1`);
-  return rows[0] ? { conversationId: scope.conversationId, unidade: "SBC", date: rows[0].startTime,
-    state: rows[0].status === "confirmado" ? "CONFIRMADO" : "AGENDADO" } : null;
-}
+export { currentAliceAppointment };
 
 export async function loadAliceMemoryContext(context: LegacyAliceAutonomousContext, turn: AliceAutonomousTurn,
   database = prisma, now = new Date()): Promise<AliceAutonomousContext> {

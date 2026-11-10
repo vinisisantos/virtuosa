@@ -191,6 +191,58 @@ test("retomada explícita reaproveita só a escolha sem envio nem avaliação, n
   } finally { await pg.close(); }
 });
 
+test("preço bloqueado por avaliação passada só é retomado por operador sem compromisso atual ou efeitos externos", async () => {
+  const { pg, adapter } = await database({ memory: true });
+  const now = new Date();
+  const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a",
+    timestamp: now, origin: "backlog", resumeHistoricalPriceBy: "operator" };
+  try {
+    await activateFixture(pg, input.instanceId, now);
+    await pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
+    await insertTurn(pg, { instanceId: input.instanceId, status: "needs_human" });
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='price_after_booking',"generationStartedAt"=NOW(),"costMicroUsd"=501,"usageRecorded"=true`);
+    for (const changes of [{ origin: "inbound" }, { resumeHistoricalPriceBy: undefined }, { resumeHistoricalPriceBy: "someone-else" }]) {
+      assert.equal((await enqueueAliceAutonomousTurn({ ...input, ...changes }, adapter, now)).queued, false);
+    }
+    await pg.exec(`INSERT INTO "Agendamento" (id,unit,"clientPhone",procedimento,status,"startTime","endTime") VALUES
+      ('evaluation','SBC','5511900001234','Avaliação','pendente',NOW()+interval '1 week',NOW()+interval '1 week 30 minutes')`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "Agendamento" SET "startTime"=NOW()-interval '1 week',"endTime"=NOW()-interval '1 week'+interval '30 minutes';
+      INSERT INTO "AliceAutoSchedule"(id,"conversationId","replyMessageId",state) VALUES ('proof','conversation-a','source-a','uncertain')`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`DELETE FROM "AliceAutoSchedule" WHERE id='proof';
+      INSERT INTO "WhatsAppMessage"(id,"conversationId","messageId","fromMe") VALUES ('team','conversation-a','out',true)`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`DELETE FROM "WhatsAppMessage" WHERE id='team'; UPDATE "AliceAutonomousTurn" SET "nextMessageIndex"=1`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET "nextMessageIndex"=0,error='clinical_safety'`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='price_after_booking';
+      INSERT INTO "LeadMemory" (id,"conversationId",unidade,"escalarHumano","updatedAt") VALUES ('memory','conversation-a','SBC',TRUE,NOW())`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "LeadMemory" SET "escalarHumano"=FALSE WHERE id='memory';
+      INSERT INTO "WhatsAppMessage"(id,"conversationId","messageId") VALUES ('later-source','conversation-a','later')`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`DELETE FROM "WhatsAppMessage" WHERE id='later-source'`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
+    assert.deepEqual((await pg.query(`SELECT id,status,"costMicroUsd" FROM "AliceAutonomousTurn"`)).rows,
+      [{ id: 'turn-a', status: 'queued', costMicroUsd: 501 }]);
+  } finally { await pg.close(); }
+});
+
+test("geração após retomada conserva o custo e os tokens da primeira tentativa", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    Object.assign(f.claim.turn, { generationStartedAt: new Date(), costMicroUsd: 501, inputTokens: 10, usageRecorded: true });
+    await f.pg.exec(`UPDATE "AliceAutonomousTurn" SET "generationStartedAt"=NOW(),"costMicroUsd"=501,"inputTokens"=10,"usageRecorded"=true`);
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "queued");
+    const turn = await f.readTurn();
+    assert.equal(turn.costMicroUsd, 5001);
+    assert.equal(turn.inputTokens, 1010);
+    assert.equal(turn.usageRecorded, true);
+  } finally { await f.pg.close(); }
+});
+
 test("worker interrompido encerra processamento, deixa envio incerto sem retentar e pausa a conversa", async () => {
   const { pg, adapter } = await database();
   const now = new Date();
@@ -362,6 +414,29 @@ test("uma execução de worker não drena a fila inteira nem gera resposta extra
     assert.equal(batch.processed, 1);
     assert.equal(f.state.generations, 1);
     assert.equal(f.state.sends.length, 1);
+  } finally { await f.pg.close(); }
+});
+
+test("worker responde à recusa da manhã com uma nova oferta, sem criar reserva ou tirar o chat da Alice", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  const offer = "No sábado, 14/11/2026, temos 12h30 ou 13h. Qual horário você prefere?";
+  const turns = [
+    { id: "old-offer", fromMe: true, status: "delivered", body: "Dia 14/11/2026 temos horários de manhã. Você prefere 8h ou 9h?" },
+    { id: "restriction", fromMe: false, status: "received", body: "Eu não posso no período da manhã" },
+    { id: f.claim.turn.sourceMessageId, fromMe: false, status: "received", body: "Neste sábado" },
+  ];
+  try {
+    f.state.clock = new Date("2026-11-10T00:56:30Z");
+    const outcome = await processAliceAutonomousTurn(f.claim, {}, { ...f.deps,
+      loadContext: async (...args) => ({ ...await f.deps.loadContext(...args), messages: turns, source: turns.at(-1) }),
+      schedule: async () => assert.fail("Uma restrição de período não é uma reserva"),
+      generate: async (...args) => ({ ...await f.deps.generate(...args), messages: [offer] }),
+    });
+    assert.equal(outcome, "sent");
+    assert.deepEqual(f.state.sends, [offer]);
+    assert.equal(f.state.generations, 1);
+    assert.deepEqual(f.state.handoffs, []);
+    assert.equal((await f.readTurn()).appointmentId, null);
   } finally { await f.pg.close(); }
 });
 

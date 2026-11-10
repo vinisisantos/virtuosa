@@ -13,15 +13,22 @@ const replacements = {
   "@/lib/ai-assistant/context": "export async function loadAccessibleAliceConversation(){return globalThis.aliceModeTest.access;}",
   "@/lib/ai-assistant/generate": "export async function generateConversationSuggestion(){throw new Error('Não pode gerar modelos neste teste');}",
   "@/lib/ai-assistant/runtime": "export function requireAliceLiveRuntime(){}",
-  "@/lib/ai-assistant/autonomy/config": "export async function loadAliceAutonomyConfig(){return {enabled:globalThis.aliceModeTest.enabled};} export const aliceAutonomyRuntimeStatus=()=>({ready:globalThis.aliceModeTest.ready});",
-  "@/lib/ai-assistant/autonomy/queue": "export async function pauseAliceForHuman(){globalThis.aliceModeTest.events.push('pause');} export async function enqueueAliceAutonomousTurn(input){globalThis.aliceModeTest.events.push(input);}",
+  "@/lib/ai-assistant/autonomy/config": "export async function loadAliceAutonomyConfig(){return {enabled:globalThis.aliceModeTest.enabled,activatedAt:new Date().toISOString()};} export const aliceAutonomyRuntimeStatus=()=>({ready:globalThis.aliceModeTest.ready});",
+  "@/lib/ai-assistant/autonomy/queue": "const s=globalThis.aliceModeTest; export async function pauseAliceForHuman(){s.events.push('pause');} export async function lockAliceQueue(){} export async function enqueueAliceTurnInTransaction(input){s.events.push(input);return s.enqueueResult;} export const enqueueAliceAutonomousTurn=enqueueAliceTurnInTransaction;",
 };
 registerHooks({ resolve(specifier, context, next) {
   if (replacements[specifier]) return { url: `data:text/javascript,${encodeURIComponent(replacements[specifier])}`, shortCircuit: true };
   return next(specifier, context);
 } });
 state.db = {
-  whatsAppConversation: { update: async ({ data }) => { state.events.push(`mode:${data.aiMode}`); return { aiMode: data.aiMode }; } },
+  $transaction: async (callback) => {
+    const previous = state.events.length;
+    try { return await callback(state.db); } catch (error) { state.events.length = previous; throw error; }
+  },
+  whatsAppConversation: {
+    update: async ({ data }) => { state.events.push(`mode:${data.aiMode}`); return { aiMode: data.aiMode }; },
+    updateMany: async ({ data }) => { state.events.push(`mode:${data.aiMode}`); return { count: 1 }; },
+  },
   whatsAppMessage: { findFirst: async () => state.latest },
 };
 const { PATCH } = await import("../src/app/api/crm/ai-assistant/suggestions/route.ts");
@@ -29,9 +36,10 @@ beforeEach(() => {
   state.user = { userId: "operator" }; state.enabled = true; state.ready = true; state.events = [];
   state.access = { unit: "SBC", conversation: { instanceId: ALICE_AUTONOMY_INSTANCE_ID, aiMode: "suggestions" } };
   state.latest = { id: "internal-message", timestamp: new Date(), fromMe: false };
+  state.enqueueResult = { queued: true, reason: "queued" };
 });
-const mode = (value) => PATCH(new NextRequest("https://example.test/api/crm/ai-assistant/suggestions", {
-  method: "PATCH", body: JSON.stringify({ conversationId: "conversation", action: "mode", mode: value }),
+const mode = (value, pin) => PATCH(new NextRequest("https://example.test/api/crm/ai-assistant/suggestions", {
+  method: "PATCH", body: JSON.stringify({ conversationId: "conversation", action: "mode", mode: value, expectedSourceMessageId: pin }),
 }));
 
 test("PATCH não libera agente em Osasco, em outra caixa ou sem operação ativa", async () => {
@@ -65,4 +73,24 @@ test("só retoma revisão de agendamento quando o próprio handoff anterior deix
     assert.equal((await mode("agent")).status, 200);
     assert.equal(state.events[1].resumeBookingBy, expected);
   }
+});
+
+test("PATCH só publica o modo autônomo se a entrada pendente for assumida sem risco", async () => {
+  for (const reason of ["needs_human", "uncertain", "failed", "skipped", "booking_not_excluded", "conversation_paused"]) {
+    state.enqueueResult = { queued: false, reason };
+    assert.equal((await mode("agent")).status, 409, reason);
+    assert.deepEqual(state.events, [], "rollback preserva o modo");
+  }
+  state.enqueueResult = { queued: false, reason: "processing" };
+  assert.equal((await mode("agent")).status, 200, "turno já assumido não precisa de duplicata");
+  assert.equal(state.events[1].resumeHistoricalPriceBy, "operator", "somente ação explícita autenticada");
+});
+
+test("retomada dirigida não ativa outra fonte nem se sobrepõe à saída posterior", async () => {
+  assert.equal((await mode("agent", "previous-message")).status, 409);
+  state.latest.fromMe = true;
+  assert.equal((await mode("agent", "internal-message")).status, 409);
+  assert.deepEqual(state.events, []);
+  state.latest.fromMe = false;
+  assert.equal((await mode("agent", "internal-message")).status, 200);
 });

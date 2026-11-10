@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { deriveSbcEvaluationChoice } from '../src/lib/ai-assistant/sbc-scheduling-policy.ts';
+import { buildSbcEvaluationOptions, deriveSbcEvaluationChoice } from '../src/lib/ai-assistant/sbc-scheduling-policy.ts';
 import { selectSbcSchedulingExchange } from '../src/lib/ai-assistant/sbc-scheduling-exchange.ts';
 
 const now = new Date('2026-11-09T15:00:00Z');
@@ -32,6 +32,38 @@ const message = (id, body, fromMe) => ({ id, body, fromMe, status: fromMe ? 'del
 test('preferência só pelo sábado com vários horários mantém o diálogo, sem gravar nem escalar', () => {
   const offered = message('offer', 'Sábado 14/11 temos horários das 8h às 13h.', true);
   assert.equal(selectSbcSchedulingExchange([offered, message('reply', 'Prefiro sábado', false)], now), null);
+});
+test('recusar a manhã deste sábado é negociação; só agenda após aceitar uma alternativa da grade', () => {
+  const offered = message('am', 'Temos horários disponíveis no sábado, 14/11/2026. Você prefere de manhã cedo (8h, 8h30 ou 9h) ou um pouco mais tarde (9h30, 10h ou 10h30)?', true);
+  for (const replies of [
+    ['eu não posso no periodo da manhã', 'neste sábado'],
+    ['Neste sábado, não consigo de manhã.'],
+    ['não dá de manhã nesse sábado'],
+    ['prefiro à tarde no sábado'],
+  ]) {
+    assert.equal(selectSbcSchedulingExchange([offered, ...replies.map((text, i) => message(String(i), text, false))], now), null, replies.join(' / '));
+  }
+  const grid = buildSbcEvaluationOptions(now);
+  assert.ok(['12:30', '13:00'].every(time => grid.includes('2026-11-14T' + time)));
+  assert.ok(!grid.includes('2026-11-14T13:30'));
+  const alternative = message('new', 'No sábado, 14/11/2026, temos 12h30 ou 13h. Qual horário você prefere?', true);
+  const history = [offered, message('reject', 'Não posso de manhã neste sábado', false), alternative];
+  assert.equal(selectSbcSchedulingExchange([...history, message('pick', 'As 13h', false)], now)?.slot, '2026-11-14T13:00');
+  for (const unsafe of ['13h ou 12h30', '13h, mas estou grávida', 'não quero mais sábado']) {
+    const result = selectSbcSchedulingExchange([...history, message('change', unsafe, false)], now);
+    assert.ok(result && result.slot === null, unsafe);
+  }
+});
+test('oferta de sábado com só um horário não transforma negativa, pergunta ou ressalva em aceite', () => {
+  const offered = message('offer', 'No sábado, 14/11/2026, temos um horário às 13h. Pode ser?', true);
+  const respond = (...texts) => selectSbcSchedulingExchange([offered, ...texts.map((t, i) => message(String(i), t, false))], now);
+  assert.equal(respond('pode ser sábado')?.slot, '2026-11-14T13:00');
+  for (const texts of [['não posso neste sábado'], ['não posso de manhã neste sábado'], ['não posso de manhã', 'neste sábado']]) {
+    assert.equal(respond(...texts), null, texts.join(' / '));
+  }
+  for (const texts of [['pode ser sábado?'], ['pode ser sábado', 'mas estou grávida'], ['pode ser sábado, mas não às 13h']]) {
+    assert.equal(respond(...texts)?.slot, null, texts.join(' / '));
+  }
 });
 test('une saudação e escolha mantendo a oferta enviada e a última entrada como origem', () => {
   const messages = [

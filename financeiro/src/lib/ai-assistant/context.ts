@@ -29,6 +29,7 @@ export async function loadAccessibleAliceConversation(req: Request, conversation
       id: true,
       instanceId: true,
       aiMode: true,
+      aiModeUpdatedAt: true,
       aiModeUpdatedBy: true,
       blockedAt: true,
       archivedAt: true,

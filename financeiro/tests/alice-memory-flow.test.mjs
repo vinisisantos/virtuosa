@@ -177,13 +177,47 @@ test("falha após início de HTTP não prova apresentação nem permite reenvio 
   } finally { delete process.env.ALICE_CONVERSATION_MEMORY_SBC_ENABLED; await f.pg.close(); }
 });
 
+test("retorno por anúncio após avaliação antiga não confirmada responde sobre o preço sem alterar a agenda", async () => {
+  enableMemory();
+  const f = await runnerFixture(claimAliceAutonomousTurn, { memory: true });
+  try {
+    await f.pg.query(`INSERT INTO "Agendamento" VALUES
+      ('antiga','SBC','5511900001234','Avaliação','nao_confirmou',NOW()-interval '17 days',NOW()-interval '17 days'+interval '30 minutes'),
+      ('cancelada','SBC','5511900001234','Avaliação','desmarcou',NOW()+interval '1 day',NOW()+interval '2 days'),
+      ('outra-unidade','Osasco','5511900001234','Avaliação','confirmado',NOW()+interval '1 day',NOW()+interval '2 days')`);
+    await f.pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",body,status,timestamp,"respondedByName")
+      VALUES ('intro','conversation-a','intro',TRUE,'Sou a Alice, atendente da Virtuosa.','sent',NOW()-interval '20 days','Alice')`);
+    await f.pg.query(`UPDATE "WhatsAppMessage" SET body='Vim pelo LIPO LASER 699,00. Gostaria de mais informações.' WHERE id='source-a'`);
+    const resposta = 'O valor dessa campanha é R$ 699,00 por região.';
+    const deps = { ...f.deps, loadContext: loadAliceAutonomousContext, generate: (context, _, signal) => {
+      assert.equal(context.prompt.DADOS_AGENDA_ATUAIS, null);
+      return generateAliceAutonomousReply(context, async () => providerResponse(structuredOutput({ resposta: [resposta] })), signal);
+    } };
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, deps), 'sent');
+    assert.deepEqual(f.state.sends, [resposta]);
+    assert.equal((await f.pg.query('SELECT count(*)::int AS n FROM "Agendamento"')).rows[0].n, 3);
+  } finally { delete process.env.ALICE_CONVERSATION_MEMORY_SBC_ENABLED; await f.pg.close(); }
+});
+
+test("avaliação já iniciada continua protegida até o término", async () => {
+  enableMemory();
+  const f = await runnerFixture(claimAliceAutonomousTurn, { memory: true });
+  try {
+    await f.pg.query(`INSERT INTO "Agendamento" VALUES
+      ('agora','SBC','5511900001234','Avaliação','confirmado',NOW()-interval '10 minutes',NOW()+interval '20 minutes'),
+      ('futura','SBC','5511900001234','Avaliação','pendente',NOW()+interval '1 day',NOW()+interval '2 days')`);
+    const context = await loadAliceAutonomousContext(f.claim.turn, f.adapter, f.state.clock);
+    assert.equal(context.memoryRuntime.guard.appointment.state, 'CONFIRMADO');
+  } finally { delete process.env.ALICE_CONVERSATION_MEMORY_SBC_ENABLED; await f.pg.close(); }
+});
+
 test("agendamento atual surgindo durante geração bloqueia preço e falha fechada não apaga seu custo", async () => {
   enableMemory();
   const f = await runnerFixture(claimAliceAutonomousTurn, { memory: true });
   try {
     const deps = { ...f.deps, loadContext: loadAliceAutonomousContext, generate: (context, _, signal) => generateAliceAutonomousReply(context,
       async () => {
-        await f.pg.query(`INSERT INTO "Agendamento" VALUES ('appointment','SBC','5511900001234','Avaliação','confirmado',NOW()+interval '1 day')`);
+        await f.pg.query(`INSERT INTO "Agendamento" VALUES ('appointment','SBC','5511900001234','Avaliação','confirmado',NOW()+interval '1 day',NOW()+interval '1 day 30 minutes')`);
         return providerResponse(structuredOutput({ resposta: ['O valor é R$ 699,00.'] }));
       }, signal) };
     assert.equal(await processAliceAutonomousTurn(f.claim, {}, deps), 'needs_human');

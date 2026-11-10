@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { loadAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/config";
+import { currentAliceAppointment } from "@/lib/alice/current-appointment";
+import { phoneLookupKey } from "@/lib/phone";
 import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_LEASE_MS, aliceAutonomyAvailableAt, aliceAutonomyConversationEligible } from "@/lib/ai-assistant/autonomy/policy";
 
 export async function isAliceAutonomyActive(params: { conversationId: string; instanceId: string }, database = prisma) {
@@ -29,16 +31,29 @@ export async function pauseAliceForHuman(conversationId: string, database = pris
   });
 }
 
-export async function enqueueAliceAutonomousTurn(params: {
+type EnqueueAliceTurn = {
   conversationId: string; instanceId: string; sourceMessageId: string; timestamp: Date; origin: "inbound" | "backlog";
-  resumeBookingBy?: string;
-}, database = prisma, now = new Date()) {
+  resumeBookingBy?: string; resumeHistoricalPriceBy?: string;
+};
+
+export async function enqueueAliceAutonomousTurn(params: EnqueueAliceTurn, database = prisma, now = new Date()) {
   if (params.instanceId !== ALICE_AUTONOMY_INSTANCE_ID) return { queued: false, reason: "scope" };
   const config = await loadAliceAutonomyConfig(database);
   if (!config.enabled || !config.activatedAt) return { queued: false, reason: "disabled" };
   const activatedAt = new Date(config.activatedAt);
   return database.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`alice-turn:${params.conversationId}`}))`;
+    await lockAliceQueue(params.conversationId, tx);
+    return enqueueAliceTurnInTransaction(params, tx, activatedAt, now);
+  }, { timeout: 10_000 });
+}
+
+export async function lockAliceQueue(conversationId: string, tx: Prisma.TransactionClient) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`alice-turn:${conversationId}`}))`;
+}
+
+/** Ambos os chamadores serializam por conversa com lockAliceQueue antes da seleção da fonte. */
+export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx: Prisma.TransactionClient,
+  activatedAt: Date, now: Date) {
     const [conversation, source] = await Promise.all([
       tx.whatsAppConversation.findFirst({ where: { id: params.conversationId, instanceId: params.instanceId }, select: {
         instanceId: true, status: true, blockedAt: true, archivedAt: true, commercialPaused: true, aiMode: true, aiModeUpdatedAt: true, aiModeUpdatedBy: true, instance: { select: { unit: true } },
@@ -76,25 +91,37 @@ export async function enqueueAliceAutonomousTurn(params: {
       where: { conversationId_sourceMessageId: { conversationId: params.conversationId, sourceMessageId: source.id } },
       create: { id: randomUUID(), conversationId: params.conversationId, instanceId: params.instanceId, sourceMessageId: source.id,
         origin: params.origin, availableAt: aliceAutonomyAvailableAt(source.createdAt, now, params.origin === "backlog") }, update: {},
-      select: { id: true, status: true },
+      select: { id: true, status: true, error: true },
     });
-    // Apenas a retomada explícita do operador pode reutilizar o turno que
-    // parou ANTES de gravar a avaliação. Nunca repetir um envio incerto.
-    if (turn.status === "needs_human" && params.origin === "backlog" && params.resumeBookingBy
-      && conversation.aiModeUpdatedBy === params.resumeBookingBy) {
+    const resumeBooking = turn.error === "booking_requires_review" && params.resumeBookingBy;
+    const resumePrice = turn.error === "price_after_booking" && params.resumeHistoricalPriceBy;
+    const operator = resumeBooking || resumePrice;
+    if (turn.status === "needs_human" && params.origin === "backlog" && operator && conversation.aiModeUpdatedBy === operator) {
+      if (resumePrice) {
+        const contact = await tx.whatsAppConversation.findFirst({ where: { id: params.conversationId, instanceId: params.instanceId },
+          select: { contact: { select: { phone: true } } } });
+        const phone = contact?.contact.phone;
+        const scope = { conversationId: params.conversationId, instanceId: params.instanceId, unidade: "SBC" as const };
+        if (!phone || (phoneLookupKey(phone)?.length || 0) < 10 || await currentAliceAppointment(scope, phone, tx)) {
+          return { queued: false, turnId: turn.id, reason: "booking_not_excluded" };
+        }
+      }
+      // Reutiliza a linha única da fonte, nunca uma remessa incerta. O bloqueio de preço
+      // pode vir depois de uma geração paga, mas deve ter ocorrido antes da primeira saída.
       const resumed = await tx.$executeRaw`
         UPDATE "AliceAutonomousTurn" t SET status='queued',error=NULL,"completedAt"=NULL,"claimedAt"=NULL,
           "availableAt"=${aliceAutonomyAvailableAt(source.createdAt, now, true)},"updatedAt"=${now}
-        WHERE t.id=${turn.id} AND t.status='needs_human' AND t.error='booking_requires_review'
+        WHERE t.id=${turn.id} AND t.status='needs_human' AND t.error=${turn.error}
           AND t."claimToken" IS NULL AND t."nextMessageIndex"=0 AND t."firstSentAt" IS NULL AND t."appointmentId" IS NULL
-          AND t."generationStartedAt" IS NULL AND t."providerMessageIds"='[]'::jsonb
+          AND (t."generationStartedAt" IS NULL OR t.error='price_after_booking') AND t."providerMessageIds"='[]'::jsonb
+          ${resumePrice ? Prisma.sql`AND NOT EXISTS (SELECT 1 FROM "LeadMemory" m WHERE m."conversationId"=t."conversationId"
+            AND m.unidade='SBC' AND m."escalarHumano")` : Prisma.empty}
           AND NOT EXISTS (SELECT 1 FROM "AliceAutoSchedule" b WHERE b."conversationId"=t."conversationId" AND b."replyMessageId"=t."sourceMessageId")
           AND t."sourceMessageId"=(SELECT id FROM "WhatsAppMessage" WHERE "conversationId"=t."conversationId"
             AND status<>'deleted' ORDER BY timestamp DESC,id DESC LIMIT 1)`;
       if (resumed === 1) return { queued: true, turnId: turn.id, reason: "queued" };
     }
     return { queued: turn.status === "queued", turnId: turn.id, reason: turn.status };
-  }, { timeout: 10_000 });
 }
 
 export async function claimAliceAutonomousTurn(database = prisma, turnId?: string) {

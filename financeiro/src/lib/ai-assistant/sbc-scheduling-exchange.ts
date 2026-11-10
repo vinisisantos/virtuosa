@@ -19,6 +19,12 @@ function selectionText(body: string) {
   return body.replace(/[,;.\s]+(?:eu\s+)?saio do trabalho e vou direto[.!]?\s*$/iu, '').trim();
 }
 
+const day = /(?:(?:na|no|de|neste|nesta|nesse|nessa|este|esta|esse|essa) )?(?:(?:segunda|terca|quarta|quinta|sexta)(?: ?feira)?|sabado)/u.source;
+const period = /(?:(?:(?:no|nesse|neste) periodo (?:da|de)|durante a|de|da|pela|a) )?(?:manha|tarde|noite)/u.source;
+const preference = /(?:(?:eu )?(?:prefiro|nao (?:posso|consigo|da)|so posso)|pode ser|(?:para|pra) mim e melhor)/u.source;
+const periodPreference = `(?:${preference} )?${period}`;
+const negotiating = new RegExp(`^(?:(?:${preference} )?${day}|${periodPreference}(?: ${day})?|${day} ${periodPreference})$`, 'u');
+
 /** Mantém a última entrada como âncora da lease, mesmo quando o aceite veio antes da saudação/pergunta. */
 export function selectSbcSchedulingExchange<T extends Message>(messages: readonly T[], now = new Date()) {
   const recent = messages.slice(-30);
@@ -34,8 +40,7 @@ export function selectSbcSchedulingExchange<T extends Message>(messages: readonl
   const hasUnsupportedContent = replies.some((message) => (message.type && message.type !== 'text' && !message.audioTranscribed) || !message.body.trim());
   const selectionBody = choices.map((message) => selectionText(message.body)).filter(Boolean).join(' ');
   const slot = hasUnsupportedContent ? null : deriveSbcEvaluationChoice({ offer, reply: { ...reply, body: selectionBody }, now });
-  // Uma preferência simples sem horário único ainda é diálogo, não uma tentativa de gravar na agenda.
-  if (!slot && !hasUnsupportedContent && !selectionBody.includes('?')
-    && /^(?:(?:eu )?prefiro |pode ser |(?:para|pra) mim e melhor )?(?:(?:na|no|de|pela|a) )?(?:(?:segunda|terca|quarta|quinta|sexta)(?: ?feira)?|sabado|manha|tarde|noite)$/u.test(normalize(selectionBody))) return null;
+  // Escolher um dia ou recusar um período pede opções, não revisão de uma reserva.
+  if (!slot && !hasUnsupportedContent && !selectionBody.includes('?') && negotiating.test(normalize(selectionBody))) return null;
   return { offer, reply, replies, slot, asksEvaluationCost: replies.some((message) => isEvaluationCostQuestion(message.body)) };
 }
