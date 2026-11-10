@@ -110,7 +110,7 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
               AND status<>'deleted' ORDER BY timestamp DESC,id DESC LIMIT 1)
             AND NOT EXISTS (SELECT 1 FROM "AliceAutoSchedule" b WHERE b."conversationId"=t."conversationId" AND b."replyMessageId"=t."sourceMessageId")
             AND NOT EXISTS (SELECT 1 FROM "LeadMemory" m WHERE m."conversationId"=t."conversationId"
-              AND m.unidade='SBC' AND m."escalarHumano')`;
+              AND m.unidade='SBC' AND m."escalarHumano")`;
         if (resumed === 1) return { queued: true, turnId: turn.id, reason: "queued" };
       }
       if (resumePrice) {
