@@ -7,6 +7,7 @@ export const ALICE_AUTONOMY_MODEL = "claude-sonnet-4-6";
 export const ALICE_AUTONOMY_DELAY_MS = 30_000;
 export const ALICE_AUTONOMY_COMPLEMENT_MS = 3_000;
 export const ALICE_AUTONOMY_LEASE_MS = 120_000;
+export const ALICE_AUTONOMY_RECOVERY_WINDOW_MS = 100 * 60 * 60 * 1000;
 export const ALICE_AUTONOMY_ACTIVE_STATES = ["queued", "processing", "sending"];
 
 const SOFT_HANDOFF_ERRORS = new Set([

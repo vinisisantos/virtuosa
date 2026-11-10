@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { AI_ASSISTANT_CONFIG_KEY, AiAssistantError, parseAiAssistantConfig } from "@/lib/ai-assistant/policy";
 import { loadAliceAutonomyConfig, aliceAutonomyRuntimeStatus } from "@/lib/ai-assistant/autonomy/config";
 import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_MODEL, aliceRetryableTurnError,
-  aliceRetryAttemptLimit, parseAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/policy";
+  ALICE_AUTONOMY_RECOVERY_WINDOW_MS, aliceRetryAttemptLimit, parseAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/policy";
 import { activateAliceConversation } from "@/lib/ai-assistant/autonomy/activate";
 import { aliceAutonomySummaryQuery, aliceBacklogQuery, type AliceBacklogRow } from "@/lib/ai-assistant/autonomy/admin-queries";
 import { createAliceBacklogPreview, verifyAliceBacklogPreview } from "@/lib/ai-assistant/autonomy/preview";
@@ -76,7 +76,8 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
       WHERE t.unit='SBC' AND t."instanceId"=${ALICE_AUTONOMY_INSTANCE_ID} AND t."createdAt">=${since}
         ${cursor ? Prisma.sql`AND (t."createdAt",t.id)<(${cursor.createdAt},${cursor.id})` : Prisma.empty}
       ORDER BY t."createdAt" DESC,t.id DESC LIMIT 51`),
-    database.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ cutoff: now, limit: 201 })),
+    // A prévia de retomada nunca lista conversas antigas sem contato recente.
+    database.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ cutoff: now, from: new Date(now.getTime() - ALICE_AUTONOMY_RECOVERY_WINDOW_MS), limit: 201 })),
   ]);
   const selected = rows.slice(0, 50);
   const last = selected.at(-1);
@@ -89,8 +90,8 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
       costUnknown: Boolean(row.generationStartedAt && !row.usageRecorded), error: row.error ? publicAliceTurnError(row.error) : null,
       retryable: (row.status === "needs_human" || row.status === "failed") && aliceRetryableTurnError(row.error)
         && row.origin === "inbound" && row.sourceTimestamp !== null && row.sourceCreatedAt !== null
-        && row.sourceTimestamp >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
-        && row.sourceCreatedAt >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
+        && row.sourceTimestamp >= new Date(now.getTime() - ALICE_AUTONOMY_RECOVERY_WINDOW_MS)
+        && row.sourceCreatedAt >= new Date(now.getTime() - ALICE_AUTONOMY_RECOVERY_WINDOW_MS)
         && row.sourceIsLatestInbound && row.sourceType === "text" && Boolean(row.sourceBody?.trim())
         && row.attempts <= aliceRetryAttemptLimit(row.error, row.attempts)
         && !row.firstSentAt && !row.appointmentId && row.nextMessageIndex === 0
@@ -160,7 +161,8 @@ export async function setAliceAutonomyEnabled(input: unknown, actor: Pick<AuthPa
     let cohort: AliceBacklogRow[] = [];
     if (preview && anchorId) {
       const cutoff = now;
-      const anchor = (await tx.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ cutoff, anchorId, limit: 1 })))[0];
+      const recoveryStart = new Date(now.getTime() - ALICE_AUTONOMY_RECOVERY_WINDOW_MS);
+      const anchor = (await tx.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ cutoff, from: recoveryStart, anchorId, limit: 1 })))[0];
       if (!anchor || anchor.sourceMessageId !== preview.sourceMessageId || anchor.lastInboundAt.toISOString() !== preview.timestamp) {
         throw new AiAssistantError("A conversa inicial mudou ou deixou de estar pendente. Atualize a prévia.", 409);
       }

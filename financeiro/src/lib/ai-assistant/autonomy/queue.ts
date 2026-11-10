@@ -7,7 +7,7 @@ import { currentAliceAppointment } from "@/lib/alice/current-appointment";
 import { phoneLookupKey } from "@/lib/phone";
 import { selectSbcSchedulingExchange } from "@/lib/ai-assistant/sbc-scheduling-exchange";
 import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_LEASE_MS, aliceAutonomyAvailableAt,
-  aliceAutonomyConversationEligible, aliceCanContinueAfterSoftHandoff, aliceRetryAttemptLimit } from "@/lib/ai-assistant/autonomy/policy";
+  ALICE_AUTONOMY_RECOVERY_WINDOW_MS, aliceAutonomyConversationEligible, aliceCanContinueAfterSoftHandoff, aliceRetryAttemptLimit } from "@/lib/ai-assistant/autonomy/policy";
 
 export async function isAliceAutonomyActive(params: { conversationId: string; instanceId: string }, database = prisma) {
   if (params.instanceId !== ALICE_AUTONOMY_INSTANCE_ID) return false;
@@ -135,7 +135,7 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
     const resumeClinicalFear = turn.error === "clinical_safety" && params.resumeClinicalFearBy;
     const resumeEmptyEnvelope = turn.error === "new_customer_message" ? params.resumeEmptyEnvelopeBy : undefined;
     const operator = resumeBooking || resumePrice || resumeSchedule || resumeSoftFailure || resumeClinicalFear || resumeEmptyEnvelope;
-    const sourceCutoff = new Date(now.getTime() - 100 * 60 * 60 * 1000);
+    const sourceCutoff = new Date(now.getTime() - ALICE_AUTONOMY_RECOVERY_WINDOW_MS);
     const recentSource = source.timestamp >= sourceCutoff && source.createdAt >= sourceCutoff;
     let resumeBookingChoice = false;
     if (resumeBooking && params.origin === "inbound" && recentSource && source.type === "text" && source.body.trim()

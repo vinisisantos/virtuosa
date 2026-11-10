@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { AiAssistantError } from "@/lib/ai-assistant/policy";
 import { clearAliceEscalationOnResume } from "@/lib/alice/runtime-memory";
 import { aliceCanResumeGeneralFear, aliceHealthHistoryRequiresHuman } from "@/lib/alice/fear-policy";
-import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
+import { ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_RECOVERY_WINDOW_MS } from "@/lib/ai-assistant/autonomy/policy";
 import { enqueueAliceTurnInTransaction, lockAliceQueue } from "@/lib/ai-assistant/autonomy/queue";
 
 type ModeSnapshot = { aiMode: string; aiModeUpdatedBy: string | null; aiModeUpdatedAt: Date | null; instanceId: string };
@@ -36,7 +36,7 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
       });
       const origin = existing?.origin === "inbound" || (!existing && latest.timestamp >= activatedAt) ? "inbound" : "backlog";
       let resumeClinicalFearBy: string | undefined;
-      const recoveryCutoff = new Date(now.getTime() - 100 * 60 * 60 * 1000);
+      const recoveryCutoff = new Date(now.getTime() - ALICE_AUTONOMY_RECOVERY_WINDOW_MS);
       if (prior.aiMode === "manual" && prior.aiModeUpdatedBy === "alice-handoff" && existing
         && ["needs_human", "failed"].includes(existing.status) && existing.error === "clinical_safety"
         && latest.timestamp >= recoveryCutoff && latest.createdAt >= recoveryCutoff && latest.type === "text" && latest.body.trim()

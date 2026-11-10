@@ -99,6 +99,7 @@ try {
 
     await page.goto(`${origin}/crm/alice`, { waitUntil: "networkidle0" });
     await page.waitForFunction(() => document.body.innerText.includes("Alice ativa em SBC"));
+    assert.match(await text(page), /somente das últimas 100 horas/);
     await noOverflow(page, `painel ${width}`);
     assert.match(await text(page), /Envio aceito/);
     assert.match(await text(page), /não comprova entrega nem leitura/);

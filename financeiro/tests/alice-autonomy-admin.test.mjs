@@ -52,10 +52,38 @@ async function fixture() {
   await pg.query('UPDATE "AppSetting" SET value=\'{"enabled":false}\' WHERE key=\'alice_autonomous_sbc_v1\'');
   await pg.query('UPDATE "WhatsAppMessage" SET timestamp=$1,"createdAt"=$1 WHERE id=\'source-a\'', [new Date(now.getTime() - 120_000)]);
   const db = adminDatabase(pg);
-  const candidates = () => db.$queryRaw(aliceBacklogQuery({ cutoff: now }));
+  const recoveryStart = new Date(now.getTime() - 100 * 60 * 60 * 1000);
+  const candidates = () => db.$queryRaw(aliceBacklogQuery({ cutoff: now, from: recoveryStart }));
   const preview = async () => createAliceBacklogPreview((await candidates())[0], now);
-  return { pg, db, now, candidates, preview };
+  return { pg, db, now, recoveryStart, candidates, preview };
 }
+
+test("prévia e revalidação da retomada excluem mensagens fora das últimas 100 horas", async () => {
+  const f = await fixture();
+  try {
+    const oldTimestamp = new Date(f.recoveryStart.getTime() - 1_000);
+    await f.pg.query('INSERT INTO "WhatsAppContact" VALUES ($1,$2,$3)', ["contact-old-timestamp", "Contato antigo", "5511900005678"]);
+    await f.pg.query('INSERT INTO "WhatsAppConversation" (id,"instanceId","contactId","aiMode") VALUES ($1,$2,$3,$4)',
+      ["conversation-old-timestamp", ALICE_AUTONOMY_INSTANCE_ID, "contact-old-timestamp", "agent"]);
+    await f.pg.query('INSERT INTO "WhatsAppMessage"(id,"conversationId","messageId","fromMe",timestamp,"createdAt") VALUES($1,$2,$3,FALSE,$4,$4)',
+      ["old-timestamp", "conversation-old-timestamp", "old-timestamp", oldTimestamp]);
+    await f.pg.query('INSERT INTO "WhatsAppContact" VALUES ($1,$2,$3)', ["contact-old-created", "Contato importado", "5511900008765"]);
+    await f.pg.query('INSERT INTO "WhatsAppConversation" (id,"instanceId","contactId","aiMode") VALUES ($1,$2,$3,$4)',
+      ["conversation-old-created", ALICE_AUTONOMY_INSTANCE_ID, "contact-old-created", "agent"]);
+    await f.pg.query('INSERT INTO "WhatsAppMessage"(id,"conversationId","messageId","fromMe",timestamp,"createdAt") VALUES($1,$2,$3,FALSE,$4,$5)',
+      ["old-created", "conversation-old-created", "old-created", new Date(f.now.getTime() - 60_000), oldTimestamp]);
+    assert.deepEqual((await f.candidates()).map((row) => row.conversationId), ["conversation-a"]);
+    const report = await getAliceAutonomyMonitoring({ days: 7 }, f.db, f.now, ready);
+    assert.deepEqual(report.backlogCandidates.map((row) => row.conversationId), ["conversation-a"]);
+
+    const staleTimestamp = new Date(f.now.getTime() - (100 * 60 * 60 * 1000) + 60_000);
+    await f.pg.query('UPDATE "WhatsAppMessage" SET timestamp=$1,"createdAt"=$1 WHERE id=\'source-a\'', [staleTimestamp]);
+    const token = createAliceBacklogPreview({ conversationId: "conversation-a", sourceMessageId: "source-a", lastInboundAt: staleTimestamp }, f.now);
+    await assert.rejects(setAliceAutonomyEnabled({ enabled: true, backlogAnchorConversationId: "conversation-a", backlogPreviewToken: token },
+      actor, f.db, new Date(f.now.getTime() + 120_000), ready), /mudou/);
+    assert.deepEqual((await f.pg.query('SELECT status FROM "AliceAutonomousTurn"')).rows, []);
+  } finally { await f.pg.close(); }
+});
 
 test("ativação usa âncora assinada, mantém ordem e não consulta modelos ou envia mensagens", async () => {
   const f = await fixture();

@@ -56,7 +56,7 @@ export function AliceMonitoringControls({ data, saving, onActivate }: Props) {
         <div className={styles.activation}>
           <h3>{active ? "Retomar pendências sem pausar a Alice" : firstActivation ? "Por onde começar as pendências" : "Retomar o atendimento autônomo"}</h3>
           {active
-            ? <p className={styles.note}>As novas mensagens continuarão sendo atendidas. Selecione uma conversa para enfileirar as últimas entradas ainda sem resposta, inclusive em conversas antigas ou com avaliação marcada.</p>
+            ? <p className={styles.note}>As novas mensagens continuarão sendo atendidas. Selecione uma conversa para enfileirar entradas sem resposta somente das últimas 100 horas, inclusive em conversas com avaliação marcada.</p>
             : !firstActivation && <p className={styles.note}>Sem escolher uma nova conversa inicial, a retomada vale somente para novas mensagens. Pendências anteriores não são reenviadas nem retomadas automaticamente.</p>}
           {candidates.length > 0 ? (
             <>
@@ -72,7 +72,7 @@ export function AliceMonitoringControls({ data, saving, onActivate }: Props) {
               </p>}
             </>
           ) : <p className={styles.note}>{firstActivation ? "Nenhuma pendência elegível foi localizada para definir o início. Atualize o acompanhamento antes de ativar." : "Nenhuma pendência elegível na lista. A retomada vale apenas para novas mensagens, sem reprocessar o lote anterior."}</p>}
-          {data.backlogTruncated && <p className={styles.note}>A seleção mostra as primeiras 200 pendências elegíveis. Há outras além desta lista; confirme o início e o recorte antes de ativar.</p>}
+          {data.backlogTruncated && <p className={styles.note}>A seleção mostra as primeiras 200 pendências das últimas 100 horas. Há outras além desta lista; escolha o início da retomada para manter o lote controlado.</p>}
 
           {!data.readiness.ready && <div className={styles.warning} role="status">
             <AlertTriangle aria-hidden="true" size={18} />
@@ -82,8 +82,8 @@ export function AliceMonitoringControls({ data, saving, onActivate }: Props) {
           {confirming ? <div className={styles.confirmation}>
             <h3>{active ? "Confirmar retomada das pendências" : "Confirmar ativação em SBC"}</h3>
             <p>{active
-              ? "A Alice enviará respostas reais às pendências a partir da conversa selecionada, sem pausar as novas mensagens. Usa Sonnet 4.6, sem teto mensal de gasto no CRM; conversas assumidas pela equipe continuam protegidas."
-              : `A Alice poderá enviar respostas reais ${selected ? "às novas mensagens e às pendências selecionadas" : "às novas mensagens, sem retomar pendências anteriores"}, 24 horas por dia, usando Sonnet e sem teto mensal de gasto no CRM.`}</p>
+              ? "A Alice enviará respostas reais às pendências das últimas 100 horas a partir da conversa selecionada, sem pausar as novas mensagens. Usa Sonnet 4.6, sem teto mensal de gasto no CRM; conversas assumidas pela equipe continuam protegidas."
+              : `A Alice poderá enviar respostas reais ${selected ? "às novas mensagens e às pendências selecionadas das últimas 100 horas" : "às novas mensagens, sem retomar pendências anteriores"}, 24 horas por dia, usando Sonnet e sem teto mensal de gasto no CRM.`}</p>
             <label className={styles.checkboxLabel}>
               <input ref={confirmRef} type="checkbox" checked={accepted} disabled={saving} onChange={(event) => setAccepted(event.target.checked)} />
               <span>{active

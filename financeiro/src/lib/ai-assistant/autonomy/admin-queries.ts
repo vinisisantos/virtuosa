@@ -30,7 +30,7 @@ export function aliceBacklogQuery(params: { cutoff: Date; from?: Date; anchorId?
       AND (c."aiMode"='agent' OR (c."aiMode"='manual' AND (c."aiModeUpdatedBy"='alice-global-pause'
         OR (c."aiModeUpdatedAt" IS NULL AND c."aiModeUpdatedBy" IS NULL))))
       AND incoming.timestamp<=${params.cutoff} AND incoming."createdAt"<=${params.cutoff}
-      ${params.from ? Prisma.sql`AND incoming.timestamp>=${params.from}` : Prisma.empty}
+      ${params.from ? Prisma.sql`AND incoming.timestamp>=${params.from} AND incoming."createdAt">=${params.from}` : Prisma.empty}
       ${params.from && params.boundaryId ? Prisma.sql`AND (incoming.timestamp,c.id)>=(${params.from},${params.boundaryId})` : Prisma.empty}
       ${params.anchorId ? Prisma.sql`AND c.id=${params.anchorId}` : Prisma.empty}
       AND NOT EXISTS (SELECT 1 FROM "PipelineCommercialHold" hold WHERE hold."conversationId"=c.id)
