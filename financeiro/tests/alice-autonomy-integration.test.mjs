@@ -335,7 +335,9 @@ test("erro de horário expirado só pode ser retomado para uma entrada textual r
     await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='schedule_option_expired_or_invalid',"generationStartedAt"=NOW(),attempts=1`);
     assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
 
-    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='schedule_option_expired_or_invalid',"generationStartedAt"=NOW(),attempts=1`);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='schedule_option_expired_or_invalid',"generationStartedAt"=NOW(),attempts=2`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET attempts=1`);
     await pg.exec(`UPDATE "WhatsAppMessage" SET type='audio',body='' WHERE id='source-a'`);
     assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
     assert.deepEqual((await pg.query(`SELECT status,error FROM "AliceAutonomousTurn"`)).rows,

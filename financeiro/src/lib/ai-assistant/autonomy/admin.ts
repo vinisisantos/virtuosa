@@ -60,15 +60,18 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
     database.$queryRaw<Record<string, number>[]>(aliceAutonomySummaryQuery(since)),
     database.$queryRaw<Array<{ id: string; conversationId: string; contactName: string | null; phoneLast4: string | null; status: string; createdAt: Date;
       firstSentAt: Date | null; costMicroUsd: number; error: string | null; appointmentId: string | null; instanceId: string; origin: string;
-      usageRecorded: boolean; generationStartedAt: Date | null; providerMessageIds: Prisma.JsonValue; nextMessageIndex: number;
-      sourceTimestamp: Date | null; sourceCreatedAt: Date | null; sourceType: string | null; sourceBody: string | null }>>(Prisma.sql`
+      usageRecorded: boolean; generationStartedAt: Date | null; attempts: number; providerMessageIds: Prisma.JsonValue; nextMessageIndex: number;
+      sourceTimestamp: Date | null; sourceCreatedAt: Date | null; sourceType: string | null; sourceBody: string | null;
+      sourceIsLatestInbound: boolean }>>(Prisma.sql`
       SELECT t.id,t."conversationId",contact.name AS "contactName",RIGHT(regexp_replace(contact.phone,'[^0-9]','','g'),4) AS "phoneLast4",
-        t.status,t."createdAt",t."firstSentAt",t."costMicroUsd",t.error,t."appointmentId",t."instanceId",t.origin,t."usageRecorded",t."generationStartedAt",
+        t.status,t."createdAt",t."firstSentAt",t."costMicroUsd",t.error,t."appointmentId",t."instanceId",t.origin,t."usageRecorded",t."generationStartedAt",t.attempts,
         t."providerMessageIds",t."nextMessageIndex",source.timestamp AS "sourceTimestamp",source."createdAt" AS "sourceCreatedAt",
-        source.type AS "sourceType",source.body AS "sourceBody"
+        source.type AS "sourceType",source.body AS "sourceBody",(source.id=latest.id AND latest."fromMe"=FALSE) AS "sourceIsLatestInbound"
       FROM "AliceAutonomousTurn" t LEFT JOIN "WhatsAppConversation" c ON c.id=t."conversationId" AND c."instanceId"=t."instanceId"
       LEFT JOIN "WhatsAppContact" contact ON contact.id=c."contactId"
       LEFT JOIN "WhatsAppMessage" source ON source.id=t."sourceMessageId" AND source."conversationId"=t."conversationId"
+      LEFT JOIN LATERAL (SELECT m.id,m."fromMe" FROM "WhatsAppMessage" m WHERE m."conversationId"=t."conversationId"
+        AND m.status<>'deleted' ORDER BY m.timestamp DESC,m.id DESC LIMIT 1) latest ON TRUE
       WHERE t.unit='SBC' AND t."instanceId"=${ALICE_AUTONOMY_INSTANCE_ID} AND t."createdAt">=${since}
         ${cursor ? Prisma.sql`AND (t."createdAt",t.id)<(${cursor.createdAt},${cursor.id})` : Prisma.empty}
       ORDER BY t."createdAt" DESC,t.id DESC LIMIT 51`),
@@ -87,11 +90,11 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
         && row.origin === "inbound" && row.sourceTimestamp !== null && row.sourceCreatedAt !== null
         && row.sourceTimestamp >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
         && row.sourceCreatedAt >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
-        && row.sourceType === "text" && Boolean(row.sourceBody?.trim())
+        && row.sourceIsLatestInbound && row.sourceType === "text" && Boolean(row.sourceBody?.trim()) && row.attempts <= 1
         && !row.firstSentAt && !row.appointmentId && row.nextMessageIndex === 0
         && Array.isArray(row.providerMessageIds) && row.providerMessageIds.length === 0,
       sourceTimestamp: undefined, sourceCreatedAt: undefined, providerMessageIds: undefined, nextMessageIndex: undefined,
-      sourceType: undefined, sourceBody: undefined,
+      sourceType: undefined, sourceBody: undefined, sourceIsLatestInbound: undefined, attempts: undefined,
       generationStartedAt: undefined })),
     nextCursor: rows.length > 50 && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id })).toString("base64url") : null,
     backlogCandidates: candidates.slice(0, 200).map((row) => ({ conversationId: row.conversationId, contactName: row.contactName,
@@ -109,9 +112,9 @@ export async function retryAliceFailedTurn(turnId: string, actor: Pick<AuthPaylo
   const turn = await database.aliceAutonomousTurn.findFirst({ where: { id: turnId, instanceId: ALICE_AUTONOMY_INSTANCE_ID,
     unit: "SBC", status: { in: ["needs_human", "failed"] } }, select: { id: true, conversationId: true, instanceId: true,
       sourceMessageId: true, status: true, error: true, origin: true, firstSentAt: true, appointmentId: true,
-      generationStartedAt: true, nextMessageIndex: true, providerMessageIds: true, claimToken: true } });
+      generationStartedAt: true, attempts: true, nextMessageIndex: true, providerMessageIds: true, claimToken: true } });
   if (!turn || !aliceRetryableTurnError(turn.error) || turn.origin !== "inbound" || turn.firstSentAt || turn.appointmentId
-    || turn.nextMessageIndex !== 0 || !turn.generationStartedAt || turn.claimToken
+    || turn.nextMessageIndex !== 0 || !turn.generationStartedAt || turn.attempts > 1 || turn.claimToken
     || !Array.isArray(turn.providerMessageIds) || turn.providerMessageIds.length !== 0) {
     throw new AiAssistantError("Esta falha não pode ser repetida automaticamente. Confira a conversa e o status do agendamento.", 409);
   }

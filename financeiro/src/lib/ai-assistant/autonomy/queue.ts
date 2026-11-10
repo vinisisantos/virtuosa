@@ -166,11 +166,12 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
               AND m.unidade='SBC' AND m."escalarHumano")`;
         if (resumed === 1) return { queued: true, turnId: turn.id, reason: "queued" };
       }
-      if (resumeSchedule && recentSource && source.type === "text" && source.body.trim()) {
+      if (resumeSchedule && recentSource && source.type === "text" && source.body.trim() && turn.attempts <= 1) {
         const resumed = await tx.$executeRaw`
           UPDATE "AliceAutonomousTurn" t SET status='queued',error=NULL,"completedAt"=NULL,"claimedAt"=NULL,
             "availableAt"=${aliceAutonomyAvailableAt(source.createdAt, now, params.origin === "backlog")},"messagesJson"=NULL,"updatedAt"=${now}
           WHERE t.id=${turn.id} AND t.status IN ('needs_human','failed') AND t.error='schedule_option_expired_or_invalid' AND ${recentSource}
+            AND t.attempts<=1
             AND t."claimToken" IS NULL AND t."nextMessageIndex"=0 AND t."firstSentAt" IS NULL
             AND t."generationStartedAt" IS NOT NULL AND t."providerMessageIds"='[]'::jsonb AND t."appointmentId" IS NULL
             AND t."sourceMessageId"=(SELECT id FROM "WhatsAppMessage" WHERE "conversationId"=t."conversationId"
