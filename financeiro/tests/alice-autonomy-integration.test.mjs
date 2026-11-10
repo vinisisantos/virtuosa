@@ -314,6 +314,10 @@ test("falha recuperável recente só recebe uma nova tentativa textual explícit
 
     await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='word_limit',attempts=2`);
     assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='word_limit',attempts=3`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='word_limit',attempts=4`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
     await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='human_review',attempts=2`);
     assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
     await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='human_review',attempts=3`);

@@ -131,7 +131,7 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
     const resumePrice = turn.error === "price_after_booking" && params.resumeHistoricalPriceBy;
     const resumeSchedule = turn.error === "schedule_option_expired_or_invalid" && params.resumeScheduleBy;
     const resumeSoftFailure = aliceCanContinueAfterSoftHandoff(turn.error || "") && params.resumeSoftFailureBy;
-    const resumeAttemptLimit = aliceRetryAttemptLimit(turn.error);
+    const resumeAttemptLimit = aliceRetryAttemptLimit(turn.error, turn.attempts);
     const resumeClinicalFear = turn.error === "clinical_safety" && params.resumeClinicalFearBy;
     const resumeEmptyEnvelope = turn.error === "new_customer_message" ? params.resumeEmptyEnvelopeBy : undefined;
     const operator = resumeBooking || resumePrice || resumeSchedule || resumeSoftFailure || resumeClinicalFear || resumeEmptyEnvelope;

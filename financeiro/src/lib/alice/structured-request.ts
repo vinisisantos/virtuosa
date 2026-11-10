@@ -32,7 +32,7 @@ const structuredInstructions = [
 ].join("\n");
 
 const repairInstruction = "CORRECAO_DE_FORMATO: a tentativa anterior não passou pela validação local. Gere novamente a partir do mesmo contexto, respeitando todos os tipos, campos permitidos, resumo obrigatório, limites e motivo de escalonamento quando necessário. Não adicione fatos novos nem afirme que houve envio.";
-const wordLimitRepairInstruction = "CORRECAO_DE_EXTENSAO: a resposta anterior ultrapassou o limite local de palavras. Responda de novo em uma única mensagem clara e concisa, com no máximo 100 palavras. Preserve a resposta direta à dúvida, os fatos aprovados e as salvaguardas. Não acrescente introdução, explicações repetidas ou convite desnecessário.";
+const wordLimitRepairInstruction = "CORRECAO_DE_EXTENSAO: a resposta anterior ultrapassou o limite local. Gere exatamente uma mensagem curta com no máximo 60 palavras. Responda primeiro à dúvida mais recente, usando somente fatos aprovados e mantendo as salvaguardas necessárias. Omita apresentação, repetição de contexto e convite que não seja necessário para dar continuidade. Não ultrapasse 60 palavras.";
 const schedulingRetryInstruction = "CORRECAO_DE_HORARIOS: a resposta anterior sugeriu uma data ou horário que o sistema não pode enviar. Nesta recuperação, não ofereça data nem horário específico. Responda à dúvida direta com informações já confirmadas no contexto, reconheça a preferência ampla de período informada pela cliente e, se necessário, pergunte qual dia prefere para a equipe confirmar as opções. Não afirme que verificou disponibilidade ou que agendou.";
 
 export function buildAliceStructuredRequest(context: AliceStructuredContext, repair: boolean | "word_limit" = false) {

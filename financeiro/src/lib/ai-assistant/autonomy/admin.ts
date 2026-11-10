@@ -92,7 +92,7 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
         && row.sourceTimestamp >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
         && row.sourceCreatedAt >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
         && row.sourceIsLatestInbound && row.sourceType === "text" && Boolean(row.sourceBody?.trim())
-        && row.attempts <= aliceRetryAttemptLimit(row.error)
+        && row.attempts <= aliceRetryAttemptLimit(row.error, row.attempts)
         && !row.firstSentAt && !row.appointmentId && row.nextMessageIndex === 0
         && Array.isArray(row.providerMessageIds) && row.providerMessageIds.length === 0,
       sourceTimestamp: undefined, sourceCreatedAt: undefined, providerMessageIds: undefined, nextMessageIndex: undefined,
@@ -116,7 +116,7 @@ export async function retryAliceFailedTurn(turnId: string, actor: Pick<AuthPaylo
       sourceMessageId: true, status: true, error: true, origin: true, firstSentAt: true, appointmentId: true,
       generationStartedAt: true, attempts: true, nextMessageIndex: true, providerMessageIds: true, claimToken: true } });
   if (!turn || !aliceRetryableTurnError(turn.error) || turn.origin !== "inbound" || turn.firstSentAt || turn.appointmentId
-    || turn.nextMessageIndex !== 0 || !turn.generationStartedAt || turn.attempts > aliceRetryAttemptLimit(turn.error) || turn.claimToken
+    || turn.nextMessageIndex !== 0 || !turn.generationStartedAt || turn.attempts > aliceRetryAttemptLimit(turn.error, turn.attempts) || turn.claimToken
     || !Array.isArray(turn.providerMessageIds) || turn.providerMessageIds.length !== 0) {
     throw new AiAssistantError("Esta falha não pode ser repetida automaticamente. Confira a conversa e o status do agendamento.", 409);
   }

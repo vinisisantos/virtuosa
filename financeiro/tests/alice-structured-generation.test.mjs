@@ -119,6 +119,23 @@ test("resposta acima de 120 palavras recebe uma única correção curta no orça
   assert.equal(result.metrics.costMicroUsd, cost * 2);
 });
 
+test("reparo de resposta longa orienta uma mensagem realmente curta e permite resposta", async () => {
+  const long = structuredOutput({ resposta: [Array(121).fill("palavra").join(" ")] });
+  const concise = structuredOutput({ resposta: ["Entendo sua dúvida. A especialista pode explicar o procedimento e esclarecer isso na avaliação gratuita. Quer que eu te ajude a encontrar um horário?"] });
+  const requests = [];
+  const result = await generateAliceStructuredReply(context(), dependencies(async (_url, options) => {
+    const body = JSON.parse(options.body);
+    requests.push(body);
+    return providerResponse(requests.length === 1 ? long
+      : /no máximo 60 palavras/u.test(body.system) ? concise : long);
+  }));
+  assert.equal(result.status, "draft");
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].system, /no máximo 60 palavras/u);
+  assert.equal(result.proposal.resposta.length, 1);
+  assert.ok(result.proposal.resposta[0].trim().split(/\s+/u).length <= 60);
+});
+
 test("duas respostas acima do limite continuam bloqueadas após o único reparo", async () => {
   const long = structuredOutput({ resposta: [Array(121).fill("palavra").join(" ")] });
   let calls = 0;
