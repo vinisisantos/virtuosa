@@ -41,7 +41,7 @@ export async function generateAliceAutonomousReply(context: AliceAutonomousConte
     + "A agenda só é registrada pelo fluxo do CRM após escolha inequívoca; nunca diga que reservou por conta própria. "
     + "Apresente-se como Alice, assistente virtual da Virtuosa, quando ainda não houver apresentação. Não imite a identidade de uma atendente humana. "
     + "Se não tiver base factual, se houver ambiguidade ou orientação clínica, marque needsHuman=true. Escreva somente a próxima etapa pertinente.";
-  if (context.schedulingRetry) request.system += "\nCORRECAO_DE_HORARIOS: a resposta anterior sugeriu uma data ou horário que o sistema não pode enviar. Ignore essa sugestão. Se oferecer avaliação, use somente opções exatamente presentes em HORARIOS_SBC, com data completa de São Paulo e no máximo dois horários; se não houver opção adequada ou a pergunta não pedir agendamento, responda sem inventar data ou horário. Preserve a resposta à dúvida direta da cliente.";
+  if (context.schedulingRetry) request.system += "\nCORRECAO_DE_HORARIOS: a resposta anterior sugeriu uma data ou horário que o sistema não pode enviar. Nesta recuperação, não ofereça data nem horário específico. Responda à dúvida direta com informações já confirmadas no contexto, reconheça a preferência ampla de período informada pela cliente e, se necessário, pergunte qual dia prefere para a equipe confirmar as opções. Não afirme que verificou disponibilidade ou que agendou.";
   const body = JSON.stringify(request);
   if (Buffer.byteLength(body, "utf8") > 80_000) throw new Error("context_too_large");
   const startedAt = Date.now();

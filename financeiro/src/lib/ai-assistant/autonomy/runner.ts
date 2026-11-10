@@ -13,7 +13,6 @@ import { validateAliceAutonomousTurn, AliceAutonomyStopped } from "@/lib/ai-assi
 import { finishAliceAutonomousTurn, notifyAliceAutonomousHandoff } from "@/lib/ai-assistant/autonomy/lifecycle";
 import { ALICE_AUTONOMY_COMPLEMENT_MS } from "@/lib/ai-assistant/autonomy/policy";
 import { aliceAutonomySchedulingTextValid } from "@/lib/ai-assistant/autonomy/content-policy";
-import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-policy";
 import { readAliceTurnPayload, legacyAliceTurnPayload, guardAliceTurn, auditAliceGuardEvents, type AliceTurnPayload } from "@/lib/alice/turn-payload";
 import { getOrCreateMemory, recordAliceSentMessage } from "@/lib/alice/memory";
 import { applyCurrentAliceMemory } from "@/lib/alice/runtime-memory";
@@ -183,7 +182,8 @@ export async function processAliceAutonomousTurn(
         return "skipped";
       }
       const retryContext = { ...context, schedulingRetry: true,
-        prompt: { ...context.prompt, HORARIOS_SBC: buildSbcEvaluationOptions(now()) } };
+        // A segunda tentativa precisa responder sem sugerir um horário que já falhou na validação.
+        prompt: { ...context.prompt, HORARIOS_SBC: [] } };
       let retried: AutonomousGeneration;
       try {
         retried = await deps.generate(retryContext, undefined, AbortSignal.timeout(retryBudgetMs));

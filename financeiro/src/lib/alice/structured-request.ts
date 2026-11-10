@@ -29,7 +29,7 @@ const structuredInstructions = [
 ].join("\n");
 
 const repairInstruction = "CORRECAO_DE_FORMATO: a tentativa anterior não passou pela validação local. Gere novamente a partir do mesmo contexto, respeitando todos os tipos, campos permitidos, resumo obrigatório, limites e motivo de escalonamento quando necessário. Não adicione fatos novos nem afirme que houve envio.";
-const schedulingRetryInstruction = "CORRECAO_DE_HORARIOS: a resposta anterior sugeriu uma data ou horário que o sistema não pode enviar. Ignore essa sugestão. Se oferecer avaliação, use somente opções exatamente presentes em HORARIOS_SBC, com data completa de São Paulo e no máximo dois horários; se não houver opção adequada ou a pergunta não pedir agendamento, responda sem inventar data ou horário. Preserve a resposta à dúvida direta da cliente.";
+const schedulingRetryInstruction = "CORRECAO_DE_HORARIOS: a resposta anterior sugeriu uma data ou horário que o sistema não pode enviar. Nesta recuperação, não ofereça data nem horário específico. Responda à dúvida direta com informações já confirmadas no contexto, reconheça a preferência ampla de período informada pela cliente e, se necessário, pergunte qual dia prefere para a equipe confirmar as opções. Não afirme que verificou disponibilidade ou que agendou.";
 
 export function buildAliceStructuredRequest(context: AliceStructuredContext, repair = false) {
   const scope = context?.scope;

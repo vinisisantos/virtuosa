@@ -31,7 +31,7 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
         conversationId, instanceId: prior.instanceId, sourceMessageId: latest.id, timestamp: latest.timestamp, origin: "backlog",
         resumeBookingBy: prior.aiMode === "manual" && prior.aiModeUpdatedBy === "alice-handoff" ? operator : undefined,
         resumeHistoricalPriceBy: operator,
-        resumeScheduleBy: prior.aiMode === "manual" && prior.aiModeUpdatedBy === "alice-handoff" ? operator : undefined,
+        resumeScheduleBy: operator,
       }, tx, activatedAt, now);
       if (!turn.queued && !["processing", "sending", "sent"].includes(turn.reason)) {
         throw new AiAssistantError(turn.reason === "booking_not_excluded"
