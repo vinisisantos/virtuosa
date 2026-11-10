@@ -241,6 +241,29 @@ test("mensagem nova reativa uma conversa parada por falha transitória, mas resp
   } finally { await guarded.pg.close(); }
 });
 
+test("nova pergunta textual volta à Alice após revisão resolvida por avaliação registrada", async () => {
+  const now = new Date("2026-11-10T19:00:00.000Z");
+  const { pg, adapter } = await database({ memory: true });
+  try {
+    await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    await pg.query(`UPDATE "WhatsAppConversation" SET "aiMode"='manual',"aiModeUpdatedBy"='alice-handoff' WHERE id='conversation-a'`);
+    await pg.query(`UPDATE "WhatsAppMessage" SET body='Escolha o horário' WHERE id='source-a'`);
+    await insertTurn(pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID, status: "needs_human" });
+    await pg.query(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='booking_requires_review',attempts=1 WHERE id='turn-a'`);
+    await pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp,"createdAt",status,type,body)
+      VALUES ('new-source','conversation-a','new-provider-id',FALSE,$1,$1,'received','text','A avaliação é gratuita?')`, [new Date(now.getTime() - 5_000)]);
+    await pg.query(`INSERT INTO "Agendamento" (id,unit,"clientPhone",procedimento,status,"startTime","endTime")
+      VALUES ('scheduled-evaluation','SBC','5511900001234','Avaliação Glúteos Perfeitos','confirmado',$1,$2)`,
+      [new Date(now.getTime() + 7 * 86_400_000), new Date(now.getTime() + 7 * 86_400_000 + 30 * 60_000)]);
+
+    const result = await enqueueAliceAutonomousTurn({ conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID,
+      sourceMessageId: "new-source", timestamp: new Date(now.getTime() - 5_000), origin: "inbound" }, adapter, now);
+    assert.equal(result.queued, true);
+    assert.equal((await pg.query(`SELECT "aiMode","aiModeUpdatedBy" FROM "WhatsAppConversation" WHERE id='conversation-a'`)).rows[0].aiMode, "agent");
+    assert.equal((await pg.query(`SELECT status FROM "AliceAutonomousTurn" WHERE "sourceMessageId"='new-source'`)).rows[0].status, "queued");
+  } finally { await pg.close(); }
+});
+
 test("retomada explícita reaproveita só a escolha sem envio nem avaliação, nunca por replay do webhook", async () => {
   const { pg, adapter } = await database();
   const now = new Date();

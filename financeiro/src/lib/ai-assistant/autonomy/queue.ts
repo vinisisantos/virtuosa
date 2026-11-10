@@ -75,19 +75,34 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
     if (latest?.id !== source.id) return { queued: false, reason: "superseded" };
     if (!aliceAutonomyConversationEligible({ ...conversation, aiMode: "agent" })) return { queued: false, reason: "conversation_paused" };
     // Sugestões e Manual explícito continuam sob controle humano; só o Manual ainda não configurado pode entrar automaticamente.
-    let canResumeSoftHandoff = false;
+    let canResumeConversation = false;
     if (conversation.aiMode === "manual" && conversation.aiModeUpdatedBy === "alice-handoff" && params.origin === "inbound") {
       const priorTurn = await tx.aliceAutonomousTurn.findFirst({ where: { conversationId: params.conversationId, instanceId: params.instanceId },
         select: { sourceMessageId: true, status: true, error: true }, orderBy: [{ createdAt: "desc" }, { id: "desc" }] });
       if (priorTurn && priorTurn.sourceMessageId !== source.id && ["needs_human", "failed"].includes(priorTurn.status)
         && aliceCanContinueAfterSoftHandoff(priorTurn.error || "")) {
         const escalated = await tx.leadMemory.findFirst({ where: { conversationId: params.conversationId, unidade: "SBC", escalarHumano: true }, select: { id: true } });
-        canResumeSoftHandoff = !escalated;
+        canResumeConversation = !escalated;
+      } else if (priorTurn && priorTurn.sourceMessageId !== source.id && ["needs_human", "failed"].includes(priorTurn.status)
+        && priorTurn.error === "booking_requires_review" && source.type === "text" && source.body.trim()) {
+        const [contact, escalated] = await Promise.all([
+          tx.whatsAppConversation.findFirst({ where: { id: params.conversationId, instanceId: params.instanceId },
+            select: { contact: { select: { phone: true } } } }),
+          tx.leadMemory.findFirst({ where: { conversationId: params.conversationId, unidade: "SBC", escalarHumano: true }, select: { id: true } }),
+        ]);
+        const phone = contact?.contact.phone;
+        const scope = { conversationId: params.conversationId, instanceId: params.instanceId, unidade: "SBC" as const };
+        if (!escalated && phone && (phoneLookupKey(phone)?.length || 0) >= 10 && await currentAliceAppointment(scope, phone, tx)) {
+          // Uma avaliação já confirmada libera perguntas gerais; nova negociação de horário continua com a equipe.
+          const history = await tx.whatsAppMessage.findMany({ where: { conversationId: params.conversationId, status: { not: "deleted" } },
+            select: { id: true, body: true, fromMe: true, status: true, type: true }, orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 });
+          canResumeConversation = !selectSbcSchedulingExchange(history.reverse());
+        }
       }
     }
     const canEnroll = conversation.aiMode === "manual"
       && (conversation.aiModeUpdatedBy === "alice-global-pause" || (!conversation.aiModeUpdatedAt && !conversation.aiModeUpdatedBy)
-        || canResumeSoftHandoff);
+        || canResumeConversation);
     if (conversation.aiMode !== "agent" && canEnroll) {
       const enrolled = await tx.whatsAppConversation.updateMany({
         where: { id: params.conversationId, instanceId: params.instanceId, aiMode: conversation.aiMode, aiModeUpdatedAt: conversation.aiModeUpdatedAt },
