@@ -1,7 +1,7 @@
 import { Prisma, type AliceAutonomousTurn } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { routeAliceHandoff } from "@/lib/ai-assistant/handoff";
-import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
+import { ALICE_AUTONOMY_INSTANCE_ID, aliceAutonomyRequiresHumanOwnership } from "@/lib/ai-assistant/autonomy/policy";
 
 export async function finishAliceAutonomousTurn(params: {
   turn: AliceAutonomousTurn; token: string; status: "skipped" | "needs_human" | "uncertain" | "failed";
@@ -15,7 +15,7 @@ export async function finishAliceAutonomousTurn(params: {
       data: { status: params.status, completedAt: now, messagesJson: params.status === "uncertain" ? undefined : Prisma.JsonNull, claimToken: null, error: params.reason },
     });
     const recoverableScheduleOffer = params.reason === "schedule_option_expired_or_invalid";
-    if (updated.count && params.status !== "skipped" && !recoverableScheduleOffer) {
+    if (updated.count && aliceAutonomyRequiresHumanOwnership(params.status, params.reason) && !recoverableScheduleOffer) {
       await tx.whatsAppConversation.updateMany({
         where: { id: params.turn.conversationId, instanceId: ALICE_AUTONOMY_INSTANCE_ID, aiMode: "agent" },
         data: { aiMode: "manual", aiModeUpdatedAt: now, aiModeUpdatedBy: "alice-handoff" },

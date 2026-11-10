@@ -27,11 +27,16 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
       throw new AiAssistantError("A conversa já mudou; a mensagem selecionada não será retomada.", 409);
     }
     if (latest && !latest.fromMe) {
+      const existing = await tx.aliceAutonomousTurn.findUnique({
+        where: { conversationId_sourceMessageId: { conversationId, sourceMessageId: latest.id } }, select: { origin: true },
+      });
+      const origin = existing?.origin === "inbound" || (!existing && latest.timestamp >= activatedAt) ? "inbound" : "backlog";
       const turn = await enqueueAliceTurnInTransaction({
-        conversationId, instanceId: prior.instanceId, sourceMessageId: latest.id, timestamp: latest.timestamp, origin: "backlog",
+        conversationId, instanceId: prior.instanceId, sourceMessageId: latest.id, timestamp: latest.timestamp, origin,
         resumeBookingBy: prior.aiMode === "manual" && prior.aiModeUpdatedBy === "alice-handoff" ? operator : undefined,
         resumeHistoricalPriceBy: operator,
         resumeScheduleBy: operator,
+        resumeSoftFailureBy: operator,
       }, tx, activatedAt, now);
       if (!turn.queued && !["processing", "sending", "sent"].includes(turn.reason)) {
         throw new AiAssistantError(turn.reason === "booking_not_excluded"

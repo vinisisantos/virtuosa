@@ -9,6 +9,23 @@ export const ALICE_AUTONOMY_COMPLEMENT_MS = 3_000;
 export const ALICE_AUTONOMY_LEASE_MS = 120_000;
 export const ALICE_AUTONOMY_ACTIVE_STATES = ["queued", "processing", "sending"];
 
+const SOFT_HANDOFF_ERRORS = new Set([
+  "human_review", "generation_requires_review", "word_limit", "invalid_message_sequence",
+  "structured_proposal_missing", "provider_unavailable", "provider_response_invalid", "provider_incomplete",
+  "provider_refusal", "invalid_output", "usage_unavailable", "unexpected_model", "deadline",
+  "worker_budget_exhausted", "worker_failed_before_send",
+]);
+
+export function aliceAutonomyRequiresHumanOwnership(status: "skipped" | "needs_human" | "uncertain" | "failed", error: string) {
+  if (status === "skipped") return false;
+  if (status === "uncertain") return true;
+  return !aliceCanContinueAfterSoftHandoff(error);
+}
+
+export function aliceCanContinueAfterSoftHandoff(error: string) {
+  return SOFT_HANDOFF_ERRORS.has(error);
+}
+
 export type AliceAutonomyConfig = {
   enabled: boolean;
   activatedAt: string | null;

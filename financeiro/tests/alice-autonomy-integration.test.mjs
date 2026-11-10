@@ -9,6 +9,7 @@ import {
   aliceAutonomyAvailableAt,
   aliceAutonomyConversationEligible,
   aliceAutonomyCostMicroUsd,
+  aliceAutonomyRequiresHumanOwnership,
   parseAliceAutonomyConfig,
 } from "../src/lib/ai-assistant/autonomy/policy.ts";
 
@@ -100,6 +101,17 @@ test("conversas manuais, bloqueadas, arquivadas, pausadas ou de outra caixa não
   ]) assert.equal(aliceAutonomyConversationEligible({ ...ready, ...override }), false);
 });
 
+test("falhas transitórias mantêm Alice ativa, mas segurança clínica e envio incerto exigem controle humano", () => {
+  for (const reason of ["human_review", "generation_requires_review", "word_limit", "provider_unavailable", "worker_failed_before_send"]) {
+    assert.equal(aliceAutonomyRequiresHumanOwnership("needs_human", reason), false, reason);
+  }
+  for (const reason of ["clinical_safety", "unsupported_procedure", "booking_requires_review", "audio_requires_review"]) {
+    assert.equal(aliceAutonomyRequiresHumanOwnership("needs_human", reason), true, reason);
+  }
+  assert.equal(aliceAutonomyRequiresHumanOwnership("uncertain", "human_review"), true);
+  assert.equal(aliceAutonomyRequiresHumanOwnership("skipped", "clinical_safety"), false);
+});
+
 test("custo corresponde aos tokens observados, inclusive saída e categorias de cache", () => {
   // Exemplo independente: custo calculado do teste Sonnet documentado em 09/11.
   assert.equal(aliceAutonomyCostMicroUsd({ input: 79_926, output: 903 }), 253_323);
@@ -171,6 +183,38 @@ test("retomada humana cancela o pendente e uma nova entrada não reativa a Alice
   } finally { await pg.close(); }
 });
 
+test("mensagem nova reativa uma conversa parada por falha transitória, mas respeita takeover e escalonamento clínico", async () => {
+  const { pg, adapter } = await database({ memory: true });
+  const now = new Date();
+  try {
+    await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    await pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='manual',"aiModeUpdatedAt"=NOW(),"aiModeUpdatedBy"='alice-handoff' WHERE id='conversation-a'`);
+    await insertTurn(pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID, origin: "inbound", status: "needs_human" });
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='human_review'`);
+    await pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId",timestamp,"createdAt") VALUES ('new-source','conversation-a','new-provider-id',$1,$1)`, [now]);
+    const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID,
+      sourceMessageId: "new-source", timestamp: now, origin: "inbound" };
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
+    assert.deepEqual((await pg.query(`SELECT "aiMode","aiModeUpdatedBy" FROM "WhatsAppConversation" WHERE id='conversation-a'`)).rows,
+      [{ aiMode: "agent", aiModeUpdatedBy: "alice-autonomy" }]);
+  } finally { await pg.close(); }
+
+  const guarded = await database({ memory: true });
+  try {
+    await activateFixture(guarded.pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    await guarded.pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='manual',"aiModeUpdatedAt"=NOW(),"aiModeUpdatedBy"='alice-handoff' WHERE id='conversation-a'`);
+    await insertTurn(guarded.pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID, origin: "inbound", status: "needs_human" });
+    await guarded.pg.exec(`UPDATE "AliceAutonomousTurn" SET error='human_review';
+      INSERT INTO "LeadMemory" (id,"conversationId",unidade,"escalarHumano","updatedAt") VALUES ('memory','conversation-a','SBC',TRUE,NOW());`);
+    await guarded.pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId",timestamp,"createdAt") VALUES ('new-source','conversation-a','new-provider-id',$1,$1)`, [now]);
+    const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID,
+      sourceMessageId: "new-source", timestamp: now, origin: "inbound" };
+    const result = await enqueueAliceAutonomousTurn(input, guarded.adapter, now);
+    assert.equal(result.queued, false);
+    assert.equal(result.reason, "conversation_paused");
+  } finally { await guarded.pg.close(); }
+});
+
 test("retomada explícita reaproveita só a escolha sem envio nem avaliação, nunca por replay do webhook", async () => {
   const { pg, adapter } = await database();
   const now = new Date();
@@ -188,6 +232,34 @@ test("retomada explícita reaproveita só a escolha sem envio nem avaliação, n
     await pg.exec(`DELETE FROM "AliceAutoSchedule" WHERE id='proof'`);
     assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
     assert.deepEqual((await pg.query(`SELECT id,status FROM "AliceAutonomousTurn"`)).rows, [{ id: 'turn-a', status: 'queued' }]);
+  } finally { await pg.close(); }
+});
+
+test("falha recuperável recente só recebe uma nova tentativa textual explícita sem envio, agendamento ou alerta clínico", async () => {
+  const { pg, adapter } = await database({ memory: true });
+  const now = new Date();
+  const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a",
+    timestamp: now, origin: "inbound", resumeSoftFailureBy: "operator" };
+  try {
+    await activateFixture(pg, input.instanceId, now);
+    await pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
+    await insertTurn(pg, { instanceId: input.instanceId, origin: "inbound", status: "needs_human" });
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='word_limit',"generationStartedAt"=NOW(),attempts=1`);
+
+    assert.equal((await enqueueAliceAutonomousTurn({ ...input, resumeSoftFailureBy: undefined }, adapter, now)).queued, false);
+    assert.equal((await enqueueAliceAutonomousTurn({ ...input, origin: "backlog" }, adapter, now)).queued, true);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='word_limit',attempts=1`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
+    assert.deepEqual((await pg.query(`SELECT status,error FROM "AliceAutonomousTurn"`)).rows, [{ status: "queued", error: null }]);
+
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='word_limit',attempts=2`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET attempts=1,error='human_review'`);
+    await pg.exec(`INSERT INTO "LeadMemory" (id,"conversationId",unidade,"escalarHumano","updatedAt") VALUES ('memory','conversation-a','SBC',TRUE,NOW())`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "LeadMemory" SET "escalarHumano"=FALSE WHERE id='memory'`);
+    await pg.exec(`UPDATE "WhatsAppMessage" SET type='secretEncryptedMessage',body='' WHERE id='source-a'`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
   } finally { await pg.close(); }
 });
 
@@ -371,6 +443,19 @@ test("a resposta autônoma identifica Alice como autora interna, sem atribuir o 
     const message = (await f.pg.query('SELECT "respondedByName" FROM "WhatsAppMessage" WHERE "fromMe"=TRUE')).rows[0];
     assert.equal(message.respondedByName, "Alice");
     assert.equal((await f.pg.query('SELECT status FROM "WhatsAppConversation" WHERE id=\'conversation-a\'')).rows[0].status, "open");
+  } finally { await f.pg.close(); }
+});
+
+test("falha recuperável de geração mantém o modo Alice e não emite notificação de handoff", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    f.deps.generate = async () => ({ messages: [], needsHuman: true, generationFailure: "generation_requires_review",
+      model: "claude-sonnet-4-6", inputTokens: 10, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0,
+      costMicroUsd: 30, generationMs: 100, usageRecorded: true });
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "needs_human");
+    assert.deepEqual(f.state.handoffs, []);
+    assert.equal((await f.readChat()).aiMode, "agent");
+    assert.equal((await f.readTurn()).error, "generation_requires_review");
   } finally { await f.pg.close(); }
 });
 

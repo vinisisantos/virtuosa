@@ -11,7 +11,7 @@ import { generateAliceAutonomousReply, type AutonomousGeneration } from "@/lib/a
 import { claimAliceAutonomousTurn, recoverAliceAutonomousTurns } from "@/lib/ai-assistant/autonomy/queue";
 import { validateAliceAutonomousTurn, AliceAutonomyStopped } from "@/lib/ai-assistant/autonomy/guard";
 import { finishAliceAutonomousTurn, notifyAliceAutonomousHandoff } from "@/lib/ai-assistant/autonomy/lifecycle";
-import { ALICE_AUTONOMY_COMPLEMENT_MS } from "@/lib/ai-assistant/autonomy/policy";
+import { ALICE_AUTONOMY_COMPLEMENT_MS, aliceAutonomyRequiresHumanOwnership } from "@/lib/ai-assistant/autonomy/policy";
 import { aliceAutonomySchedulingTextValid } from "@/lib/ai-assistant/autonomy/content-policy";
 import { readAliceTurnPayload, legacyAliceTurnPayload, guardAliceTurn, auditAliceGuardEvents, type AliceTurnPayload } from "@/lib/alice/turn-payload";
 import { getOrCreateMemory, recordAliceSentMessage } from "@/lib/alice/memory";
@@ -63,7 +63,8 @@ export async function processAliceAutonomousTurn(
   const human = async (reason: "clinical_safety" | "unsupported_procedure" | "model_requested", error: string = reason) => {
     if (memoryRuntime && reason === "clinical_safety") await applyCurrentAliceMemory(memoryRuntime.scope, turn.sourceMessageId,
       { escalarHumano: true, motivoEscalonamento: reason }, database);
-    if (await finish("needs_human", error) && error !== "schedule_option_expired_or_invalid") {
+    if (await finish("needs_human", error) && aliceAutonomyRequiresHumanOwnership("needs_human", error)
+      && error !== "schedule_option_expired_or_invalid") {
       await notifyAliceAutonomousHandoff(turn, reason, deps.handoff);
     }
     return "needs_human";
