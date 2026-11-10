@@ -1,4 +1,6 @@
 import { prisma } from "@/lib/db";
+import { ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_UNIT } from "@/lib/ai-assistant/autonomy/policy";
+import { ALICE_ATTENDANT_NAME } from "@/lib/whatsapp/inbox-attendant";
 import {
   extractWahaMessageId,
   getInstanceProvider,
@@ -7,7 +9,7 @@ import {
 } from "@/lib/whatsapp/provider";
 
 export async function sendAutomationText(params: {
-  dbInstance: { name: string; provider?: string | null };
+  dbInstance: { name: string; provider?: string | null; id?: string; unit?: string | null };
   conversationId: string;
   contactPhone: string;
   lastKnownJid?: string | null;
@@ -16,11 +18,16 @@ export async function sendAutomationText(params: {
   beforeSend?: () => Promise<void>;
   providerTimeoutMs?: number;
   requireProviderMessageId?: boolean;
+  aliceAutonomous?: boolean;
 }) {
+  if (params.aliceAutonomous && (params.dbInstance.id !== ALICE_AUTONOMY_INSTANCE_ID || params.dbInstance.unit !== ALICE_AUTONOMY_UNIT)) {
+    throw new Error("Instância fora do piloto de envio autônomo.");
+  }
   const conversation = await prisma.whatsAppConversation.findUnique({
-    where: { id: params.conversationId },
+    where: { id: params.conversationId, ...(params.aliceAutonomous ? { instanceId: ALICE_AUTONOMY_INSTANCE_ID } : {}) },
     select: { blockedAt: true },
   });
+  if (params.aliceAutonomous && !conversation) throw new Error("Conversa fora da instância do piloto.");
   if (conversation?.blockedAt) {
     throw new Error("Contato bloqueado no WhatsApp. A automação não foi enviada.");
   }
@@ -61,7 +68,7 @@ export async function sendAutomationText(params: {
   }
 
   const providerMessageId = provider === "waha" ? extractWahaMessageId(sendData) : sendData?.key?.id || sendData?.id;
-  if (params.requireProviderMessageId && (typeof providerMessageId !== "string" || !providerMessageId.trim())) {
+  if ((params.requireProviderMessageId || params.aliceAutonomous) && (typeof providerMessageId !== "string" || !providerMessageId.trim())) {
     throw new Error("Provedor não confirmou o identificador da mensagem. Não repetir automaticamente.");
   }
   const messageId = providerMessageId || (provider === "waha"
@@ -77,10 +84,25 @@ export async function sendAutomationText(params: {
       fromMe: true,
       status: "sent",
       timestamp: sentAt,
-      respondedByName: params.respondedByName || "Automação",
+      respondedByName: params.aliceAutonomous ? ALICE_ATTENDANT_NAME : params.respondedByName || "Automação",
     },
-    select: { id: true },
+    select: { id: true, status: true },
+  }).catch((error: unknown) => {
+    if (!params.aliceAutonomous || !error || typeof error !== "object" || !("code" in error) || error.code !== "P2002") throw error;
+    // O provedor confirmou exatamente esta saída. Se o webhook chegou antes,
+    // anexe somente a autoria ao eco, preservando seu ACK e seu ID interno.
+    return prisma.whatsAppMessage.update({
+      where: {
+        conversationId_messageId: { conversationId: params.conversationId, messageId },
+        fromMe: true, respondedBy: null, OR: [{ respondedByName: null }, { respondedByName: ALICE_ATTENDANT_NAME }],
+      },
+      data: { respondedByName: ALICE_ATTENDANT_NAME },
+      select: { id: true, status: true },
+    });
   });
+  if (params.aliceAutonomous && ["error", "deleted"].includes(savedMessage.status)) {
+    throw new Error("O eco da mensagem confirmou falha ou exclusão; não repetir automaticamente.");
+  }
 
   await prisma.whatsAppConversation.update({
     where: { id: params.conversationId },

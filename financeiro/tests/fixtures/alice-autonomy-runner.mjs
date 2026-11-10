@@ -6,8 +6,10 @@ export async function runnerFixture(claimTurn, options) {
   const { pg, adapter } = await database(options);
   const state = { clock: new Date(), generations: 0, sends: [], handoffs: [], transactionOpen: false };
   await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, state.clock);
-  await pg.query('UPDATE "WhatsAppConversation" SET "aiMode"=\'agent\' WHERE id=\'conversation-a\'');
+  await pg.query(`UPDATE "WhatsAppConversation" SET "aiMode"='agent', "unreadCount"=1,
+    "lastInboundAt"=(SELECT timestamp FROM "WhatsAppMessage" WHERE id='source-a') WHERE id='conversation-a'`);
   await insertTurn(pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID });
+  await options?.beforeClaim?.(pg);
   const claim = await claimTurn(adapter);
   const databaseProxy = { ...adapter, $transaction: async (operation) => adapter.$transaction(async (tx) => {
     state.transactionOpen = true;
@@ -47,5 +49,6 @@ export async function runnerFixture(claimTurn, options) {
     handoff: async (params) => { state.handoffs.push(params); },
   };
   const readTurn = async () => (await pg.query('SELECT * FROM "AliceAutonomousTurn" WHERE id=$1', [claim.turn.id])).rows[0];
-  return { pg, adapter, claim, deps, state, readTurn };
+  const readChat = (id = claim.turn.conversationId) => adapter.whatsAppConversation.findFirst({ where: { id } });
+  return { pg, adapter, claim, deps, state, readTurn, readChat };
 }

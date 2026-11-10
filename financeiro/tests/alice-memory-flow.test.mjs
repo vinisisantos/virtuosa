@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runnerFixture } from "./fixtures/alice-autonomy-runner.mjs";
-import { claimAliceAutonomousTurn } from "../src/lib/ai-assistant/autonomy/queue.ts";
 import { registerHooks } from "node:module";
 import { existsSync } from "node:fs";
 globalThis.prisma = {};
@@ -20,7 +19,7 @@ const { processAliceAutonomousTurn } = await import("../src/lib/ai-assistant/aut
 const { generateAliceAutonomousReply } = await import("../src/lib/ai-assistant/autonomy/generate.ts");
 const { getOrCreateMemory } = await import("../src/lib/alice/memory.ts");
 const { applyCurrentAliceMemory, rememberHumanPresentation, clearAliceEscalationOnResume } = await import('../src/lib/alice/runtime-memory.ts');
-const { pauseAliceForHuman } = await import('../src/lib/ai-assistant/autonomy/queue.ts');
+const { claimAliceAutonomousTurn, pauseAliceForHuman } = await import('../src/lib/ai-assistant/autonomy/queue.ts');
 const { structuredOutput, providerResponse } = await import('./fixtures/alice-structured-output.mjs');
 const enableMemory = () => { process.env.ALICE_CONVERSATION_MEMORY_SBC_ENABLED = 'true'; };
 const scopeOf = (f) => ({ conversationId: f.claim.turn.conversationId, instanceId: f.claim.turn.instanceId, unidade: 'SBC' });
@@ -239,6 +238,7 @@ test("complemento que virou apenas reapresentação é descartado sem apagar o p
     assert.equal(await processAliceAutonomousTurn(next, {}, deps), 'sent');
     assert.equal((await f.readTurn()).status, 'sent');
     assert.equal(f.state.sends.length, 1);
+    assert.equal((await f.readChat()).unreadCount, 0, "o primeiro balão já aceito concluiu o atendimento");
   } finally { delete process.env.ALICE_CONVERSATION_MEMORY_SBC_ENABLED; await f.pg.close(); }
 });
 

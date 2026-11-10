@@ -88,6 +88,8 @@ export async function database({ memory = false } = {}) {
       "aiMode" TEXT NOT NULL DEFAULT 'manual', "aiModeUpdatedAt" TIMESTAMP,
       "aiModeUpdatedBy" TEXT, "status" TEXT NOT NULL DEFAULT 'open',
       "blockedAt" TIMESTAMP, "archivedAt" TIMESTAMP, "commercialPaused" BOOLEAN NOT NULL DEFAULT FALSE,
+      "unreadCount" INT NOT NULL DEFAULT 0, "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "assignedTo" TEXT, "assignedToName" TEXT, "lastInboundAt" TIMESTAMP,
       "lastOutboundAt" TIMESTAMP, "lastKnownJid" TEXT
     );
     CREATE TABLE "WhatsAppMessage" (

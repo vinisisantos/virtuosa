@@ -4,6 +4,7 @@ import { isFreshWelcomeEvent } from "@/lib/whatsapp/campaign-welcome-policy";
 import { enqueueWelcome, findWelcomeReception } from "@/lib/whatsapp/campaign-welcome";
 import { ensureLegacyReceptionAvailable, handleAliceInboundReception } from "@/lib/whatsapp/campaign-welcome-autonomy";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
+import { unreadCountForNewWhatsAppMessage } from "@/lib/ai-assistant/autonomy/echo-unread";
 
 import { prisma } from "@/lib/db";
 import { addClientTag } from "@/lib/client-tags";
@@ -1241,7 +1242,7 @@ async function persistIncomingMessageFast(params: {
       data: {
         lastMessage: whatsAppConversationPreview(params.messageBody, persisted.type),
         lastMessageAt: params.timestamp,
-        unreadCount: params.isSendablePhone ? (params.isFromMe ? 0 : { increment: 1 }) : 0,
+        unreadCount: await unreadCountForNewWhatsAppMessage(params, tx),
         ...(isFirstInboundMessage ? { status: "waiting_response" } : {}),
         ...(params.isSendablePhone
           ? { archivedAt: null, archivedBy: null, archivedByName: null }

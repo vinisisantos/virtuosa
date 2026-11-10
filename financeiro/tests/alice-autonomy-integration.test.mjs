@@ -282,10 +282,27 @@ test("checagem anterior ao envio aceita apenas a própria saída e interrompe co
   } finally { await pg.close(); }
 });
 
+test("recuperação de agendamento interrompido baixa somente a confirmação comprovada no CRM", async () => {
+  for (const state of ["submitted", "uncertain"]) {
+    const f = await runnerFixture(claimAliceAutonomousTurn);
+    try {
+      await f.pg.query(`INSERT INTO "AliceAutoSchedule"(id,"conversationId","replyMessageId","appointmentId",state)
+        VALUES('ledger','conversation-a','source-a','appointment',$1)`, [state]);
+      await recoverAliceAutonomousTurns(f.adapter, new Date(f.state.clock.getTime() + 125_000));
+      assert.equal((await f.readTurn()).status, state === "submitted" ? "sent" : "uncertain");
+      assert.equal((await f.readChat()).unreadCount, state === "submitted" ? 0 : 1);
+    } finally { await f.pg.close(); }
+  }
+});
+
 test("duas mensagens usam uma única geração, mantêm custo e o complemento espera três segundos", async () => {
   const f = await runnerFixture(claimAliceAutonomousTurn);
   try {
+    await f.pg.exec(`UPDATE "WhatsAppConversation" SET "unreadCount"=3,
+      "assignedTo"='team-member', "assignedToName"='Equipe' WHERE id='conversation-a';
+      UPDATE "WhatsAppConversation" SET "unreadCount"=1 WHERE id='conversation-b'`);
     assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "queued");
+    assert.equal((await f.readChat()).unreadCount, 3, "uma saída parcial não deve marcar o atendimento como lido");
     const first = await f.readTurn();
     assert.equal(first.nextMessageIndex, 1);
     assert.equal(first.availableAt.getTime(), f.state.clock.getTime() + 3_000);
@@ -301,10 +318,17 @@ test("duas mensagens usam uma única geração, mantêm custo e o complemento es
     assert.equal(complete.costMicroUsd, 4_500);
     assert.equal(complete.messagesJson, null);
     assert.equal(complete.nextMessageIndex, 2);
+    const chat = await f.readChat();
+    assert.equal(chat.unreadCount, 0, "resposta completa à última entrada deve baixar as não lidas do CRM");
+    assert.equal(chat.status, "open");
+    assert.equal(chat.assignedTo, "team-member");
+    assert.equal(chat.assignedToName, "Equipe");
+    assert.equal(chat.aiMode, "agent");
+    assert.equal((await f.readChat("conversation-b")).unreadCount, 1);
   } finally { await f.pg.close(); }
 });
 
-test('worker reconhece escolha antes de pergunta complementar e conclui sem gerar outra resposta de IA', async () => {
+for (const confirmation of ["submitted", "uncertain"]) test(`worker reconhece escolha antes de pergunta complementar; confirmação ${confirmation} controla a baixa`, async () => {
   const f = await runnerFixture(claimAliceAutonomousTurn);
   try {
     const loadContext = f.deps.loadContext;
@@ -318,17 +342,24 @@ test('worker reconhece escolha antes de pergunta complementar e conclui sem gera
       assert.equal(claimToken, f.claim.token);
       assert.equal(turn.sourceMessageId, 'source-a');
       bookings++;
-      await f.pg.query('INSERT INTO "AliceAutoSchedule"(id,"conversationId","replyMessageId","appointmentId",state) VALUES(\'ledger\',\'conversation-a\',\'source-a\',\'appointment\',\'submitted\')');
-      return { status: 'booked', confirmation: 'submitted', startTime: '2026-11-11T17:00:00Z' };
+      await f.pg.query(`INSERT INTO "AliceAutoSchedule"(id,"conversationId","replyMessageId","appointmentId",state)
+        VALUES('ledger','conversation-a','source-a','appointment',$1)`, [confirmation]);
+      if (confirmation === "submitted") {
+        await f.pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe","respondedByName",status)
+          VALUES ('booking-outbound','conversation-a','provider-confirmation',true,'Alice','sent')`);
+      }
+      return { status: 'booked', confirmation, startTime: '2026-11-11T17:00:00Z' };
     };
     const result = await processAliceAutonomousTurn(f.claim, {}, f.deps);
-    assert.equal(result, 'sent', (await f.readTurn()).error);
+    const expected = confirmation === "submitted" ? "sent" : "uncertain";
+    assert.equal(result, expected, (await f.readTurn()).error);
     assert.equal(bookings, 1);
     assert.equal(f.state.generations, 0);
     assert.deepEqual(f.state.sends, [], 'a confirmação pertence ao serviço de agenda, não a uma segunda saída do worker');
     const complete = await f.readTurn();
     assert.equal(complete.appointmentId, 'appointment');
-    assert.equal(complete.status, 'sent');
+    assert.equal(complete.status, expected);
+    assert.equal((await f.readChat()).unreadCount, confirmation === "submitted" ? 0 : 1);
   } finally { await f.pg.close(); }
 });
 
@@ -358,6 +389,7 @@ test("timeout depois do início do envio exige revisão humana e nunca repete a 
     assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "skipped");
     assert.equal(f.state.sends.length, 1);
     assert.equal((await f.readTurn()).status, "uncertain");
+    assert.equal((await f.readChat()).unreadCount, 1);
   } finally { await f.pg.close(); }
 });
 
@@ -369,6 +401,7 @@ test("intervenção imediatamente anterior à chamada externa barra a saída e c
     assert.deepEqual(f.state.sends, []);
     assert.equal((await f.readTurn()).costMicroUsd, 4_500);
     assert.equal((await f.readTurn()).error, "conversation_changed_before_send");
+    assert.equal((await f.readChat()).unreadCount, 1);
   } finally { await f.pg.close(); }
 });
 
@@ -383,6 +416,7 @@ test("orientação clínica e procedimento sem base são triados antes de consul
       assert.deepEqual(f.state.sends, []);
       assert.equal(f.state.handoffs[0].reason, reason);
       assert.equal((await f.readTurn()).status, "needs_human");
+      assert.equal((await f.readChat()).unreadCount, 1);
     } finally { await f.pg.close(); }
   }
 });
@@ -402,6 +436,64 @@ test("entrada nova durante a geração invalida a saída antiga e abre outro pra
     const pending = (await f.pg.query('SELECT status,"availableAt" FROM "AliceAutonomousTurn" WHERE "sourceMessageId"=\'new-customer\'')).rows[0];
     assert.equal(pending.status, "queued");
     assert.equal(pending.availableAt.getTime(), f.state.clock.getTime() + 30_000);
+  } finally { await f.pg.close(); }
+});
+
+function oneReplyDuringSend(f, afterProviderAccepted) {
+  return { ...f.deps,
+    generate: async (...args) => ({ ...await f.deps.generate(...args), messages: ["Podemos conversar por aqui."] }),
+    send: async (params) => {
+      const sent = await f.deps.send(params);
+      await afterProviderAccepted();
+      return sent;
+    },
+  };
+}
+
+for (const arrivalDeltaMs of [0, 1]) test(`entrada com o mesmo timestamp recebida antes do claim não some no desempate por UUID (chegada + ${arrivalDeltaMs} ms)`, async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn, { beforeClaim: async (pg) => {
+    await pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId",timestamp,"createdAt")
+      SELECT 'a-new-inbound',"conversationId",'new-provider-id',timestamp,"createdAt"+$1::int*interval '1 ms'
+      FROM "WhatsAppMessage" WHERE id='source-a'`, [arrivalDeltaMs]);
+    await pg.exec(`UPDATE "WhatsAppConversation" SET "unreadCount"=2 WHERE id='conversation-a'`);
+  } });
+  try {
+    const outcome = await processAliceAutonomousTurn(f.claim, {}, { ...f.deps,
+      generate: async (...args) => ({ ...await f.deps.generate(...args), messages: ["Podemos conversar por aqui."] }) });
+    assert.ok(["sent", "skipped"].includes(outcome), outcome);
+    assert.ok((await f.readChat()).unreadCount >= 1, "uma entrada posterior ou indistinguível não estava coberta");
+  } finally { await f.pg.close(); }
+});
+
+for (const deltaMs of [0, 1_000]) test(`entrada nova durante o envio permanece não lida (horário da fonte + ${deltaMs} ms)`, async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    const source = await f.adapter.whatsAppMessage.findFirst({ where: { id: "source-a" } });
+    const deps = oneReplyDuringSend(f, async () => {
+      const timestamp = new Date(source.timestamp.getTime() + deltaMs);
+      // IDs internos não indicam a ordem de chegada de mensagens no mesmo segundo.
+      await f.pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp)
+        VALUES ('a-new-inbound','conversation-a','new-provider-id',FALSE,$1)`, [timestamp]);
+      await f.pg.query(`UPDATE "WhatsAppConversation" SET "unreadCount"="unreadCount"+1, "lastInboundAt"=$1,
+        "updatedAt"=NOW() WHERE id='conversation-a'`, [timestamp]);
+    });
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, deps), "sent");
+    assert.ok((await f.readChat()).unreadCount >= 1, "a confirmação da resposta antiga não viu a nova mensagem");
+  } finally { await f.pg.close(); }
+});
+
+test("claim substituída durante o envio não atualiza o turno nem a conversa pela execução antiga", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    await f.pg.exec(`UPDATE "WhatsAppConversation" SET status='waiting_response',"assignedTo"='member' WHERE id='conversation-a'`);
+    const deps = oneReplyDuringSend(f, () =>
+      f.pg.query(`UPDATE "AliceAutonomousTurn" SET "claimToken"='new-claim' WHERE id=$1`, [f.claim.turn.id]));
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, deps), "skipped");
+    const { status, unreadCount, lastOutboundAt, assignedTo } = await f.readChat();
+    assert.deepEqual({ status, unreadCount, lastOutboundAt, assignedTo },
+      { status: "waiting_response", unreadCount: 1, lastOutboundAt: null, assignedTo: "member" });
+    assert.equal((await f.readTurn()).claimToken, "new-claim");
+    assert.equal((await f.readTurn()).status, "sending");
   } finally { await f.pg.close(); }
 });
 

@@ -38,7 +38,7 @@ async function fixture() {
   const { pg } = await database();
   await pg.exec(`
     ALTER TABLE "WhatsAppConversation" ADD COLUMN "contactId" TEXT DEFAULT 'contact-a';
-    ALTER TABLE "WhatsAppConversation" ADD COLUMN "unreadCount" INTEGER DEFAULT 1;
+    UPDATE "WhatsAppConversation" SET "unreadCount"=1;
     CREATE TABLE "WhatsAppContact"(id TEXT PRIMARY KEY,name TEXT,phone TEXT);
     INSERT INTO "WhatsAppContact" VALUES('contact-a','Contato teste','5511900001234');
     CREATE TABLE "PipelineCommercialHold"("conversationId" TEXT);
@@ -158,7 +158,7 @@ test("retomada dá prioridade às entradas novas e a recuperação de booking n�
 test("coorte acima de duzentos aborta integralmente antes de ativar ou enfileirar", async () => {
   const f = await fixture();
   try {
-    await f.pg.query(`INSERT INTO "WhatsAppConversation"(id,"instanceId") SELECT 'extra-'||n,$1 FROM generate_series(1,200) n`, [ALICE_AUTONOMY_INSTANCE_ID]);
+    await f.pg.query(`INSERT INTO "WhatsAppConversation"(id,"instanceId","unreadCount") SELECT 'extra-'||n,$1,1 FROM generate_series(1,200) n`, [ALICE_AUTONOMY_INSTANCE_ID]);
     await f.pg.query(`INSERT INTO "WhatsAppMessage"(id,"conversationId","messageId",timestamp,"createdAt") SELECT 'source-extra-'||n,'extra-'||n,'provider-extra-'||n,$1,$1 FROM generate_series(1,200) n`, [new Date(f.now.getTime() - 60_000)]);
     await assert.rejects(setAliceAutonomyEnabled({ enabled: true, backlogAnchorConversationId: "conversation-a", backlogPreviewToken: await f.preview() }, actor, f.db, f.now, ready), /200/);
     assert.equal((await f.pg.query('SELECT count(*)::int AS n FROM "AliceAutonomousTurn"')).rows[0].n, 0);

@@ -18,6 +18,7 @@ import { getOrCreateMemory, recordAliceSentMessage } from "@/lib/alice/memory";
 import { applyCurrentAliceMemory } from "@/lib/alice/runtime-memory";
 import { currentAliceAppointment, type AliceMemoryRuntime } from "@/lib/alice/runtime-context";
 import { prepareAliceAudioTurn } from "@/lib/alice/audio/prepare";
+import { markCompletedAliceRepliesRead } from "@/lib/ai-assistant/autonomy/answered-read";
 
 export type AliceAutonomyDependencies = {
   database: typeof prisma;
@@ -50,6 +51,15 @@ export async function processAliceAutonomousTurn(
   let memoryRuntime: AliceMemoryRuntime | undefined;
   const finish = (status: "skipped" | "needs_human" | "uncertain" | "failed", reason: string) =>
     finishAliceAutonomousTurn({ turn, token, status, reason, database, now: now() });
+  const completeAccepted = (firstSentAt?: Date) => database.$transaction(async (tx) => {
+    const completed = await tx.aliceAutonomousTurn.updateMany({
+      where: { id: turn.id, claimToken: token, status: "processing" },
+      data: { status: "sent", ...(firstSentAt && { firstSentAt }), completedAt: now(),
+        claimToken: null, messagesJson: Prisma.JsonNull, error: null },
+    });
+    if (completed.count) await markCompletedAliceRepliesRead(tx, [turn.id]);
+    return completed.count ? "sent" : "skipped";
+  });
   const human = async (reason: "clinical_safety" | "unsupported_procedure" | "model_requested", error: string = reason) => {
     if (memoryRuntime && reason === "clinical_safety") await applyCurrentAliceMemory(memoryRuntime.scope, turn.sourceMessageId,
       { escalarHumano: true, motivoEscalonamento: reason }, database);
@@ -90,14 +100,16 @@ export async function processAliceAutonomousTurn(
             where: { conversationId_replyMessageId: { conversationId: turn.conversationId, replyMessageId: turn.sourceMessageId } },
             select: { appointmentId: true },
           });
-          await database.aliceAutonomousTurn.update({ where: { id: turn.id }, data: { appointmentId: ledger?.appointmentId || null } });
+          const linked = await database.aliceAutonomousTurn.updateMany({
+            where: { id: turn.id, claimToken: token, status: "processing" }, data: { appointmentId: ledger?.appointmentId || null },
+          });
+          if (!linked.count) return "skipped";
           const state = booking.confirmation === "submitted" ? "sent" : "uncertain";
           if (state === "uncertain") {
-            await finish("uncertain", "booking_confirmation_uncertain");
-            await notifyAliceAutonomousHandoff(turn, "model_requested", deps.handoff);
-          } else await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
-            data: { status: "sent", firstSentAt: now(), completedAt: now(), claimToken: null, messagesJson: Prisma.JsonNull, error: null } });
-          return state;
+            if (await finish("uncertain", "booking_confirmation_uncertain")) await notifyAliceAutonomousHandoff(turn, "model_requested", deps.handoff);
+            return state;
+          }
+          return await completeAccepted(now());
         }
       }
       const generating = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
@@ -132,9 +144,7 @@ export async function processAliceAutonomousTurn(
       if (guarded.status === "handoff") return human("model_requested", guarded.reason);
       if (guarded.status === "skip") {
         if (turn.nextMessageIndex > 0 && turn.firstSentAt) {
-          const completed = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
-            data: { status: "sent", completedAt: now(), claimToken: null, messagesJson: Prisma.JsonNull, error: null } });
-          return completed.count ? "sent" : "skipped";
+          return await completeAccepted();
         }
         await finish("skipped", guarded.reason); return "skipped";
       }
@@ -149,7 +159,7 @@ export async function processAliceAutonomousTurn(
     const sent = await deps.send({
       dbInstance: context.conversation.instance, conversationId: turn.conversationId,
       contactPhone: context.conversation.contact.phone, lastKnownJid: context.conversation.lastKnownJid,
-      message, respondedByName: ALICE_ATTENDANT_NAME, requireProviderMessageId: true, providerTimeoutMs: 15_000,
+      message, respondedByName: ALICE_ATTENDANT_NAME, aliceAutonomous: true, requireProviderMessageId: true, providerTimeoutMs: 15_000,
       beforeSend: async () => {
         if (memoryRuntime && payload) {
           const latest = await getOrCreateMemory(memoryRuntime.scope, {}, database);
@@ -172,19 +182,22 @@ export async function processAliceAutonomousTurn(
       await recordAliceSentMessage(memoryRuntime.scope, sent.messageRowId, database);
       if (!hasComplement && payload.persistMemory !== false) await applyCurrentAliceMemory(memoryRuntime.scope, turn.sourceMessageId, payload.proposal.memoria, database);
     }
-    await database.$transaction(async (tx) => {
-      await tx.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "sending" }, data: {
+    const recorded = await database.$transaction(async (tx) => {
+      const transition = await tx.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "sending" }, data: {
         status: hasComplement ? "queued" : "sent", claimToken: null, claimedAt: null,
         nextMessageIndex: nextIndex, providerMessageIds: [...ids, sent.messageId], firstSentAt: turn.firstSentAt || sent.sentAt,
         availableAt: new Date(sent.sentAt.getTime() + ALICE_AUTONOMY_COMPLEMENT_MS),
         messagesJson: hasComplement ? payload || messages : Prisma.JsonNull, completedAt: hasComplement ? null : now(), error: null,
       } });
+      if (!transition.count) return false;
       await tx.whatsAppConversation.updateMany({
         where: { id: turn.conversationId, instanceId: turn.instanceId, aiMode: "agent", status: context.conversation.status },
         data: { lastOutboundAt: sent.sentAt, ...(context.conversation.status === "waiting_response" ? { status: "open" } : {}) },
       });
+      if (!hasComplement) await markCompletedAliceRepliesRead(tx, [turn.id]);
+      return true;
     });
-    return hasComplement ? "queued" : "sent";
+    return !recorded ? "skipped" : hasComplement ? "queued" : "sent";
   } catch (error) {
     if (error instanceof AliceAutonomyStopped || !externalSendStarted) {
       const status = error instanceof AliceAutonomyStopped ? "skipped" : "failed";

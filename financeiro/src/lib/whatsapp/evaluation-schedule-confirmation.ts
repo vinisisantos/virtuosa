@@ -124,6 +124,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
         evaluationCostQuestion: params.evaluationCostQuestion,
       }),
       respondedByName: proof ? ALICE_ATTENDANT_NAME : "Automação de agendamento",
+      aliceAutonomous: Boolean(proof),
       requireProviderMessageId: params.requireProviderMessageId,
       beforeSend: proof ? async () => {
         if (!await validateAliceBookingClaim({ claim: proof, conversationId: conversation.id, instanceId: instance.id })) {

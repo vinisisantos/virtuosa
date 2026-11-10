@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { markCompletedAliceRepliesRead } from "@/lib/ai-assistant/autonomy/answered-read";
 import { loadAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/config";
 import { currentAliceAppointment } from "@/lib/alice/current-appointment";
 import { phoneLookupKey } from "@/lib/phone";
@@ -155,7 +156,7 @@ export async function recoverAliceAutonomousTurns(database = prisma, now = new D
     });
     if (!interrupted.length) return { uncertain: 0, failed: 0 };
     const ids = interrupted.map((item) => item.id);
-    const recovered = await tx.$queryRaw<{ conversationId: string; status: string }[]>(Prisma.sql`
+    const recovered = await tx.$queryRaw<{ id: string; conversationId: string; status: string }[]>(Prisma.sql`
       UPDATE "AliceAutonomousTurn" turn SET
         status=CASE WHEN ledger.state='submitted' THEN 'sent' WHEN ledger.id IS NOT NULL OR turn.status='sending' THEN 'uncertain' ELSE 'failed' END,
         "appointmentId"=COALESCE(ledger."appointmentId",turn."appointmentId"),
@@ -169,7 +170,8 @@ export async function recoverAliceAutonomousTurns(database = prisma, now = new D
         WHERE job.id IN (${Prisma.join(ids)})) snapshot
       LEFT JOIN "AliceAutoSchedule" ledger ON ledger.id=snapshot."bookingId"
       WHERE turn.id=snapshot.id AND turn.status IN ('processing','sending') AND turn."claimedAt"<${stale}
-      RETURNING turn."conversationId",turn.status`);
+      RETURNING turn.id,turn."conversationId",turn.status`);
+    await markCompletedAliceRepliesRead(tx, recovered.filter((turn) => turn.status === "sent").map((turn) => turn.id));
     const unhealthy = recovered.filter((item) => item.status !== "sent");
     if (unhealthy.length) await tx.$queryRaw(Prisma.sql`
       UPDATE "AliceAudioTranscript" SET status='failed',error='audio_interrupted_no_retry',"completedAt"=${now}
