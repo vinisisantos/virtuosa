@@ -23,10 +23,12 @@ import { projectAliceAudioHistory } from "@/lib/alice/audio/history";
 type RecentMessage = { id: string; body: string; status: string; fromMe: boolean; timestamp: Date; createdAt: Date };
 export type AliceAutoScheduleResult =
   | { status: "not_applicable" }
+  | { status: "choice_required"; reason: string }
   | { status: "review"; reason: string }
   | { status: "booked"; confirmation: "submitted" | "uncertain"; startTime: string };
 
 const review = (reason: string): AliceAutoScheduleResult => ({ status: "review", reason });
+const choiceRequired = (reason: string): AliceAutoScheduleResult => ({ status: "choice_required", reason });
 
 function procedureFromConfirmedCampaign(campaignName: string | null, messages: RecentMessage[], offerId: string) {
   const candidate = evaluationProcedureDraft({ campaignName });
@@ -82,7 +84,7 @@ export async function tryAliceAutoSchedule(params: {
     if (config.enabled !== true || !Number.isFinite(activatedAt.getTime())
       || [offer, ...replies].some((message) => message.timestamp <= activatedAt || message.createdAt <= activatedAt)) return { status: "not_applicable" };
   } catch { return { status: "not_applicable" }; }
-  if (!slot) return review("A escolha de data e horário precisa ser confirmada pela equipe antes do agendamento.");
+  if (!slot) return choiceRequired("Peça à cliente que escolha um horário exato antes de agendar.");
   const autonomy = params.autonomyClaim;
   if (autonomy && (autonomy.sourceMessageId !== reply.id || !await validateAliceBookingClaim({
     claim: autonomy, conversationId: params.conversationId, instanceId: params.instanceId,

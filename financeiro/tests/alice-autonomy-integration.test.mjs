@@ -144,6 +144,32 @@ test("claim só assume uma entrada vencida da caixa autorizada e bloqueia outro 
   } finally { await pg.close(); }
 });
 
+test("retomada recente de horário sem escolha exata não repete reserva nem ultrapassa 100 horas", async () => {
+  const now = new Date("2026-11-10T18:00:00.000Z");
+  const { pg, adapter } = await database({ memory: true });
+  try {
+    await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    const operator = "codex-resume-100h";
+    await pg.query(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"=$1 WHERE id='conversation-a'`, [operator]);
+    await pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp,"createdAt",status,type,body)
+      VALUES ('offer','conversation-a','offer-id',TRUE,$1,$1,'delivered','text','11/11/2026 às 10h30 ou 13h30. Qual prefere?')`, [new Date(now.getTime() - 20_000)]);
+    await pg.query(`UPDATE "WhatsAppMessage" SET body='Pode ser no horário que tiver?' WHERE id='source-a'`);
+    await insertTurn(pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID, status: "needs_human" });
+    await pg.query(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='booking_requires_review',attempts=1 WHERE id='turn-a'`);
+    const params = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a",
+      timestamp: new Date(now.getTime() - 10_000), origin: "inbound", resumeBookingBy: operator };
+    const result = await enqueueAliceAutonomousTurn(params, adapter, now);
+    assert.equal(result.queued, true);
+    assert.equal((await pg.query(`SELECT status,error FROM "AliceAutonomousTurn" WHERE id='turn-a'`)).rows[0].status, "queued");
+
+    await pg.query(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='booking_requires_review',"completedAt"=NOW() WHERE id='turn-a'`);
+    await pg.query(`UPDATE "WhatsAppMessage" SET timestamp=$1,"createdAt"=$1 WHERE id='source-a'`, [new Date(now.getTime() - 101 * 60 * 60_000)]);
+    const expired = await enqueueAliceAutonomousTurn({ ...params, timestamp: new Date(now.getTime() - 101 * 60 * 60_000) }, adapter, now);
+    assert.equal(expired.queued, false);
+    assert.equal((await pg.query(`SELECT status,error FROM "AliceAutonomousTurn" WHERE id='turn-a'`)).rows[0].error, "booking_requires_review");
+  } finally { await pg.close(); }
+});
+
 test("replay conserva um único turno e nova entrada substitui a resposta pendente sem antecipar os trinta segundos", async () => {
   const { pg, adapter } = await database();
   const now = new Date();
@@ -397,6 +423,28 @@ test("duas mensagens usam uma única geração, mantêm custo e o complemento es
     assert.equal(chat.assignedToName, "Equipe");
     assert.equal(chat.aiMode, "agent");
     assert.equal((await f.readChat("conversation-b")).unreadCount, 1);
+  } finally { await f.pg.close(); }
+});
+
+test("horário sem escolha exata gera uma pergunta de continuidade sem handoff ou reserva", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    const loadContext = f.deps.loadContext;
+    const generate = f.deps.generate;
+    f.deps.loadContext = async (...args) => ({ ...await loadContext(...args), messages: [
+      { id: "offer", fromMe: true, status: "delivered", body: "11/11/2026 às 10h30 ou 13h30. Qual prefere?" },
+      { id: "source-a", fromMe: false, status: "received", body: "Pode ser no horário que tiver?" },
+    ] });
+    let scheduleAttempts = 0;
+    f.deps.schedule = async () => { scheduleAttempts++; return { status: "choice_required", reason: "Escolha um horário exato." }; };
+    f.deps.generate = async (...args) => ({ ...await generate(...args), messages: ["Qual horário exato fica melhor para você?"] });
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "sent", (await f.readTurn()).error);
+    assert.equal(scheduleAttempts, 1);
+    assert.equal(f.state.generations, 1);
+    assert.deepEqual(f.state.sends, ["Qual horário exato fica melhor para você?"]);
+    assert.deepEqual(f.state.handoffs, []);
+    assert.equal((await f.readTurn()).appointmentId, null);
+    assert.equal((await f.readChat()).aiMode, "agent");
   } finally { await f.pg.close(); }
 });
 

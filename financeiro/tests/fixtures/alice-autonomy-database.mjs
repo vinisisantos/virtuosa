@@ -59,6 +59,7 @@ export function queueDatabase(pg) {
       updateMany: updateMany("AliceAutonomousTurn"),
       update: async (args) => { await updateMany("AliceAutonomousTurn")(args); return findFirst("AliceAutonomousTurn")({ where: args.where }); },
       findFirst: findFirst("AliceAutonomousTurn"), findMany: findMany("AliceAutonomousTurn"),
+      findUnique: ({ where }) => findFirst("AliceAutonomousTurn")({ where: where.conversationId_sourceMessageId || where }),
       upsert: async ({ create }) => {
         const keys = Object.keys(create);
         const inserted = await query(Prisma.sql`INSERT INTO "AliceAutonomousTurn" (${Prisma.join(keys.map(quote))})
