@@ -52,7 +52,7 @@ async function fixture() {
   await pg.query('UPDATE "AppSetting" SET value=\'{"enabled":false}\' WHERE key=\'alice_autonomous_sbc_v1\'');
   await pg.query('UPDATE "WhatsAppMessage" SET timestamp=$1,"createdAt"=$1 WHERE id=\'source-a\'', [new Date(now.getTime() - 120_000)]);
   const db = adminDatabase(pg);
-  const candidates = () => db.$queryRaw(aliceBacklogQuery({ allowManualBefore: now, cutoff: now }));
+  const candidates = () => db.$queryRaw(aliceBacklogQuery({ cutoff: now }));
   const preview = async () => createAliceBacklogPreview((await candidates())[0], now);
   return { pg, db, now, candidates, preview };
 }
@@ -69,7 +69,7 @@ test("ativação usa âncora assinada, mantém ordem e não consulta modelos ou 
     assert.equal(row.availableAt.getTime(), f.now.getTime() + 30_000);
     assert.equal((await f.pg.query('SELECT count(*)::int AS n FROM "WhatsAppMessage"')).rows[0].n, before);
     assert.equal((await f.pg.query('SELECT count(*)::int AS n FROM "ActivityLog"')).rows[0].n, 1);
-    await assert.rejects(setAliceAutonomyEnabled({ enabled: true, backlogAnchorConversationId: "conversation-a", backlogPreviewToken: token }, actor, f.db, f.now, ready), /Pause/);
+    await assert.rejects(setAliceAutonomyEnabled({ enabled: true, backlogAnchorConversationId: "conversation-a", backlogPreviewToken: token }, actor, f.db, f.now, ready), /mudou/);
   } finally { await f.pg.close(); }
 });
 
@@ -87,12 +87,12 @@ test("âncora forjada, outra unidade, prévia expirada e nova resposta não ativ
   } finally { await f.pg.close(); }
 });
 
-test("retomada exclui já agendados, pausa comercial e respostas humanas posteriores", async () => {
+test("retomada inclui já agendados e exclui pausa comercial e respostas humanas posteriores", async () => {
   const f = await fixture();
   try {
     assert.equal((await f.candidates()).length, 1);
     await f.pg.query('INSERT INTO "Agendamento" VALUES(\'booking\',\'SBC\',\'(11)90000-1234\',$1,\'Avaliação\',\'confirmado\')', [new Date(f.now.getTime() + 86_400_000)]);
-    assert.equal((await f.candidates()).length, 0);
+    assert.equal((await f.candidates()).length, 1);
     await f.pg.exec('DELETE FROM "Agendamento"; INSERT INTO "PipelineCommercialHold" VALUES(\'conversation-a\')');
     assert.equal((await f.candidates()).length, 0);
     await f.pg.exec('DELETE FROM "PipelineCommercialHold"');

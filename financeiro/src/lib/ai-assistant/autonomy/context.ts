@@ -69,7 +69,7 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
 }
 
 export type LegacyAliceAutonomousContext = NonNullable<Awaited<ReturnType<typeof loadLegacyAliceContext>>>;
-export type AliceAutonomousContext = LegacyAliceAutonomousContext & { memoryRuntime?: AliceMemoryRuntime };
+export type AliceAutonomousContext = LegacyAliceAutonomousContext & { memoryRuntime?: AliceMemoryRuntime; schedulingRetry?: boolean };
 
 export async function loadAliceAutonomousContext(turn: AliceAutonomousTurn, database = prisma,
   now = new Date()): Promise<AliceAutonomousContext | null> {

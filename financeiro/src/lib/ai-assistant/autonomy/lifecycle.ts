@@ -14,7 +14,8 @@ export async function finishAliceAutonomousTurn(params: {
       where: { id: params.turn.id, instanceId: ALICE_AUTONOMY_INSTANCE_ID, claimToken: params.token, status: { in: ["processing", "sending"] } },
       data: { status: params.status, completedAt: now, messagesJson: params.status === "uncertain" ? undefined : Prisma.JsonNull, claimToken: null, error: params.reason },
     });
-    if (updated.count && params.status !== "skipped") {
+    const recoverableScheduleOffer = params.reason === "schedule_option_expired_or_invalid";
+    if (updated.count && params.status !== "skipped" && !recoverableScheduleOffer) {
       await tx.whatsAppConversation.updateMany({
         where: { id: params.turn.conversationId, instanceId: ALICE_AUTONOMY_INSTANCE_ID, aiMode: "agent" },
         data: { aiMode: "manual", aiModeUpdatedAt: now, aiModeUpdatedBy: "alice-handoff" },

@@ -4,7 +4,7 @@ import { readAliceContinuityControls } from "@/lib/alice/context-controls";
 import type { AliceMemoryScope } from "@/lib/alice/memory-input";
 import { ALICE_STRUCTURED_OUTPUT_JSON_SCHEMA } from "@/lib/alice/schema";
 
-export type AliceStructuredContext = { scope: AliceMemoryScope; prompt: unknown };
+export type AliceStructuredContext = { scope: AliceMemoryScope; prompt: unknown; schedulingRetry?: boolean };
 export type AliceStructuredRequestErrorCode = "invalid_scope" | "invalid_context" | "context_too_large";
 
 export class AliceStructuredRequestError extends Error {
@@ -29,6 +29,7 @@ const structuredInstructions = [
 ].join("\n");
 
 const repairInstruction = "CORRECAO_DE_FORMATO: a tentativa anterior não passou pela validação local. Gere novamente a partir do mesmo contexto, respeitando todos os tipos, campos permitidos, resumo obrigatório, limites e motivo de escalonamento quando necessário. Não adicione fatos novos nem afirme que houve envio.";
+const schedulingRetryInstruction = "CORRECAO_DE_HORARIOS: a resposta anterior sugeriu uma data ou horário que o sistema não pode enviar. Ignore essa sugestão. Se oferecer avaliação, use somente opções exatamente presentes em HORARIOS_SBC, com data completa de São Paulo e no máximo dois horários; se não houver opção adequada ou a pergunta não pedir agendamento, responda sem inventar data ou horário. Preserve a resposta à dúvida direta da cliente.";
 
 export function buildAliceStructuredRequest(context: AliceStructuredContext, repair = false) {
   const scope = context?.scope;
@@ -39,6 +40,7 @@ export function buildAliceStructuredRequest(context: AliceStructuredContext, rep
     type: "json_schema", schema: ALICE_STRUCTURED_OUTPUT_JSON_SCHEMA,
   } } };
   request.system += `\n${structuredInstructions}${repair ? `\n${repairInstruction}` : ""}`;
+  if (context.schedulingRetry) request.system += `\n${schedulingRetryInstruction}`;
   if (Buffer.byteLength(JSON.stringify(request), "utf8") > 80_000) throw new AliceStructuredRequestError("context_too_large");
   return request;
 }

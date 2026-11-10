@@ -65,7 +65,7 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
       WHERE t.unit='SBC' AND t."instanceId"=${ALICE_AUTONOMY_INSTANCE_ID} AND t."createdAt">=${since}
         ${cursor ? Prisma.sql`AND (t."createdAt",t.id)<(${cursor.createdAt},${cursor.id})` : Prisma.empty}
       ORDER BY t."createdAt" DESC,t.id DESC LIMIT 51`),
-    database.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ allowManualBefore: new Date(config.activatedAt || now), cutoff: now, from: new Date(now.getTime() - 14 * 86_400_000), limit: 201 })),
+    database.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ cutoff: now, limit: 201 })),
   ]);
   const selected = rows.slice(0, 50);
   const last = selected.at(-1);
@@ -107,16 +107,15 @@ export async function setAliceAutonomyEnabled(input: unknown, actor: Pick<AuthPa
     const stored = locked.find((item) => item.key === ALICE_AUTONOMY_CONFIG_KEY);
     const current = parseAliceAutonomyConfig(stored?.value);
     if (body.enabled && !current.activatedAt && !preview) throw new AiAssistantError("Selecione uma conversa inicial a partir da prévia atualizada.", 400);
-    if (body.enabled && current.enabled && preview) throw new AiAssistantError("Pause a operação antes de escolher uma nova retomada.", 409);
+    if (body.enabled && current.enabled && !preview) throw new AiAssistantError("Selecione uma pendência da prévia atualizada para retomar sem pausar a operação.", 409);
     let cohort: AliceBacklogRow[] = [];
     if (preview && anchorId) {
-      const allowManualBefore = new Date(current.activatedAt || now);
       const cutoff = now;
-      const anchor = (await tx.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ allowManualBefore, cutoff, anchorId, limit: 1 })))[0];
+      const anchor = (await tx.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ cutoff, anchorId, limit: 1 })))[0];
       if (!anchor || anchor.sourceMessageId !== preview.sourceMessageId || anchor.lastInboundAt.toISOString() !== preview.timestamp) {
         throw new AiAssistantError("A conversa inicial mudou ou deixou de estar pendente. Atualize a prévia.", 409);
       }
-      cohort = await tx.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ allowManualBefore, cutoff, from: anchor.lastInboundAt, boundaryId: anchorId, lock: true }));
+      cohort = await tx.$queryRaw<AliceBacklogRow[]>(aliceBacklogQuery({ cutoff, from: anchor.lastInboundAt, boundaryId: anchorId, lock: true }));
       if (cohort.length > 200) throw new AiAssistantError("A retomada supera 200 conversas. Escolha um ponto mais recente para manter o lote controlado.", 409);
       if (!cohort.some((row) => row.conversationId === anchorId && row.sourceMessageId === preview.sourceMessageId)) throw new AiAssistantError("A conversa inicial mudou. Atualize a prévia.", 409);
       await tx.whatsAppConversation.updateMany({ where: { id: { in: cohort.map((row) => row.conversationId) }, instanceId: ALICE_AUTONOMY_INSTANCE_ID },
@@ -125,7 +124,7 @@ export async function setAliceAutonomyEnabled(input: unknown, actor: Pick<AuthPa
     const value = { ...current, enabled: body.enabled, activatedAt: body.enabled ? current.activatedAt || now.toISOString() : current.activatedAt,
       backlogAnchorConversationId: body.enabled && anchorId ? anchorId : current.backlogAnchorConversationId, model: ALICE_AUTONOMY_MODEL };
     await tx.appSetting.upsert({ where: { key: ALICE_AUTONOMY_CONFIG_KEY }, create: { key: ALICE_AUTONOMY_CONFIG_KEY, value: JSON.stringify(value) }, update: { value: JSON.stringify(value) } });
-    if (body.enabled) await tx.appSetting.upsert({ where: { key: ALICE_AUTONOMY_WORKER_STATE_KEY }, create: { key: ALICE_AUTONOMY_WORKER_STATE_KEY, value: "{}" }, update: { value: "{}" } });
+    if (body.enabled && !current.enabled) await tx.appSetting.upsert({ where: { key: ALICE_AUTONOMY_WORKER_STATE_KEY }, create: { key: ALICE_AUTONOMY_WORKER_STATE_KEY, value: "{}" }, update: { value: "{}" } });
     if (!body.enabled) {
       await tx.aliceAutonomousTurn.updateMany({ where: { instanceId: ALICE_AUTONOMY_INSTANCE_ID, status: "queued" },
         data: { status: "skipped", completedAt: now, claimToken: null, messagesJson: Prisma.JsonNull, error: "global_pause" } });
@@ -139,8 +138,10 @@ export async function setAliceAutonomyEnabled(input: unknown, actor: Pick<AuthPa
         "claimToken"=NULL,"claimedAt"=NULL,"completedAt"=NULL,error=NULL,"updatedAt"=EXCLUDED."updatedAt"
       WHERE "AliceAutonomousTurn".status='skipped' AND "AliceAutonomousTurn".error='global_pause' AND "AliceAutonomousTurn"."firstSentAt" IS NULL
       RETURNING id`) : [];
+    const description = !body.enabled ? "Atendimento autônomo da Alice pausado em SBC."
+      : current.enabled ? "Pendências retomadas pela Alice em SBC." : "Atendimento autônomo da Alice ativado em SBC.";
     await tx.activityLog.create({ data: { userId: actor.userId, userName: actor.name || "Administrador", action: "UPDATE", entityType: "ALICE_AUTONOMY",
-      entityId: ALICE_AUTONOMY_CONFIG_KEY, unit: "SBC", description: body.enabled ? "Atendimento autônomo da Alice ativado em SBC." : "Atendimento autônomo da Alice pausado em SBC.",
+      entityId: ALICE_AUTONOMY_CONFIG_KEY, unit: "SBC", description,
       metadata: JSON.stringify({ before: current, after: value, backlogEnqueued: added.length, backlogCutoff: cohort.length ? now.toISOString() : null }) } });
     return { config: value, backlogEnqueued: added.length };
   }, { timeout: 15_000 });

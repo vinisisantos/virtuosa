@@ -34,7 +34,7 @@ export async function pauseAliceForHuman(conversationId: string, database = pris
 
 type EnqueueAliceTurn = {
   conversationId: string; instanceId: string; sourceMessageId: string; timestamp: Date; origin: "inbound" | "backlog";
-  resumeBookingBy?: string; resumeHistoricalPriceBy?: string;
+  resumeBookingBy?: string; resumeHistoricalPriceBy?: string; resumeScheduleBy?: string;
 };
 
 export async function enqueueAliceAutonomousTurn(params: EnqueueAliceTurn, database = prisma, now = new Date()) {
@@ -72,9 +72,9 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
     });
     if (latest?.id !== source.id) return { queued: false, reason: "superseded" };
     if (!aliceAutonomyConversationEligible({ ...conversation, aiMode: "agent" })) return { queued: false, reason: "conversation_paused" };
-    const canEnroll = conversation.aiModeUpdatedBy === "alice-global-pause" || (params.origin === "backlog"
-      ? !conversation.aiModeUpdatedAt || conversation.aiModeUpdatedAt <= activatedAt
-      : !conversation.aiModeUpdatedAt);
+    // Sugestões e Manual explícito continuam sob controle humano; só o Manual ainda não configurado pode entrar automaticamente.
+    const canEnroll = conversation.aiMode === "manual"
+      && (conversation.aiModeUpdatedBy === "alice-global-pause" || (!conversation.aiModeUpdatedAt && !conversation.aiModeUpdatedBy));
     if (conversation.aiMode !== "agent" && canEnroll) {
       const enrolled = await tx.whatsAppConversation.updateMany({
         where: { id: params.conversationId, instanceId: params.instanceId, aiMode: conversation.aiMode, aiModeUpdatedAt: conversation.aiModeUpdatedAt },
@@ -96,8 +96,23 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
     });
     const resumeBooking = turn.error === "booking_requires_review" && params.resumeBookingBy;
     const resumePrice = turn.error === "price_after_booking" && params.resumeHistoricalPriceBy;
-    const operator = resumeBooking || resumePrice;
-    if (turn.status === "needs_human" && params.origin === "backlog" && operator && conversation.aiModeUpdatedBy === operator) {
+    const resumeSchedule = turn.error === "schedule_option_expired_or_invalid" && params.resumeScheduleBy;
+    const operator = resumeBooking || resumePrice || resumeSchedule;
+    if (["needs_human", "failed"].includes(turn.status) && params.origin === "backlog" && operator && conversation.aiModeUpdatedBy === operator) {
+      if (resumeSchedule) {
+        const resumed = await tx.$executeRaw`
+          UPDATE "AliceAutonomousTurn" t SET status='queued',error=NULL,"completedAt"=NULL,"claimedAt"=NULL,
+            "availableAt"=${aliceAutonomyAvailableAt(source.createdAt, now, true)},"messagesJson"=NULL,"updatedAt"=${now}
+          WHERE t.id=${turn.id} AND t.status IN ('needs_human','failed') AND t.error='schedule_option_expired_or_invalid'
+            AND t."claimToken" IS NULL AND t."nextMessageIndex"=0 AND t."firstSentAt" IS NULL
+            AND t."generationStartedAt" IS NOT NULL AND t."providerMessageIds"='[]'::jsonb AND t."appointmentId" IS NULL
+            AND t."sourceMessageId"=(SELECT id FROM "WhatsAppMessage" WHERE "conversationId"=t."conversationId"
+              AND status<>'deleted' ORDER BY timestamp DESC,id DESC LIMIT 1)
+            AND NOT EXISTS (SELECT 1 FROM "AliceAutoSchedule" b WHERE b."conversationId"=t."conversationId" AND b."replyMessageId"=t."sourceMessageId")
+            AND NOT EXISTS (SELECT 1 FROM "LeadMemory" m WHERE m."conversationId"=t."conversationId"
+              AND m.unidade='SBC' AND m."escalarHumano')`;
+        if (resumed === 1) return { queued: true, turnId: turn.id, reason: "queued" };
+      }
       if (resumePrice) {
         const contact = await tx.whatsAppConversation.findFirst({ where: { id: params.conversationId, instanceId: params.instanceId },
           select: { contact: { select: { phone: true } } } });

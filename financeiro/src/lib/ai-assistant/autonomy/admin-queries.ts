@@ -11,16 +11,8 @@ function phoneKey(column: Prisma.Sql) {
   return Prisma.sql`RIGHT(CASE WHEN ${digits} LIKE '55%' AND LENGTH(${digits})>11 THEN SUBSTRING(${digits} FROM 3) ELSE ${digits} END,11)`;
 }
 
-export function aliceBacklogQuery(params: { allowManualBefore: Date; cutoff: Date; from?: Date; anchorId?: string; boundaryId?: string; limit?: number; lock?: boolean }) {
+export function aliceBacklogQuery(params: { cutoff: Date; from?: Date; anchorId?: string; boundaryId?: string; limit?: number; lock?: boolean }) {
   return Prisma.sql`
-    WITH booked AS MATERIALIZED (
-      SELECT ${phoneKey(Prisma.sql`appointment."clientPhone"`)} AS phone FROM "Agendamento" appointment
-      WHERE appointment.unit='SBC' AND appointment."startTime">=${params.cutoff} AND appointment.procedimento ILIKE '%avalia%'
-        AND appointment.status NOT IN ('cancelado','cancelada','desmarcou','desmarcado')
-      UNION
-      SELECT ${phoneKey(Prisma.sql`client.phone`)} FROM "Client" client JOIN "SalesPipeline" deal ON deal."clientId"=client.id
-      WHERE client.unit='SBC' AND deal.unit='SBC' AND deal.stage='agendado'
-    )
     SELECT c.id AS "conversationId", contact.name AS "contactName", RIGHT(regexp_replace(contact.phone, '[^0-9]', '', 'g'), 4) AS "phoneLast4",
       c."unreadCount", incoming.id AS "sourceMessageId", incoming.timestamp AS "lastInboundAt", incoming."createdAt" AS "receivedAt"
     FROM "WhatsAppConversation" c
@@ -31,16 +23,19 @@ export function aliceBacklogQuery(params: { allowManualBefore: Date; cutoff: Dat
       WHERE m."conversationId"=c.id AND m."fromMe"=false AND m.status<>'deleted'
       ORDER BY m.timestamp DESC, m.id DESC LIMIT 1
     ) incoming ON true
-    WHERE c."instanceId"=${ALICE_AUTONOMY_INSTANCE_ID} AND c."unreadCount">0
+    WHERE c."instanceId"=${ALICE_AUTONOMY_INSTANCE_ID}
       AND c."blockedAt" IS NULL AND c."archivedAt" IS NULL AND c."commercialPaused"=false
       AND c.status NOT IN ('closed','resolved','lost')
-      AND (c."aiModeUpdatedAt" IS NULL OR c."aiModeUpdatedAt"<=${params.allowManualBefore} OR c."aiMode"='agent' OR c."aiModeUpdatedBy"='alice-global-pause')
+      AND (c."aiMode"='agent' OR (c."aiMode"='manual' AND (c."aiModeUpdatedBy"='alice-global-pause'
+        OR (c."aiModeUpdatedAt" IS NULL AND c."aiModeUpdatedBy" IS NULL))))
       AND incoming.timestamp<=${params.cutoff} AND incoming."createdAt"<=${params.cutoff}
       ${params.from ? Prisma.sql`AND incoming.timestamp>=${params.from}` : Prisma.empty}
       ${params.from && params.boundaryId ? Prisma.sql`AND (incoming.timestamp,c.id)>=(${params.from},${params.boundaryId})` : Prisma.empty}
       ${params.anchorId ? Prisma.sql`AND c.id=${params.anchorId}` : Prisma.empty}
       AND NOT EXISTS (SELECT 1 FROM "PipelineCommercialHold" hold WHERE hold."conversationId"=c.id)
-      AND NOT EXISTS (SELECT 1 FROM booked WHERE booked.phone<>'' AND booked.phone=${phoneKey(Prisma.sql`contact.phone`)})
+      AND NOT EXISTS (SELECT 1 FROM "AliceAutonomousTurn" turn WHERE turn."conversationId"=c.id AND turn."sourceMessageId"=incoming.id
+        AND NOT (turn.status='skipped' AND turn.error='global_pause' AND turn."firstSentAt" IS NULL))
+      -- Abrir/ler o chat pode zerar o contador sem responder; o outbound após a entrada é o critério real de conclusão.
       AND NOT EXISTS (SELECT 1 FROM "WhatsAppMessage" outgoing WHERE outgoing."conversationId"=c.id AND outgoing."fromMe"=true
         AND outgoing.status<>'deleted' AND outgoing."respondedByName" IS DISTINCT FROM 'Automação de recepção'
         AND (outgoing.timestamp,outgoing.id)>(incoming.timestamp,incoming.id))

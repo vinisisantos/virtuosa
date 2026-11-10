@@ -17,10 +17,13 @@ export function AliceMonitoringControls({ data, saving, onActivate }: Props) {
   const [accepted, setAccepted] = useState(false);
   const confirmRef = useRef<HTMLInputElement>(null);
   const configuredAnchor = data.config.backlogAnchorConversationId;
+  const active = data.config.enabled;
   const candidates = [...data.backlogCandidates].sort((a, b) => a.lastInboundAt.localeCompare(b.lastInboundAt));
   const selected = candidates.find((candidate) => candidate.conversationId === anchor);
   const firstActivation = !data.config.activatedAt && !configuredAnchor;
-  const canActivate = data.readiness.ready && (!firstActivation || Boolean(selected?.previewToken)) && (!anchor || Boolean(selected?.previewToken));
+  const canActivate = data.readiness.ready && (active
+    ? Boolean(selected?.previewToken)
+    : (!firstActivation || Boolean(selected?.previewToken)) && (!anchor || Boolean(selected?.previewToken)));
 
   useEffect(() => {
     if (confirming) confirmRef.current?.focus();
@@ -49,21 +52,23 @@ export function AliceMonitoringControls({ data, saving, onActivate }: Props) {
       </dl>
       <p className={styles.note}>A recepção automática anterior não deve se sobrepor às conversas assumidas pela Alice. Dúvidas clínicas e casos que precisam de análise continuam sendo encaminhados para a equipe.</p>
 
-      {!data.config.enabled && (
+      {(!active || candidates.length > 0) && (
         <div className={styles.activation}>
-          <h3>{firstActivation ? "Por onde começar as pendências" : "Retomar o atendimento autônomo"}</h3>
-          {!firstActivation && <p className={styles.note}>Sem escolher uma nova conversa inicial, a retomada vale somente para novas mensagens. Pendências anteriores não são reenviadas nem retomadas automaticamente.</p>}
+          <h3>{active ? "Retomar pendências sem pausar a Alice" : firstActivation ? "Por onde começar as pendências" : "Retomar o atendimento autônomo"}</h3>
+          {active
+            ? <p className={styles.note}>As novas mensagens continuarão sendo atendidas. Selecione uma conversa para enfileirar as últimas entradas ainda sem resposta, inclusive em conversas antigas ou com avaliação marcada.</p>
+            : !firstActivation && <p className={styles.note}>Sem escolher uma nova conversa inicial, a retomada vale somente para novas mensagens. Pendências anteriores não são reenviadas nem retomadas automaticamente.</p>}
           {candidates.length > 0 ? (
             <>
-              <label className={styles.fieldLabel} htmlFor="alice-backlog-anchor">Primeira conversa da retomada{firstActivation ? " (obrigatório)" : " (opcional)"}</label>
+              <label className={styles.fieldLabel} htmlFor="alice-backlog-anchor">Primeira conversa da retomada{firstActivation || active ? " (obrigatório)" : " (opcional)"}</label>
               <select id="alice-backlog-anchor" className={styles.select} value={anchor} disabled={saving || confirming} onChange={(event) => setAnchor(event.target.value)}>
-                <option value="">{firstActivation ? "Selecione a conversa inicial" : "Somente novas mensagens, sem retomar pendências"}</option>
+                <option value="">{firstActivation || active ? "Selecione a conversa inicial" : "Somente novas mensagens, sem retomar pendências"}</option>
                 {candidates.map((candidate) => <option key={candidate.conversationId} value={candidate.conversationId}>
-                  {candidate.contactName || "Sem nome"} · final {candidate.phoneLast4 || "—"} · {formatAliceDate(candidate.lastInboundAt)} · {candidate.unreadCount} não lida(s)
+                  {candidate.contactName || "Sem nome"} · final {candidate.phoneLast4 || "—"} · {formatAliceDate(candidate.lastInboundAt)} · entrada sem resposta
                 </option>)}
               </select>
               {selected && <p className={styles.selectionPreview}>
-                Começar por <strong>{selected.contactName || "Sem nome"}</strong>, final {selected.phoneLast4 || "—"}, com entrada em {formatAliceDate(selected.lastInboundAt)}. As pendências a partir deste ponto serão conferidas novamente antes de cada envio.
+                Começar por <strong>{selected.contactName || "Sem nome"}</strong>, final {selected.phoneLast4 || "—"}, com entrada sem resposta em {formatAliceDate(selected.lastInboundAt)}. O lote será validado novamente antes do envio e não pode ultrapassar 200 conversas.
               </p>}
             </>
           ) : <p className={styles.note}>{firstActivation ? "Nenhuma pendência elegível foi localizada para definir o início. Atualize o acompanhamento antes de ativar." : "Nenhuma pendência elegível na lista. A retomada vale apenas para novas mensagens, sem reprocessar o lote anterior."}</p>}
@@ -75,16 +80,24 @@ export function AliceMonitoringControls({ data, saving, onActivate }: Props) {
           </div>}
 
           {confirming ? <div className={styles.confirmation}>
-            <h3>Confirmar ativação em SBC</h3>
-            <p>A Alice poderá enviar respostas reais {selected ? "às novas mensagens e às pendências selecionadas" : "às novas mensagens, sem retomar pendências anteriores"}, 24 horas por dia, usando Sonnet e sem teto mensal de gasto no CRM.</p>
+            <h3>{active ? "Confirmar retomada das pendências" : "Confirmar ativação em SBC"}</h3>
+            <p>{active
+              ? "A Alice enviará respostas reais às pendências a partir da conversa selecionada, sem pausar as novas mensagens. Usa Sonnet 4.6, sem teto mensal de gasto no CRM; conversas assumidas pela equipe continuam protegidas."
+              : `A Alice poderá enviar respostas reais ${selected ? "às novas mensagens e às pendências selecionadas" : "às novas mensagens, sem retomar pendências anteriores"}, 24 horas por dia, usando Sonnet e sem teto mensal de gasto no CRM.`}</p>
             <label className={styles.checkboxLabel}>
               <input ref={confirmRef} type="checkbox" checked={accepted} disabled={saving} onChange={(event) => setAccepted(event.target.checked)} />
-              <span>Entendo que isso ativa envios automáticos. Posso pausar a operação nesta página ou assumir uma conversa.</span>
+              <span>{active
+                ? "Entendo que isso enfileira respostas às pendências selecionadas, sem pausar as novas conversas. A equipe pode assumir qualquer conversa."
+                : "Entendo que isso ativa envios automáticos. Posso pausar a operação nesta página ou assumir uma conversa."}</span>
             </label>
             <div className={styles.actions}>
               <button type="button" className={styles.primaryButton} disabled={saving || !accepted || !canActivate} onClick={async () => {
-                if (await onActivate(anchor || undefined, selected?.previewToken)) setConfirming(false);
-              }}>{saving ? <Loader2 className={styles.spinner} size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />} Ativar agora em SBC</button>
+                if (await onActivate(anchor || undefined, selected?.previewToken)) {
+                  setConfirming(false);
+                  setAccepted(false);
+                  setAnchor("");
+                }
+              }}>{saving ? <Loader2 className={styles.spinner} size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />} {active ? "Retomar pendências" : "Ativar agora em SBC"}</button>
               <button type="button" className={styles.button} disabled={saving} onClick={() => { setConfirming(false); setAccepted(false); }}>Cancelar</button>
             </div>
           </div> : <button type="button" className={styles.primaryButton} disabled={saving || !canActivate} onClick={() => setConfirming(true)}>
