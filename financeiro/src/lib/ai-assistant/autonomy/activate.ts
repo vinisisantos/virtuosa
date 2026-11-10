@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { AiAssistantError } from "@/lib/ai-assistant/policy";
 import { clearAliceEscalationOnResume } from "@/lib/alice/runtime-memory";
+import { aliceCanResumeGeneralFear, aliceHealthHistoryRequiresHuman } from "@/lib/alice/fear-policy";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 import { enqueueAliceTurnInTransaction, lockAliceQueue } from "@/lib/ai-assistant/autonomy/queue";
 
@@ -20,7 +21,8 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
     });
     if (!changed.count) throw new AiAssistantError("A conversa mudou ou está pausada. Atualize antes de ativar a Alice.", 409);
     const latest = await tx.whatsAppMessage.findFirst({
-      where: { conversationId, status: { not: "deleted" } }, select: { id: true, timestamp: true, fromMe: true },
+      where: { conversationId, status: { not: "deleted" } },
+      select: { id: true, timestamp: true, createdAt: true, fromMe: true, type: true, body: true },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }],
     });
     if (expectedSourceMessageId && (latest?.id !== expectedSourceMessageId || latest.fromMe)) {
@@ -28,15 +30,48 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
     }
     if (latest && !latest.fromMe) {
       const existing = await tx.aliceAutonomousTurn.findUnique({
-        where: { conversationId_sourceMessageId: { conversationId, sourceMessageId: latest.id } }, select: { origin: true },
+        where: { conversationId_sourceMessageId: { conversationId, sourceMessageId: latest.id } },
+        select: { origin: true, status: true, error: true, attempts: true, firstSentAt: true, generationStartedAt: true,
+          nextMessageIndex: true, providerMessageIds: true, appointmentId: true, messagesJson: true, claimToken: true },
       });
       const origin = existing?.origin === "inbound" || (!existing && latest.timestamp >= activatedAt) ? "inbound" : "backlog";
+      let resumeClinicalFearBy: string | undefined;
+      const recoveryCutoff = new Date(now.getTime() - 100 * 60 * 60 * 1000);
+      if (prior.aiMode === "manual" && prior.aiModeUpdatedBy === "alice-handoff" && existing
+        && ["needs_human", "failed"].includes(existing.status) && existing.error === "clinical_safety"
+        && latest.timestamp >= recoveryCutoff && latest.createdAt >= recoveryCutoff && latest.type === "text" && latest.body.trim()
+        && existing.attempts <= 1 && !existing.firstSentAt && !existing.generationStartedAt && existing.nextMessageIndex === 0
+        && Array.isArray(existing.providerMessageIds) && existing.providerMessageIds.length === 0
+        && !existing.appointmentId && existing.messagesJson === null && !existing.claimToken) {
+        const [history, memory] = await Promise.all([
+          tx.whatsAppMessage.findMany({ where: { conversationId, status: { not: "deleted" } },
+            select: { id: true, fromMe: true, timestamp: true, type: true, status: true, body: true },
+            orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 }),
+          tx.leadMemory.findFirst({ where: { conversationId, unidade: "SBC" }, select: { escalarHumano: true,
+            motivoEscalonamento: true, saudeObservacoes: true } }),
+        ]);
+        const dialogue = history.reverse();
+        const lastAcceptedTeamIndex = dialogue.findLastIndex((message) => message.fromMe
+          && ["sent", "delivered", "read", "played"].includes(message.status));
+        const pending = dialogue.slice(lastAcceptedTeamIndex + 1);
+        const incoming = pending.filter((message) => !message.fromMe);
+        const memoryEscalationIsStale = memory?.escalarHumano === true && memory.motivoEscalonamento === "clinical_safety"
+          && !aliceHealthHistoryRequiresHuman(memory.saudeObservacoes);
+        const fearDialogue = pending.map((message) => ({ role: message.fromMe ? "atendente" : "cliente", text: message.body }));
+        if (memoryEscalationIsStale && aliceCanResumeGeneralFear(fearDialogue, memory?.saudeObservacoes)
+          && pending.length > 0 && pending.every((message) => message.type === "text") && incoming.at(-1)?.id === latest.id) {
+          // Uma anotação de procedimentos prévios, sem condição ou reação, não deve manter falso escalonamento clínico.
+          await clearAliceEscalationOnResume({ conversationId, instanceId: prior.instanceId, unidade: "SBC" }, tx);
+          resumeClinicalFearBy = operator;
+        }
+      }
       const turn = await enqueueAliceTurnInTransaction({
         conversationId, instanceId: prior.instanceId, sourceMessageId: latest.id, timestamp: latest.timestamp, origin,
         resumeBookingBy: prior.aiMode === "manual" && prior.aiModeUpdatedBy === "alice-handoff" ? operator : undefined,
         resumeHistoricalPriceBy: operator,
         resumeScheduleBy: operator,
         resumeSoftFailureBy: operator,
+        resumeClinicalFearBy,
       }, tx, activatedAt, now);
       if (!turn.queued && !["processing", "sending", "sent"].includes(turn.reason)) {
         throw new AiAssistantError(turn.reason === "booking_not_excluded"

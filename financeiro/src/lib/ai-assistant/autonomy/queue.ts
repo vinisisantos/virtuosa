@@ -37,6 +37,7 @@ export async function pauseAliceForHuman(conversationId: string, database = pris
 type EnqueueAliceTurn = {
   conversationId: string; instanceId: string; sourceMessageId: string; timestamp: Date; origin: "inbound" | "backlog";
   resumeBookingBy?: string; resumeHistoricalPriceBy?: string; resumeScheduleBy?: string; resumeSoftFailureBy?: string;
+  resumeClinicalFearBy?: string;
 };
 
 export async function enqueueAliceAutonomousTurn(params: EnqueueAliceTurn, database = prisma, now = new Date()) {
@@ -127,7 +128,8 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
     const resumePrice = turn.error === "price_after_booking" && params.resumeHistoricalPriceBy;
     const resumeSchedule = turn.error === "schedule_option_expired_or_invalid" && params.resumeScheduleBy;
     const resumeSoftFailure = aliceCanContinueAfterSoftHandoff(turn.error || "") && params.resumeSoftFailureBy;
-    const operator = resumeBooking || resumePrice || resumeSchedule || resumeSoftFailure;
+    const resumeClinicalFear = turn.error === "clinical_safety" && params.resumeClinicalFearBy;
+    const operator = resumeBooking || resumePrice || resumeSchedule || resumeSoftFailure || resumeClinicalFear;
     const sourceCutoff = new Date(now.getTime() - 100 * 60 * 60 * 1000);
     const recentSource = source.timestamp >= sourceCutoff && source.createdAt >= sourceCutoff;
     let resumeBookingChoice = false;
@@ -145,7 +147,7 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
         resumeBookingChoice = !escalated && !ledger;
       }
     }
-    const explicitRecovery = Boolean(resumeSchedule || resumeBookingChoice
+    const explicitRecovery = Boolean(resumeSchedule || resumeBookingChoice || resumeClinicalFear
       || (resumeSoftFailure && ["inbound", "backlog"].includes(params.origin))
       || (params.origin === "backlog" && (resumeBooking || resumePrice)));
     if (["needs_human", "failed"].includes(turn.status) && explicitRecovery && operator && conversation.aiModeUpdatedBy === operator) {
@@ -171,6 +173,26 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
           WHERE t.id=${turn.id} AND t.status IN ('needs_human','failed') AND t.error='schedule_option_expired_or_invalid' AND ${recentSource}
             AND t."claimToken" IS NULL AND t."nextMessageIndex"=0 AND t."firstSentAt" IS NULL
             AND t."generationStartedAt" IS NOT NULL AND t."providerMessageIds"='[]'::jsonb AND t."appointmentId" IS NULL
+            AND t."sourceMessageId"=(SELECT id FROM "WhatsAppMessage" WHERE "conversationId"=t."conversationId"
+              AND status<>'deleted' ORDER BY timestamp DESC,id DESC LIMIT 1)
+            AND NOT EXISTS (SELECT 1 FROM "AliceAutoSchedule" b WHERE b."conversationId"=t."conversationId" AND b."replyMessageId"=t."sourceMessageId")
+            AND NOT EXISTS (SELECT 1 FROM "LeadMemory" m WHERE m."conversationId"=t."conversationId"
+              AND m.unidade='SBC' AND m."escalarHumano")`;
+        if (resumed === 1) return { queued: true, turnId: turn.id, reason: "queued" };
+      }
+      if (resumeClinicalFear && recentSource && source.type === "text" && source.body.trim()
+        && turn.attempts <= 1 && !turn.firstSentAt && !turn.generationStartedAt && turn.nextMessageIndex === 0
+        && !turn.appointmentId && Array.isArray(turn.providerMessageIds) && turn.providerMessageIds.length === 0) {
+        const activeEscalation = await tx.leadMemory.findFirst({ where: { conversationId: params.conversationId,
+          unidade: "SBC", escalarHumano: true }, select: { id: true } });
+        if (activeEscalation) return { queued: false, turnId: turn.id, reason: "clinical_safety" };
+        const resumed = await tx.$executeRaw`
+          UPDATE "AliceAutonomousTurn" t SET status='queued',error=NULL,"completedAt"=NULL,"claimedAt"=NULL,
+            "availableAt"=${aliceAutonomyAvailableAt(source.createdAt, now, params.origin === "backlog")},"messagesJson"=NULL,"updatedAt"=${now}
+          WHERE t.id=${turn.id} AND t.status IN ('needs_human','failed') AND t.error='clinical_safety'
+            AND t.attempts<=1 AND t."claimToken" IS NULL AND t."nextMessageIndex"=0 AND t."firstSentAt" IS NULL
+            AND t."generationStartedAt" IS NULL AND t."providerMessageIds"='[]'::jsonb AND t."appointmentId" IS NULL
+            AND t."messagesJson" IS NULL
             AND t."sourceMessageId"=(SELECT id FROM "WhatsAppMessage" WHERE "conversationId"=t."conversationId"
               AND status<>'deleted' ORDER BY timestamp DESC,id DESC LIMIT 1)
             AND NOT EXISTS (SELECT 1 FROM "AliceAutoSchedule" b WHERE b."conversationId"=t."conversationId" AND b."replyMessageId"=t."sourceMessageId")

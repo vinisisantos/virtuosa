@@ -312,6 +312,40 @@ test("falha recuperável recente só recebe uma nova tentativa textual explícit
   } finally { await pg.close(); }
 });
 
+test("retomada de receio geral exige ativação explícita e não vence escalonamento ainda ativo", async () => {
+  const now = new Date();
+  const safe = await database({ memory: true });
+  try {
+    await activateFixture(safe.pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    await safe.pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
+    await insertTurn(safe.pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID, status: "needs_human" });
+    await safe.pg.exec(`UPDATE "AliceAutonomousTurn" SET error='clinical_safety',attempts=1`);
+    const params = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a",
+      timestamp: new Date(now.getTime() - 10_000), origin: "inbound", resumeClinicalFearBy: "operator" };
+    assert.equal((await enqueueAliceAutonomousTurn(params, safe.adapter, now)).queued, true);
+    assert.deepEqual((await safe.pg.query(`SELECT status,error FROM "AliceAutonomousTurn"`)).rows,
+      [{ status: "queued", error: null }]);
+  } finally { await safe.pg.close(); }
+
+  const guarded = await database({ memory: true });
+  try {
+    await activateFixture(guarded.pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    await guarded.pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
+    await insertTurn(guarded.pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID, status: "needs_human" });
+    await guarded.pg.exec(`UPDATE "AliceAutonomousTurn" SET error='clinical_safety',attempts=1;
+      INSERT INTO "LeadMemory" (id,"conversationId",unidade,"escalarHumano","motivoEscalonamento","updatedAt")
+      VALUES ('memory','conversation-a','SBC',TRUE,'clinical_safety',NOW());`);
+    assert.equal((await guarded.adapter.leadMemory.findFirst({ where: { conversationId: "conversation-a", unidade: "SBC", escalarHumano: true }, select: { id: true } }))?.id, "memory");
+    const params = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a",
+      timestamp: new Date(now.getTime() - 10_000), origin: "inbound", resumeClinicalFearBy: "operator" };
+    const blocked = await enqueueAliceAutonomousTurn(params, guarded.adapter, now);
+    assert.equal(blocked.queued, false);
+    assert.equal((await enqueueAliceAutonomousTurn({ ...params, resumeClinicalFearBy: undefined }, guarded.adapter, now)).queued, false);
+    assert.deepEqual((await guarded.pg.query(`SELECT status,error FROM "AliceAutonomousTurn"`)).rows,
+      [{ status: "needs_human", error: "clinical_safety" }]);
+  } finally { await guarded.pg.close(); }
+});
+
 test("preço bloqueado por avaliação passada só é retomado por operador sem compromisso atual ou efeitos externos", async () => {
   const { pg, adapter } = await database({ memory: true });
   const now = new Date();

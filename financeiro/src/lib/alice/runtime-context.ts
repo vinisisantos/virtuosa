@@ -4,7 +4,7 @@ import { buildAliceContext, type AliceContextMessage } from "@/lib/alice/build-c
 import { currentAliceAppointment } from "@/lib/alice/current-appointment";
 import { getOrCreateMemory, type AliceMemoryScope } from "@/lib/alice/memory";
 import { observeAliceHistory } from "@/lib/alice/runtime-memory";
-import { aliceFearPolicy } from "@/lib/alice/fear-policy";
+import { aliceFearPolicy, aliceHealthHistoryRequiresHuman } from "@/lib/alice/fear-policy";
 import { classifyAliceHandoff } from "@/lib/ai-assistant/safety";
 import { buildAliceKnowledgeContext } from "@/lib/ai-assistant/alice-knowledge";
 import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-policy";
@@ -48,7 +48,8 @@ export async function loadAliceMemoryContext(context: LegacyAliceAutonomousConte
   const prompt = buildAliceContext({ scope, memory, history, knowledge: knowledge || {}, campaignName: campaign,
     contactName: context.contactName, evaluationOptions: buildSbcEvaluationOptions(now), appointment, autonomous: true, now });
   const detectedFear = aliceFearPolicy(prompt);
-  const fear = detectedFear && memory.saudeObservacoes ? { ...detectedFear, requiresHuman: true, generalInformationOnly: false } : detectedFear;
+  const fear = detectedFear && aliceHealthHistoryRequiresHuman(memory.saudeObservacoes)
+    ? { ...detectedFear, requiresHuman: true, generalInformationOnly: false } : detectedFear;
   const clinical = classifyAliceHandoff({ unit: "SBC", campaignName: campaign, incomingMessages: current.map((message) => message.body) });
   // Retira somente os termos do medo geral e repete a triagem: uma doença junto da dúvida nunca é liberada.
   const remainingClinical = fear?.generalInformationOnly ? classifyAliceHandoff({ unit: "SBC", campaignName: campaign,

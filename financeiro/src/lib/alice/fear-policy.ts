@@ -1,13 +1,29 @@
 import { readAliceContextDialogue } from "@/lib/alice/context-controls";
 import { stripRepeatedPresentation } from "@/lib/alice/presentation-filter";
+import { classifyAliceHandoff } from "@/lib/ai-assistant/safety";
 
 export type AliceFearPolicy = { kind: "general" | "reaction" | "needles" | "result" | "health" | "previous_problem" | "thinking";
   requiresHuman: boolean; generalInformationOnly: boolean };
 const normalize = (text: string) => text.normalize("NFKD").replace(/\p{Diacritic}/gu, "").toLowerCase()
   .replace(/\p{Cf}/gu, "").replace(/\s+/gu, " ").trim();
 const personalHealth = /\b(?:diabet\w*|doenc\w*|hipertens\w*|tireoid\w*|autoimun\w*|cardiac\w*|epileps\w*|trombos\w*|cancer\w*|convuls\w*|remedi\w*|medicac\w*|medicament\w*|anticoagul\w*|gravid\w*|gestant\w*|gravidez|amament\w*|lactant\w*|alerg\w*|febre|infecc\w*|sangram\w*|falta de ar)\b/u;
-const previousProblem = /\b(?:(?:ja )?(?:tive|fiquei|deu|fiz|passei|aconteceu comigo).{0,75}(?:problema|reac\w*|rejeic\w*|complicac\w*|internad\w*|cirurg\w*)|problema.{0,40}(?:outro lugar|outra clinica))\b/u;
+const previousProblem = /\b(?:(?:ja )?(?:tive|teve|fiquei|deu|fiz|passei|aconteceu comigo).{0,75}(?:problema|reac\w*|rejeic\w*|complicac\w*|internad\w*|cirurg\w*)|problema.{0,40}(?:outro lugar|outra clinica))\b/u;
+const clinicalHistory = /\b(?:cirurg\w*|operad\w*|internad\w*|complicac\w*|reac\w*|rejeic\w*)\b/u;
 const fear = /\b(?:medo|receio|insegur\w*|preocup\w*|apreensiv\w*|rejeic\w*|reac\w*|contraindic\w*|exagerad\w*|estranh\w*|artificial)\b/u;
+
+export function aliceHealthHistoryRequiresHuman(value: string | null | undefined) {
+  const text = normalize(value || "");
+  return Boolean(text && (personalHealth.test(text) || clinicalHistory.test(text) || previousProblem.test(text)));
+}
+
+export function aliceCanResumeGeneralFear(dialogue: readonly { role: string; text: string }[], healthNotes: string | null | undefined) {
+  const incoming = dialogue.filter((message) => message.role === "cliente").map((message) => message.text).filter(Boolean);
+  if (!incoming.length || aliceHealthHistoryRequiresHuman(healthNotes)) return false;
+  const input = { UNIDADE: "SBC", CONVERSA: dialogue,
+    MENSAGENS_RECENTES_SEM_RESPOSTA: incoming.map((text) => ({ text })) };
+  const fear = aliceFearPolicy(input);
+  return Boolean(fear && !fear.requiresHuman && classifyAliceHandoff({ unit: "SBC", incomingMessages: incoming }) === null);
+}
 
 export function aliceFearPolicy(input: unknown): AliceFearPolicy | null {
   if (!input || typeof input !== "object" || (input as Record<string, unknown>).UNIDADE !== "SBC") return null;
