@@ -28,6 +28,11 @@ test('escolhe quarta às 14h entre três dias realmente oferecidos, sem inventar
   assert.equal(deriveSbcEvaluationChoice({ offer: offered, reply: reply('quinta às 14h'), now }), null);
 });
 
+test('não agenda aceite de uma oferta cujo dia da semana contradiz a data', () => {
+  const inconsistent = offer('Na quarta (12/11) à noite temos horários às 19h ou 19h30. Qual fica melhor para você?');
+  assert.equal(deriveSbcEvaluationChoice({ offer: inconsistent, reply: reply('19h30'), now }), null);
+});
+
 const message = (id, body, fromMe) => ({ id, body, fromMe, status: fromMe ? 'delivered' : 'received', type: 'text' });
 test('preferência só pelo sábado com vários horários mantém o diálogo, sem gravar nem escalar', () => {
   const offered = message('offer', 'Sábado 14/11 temos horários das 8h às 13h.', true);

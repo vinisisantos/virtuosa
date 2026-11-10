@@ -78,6 +78,9 @@ test("configurações JSON nulas e listas falham fechadas", () => {
 test("horários sugeridos respeitam SBC, não bloqueiam simultaneidade e expiram antes do envio", () => {
   const now = new Date("2026-11-09T12:00:00.000Z");
   assert.equal(aliceAutonomySchedulingTextValid(["Pode vir em 09/11/2026 às 10h?"], now), true);
+  assert.equal(aliceAutonomySchedulingTextValid(["Na quinta (12/11) às 19h30."], now), true);
+  assert.equal(aliceAutonomySchedulingTextValid(["Na quarta (12/11) à noite temos 19h ou 19h30."], now), false);
+  assert.equal(aliceAutonomySchedulingTextValid(["12/11/2026 (quarta-feira), às 19h30."], now), false);
   assert.equal(aliceAutonomySchedulingTextValid(["Pode vir em 09/11/2026 às 10h?"], new Date("2026-11-09T13:00:01.000Z")), false);
   assert.equal(aliceAutonomySchedulingTextValid(["Pode vir em 09/11/2026 às 21h?"], now), false);
   assert.equal(aliceAutonomySchedulingTextValid(["Pode vir em 15/11/2026 às 10h?"], now), false);

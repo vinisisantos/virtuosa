@@ -22,15 +22,39 @@ function dateMatches(key: string, date: RegExpMatchArray): boolean {
   return day === date[1].padStart(2, '0') && month === date[2].padStart(2, '0') && (!date[3] || date[3] === year);
 }
 
+/** Recusa uma oferta quando um dia da semana próximo à data a contradiz. */
+export function offeredWeekdaysMatchDates(text: string, dateKeys: readonly string[]): boolean {
+  const normalized = normalize(text);
+  const dates = [...normalized.matchAll(datePattern)];
+  const days = [...normalized.matchAll(weekdayPattern)];
+  for (const day of days) {
+    const dayStart = day.index!;
+    const dayEnd = dayStart + day[0].length;
+    const nearest = dates.map((date) => {
+      const dateStart = date.index!;
+      const dateEnd = dateStart + date[0].length;
+      return { date, distance: dayEnd < dateStart ? dateStart - dayEnd : dateEnd < dayStart ? dayStart - dateEnd : 0 };
+    }).sort((left, right) => left.distance - right.distance)[0];
+    if (!nearest || nearest.distance > 24) continue;
+    const matchingKeys = [...new Set(dateKeys.filter((key) => dateMatches(key, nearest.date)))];
+    if (matchingKeys.length !== 1) return false;
+    const weekday = new Date(`${matchingKeys[0]}T12:00:00-03:00`).getUTCDay();
+    if (weekdays[weekday] !== day[1]) return false;
+  }
+  return true;
+}
+
 /** Interpreta somente datas/horários presentes na oferta aceita, dentro da grade do servidor. */
 export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string, permitted: readonly string[]): string | null {
   const offer = normalize(offerBody);
   const reply = normalize(replyBody).replace(/\s+/gu, ' ').trim();
-  if (!/\b(agend\w*|avaliac\w*|horari\w*|vagas?|marcar|prefere|pode ser|tenho|opcao|opcoes)\b/u.test(offer)
+  const permittedDateKeys = [...new Set(permitted.map((slot) => slot.slice(0, 10)))];
+  if (!/\b(agend\w*|avaliac\w*|horari\w*|vagas?|marcar|prefere|pode ser|tenho|temos?|opcao|opcoes)\b/u.test(offer)
     || /\b(nao|indisponivel|indisponiveis|cancelad\w*|fechad\w*)\b/u.test(offer) || reply.includes('?')) return null;
+  if (!offeredWeekdaysMatchDates(offerBody, permittedDateKeys)) return null;
   const dates = [...offer.matchAll(datePattern)];
   if (!dates.length || dates.length > 7) return null;
-  const dateKeys = [...new Set(permitted.map((slot) => slot.slice(0, 10)))];
+  const dateKeys = permittedDateKeys;
   if (!dateKeys.length) return null;
   const offered = new Set<string>();
   const nonGridStart = new Set<string>();
