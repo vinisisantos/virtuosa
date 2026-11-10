@@ -5,7 +5,7 @@ import { buildAliceContext } from "../src/lib/alice/build-context.ts";
 import { buildAliceStructuredRequest } from "../src/lib/alice/structured-request.ts";
 import { generateAliceStructuredReply } from "../src/lib/alice/structured-generation.ts";
 import { aliceAutonomyCostMicroUsd } from "../src/lib/ai-assistant/autonomy/policy.ts";
-import { contextInput, scope, memory } from "./fixtures/alice-memory-context.mjs";
+import { contextInput, scope, memory, message } from "./fixtures/alice-memory-context.mjs";
 import { structuredOutput, providerResult, providerResponse } from "./fixtures/alice-structured-output.mjs";
 
 const context = () => ({ scope, prompt: buildAliceContext(contextInput()) });
@@ -33,6 +33,14 @@ test("requisição mantém Sonnet e base aprovada; substitui contrato sem promov
   assert.doesNotMatch(request.system, /CONTEUDO_NAO_CONFIAVEL_DE_CLIENTE/);
   assert.match(request.messages[0].content, /CONTEUDO_NAO_CONFIAVEL_DE_CLIENTE/);
   assert.match(request.system, /Informação sintética do procedimento/);
+  assert.match(request.system, /não escale só por esse conflito de nomes/);
+});
+
+test("medo geral recebe instruções de acolhimento sem remover as travas clínicas", () => {
+  const fearContext = { scope, prompt: buildAliceContext(contextInput({ history: [message("client", "Tenho medo de agulha.")] })) };
+  const request = buildAliceStructuredRequest(fearContext);
+  assert.match(request.system, /ACOLHIMENTO_SEM_PRESSAO_SBC_V1/);
+  assert.match(request.system, /Condição de saúde, medicação, gestação\/amamentação ou problema anterior exigem avaliação/);
 });
 
 test("geração válida retorna só proposta, sem gravar memória, rascunho ou apresentação", async () => {
@@ -95,6 +103,31 @@ test("baixa confiança e pedido de humano não provocam nova geração nem mensa
     assert.equal(calls, 1);
     assert.equal(result.metrics.costMicroUsd, cost);
   }
+});
+
+test("resposta acima de 120 palavras recebe uma única correção curta no orçamento existente", async () => {
+  const long = structuredOutput({ resposta: [Array(121).fill("palavra").join(" ")] });
+  const requests = [];
+  const result = await generateAliceStructuredReply(context(), dependencies(async (_url, options) => {
+    requests.push(JSON.parse(options.body));
+    return providerResponse(requests.length === 1 ? long : structuredOutput());
+  }));
+  assert.equal(result.status, "draft");
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].system, /CORRECAO_DE_EXTENSAO/);
+  assert.equal(result.metrics.attempts, 2);
+  assert.equal(result.metrics.costMicroUsd, cost * 2);
+});
+
+test("duas respostas acima do limite continuam bloqueadas após o único reparo", async () => {
+  const long = structuredOutput({ resposta: [Array(121).fill("palavra").join(" ")] });
+  let calls = 0;
+  const result = await generateAliceStructuredReply(context(), dependencies(async () => {
+    calls++;
+    return providerResponse(long);
+  }));
+  assertHandoff(result, "word_limit");
+  assert.equal(calls, 2);
 });
 
 test("preserva bloqueio existente de agendamento não comprovado", async () => {

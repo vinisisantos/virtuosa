@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   extractWhatsAppMessageBody,
+  isEmptySecretEncryptedEnvelope,
   whatsAppConversationPreview,
 } from "../src/lib/whatsapp/message-content.ts";
 
@@ -29,4 +30,11 @@ test("continua extraindo normalmente o corpo textual do WhatsApp", () => {
     extractWhatsAppMessageBody({ message: { extendedTextMessage: { text: "Olá" } } }),
     "Olá",
   );
+});
+
+test("só classifica placeholder criptografado sem conteúdo como envelope vazio", () => {
+  assert.equal(isEmptySecretEncryptedEnvelope("secretEncryptedMessage", ""), true);
+  assert.equal(isEmptySecretEncryptedEnvelope("secretEncryptedMessage", "  \n"), true);
+  assert.equal(isEmptySecretEncryptedEnvelope("secretEncryptedMessage", "texto disponível"), false);
+  assert.equal(isEmptySecretEncryptedEnvelope("image", ""), false);
 });

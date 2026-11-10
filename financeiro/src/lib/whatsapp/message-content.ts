@@ -127,6 +127,11 @@ export function extractWhatsAppMessageBody(payload: unknown): string {
   );
 }
 
+/** Evolution can emit this empty placeholder when a secret/encrypted payload cannot be decrypted. */
+export function isEmptySecretEncryptedEnvelope(type: string | null | undefined, body: string | null | undefined): boolean {
+  return type === "secretEncryptedMessage" && !(body || "").trim();
+}
+
 export function whatsAppConversationPreview(
   body?: string | null,
   messageType?: string | null,

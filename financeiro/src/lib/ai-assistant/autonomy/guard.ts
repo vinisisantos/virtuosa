@@ -19,7 +19,8 @@ export async function validateAliceAutonomousTurn(
       instanceId: true, aiMode: true, status: true, blockedAt: true, archivedAt: true, commercialPaused: true,
       instance: { select: { status: true, unit: true } }, commercialHolds: { select: { dealId: true }, take: 1 },
     } }),
-    database.whatsAppMessage.findMany({ where: { conversationId: turn.conversationId, status: { not: "deleted" } },
+    database.whatsAppMessage.findMany({ where: { conversationId: turn.conversationId, status: { not: "deleted" },
+      NOT: { type: "secretEncryptedMessage", body: "" } },
       select: { id: true, messageId: true, fromMe: true, respondedByName: true },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 }),
   ]);

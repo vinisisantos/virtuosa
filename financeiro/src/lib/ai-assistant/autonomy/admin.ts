@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 import { AI_ASSISTANT_CONFIG_KEY, AiAssistantError, parseAiAssistantConfig } from "@/lib/ai-assistant/policy";
 import { loadAliceAutonomyConfig, aliceAutonomyRuntimeStatus } from "@/lib/ai-assistant/autonomy/config";
 import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_MODEL, aliceRetryableTurnError,
-  parseAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/policy";
+  aliceRetryAttemptLimit, parseAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/policy";
 import { activateAliceConversation } from "@/lib/ai-assistant/autonomy/activate";
 import { aliceAutonomySummaryQuery, aliceBacklogQuery, type AliceBacklogRow } from "@/lib/ai-assistant/autonomy/admin-queries";
 import { createAliceBacklogPreview, verifyAliceBacklogPreview } from "@/lib/ai-assistant/autonomy/preview";
@@ -71,7 +71,8 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
       LEFT JOIN "WhatsAppContact" contact ON contact.id=c."contactId"
       LEFT JOIN "WhatsAppMessage" source ON source.id=t."sourceMessageId" AND source."conversationId"=t."conversationId"
       LEFT JOIN LATERAL (SELECT m.id,m."fromMe" FROM "WhatsAppMessage" m WHERE m."conversationId"=t."conversationId"
-        AND m.status<>'deleted' ORDER BY m.timestamp DESC,m.id DESC LIMIT 1) latest ON TRUE
+        AND m.status<>'deleted' AND NOT (m.type='secretEncryptedMessage' AND btrim(m.body)='')
+        ORDER BY m.timestamp DESC,m.id DESC LIMIT 1) latest ON TRUE
       WHERE t.unit='SBC' AND t."instanceId"=${ALICE_AUTONOMY_INSTANCE_ID} AND t."createdAt">=${since}
         ${cursor ? Prisma.sql`AND (t."createdAt",t.id)<(${cursor.createdAt},${cursor.id})` : Prisma.empty}
       ORDER BY t."createdAt" DESC,t.id DESC LIMIT 51`),
@@ -90,7 +91,8 @@ export async function getAliceAutonomyMonitoring(params: { days?: number; cursor
         && row.origin === "inbound" && row.sourceTimestamp !== null && row.sourceCreatedAt !== null
         && row.sourceTimestamp >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
         && row.sourceCreatedAt >= new Date(now.getTime() - 100 * 60 * 60 * 1000)
-        && row.sourceIsLatestInbound && row.sourceType === "text" && Boolean(row.sourceBody?.trim()) && row.attempts <= 1
+        && row.sourceIsLatestInbound && row.sourceType === "text" && Boolean(row.sourceBody?.trim())
+        && row.attempts <= aliceRetryAttemptLimit(row.error)
         && !row.firstSentAt && !row.appointmentId && row.nextMessageIndex === 0
         && Array.isArray(row.providerMessageIds) && row.providerMessageIds.length === 0,
       sourceTimestamp: undefined, sourceCreatedAt: undefined, providerMessageIds: undefined, nextMessageIndex: undefined,
@@ -114,7 +116,7 @@ export async function retryAliceFailedTurn(turnId: string, actor: Pick<AuthPaylo
       sourceMessageId: true, status: true, error: true, origin: true, firstSentAt: true, appointmentId: true,
       generationStartedAt: true, attempts: true, nextMessageIndex: true, providerMessageIds: true, claimToken: true } });
   if (!turn || !aliceRetryableTurnError(turn.error) || turn.origin !== "inbound" || turn.firstSentAt || turn.appointmentId
-    || turn.nextMessageIndex !== 0 || !turn.generationStartedAt || turn.attempts > 1 || turn.claimToken
+    || turn.nextMessageIndex !== 0 || !turn.generationStartedAt || turn.attempts > aliceRetryAttemptLimit(turn.error) || turn.claimToken
     || !Array.isArray(turn.providerMessageIds) || turn.providerMessageIds.length !== 0) {
     throw new AiAssistantError("Esta falha não pode ser repetida automaticamente. Confira a conversa e o status do agendamento.", 409);
   }

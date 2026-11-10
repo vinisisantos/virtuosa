@@ -30,6 +30,11 @@ export function aliceRetryableTurnError(error: string | null | undefined) {
   return Boolean(error && (SOFT_HANDOFF_ERRORS.has(error) || error === "schedule_option_expired_or_invalid"));
 }
 
+export function aliceRetryAttemptLimit(error: string | null | undefined) {
+  // human_review may be retried once after explicit operator review and prompt correction.
+  return error === "human_review" ? 2 : 1;
+}
+
 export type AliceAutonomyConfig = {
   enabled: boolean;
   activatedAt: string | null;

@@ -16,7 +16,9 @@ const condition = (key, value) => {
   }
   return Prisma.sql`${quote(key)} = ${value}`;
 };
-const whereSql = (where) => Prisma.join(Object.entries(where).map(([key, value]) => condition(key, value)), " AND ");
+const whereSql = (where) => Prisma.join(Object.entries(where).map(([key, value]) => key === "NOT" && value && typeof value === "object"
+  ? Prisma.sql`NOT (${Prisma.join(Object.entries(value).map(([nestedKey, nestedValue]) => condition(nestedKey, nestedValue)), " AND ")})`
+  : condition(key, value)), " AND ");
 const jsonFields = new Set(["messagesJson", "providerMessageIds"]);
 const valueSql = (key, value) => value === Prisma.JsonNull ? Prisma.sql`'null'::jsonb`
   : jsonFields.has(key) && value !== null ? Prisma.sql`${JSON.stringify(value)}::jsonb` : Prisma.sql`${value}`;

@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
+import { isEmptySecretEncryptedEnvelope } from "@/lib/whatsapp/message-content";
 
 export type AliceAudioTranscript = { status: string; text: string | null; durationMs: number | null };
 type Message = { id: string; conversationId?: string; body: string; type: string; fromMe: boolean; status: string };
@@ -23,9 +24,10 @@ export async function aliceAudioTranscripts(conversationId: string, instanceId: 
 
 export async function projectAliceAudioHistory<T extends Message>(messages: T[], conversationId: string,
   instanceId: string, database: Pick<typeof prisma, "$queryRaw"> = prisma): Promise<(T & AliceAudioInput)[]> {
-  const ids = messages.filter((message) => !message.fromMe && ["audio", "ptt"].includes(message.type)).map((message) => message.id);
+  const visibleMessages = messages.filter((message) => !isEmptySecretEncryptedEnvelope(message.type, message.body));
+  const ids = visibleMessages.filter((message) => !message.fromMe && ["audio", "ptt"].includes(message.type)).map((message) => message.id);
   const transcripts = await aliceAudioTranscripts(conversationId, instanceId, ids, database);
-  return messages.map((message) => {
+  return visibleMessages.map((message) => {
     const transcript = transcripts.get(message.id);
     return transcript?.status === "ready" && transcript.text ? { ...message, body: transcript.text, audioTranscribed: true } : message;
   });

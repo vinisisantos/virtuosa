@@ -314,12 +314,48 @@ test("falha recuperável recente só recebe uma nova tentativa textual explícit
 
     await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='word_limit',attempts=2`);
     assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
-    await pg.exec(`UPDATE "AliceAutonomousTurn" SET attempts=1,error='human_review'`);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='human_review',attempts=2`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='human_review',attempts=3`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',attempts=1`);
     await pg.exec(`INSERT INTO "LeadMemory" (id,"conversationId",unidade,"escalarHumano","updatedAt") VALUES ('memory','conversation-a','SBC',TRUE,NOW())`);
     assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
     await pg.exec(`UPDATE "LeadMemory" SET "escalarHumano"=FALSE WHERE id='memory'`);
     await pg.exec(`UPDATE "WhatsAppMessage" SET type='secretEncryptedMessage',body='' WHERE id='source-a'`);
     assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+  } finally { await pg.close(); }
+});
+
+test("retomada explícita recupera apenas entrada recente cancelada por envelope criptografado vazio", async () => {
+  const { pg, adapter } = await database({ memory: true });
+  const now = new Date();
+  const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a",
+    timestamp: now, origin: "inbound" };
+  try {
+    await activateFixture(pg, input.instanceId, now);
+    await insertTurn(pg, { instanceId: input.instanceId, origin: "inbound", status: "skipped" });
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='new_customer_message',attempts=0`);
+    await pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
+    await pg.exec(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp,"createdAt",status,body,type)
+      SELECT 'empty-envelope','conversation-a','empty-envelope',FALSE,timestamp+interval '1 second',"createdAt"+interval '1 second',
+        'received','','secretEncryptedMessage' FROM "WhatsAppMessage" WHERE id='source-a'`);
+
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false,
+      "o evento vazio não pode provocar retomada sem ação explícita");
+    const resumed = await enqueueAliceAutonomousTurn({ ...input, resumeEmptyEnvelopeBy: "operator" }, adapter, now);
+    assert.equal(resumed.queued, true, JSON.stringify(resumed));
+    assert.deepEqual((await pg.query(`SELECT status,error FROM "AliceAutonomousTurn"`)).rows, [{ status: "queued", error: null }]);
+
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='skipped',error='new_customer_message',attempts=0,"messagesJson"=NULL`);
+    await pg.exec(`INSERT INTO "LeadMemory" (id,"conversationId",unidade,"escalarHumano","updatedAt")
+      VALUES ('memory-a','conversation-a','SBC',TRUE,NOW())`);
+    assert.equal((await enqueueAliceAutonomousTurn({ ...input, resumeEmptyEnvelopeBy: "operator" }, adapter, now)).queued, false,
+      "escalonamento clínico ainda ativo impede retomada");
+    await pg.exec(`UPDATE "LeadMemory" SET "escalarHumano"=FALSE WHERE id='memory-a'`);
+    await pg.exec(`DELETE FROM "WhatsAppMessage" WHERE id='empty-envelope'`);
+    assert.equal((await enqueueAliceAutonomousTurn({ ...input, resumeEmptyEnvelopeBy: "operator" }, adapter, now)).queued, false,
+      "a retomada só vale quando existe o envelope vazio posterior que causou o cancelamento");
   } finally { await pg.close(); }
 });
 

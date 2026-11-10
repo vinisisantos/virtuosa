@@ -22,7 +22,7 @@ export type AliceStructuredMetrics = {
 
 export type AliceStructuredFailure = AliceStructuredRequestErrorCode | "not_configured" | "cancelled" | "deadline"
   | "provider_unavailable" | "provider_response_invalid" | "usage_unavailable" | "unexpected_model"
-  | "provider_refusal" | "provider_incomplete" | "invalid_output" | "human_review" | "unproven_booking";
+  | "provider_refusal" | "provider_incomplete" | "invalid_output" | "human_review" | "word_limit" | "unproven_booking";
 
 export type AliceStructuredGeneration =
   | { status: "draft"; proposal: AliceStructuredOutput; metrics: AliceStructuredMetrics }
@@ -115,6 +115,17 @@ export async function generateAliceStructuredReply(context: AliceStructuredConte
     const parsed = aliceStructuredOutputSchema.safeParse(decoded);
     if (parsed.success) {
       if (parsed.data.escalarHumano || parsed.data.confidence === "low") return handoff("human_review");
+      const overlong = parsed.data.resposta.some((message) => message.trim().split(/\s+/u).length > 120);
+      if (overlong) {
+        if (metrics.attempts === 2) return handoff("word_limit");
+        try {
+          payloads[1] = JSON.stringify(buildAliceStructuredRequest(context, "word_limit"));
+        } catch (error) {
+          if (error instanceof AliceStructuredRequestError) return handoff(error.code);
+          throw error;
+        }
+        continue;
+      }
       if (aliceAutonomyResponseClaimsBooking(parsed.data.resposta)) return handoff("unproven_booking");
       return { status: "draft", proposal: parsed.data, metrics: snapshot() };
     }

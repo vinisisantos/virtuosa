@@ -21,7 +21,7 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
     });
     if (!changed.count) throw new AiAssistantError("A conversa mudou ou está pausada. Atualize antes de ativar a Alice.", 409);
     const latest = await tx.whatsAppMessage.findFirst({
-      where: { conversationId, status: { not: "deleted" } },
+      where: { conversationId, status: { not: "deleted" }, NOT: { type: "secretEncryptedMessage", body: "" } },
       select: { id: true, timestamp: true, createdAt: true, fromMe: true, type: true, body: true },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }],
     });
@@ -44,7 +44,8 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
         && Array.isArray(existing.providerMessageIds) && existing.providerMessageIds.length === 0
         && !existing.appointmentId && existing.messagesJson === null && !existing.claimToken) {
         const [history, memory] = await Promise.all([
-          tx.whatsAppMessage.findMany({ where: { conversationId, status: { not: "deleted" } },
+          tx.whatsAppMessage.findMany({ where: { conversationId, status: { not: "deleted" },
+            NOT: { type: "secretEncryptedMessage", body: "" } },
             select: { id: true, fromMe: true, timestamp: true, type: true, status: true, body: true },
             orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 }),
           tx.leadMemory.findFirst({ where: { conversationId, unidade: "SBC" }, select: { escalarHumano: true,
@@ -72,6 +73,7 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
         resumeScheduleBy: operator,
         resumeSoftFailureBy: operator,
         resumeClinicalFearBy,
+        resumeEmptyEnvelopeBy: operator,
       }, tx, activatedAt, now);
       if (!turn.queued && !["processing", "sending", "sent"].includes(turn.reason)) {
         throw new AiAssistantError(turn.reason === "booking_not_excluded"

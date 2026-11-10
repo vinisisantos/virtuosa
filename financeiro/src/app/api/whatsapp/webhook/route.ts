@@ -47,6 +47,7 @@ import {
 } from "@/lib/whatsapp/provider";
 import {
   extractWhatsAppMessageBody,
+  isEmptySecretEncryptedEnvelope,
   whatsAppConversationPreview,
 } from "@/lib/whatsapp/message-content";
 import { setStoredMessageReaction } from "@/lib/whatsapp/message-reactions";
@@ -1819,6 +1820,9 @@ async function processMessage(
 
   // ─── Extrair tipo da mensagem ───────────────────────────────
   const msgType = extractMessageType(msg);
+  // A Evolution pode emitir um placeholder criptografado sem texto nem mídia
+  // acessível. Não persista esse evento como se fosse uma nova mensagem do lead.
+  if (dbInstance.id === ALICE_AUTONOMY_INSTANCE_ID && isEmptySecretEncryptedEnvelope(msgType, messageBody)) return;
 
   // Evolution usa unix seconds (number), enquanto Uazapi usa ISO string.
   // O resumo inicial da conversa precisa desse horário antes das etapas de

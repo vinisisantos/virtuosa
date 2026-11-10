@@ -17,6 +17,29 @@ test("histórico completo fica disponível e somente os últimos 12 registros fi
   assert.equal(sbcConversationPresentation(prompt).introduced, true);
 });
 
+test("contexto muito extenso reduz só as mensagens antigas e mantém a janela recente e a prova de apresentação", () => {
+  const history = [message("intro", "Olá! Sou a Alice, assistente virtual da Virtuosa.", true),
+    ...Array.from({ length: 31 }, (_, index) => message(`old-${String(index).padStart(2, "0")}`, "O".repeat(1_900), false,
+      { timestamp: new Date(now.getTime() - (50 - index) * 60_000) })),
+    ...Array.from({ length: 12 }, (_, index) => message(`recent-${String(index).padStart(2, "0")}`, `Mensagem recente ${index}`, false,
+      { timestamp: new Date(now.getTime() - (12 - index) * 1_000) }))];
+  const prompt = buildAliceContext(contextInput({ history }));
+  assert.equal(prompt.CONVERSA.length, 12);
+  assert.deepEqual(prompt.CONVERSA.map((entry) => entry.text), history.slice(-12).map((entry) => entry.body));
+  assert.equal(prompt.HISTORICO_ANTERIOR_TRUNCADO, true);
+  assert.ok(prompt.HISTORICO_ANTERIOR_MENSAGENS_OMITIDAS > 0);
+  assert.equal(sbcConversationPresentation(prompt).introduced, true);
+  assert.match(aliceContinuityInstructions(prompt), /Não infira conteúdo das mensagens omitidas/);
+});
+
+test("placeholder criptografado vazio não substitui a última mensagem real", () => {
+  const history = [message("client", "O que mais me incomoda é o abdômen."),
+    message("empty", "", false, { type: "secretEncryptedMessage", timestamp: new Date(now.getTime() + 1_000) })];
+  const prompt = buildAliceContext(contextInput({ history }));
+  assert.equal(prompt.ULTIMA_MENSAGEM_CLIENTE.id, "client");
+  assert.equal(prompt.MENSAGENS_RECENTES_SEM_RESPOSTA.at(-1).id, "client");
+});
+
 test("apresentação comprovada na memória continua valendo fora da janela recente", () => {
   const prompt = buildAliceContext(contextInput({ memory: memory({ apresentacaoFeitaEm: earlier }), history: [message("client", "Ah sim, obrigada")] }));
   assert.equal(sbcConversationPresentation(prompt).introduced, true);
@@ -130,7 +153,7 @@ test("anexos não enviam binário/base64 e legendas permanecem disponíveis", ()
   assert.doesNotMatch(JSON.stringify(prompt), /SEGREDO_BINARIO/);
 });
 
-test("contexto excessivo, histórico duplicado e datas inválidas falham sem truncamento", () => {
+test("mensagem atual excessiva, histórico duplicado e datas inválidas falham fechados", () => {
   assert.throws(() => buildAliceContext(contextInput({ history: [message("client", "x".repeat(90_000))] })), { code: "context_too_large" });
   assert.throws(() => buildAliceContext(contextInput({ history: [message("same", "a"), message("same", "b")] })), { code: "invalid_history" });
   assert.throws(() => buildAliceContext(contextInput({ history: [message("bad", "a", false, { timestamp: new Date("invalid") })] })), { code: "invalid_history" });

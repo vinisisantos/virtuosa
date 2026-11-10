@@ -42,7 +42,8 @@ export async function observeAliceHistory(scope: AliceMemoryScope, history: read
       JOIN "WhatsAppMessage" source ON source."conversationId"=c.id
     WHERE c.id=${scope.conversationId} AND c."instanceId"=${ALICE_AUTONOMY_INSTANCE_ID} AND i.unit='SBC'
       AND m."conversationId"=c.id AND m.unidade='SBC' AND source.id=${sourceId}
-      AND source."fromMe"=FALSE AND source.status<>'deleted' RETURNING m.*`);
+      AND source."fromMe"=FALSE AND source.status<>'deleted'
+      AND NOT (source.type='secretEncryptedMessage' AND btrim(source.body)='') RETURNING m.*`);
   if (!rows[0]) throw new Error("alice_memory_source_unavailable");
   return rows[0];
 }
@@ -56,7 +57,8 @@ export async function applyCurrentAliceMemory(scope: AliceMemoryScope, sourceId:
       SELECT c.id FROM "WhatsAppConversation" c JOIN "WhatsAppInstance" i ON i.id=c."instanceId"
       WHERE c.id=${scope.conversationId} AND c."instanceId"=${scope.instanceId} AND i.unit='SBC' AND c."aiMode"='agent'
         AND (SELECT p.id FROM "WhatsAppMessage" p WHERE p."conversationId"=c.id AND p."fromMe"=FALSE
-          AND p.status<>'deleted' ORDER BY p.timestamp DESC,p.id DESC LIMIT 1)=${sourceId} FOR UPDATE OF c`);
+          AND p.status<>'deleted' AND NOT (p.type='secretEncryptedMessage' AND btrim(p.body)='')
+          ORDER BY p.timestamp DESC,p.id DESC LIMIT 1)=${sourceId} FOR UPDATE OF c`);
     if (!source.length) return false;
     const facts = { ...patch };
     delete facts.perguntasFeitas;

@@ -4,6 +4,7 @@ import { containsPersonalPresentation } from "@/lib/alice/presentation-filter";
 import { resolveAiAssistantContactName } from "@/lib/ai-assistant/privacy";
 import { aliceContinuityQuestionKeys, type AliceContinuityControls } from "@/lib/alice/context-controls";
 import type { AliceMemoryScope } from "@/lib/alice/memory-input";
+import { isEmptySecretEncryptedEnvelope } from "@/lib/whatsapp/message-content";
 
 export type AliceContextMessage = {
   id: string; conversationId: string; body: string; type: string; fromMe: boolean;
@@ -51,7 +52,8 @@ function orderedHistory(input: AliceContextInput): AliceContextMessage[] {
       || typeof message.fromMe !== "boolean" || typeof message.type !== "string" || typeof message.status !== "string") throw new AliceContextError("invalid_history");
     ids.add(message.id);
   }
-  return input.history.filter((message) => message.status !== "deleted").slice().sort((a, b) =>
+  return input.history.filter((message) => message.status !== "deleted"
+    && !isEmptySecretEncryptedEnvelope(message.type, message.body)).slice().sort((a, b) =>
     a.timestamp.getTime() - b.timestamp.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
@@ -118,7 +120,10 @@ export function buildAliceContext(input: AliceContextInput): Prisma.InputJsonObj
     returningAfter24h: returnSeconds !== null && returnSeconds > 86_400, appointmentRegistered: Boolean(appointment),
   };
   const dialogue = accepted.map(dialogueMessage);
-  const prompt: Prisma.InputJsonObject = {
+  const earlier = dialogue.slice(0, Math.max(0, dialogue.length - 12));
+  const recent = dialogue.slice(-12);
+  const earlierBytes = earlier.map((message) => Buffer.byteLength(JSON.stringify(message), "utf8"));
+  const promptFor = (omitted: number): Prisma.InputJsonObject => ({
     BASE_ALICE: input.knowledge, UNIDADE: "SBC", CAMPANHA: input.campaignName || memory?.campanhaOrigem || "Não identificada",
     HORARIOS_SBC: input.evaluationOptions, CONTATO: { nomeSalvoDisponivel: Boolean(name), nome: name },
     MEMORIA_CLIENTE: memoryData(memory), CONTROLES_CONTINUIDADE_ALICE: { ...controls },
@@ -131,9 +136,20 @@ export function buildAliceContext(input: AliceContextInput): Prisma.InputJsonObj
     MENSAGEM_ALVO: target ? { id: target.id, text: dialogueMessage(target).text } : null,
     ULTIMA_MENSAGEM_CLIENTE: { id: customer.id, text: dialogueMessage(customer).text },
     MENSAGENS_RECENTES_SEM_RESPOSTA: pending.map((message) => ({ id: message.id, text: dialogueMessage(message).text })),
-    HISTORICO_ANTERIOR: dialogue.slice(0, Math.max(0, dialogue.length - 12)), CONVERSA: dialogue.slice(-12),
+    HISTORICO_ANTERIOR: earlier.slice(omitted), HISTORICO_ANTERIOR_TRUNCADO: omitted > 0,
+    HISTORICO_ANTERIOR_MENSAGENS_OMITIDAS: omitted, CONVERSA: recent,
     ...(input.autonomous ? { ATENDIMENTO_AUTONOMO: true } : {}),
-  };
-  if (Buffer.byteLength(JSON.stringify(prompt), "utf8") > 80_000) throw new AliceContextError("context_too_large");
+  });
+  const fixedPrompt = promptFor(0);
+  const fixedBytes = Buffer.byteLength(JSON.stringify({ ...fixedPrompt, HISTORICO_ANTERIOR: [] }), "utf8");
+  let omitted = 0;
+  let historyBytes = earlierBytes.reduce((sum, bytes) => sum + bytes, 0) + Math.max(0, earlier.length - 1);
+  const truncatedMetadataBytes = (count: number) => count === 0 ? 0 : -1 + String(count).length;
+  while (fixedBytes + historyBytes + truncatedMetadataBytes(omitted) > 64_000 && omitted < earlier.length) {
+    historyBytes -= earlierBytes[omitted] + (earlier.length - omitted > 1 ? 1 : 0);
+    omitted++;
+  }
+  const prompt = promptFor(omitted);
+  if (Buffer.byteLength(JSON.stringify(prompt), "utf8") > 64_000) throw new AliceContextError("context_too_large");
   return prompt;
 }

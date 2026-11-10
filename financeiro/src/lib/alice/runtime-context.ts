@@ -26,12 +26,14 @@ export async function loadAliceMemoryContext(context: LegacyAliceAutonomousConte
     FROM "WhatsAppMessage" p LEFT JOIN "AliceAudioTranscript" a ON a."messageId"=p.id
       AND a."conversationId"=p."conversationId" AND a."instanceId"=${scope.instanceId} AND a.status='ready'
     WHERE p."conversationId"=${scope.conversationId} AND p.status<>'deleted'
+      AND NOT (p.type='secretEncryptedMessage' AND btrim(p.body)='')
       AND (p.type='text' OR p.body NOT LIKE 'data:%;base64,%')`);
   if (!size || size.count > 1_000 || size.bytes > 65_000) throw new Error("alice_history_budget_exceeded");
   const rows = await database.$queryRaw<HistoryRow[]>(Prisma.sql`
     SELECT id,"conversationId","messageId",CASE WHEN type<>'text' AND body LIKE 'data:%;base64,%' THEN '' ELSE body END AS body,
       type,"fromMe",status,timestamp,"createdAt","respondedByName" FROM "WhatsAppMessage"
-    WHERE "conversationId"=${scope.conversationId} AND status<>'deleted' ORDER BY timestamp,id LIMIT 1001`);
+    WHERE "conversationId"=${scope.conversationId} AND status<>'deleted'
+      AND NOT (type='secretEncryptedMessage' AND btrim(body)='') ORDER BY timestamp,id LIMIT 1001`);
   const history = await projectAliceAudioHistory(rows, scope.conversationId, scope.instanceId, database);
   if (history.length > 1_000) throw new Error("alice_history_budget_exceeded");
   if (history.findLast((message) => !message.fromMe)?.id !== turn.sourceMessageId) throw new Error("alice_history_source_changed");

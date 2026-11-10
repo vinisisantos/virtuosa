@@ -21,6 +21,7 @@ export function aliceBacklogQuery(params: { cutoff: Date; from?: Date; anchorId?
     JOIN LATERAL (
       SELECT m.id, m.timestamp, m."createdAt" FROM "WhatsAppMessage" m
       WHERE m."conversationId"=c.id AND m."fromMe"=false AND m.status<>'deleted'
+        AND NOT (m.type='secretEncryptedMessage' AND btrim(m.body)='')
       ORDER BY m.timestamp DESC, m.id DESC LIMIT 1
     ) incoming ON true
     WHERE c."instanceId"=${ALICE_AUTONOMY_INSTANCE_ID}
