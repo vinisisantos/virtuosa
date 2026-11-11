@@ -11,6 +11,8 @@ const CLINICAL_SAFETY_PATTERNS = [
 ];
 
 const PROCEDURE_ELIGIBILITY = /\b(?:posso|pode|segur\w*|risc\w*)\b.{0,55}\bprocedimento\b/;
+const MINOR_ADMINISTRATIVE_CONTEXT = /\b(?:menor(?:es)? de (?:idade|18 anos)|adolescentes?)\b|\b(?:tenho|tem|com|idade de)\s+(?:[1-9]|1[0-7])\s+anos\b/;
+const MINOR_INDIVIDUAL_SAFETY = /\b(?:segur\w*|risc\w*|indicad\w*|indicac\w*|adequad\w*|recomend\w*|contraindic\w*|complicac\w*)\b/;
 // "Posso ter informações" pede uma explicação, não autorização para fazer o
 // procedimento. A exceção só neutraliza o verbo desse pedido, não o restante da fala.
 const informationRequest = /(?:ter|receber|pedir|passar|mandar|enviar|dar|obter)\s+(?:(?:mais|algumas?|alguns)\s+)?(?:informac(?:ao|oes)|detalhes?)/;
@@ -40,7 +42,12 @@ export function classifyAliceHandoff(params: {
   if (params.unit === "SBC" && /\b(?:doi|dor|riscos?|anestesi\w*|anvisa)\b/.test(incoming)) return "clinical_safety";
   if (CLINICAL_SAFETY_PATTERNS.some((pattern) => pattern.test(text))) return "clinical_safety";
   if (params.unit === "SBC") {
-    const eligibilityText = params.incomingMessages.map((message) => normalizeForSafety(message).replace(INFORMATION_REQUEST_VERB, "")).join(" ");
+    if (MINOR_ADMINISTRATIVE_CONTEXT.test(incoming) && MINOR_INDIVIDUAL_SAFETY.test(incoming)) return "clinical_safety";
+    const eligibilityText = params.incomingMessages.map((message) => {
+      const normalized = normalizeForSafety(message).replace(INFORMATION_REQUEST_VERB, "");
+      // A política aprovada permite informar autorização/termos; a especialista continua decidindo a indicação.
+      return MINOR_ADMINISTRATIVE_CONTEXT.test(normalized) ? normalized.replace(/\b(?:posso|pode)\b/gu, "") : normalized;
+    }).join(" ");
     if (PROCEDURE_ELIGIBILITY.test(eligibilityText)) return "clinical_safety";
   } else if (PROCEDURE_ELIGIBILITY.test(text)) return "clinical_safety";
   return null;
