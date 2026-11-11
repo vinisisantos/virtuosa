@@ -110,6 +110,7 @@ export async function database({ memory = false } = {}) {
       "id" TEXT PRIMARY KEY, "conversationId" TEXT NOT NULL, "replyMessageId" TEXT NOT NULL,
       "appointmentId" TEXT, "state" TEXT NOT NULL, "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+    CREATE TABLE "AuditLog" ("userName" TEXT, action TEXT, entity TEXT, "entityId" TEXT, details TEXT, unit TEXT);
     INSERT INTO "WhatsAppInstance" (id) VALUES ('instance-a'), ('instance-b');
     INSERT INTO "WhatsAppConversation" ("id", "instanceId") VALUES ('conversation-a', 'instance-a'), ('conversation-b', 'instance-b');
     INSERT INTO "WhatsAppMessage" ("id", "conversationId", "messageId") VALUES
@@ -121,7 +122,7 @@ export async function database({ memory = false } = {}) {
   if (memory) {
     await pg.exec(await readFile(new URL("../../prisma/migrations/20261109100000_alice_conversation_memory/migration.sql", import.meta.url), "utf8"));
     await pg.exec(`CREATE TABLE "Agendamento" (id TEXT, unit TEXT, "clientPhone" TEXT, procedimento TEXT, status TEXT, "startTime" TIMESTAMP, "endTime" TIMESTAMP NOT NULL);
-      CREATE TABLE "AuditLog" ("userName" TEXT, action TEXT, entity TEXT, "entityId" TEXT, details TEXT, unit TEXT);`);
+      `);
   }
   return { pg, migration, adapter: queueDatabase(pg) };
 }

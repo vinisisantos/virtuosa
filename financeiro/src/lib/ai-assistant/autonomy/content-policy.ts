@@ -18,7 +18,7 @@ function schedulingClocks(text: string): Clock[] {
     time: `${match[1].padStart(2, "0")}:${match[2] || match[3] || "00"}` }));
 }
 
-export function aliceAutonomySchedulingTextValid(messages: string[], now = new Date(), prompt?: unknown) {
+export function aliceAutonomySchedulingFailure(messages: string[], now = new Date(), prompt?: unknown) {
   const slots = buildSbcEvaluationOptions(now);
   const proposedGrid = prompt && typeof prompt === "object" ? (prompt as Record<string, unknown>).HORARIOS_SBC : undefined;
   const requestedSlots = Array.isArray(proposedGrid) ? new Set(proposedGrid.filter((slot): slot is string => typeof slot === "string")) : null;
@@ -33,22 +33,22 @@ export function aliceAutonomySchedulingTextValid(messages: string[], now = new D
     return offered.size <= ALICE_MAX_OFFERED_SLOTS;
   };
   for (const message of messages) {
-    if (aliceOfferClaimsUnsupportedScarcity(message)) return false;
+    if (aliceOfferClaimsUnsupportedScarcity(message)) return "unsupported_scarcity";
     const text = withoutSbcAttendanceDescriptions(normalize(message));
-    if (!offeredWeekdaysMatchDates(text, dateKeys)) return false;
+    if (!offeredWeekdaysMatchDates(text, dateKeys)) return "inconsistent_weekday";
     const dates = [...text.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/gu)];
     const times = schedulingClocks(text);
     if (!times.length) continue;
     // A confirmação da agenda usa uma oferta com data explícita. "Amanhã"
     // ou somente "10h" não fornecem uma chave estável para validar o envio.
-    if (!dates.length) return false;
+    if (!dates.length) return "clock_requires_date";
     // Em listas com vários dias a data precede seus horários, conforme o contrato do gerador.
-    if (dates.length > 1 && times.some((time) => time.index < dates[0].index!)) return false;
+    if (dates.length > 1 && times.some((time) => time.index < dates[0].index!)) return "clock_before_date";
     for (const [index, date] of dates.entries()) {
       const [, day, month, year] = date;
       const keys = dateKeys.filter((key) => key.slice(5, 10) === `${month.padStart(2, "0")}-${day.padStart(2, "0")}`
         && (!year || key.startsWith(year)));
-      if (keys.length !== 1) return false;
+      if (keys.length !== 1) return "date_outside_grid";
       const scopedTimes = dates.length === 1 ? times : times.filter((time) => time.index >= date.index! + date[0].length
         && time.index < (dates[index + 1]?.index ?? text.length));
       if (scopedTimes.length === 1) {
@@ -56,19 +56,24 @@ export function aliceAutonomySchedulingTextValid(messages: string[], now = new D
         const before = text.slice(Math.max(0, time.index - 45), time.index);
         const after = text.slice(time.index + time.length, dates[index + 1]?.index ?? text.length);
         if (/\b(?:a partir (?:das?|de)|apos(?: as?)?|depois das?|ate(?: as?)?)\s*$/u.test(before)
-          || /^\s*(?:em diante|ate (?:fechar|o fechamento))/u.test(after)) return false;
+          || /^\s*(?:em diante|ate (?:fechar|o fechamento))/u.test(after)) return "open_range";
       }
       const range = readEvaluationOfferRange(text, scopedTimes);
       // Novas ofertas separam funcionamento canônico e opções; o parser mantém compatibilidade com o histórico.
-      if (range === null || range?.options.length) return false;
-      for (const time of scopedTimes) if (!allow(keys[0], time.time)) return false;
+      if (range === null) return "ambiguous_range";
+      if (range?.options.length) return "mixed_range_and_options";
+      for (const time of scopedTimes) if (!allow(keys[0], time.time)) return "option_outside_policy";
       if (range) {
         for (let minute = range.start.minute; minute <= range.end.minute; minute += 30) {
           const time = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-          if (!allow(keys[0], time)) return false;
+          if (!allow(keys[0], time)) return "option_outside_policy";
         }
       }
     }
   }
-  return true;
+  return null;
+}
+
+export function aliceAutonomySchedulingTextValid(messages: string[], now = new Date(), prompt?: unknown) {
+  return aliceAutonomySchedulingFailure(messages, now, prompt) === null;
 }

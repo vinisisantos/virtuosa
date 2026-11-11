@@ -12,7 +12,7 @@ import { claimAliceAutonomousTurn, recoverAliceAutonomousTurns } from "@/lib/ai-
 import { validateAliceAutonomousTurn, AliceAutonomyStopped } from "@/lib/ai-assistant/autonomy/guard";
 import { finishAliceAutonomousTurn, notifyAliceAutonomousHandoff } from "@/lib/ai-assistant/autonomy/lifecycle";
 import { ALICE_AUTONOMY_COMPLEMENT_MS, aliceAutonomyRequiresHumanOwnership } from "@/lib/ai-assistant/autonomy/policy";
-import { aliceAutonomySchedulingTextValid } from "@/lib/ai-assistant/autonomy/content-policy";
+import { aliceAutonomySchedulingTextValid, aliceAutonomySchedulingFailure } from "@/lib/ai-assistant/autonomy/content-policy";
 import { readAliceTurnPayload, legacyAliceTurnPayload, guardAliceTurn, auditAliceGuardEvents, type AliceTurnPayload } from "@/lib/alice/turn-payload";
 import { getOrCreateMemory, recordAliceSentMessage } from "@/lib/alice/memory";
 import { applyCurrentAliceMemory } from "@/lib/alice/runtime-memory";
@@ -23,6 +23,7 @@ import { sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
 import { aliceFearPolicy } from "@/lib/alice/fear-policy";
 import { sbcOutOfHoursReply } from "@/lib/ai-assistant/autonomy/out-of-hours";
 import { SBC_BOOKING_CHOICE_CLARIFICATION } from "@/lib/ai-assistant/sbc-scheduling-exchange";
+import { sbcSchedulingContinuityReply } from "@/lib/ai-assistant/autonomy/scheduling-continuity";
 
 type BookingFollowup = { kind: "booking_followup"; version: 1; questions: string[]; startTime: string;
   payload?: AliceTurnPayload; messages?: string[] };
@@ -102,7 +103,16 @@ export async function processAliceAutonomousTurn(
     }
     return "needs_human";
   };
-  const scheduleFailure = async () => await finish("failed", "schedule_option_expired_or_invalid") ? "failed" : "skipped";
+  const auditSchedulingFailure = async (stage: "initial" | "retry_budget" | "retry_error" | "retry_invalid", reason: string | null, continuation = false) => {
+    try {
+      await database.auditLog.create({ data: { userName: "Alice", action: "alice_scheduling_rejected", entity: "AliceAutonomousTurn",
+        entityId: turn.id, unit: "SBC", details: JSON.stringify({ version: 1, stage, reason, continuation }) } });
+    } catch { console.error("[AliceAutonomy] scheduling audit unavailable"); }
+  };
+  const scheduleFailure = async (stage: "retry_budget" | "retry_error" | "retry_invalid", reason: string | null = null) => {
+    await auditSchedulingFailure(stage, reason);
+    return await finish("failed", "schedule_option_expired_or_invalid") ? "failed" : "skipped";
+  };
   const generationTotals = { inputTokens: 0, outputTokens: 0, generationMs: 0, costMicroUsd: 0,
     cacheReadInputTokens: 0, cacheCreationInputTokens: 0 };
   let generationUsageRecorded = !turn.generationStartedAt || turn.usageRecorded;
@@ -252,56 +262,79 @@ export async function processAliceAutonomousTurn(
     if (bookingFollowup && /\b\d{1,2}\/\d{1,2}\b/u.test(message) && /\b\d{1,2}(?:h|:\d{2})/iu.test(message)) {
       return human("model_requested", "booking_followup_new_offer");
     }
-    if (!aliceAutonomySchedulingTextValid(turn.nextMessageIndex === 0 ? messages : [message], now(), context.prompt)) {
+    const schedulingFailure = aliceAutonomySchedulingFailure(turn.nextMessageIndex === 0 ? messages : [message], now(), context.prompt);
+    if (schedulingFailure) {
       if (bookingFollowup) return human("model_requested", "booking_followup_invalid_content");
-      const retryBudgetMs = deadline - Date.now() - 20_000;
-      if (turn.nextMessageIndex > 0 || turn.firstSentAt || retryBudgetMs < 5_000) {
-        return scheduleFailure();
-      }
-      if (!await deps.validate(turn, token, "processing", database)) {
-        await finish("skipped", "conversation_changed_before_schedule_retry");
-        return "skipped";
-      }
-      const retryContext = { ...context, schedulingRetry: true,
-        // A segunda tentativa precisa responder sem sugerir um horário que já falhou na validação.
-        prompt: { ...context.prompt, HORARIOS_SBC: [] } };
-      let retried: AutonomousGeneration;
-      try {
-        retried = await deps.generate(retryContext, undefined, AbortSignal.timeout(retryBudgetMs));
-      } catch {
-        return scheduleFailure();
-      }
-      const { messages: retryMessages, needsHuman: retryNeedsHuman, proposal: retryProposal,
-        generationFailure: retryFailure, ...retryMetrics } = retried;
-      await recordGenerationMetrics(retryMetrics);
-      if (retryNeedsHuman || !retryMessages.length) {
-        return human("model_requested", retryFailure || "generation_requires_review");
-      }
-      messages = retryMessages;
-      if (memoryRuntime) {
-        if (!retryProposal) return human("model_requested", "structured_proposal_missing");
-        payload = { version: 1, proposal: retryProposal };
-        const latestMemory = await getOrCreateMemory(memoryRuntime.scope, {}, database);
-        memoryRuntime.guard.presentationAt = latestMemory.apresentacaoFeitaEm;
-        memoryRuntime.guard.appointment = await currentAliceAppointment(memoryRuntime.scope, context.conversation.contact.phone, database);
-        const guarded = guardAliceTurn(payload, memoryRuntime, turn.nextMessageIndex);
-        await auditAliceGuardEvents(turn.id, guarded.events, database);
-        if (guarded.status === "handoff") return human("model_requested", guarded.reason);
-        if (guarded.status === "skip") {
-          if (turn.nextMessageIndex > 0 && turn.firstSentAt) return await completeAccepted();
-          await finish("skipped", guarded.reason);
+      const continuation = !turn.firstSentAt && !turn.appointmentId && turn.nextMessageIndex === 0
+        ? sbcSchedulingContinuityReply(context) : null;
+      await auditSchedulingFailure("initial", schedulingFailure, Boolean(continuation));
+      if (continuation) {
+        if (!await deps.validate(turn, token, "processing", database)) {
+          await finish("skipped", "conversation_changed_before_schedule_continuity");
           return "skipped";
         }
-        payload = guarded.payload;
-        messages = payload.proposal.resposta;
+        if (!await saveOperationalReply(continuation)) return "skipped";
+        if (memoryRuntime && payload) {
+          const guarded = guardAliceTurn(payload, memoryRuntime, 0);
+          await auditAliceGuardEvents(turn.id, guarded.events, database);
+          if (guarded.status === "handoff") return human("model_requested", guarded.reason);
+          if (guarded.status !== "ready") { await finish("skipped", guarded.reason); return "skipped"; }
+          payload = guarded.payload;
+          messages = payload.proposal.resposta;
+        }
+        message = messages[0];
+        if (!aliceAutonomySchedulingTextValid(messages, now(), context.prompt)) return scheduleFailure("retry_invalid", "continuity_invalid");
+      } else {
+        const retryBudgetMs = deadline - Date.now() - 20_000;
+        if (turn.nextMessageIndex > 0 || turn.firstSentAt || retryBudgetMs < 5_000) {
+          return scheduleFailure("retry_budget");
+        }
+        if (!await deps.validate(turn, token, "processing", database)) {
+          await finish("skipped", "conversation_changed_before_schedule_retry");
+          return "skipped";
+        }
+        const retryContext = { ...context, schedulingRetry: true,
+          // A segunda tentativa precisa responder sem sugerir um horário que já falhou na validação.
+          prompt: { ...context.prompt, HORARIOS_SBC: [] } };
+        let retried: AutonomousGeneration;
+        try {
+          retried = await deps.generate(retryContext, undefined, AbortSignal.timeout(retryBudgetMs));
+        } catch {
+          return scheduleFailure("retry_error");
+        }
+        const { messages: retryMessages, needsHuman: retryNeedsHuman, proposal: retryProposal,
+          generationFailure: retryFailure, ...retryMetrics } = retried;
+        await recordGenerationMetrics(retryMetrics);
+        if (retryNeedsHuman || !retryMessages.length) {
+          return human("model_requested", retryFailure || "generation_requires_review");
+        }
+        messages = retryMessages;
+        if (memoryRuntime) {
+          if (!retryProposal) return human("model_requested", "structured_proposal_missing");
+          payload = { version: 1, proposal: retryProposal };
+          const latestMemory = await getOrCreateMemory(memoryRuntime.scope, {}, database);
+          memoryRuntime.guard.presentationAt = latestMemory.apresentacaoFeitaEm;
+          memoryRuntime.guard.appointment = await currentAliceAppointment(memoryRuntime.scope, context.conversation.contact.phone, database);
+          const guarded = guardAliceTurn(payload, memoryRuntime, turn.nextMessageIndex);
+          await auditAliceGuardEvents(turn.id, guarded.events, database);
+          if (guarded.status === "handoff") return human("model_requested", guarded.reason);
+          if (guarded.status === "skip") {
+            if (turn.nextMessageIndex > 0 && turn.firstSentAt) return await completeAccepted();
+            await finish("skipped", guarded.reason);
+            return "skipped";
+          }
+          payload = guarded.payload;
+          messages = payload.proposal.resposta;
+        }
+        message = messages[responseIndex];
+        if (!message || messages.length > 2 || message.length > 1_200) return human("model_requested", "invalid_message_sequence");
+        const retryIssue = aliceAutonomySchedulingFailure(turn.nextMessageIndex === 0 ? messages : [message], now(), retryContext.prompt);
+        if (retryIssue) return scheduleFailure("retry_invalid", retryIssue);
+        context = retryContext;
+        const savedRetry = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
+          data: { messagesJson: payload || messages } });
+        if (!savedRetry.count) return "skipped";
       }
-      message = messages[responseIndex];
-      if (!message || messages.length > 2 || message.length > 1_200) return human("model_requested", "invalid_message_sequence");
-      if (!aliceAutonomySchedulingTextValid(turn.nextMessageIndex === 0 ? messages : [message], now(), retryContext.prompt)) return scheduleFailure();
-      context = retryContext;
-      const savedRetry = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
-        data: { messagesJson: payload || messages } });
-      if (!savedRetry.count) return "skipped";
     }
     const sending = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: { status: "sending" } });
     if (!sending.count) return "skipped";
