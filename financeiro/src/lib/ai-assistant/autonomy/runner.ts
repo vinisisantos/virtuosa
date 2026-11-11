@@ -184,7 +184,13 @@ export async function processAliceAutonomousTurn(
         externalSendStarted = true;
         const booking = await deps.schedule({ req, turn, context, claimToken: token });
         externalSendStarted = booking.status === "booked";
-        if (booking.status === "review") return human("model_requested", "booking_requires_review");
+        if (booking.status === "review") {
+          try {
+            await database.auditLog.create({ data: { userName: "Alice", action: "alice_booking_rejected", entity: "AliceAutonomousTurn",
+              entityId: turn.id, unit: "SBC", details: JSON.stringify({ version: 1, reason: booking.reason }) } });
+          } catch { console.error("[AliceAutonomy] booking audit unavailable"); }
+          return human("model_requested", "booking_requires_review");
+        }
         if (booking.status === "choice_required") {
           if (!await saveOperationalReply(SBC_BOOKING_CHOICE_CLARIFICATION)) return "skipped";
         }

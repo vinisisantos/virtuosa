@@ -33,6 +33,12 @@ const review = (reason: string): AliceAutoScheduleResult => ({ status: "review",
 const choiceRequired = (reason: string): AliceAutoScheduleResult => ({ status: "choice_required", reason });
 const bookingLeaseChanged = new Error("alice_booking_lease_changed_before_confirmation");
 
+function explicitCampaignOpening(text: string, campaign: string) {
+  const opening = text.match(/^(?:(?:ola|oi) )?(?:eu )?vim pel[oa]s? (.+?)(?: (?:posso ter mais informacoes sobre isso|gostaria de saber mais sobre isso))?$/u);
+  // O valor na abertura não muda o procedimento; não retirar sufixos de variantes como "Lipo Laser 2".
+  return opening?.[1].replace(/ (?:r \d+(?: \d+)*|\d+ \d{2})$/u, "") === campaign;
+}
+
 function procedureFromConfirmedCampaign(campaignName: string | null, messages: RecentMessage[], offerId: string) {
   const candidate = evaluationProcedureDraft({ campaignName });
   if (!candidate) return null;
@@ -49,7 +55,8 @@ function procedureFromConfirmedCampaign(campaignName: string | null, messages: R
     const origin = campaignFromPrefilledMetaLeadMessage(message.body, "SBC");
     if (origin || /^(?:(?:ola|oi) )?(?:eu )?vim pel[oa]s? /u.test(text)) {
       const sameEpisode = messages[index].timestamp.getTime() - message.timestamp.getTime() < 24 * 60 * 60_000;
-      return sameEpisode && (origin ? normalize(origin.campaignName) === campaign : message === incoming[0] && (` ${text} `).includes(` ${campaign} `))
+      return sameEpisode && (origin ? normalize(origin.campaignName) === campaign
+        : explicitCampaignOpening(text, campaign))
         ? { procedure: candidate, source: message } : null;
     }
     if (message === incoming[0] && (` ${text} `).includes(` ${campaign} `)) return { procedure: candidate, source: message };

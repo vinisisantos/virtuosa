@@ -294,6 +294,33 @@ test("usa campanha registrada apenas quando a cliente a mencionou e os dados nã
   }
 });
 
+test('abertura explícita de Lipo Laser com preço comprova procedimento mesmo após a negociação', async () => {
+  const options = { now: '2026-11-11T22:38:39Z', autonomy: true, groupNoticeId: 'notice', noProcedure: true,
+    campaignName: 'LIPO LASER', sourceBody: 'Olá! Vim pelo LIPO LASER 699,00, posso ter mais informações sobre isso?',
+    beforeOffer: ['Durante a semana', 'Qual o endereço?', 'Segunda às 8:30', 'Ah sim', 'Segunda às 10 horas então'],
+    offerBody: 'Segunda-feira, 16/11/2026, às 10h. Posso registrar sua avaliação gratuita para esse horário?', replyBody: 'Pode sim' };
+  const f = fixture(options);
+  const result = await f.run();
+  assert.equal(result.status, 'booked', result.reason);
+  assert.equal(f.state.appointmentInput.evaluationProcedure, 'LIPO LASER');
+  assert.equal(f.state.sent, 1);
+  await f.state.after[0]();
+  assert.deepEqual(f.state.groupNotices, ['notice']);
+  assert.equal((await f.run()).status, 'review');
+  assert.equal(f.state.sent, 1);
+  for (const change of [
+    { campaignName: 'Botox Terço Superior' }, { sourceBody: 'Vim pelo Lipo Laser 2, posso ter mais informações sobre isso?' },
+    { beforeOffer: [], sourceBody: 'Vim pelo Lipo Laser 2, posso ter mais informações sobre isso?' },
+    { sourceBody: 'Vim pelo Lipo Laser, mas quero Botox' }, { sourceBody: 'Vi uma propaganda de Lipo Laser 699,00' },
+    { beforeOffer: ['Não quero mais esse procedimento', 'Segunda às 10h'] },
+    { changedCampaign: true }, { changedCampaignMessage: true },
+  ]) {
+    const blocked = fixture({ ...options, ...change });
+    assert.equal((await blocked.run()).status, 'review');
+    assert.equal(blocked.state.sent, 0);
+  }
+});
+
 test("falha no envio mantém avaliação e não repete a confirmação", async () => {
   const f = fixture({ sendFails: true });
   const first = await f.run();

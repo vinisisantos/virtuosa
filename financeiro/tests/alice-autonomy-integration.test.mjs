@@ -835,3 +835,53 @@ test("claim expirada ou com conversa/fonte diferente não autoriza a chamada ext
     assert.equal(await validateAliceAutonomousTurn(f.claim.turn, f.claim.token, "processing", f.adapter), false);
   } finally { await f.pg.close(); }
 });
+
+test('retomada explícita de aceite exato sem efeitos aceita JSON null e barra reserva, agenda, escalonamento e replay', async () => {
+  const { pg, adapter } = await database({ memory: true });
+  const now = new Date();
+  try {
+    await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);
+    await pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
+    const slot = (await import('../src/lib/ai-assistant/sbc-scheduling-policy.ts')).buildSbcEvaluationOptions(now)[0];
+    const [date,time] = slot.split('T');
+    await pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp,"createdAt",status,type,body,"respondedByName")
+      VALUES ('offer','conversation-a','offer-id',TRUE,$1,$1,'read','text',$2,'Alice')`, [new Date(+now-20000), `Podemos agendar em ${date.split('-').reverse().join('/')} às ${time}?`]);
+    await pg.exec(`UPDATE "WhatsAppMessage" SET body='Pode sim' WHERE id='source-a'`);
+    await insertTurn(pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID, status: 'needs_human' });
+    const reset = () => pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='booking_requires_review',attempts=1,"messagesJson"='null'::jsonb WHERE id='turn-a'`);
+    await reset();
+    const input = { conversationId:'conversation-a', instanceId:ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId:'source-a', timestamp:new Date(+now-10000), origin:'inbound', resumeBookingBy:'operator' };
+    assert.equal((await enqueueAliceAutonomousTurn({ ...input, resumeBookingBy:undefined }, adapter, now)).queued, false);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
+    await reset();
+    await pg.exec(`INSERT INTO "Agendamento" (id,unit,"clientPhone",procedimento,status,"startTime","endTime") VALUES ('appointment','SBC','5511900001234','Avaliação','pendente',NOW(),NOW()+interval '1 day')`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`DELETE FROM "Agendamento"`);
+    await pg.exec(`INSERT INTO "AliceAutoSchedule" (id,"conversationId","replyMessageId",state) VALUES ('ledger','conversation-a','source-a','sending')`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`DELETE FROM "AliceAutoSchedule"`);
+    await pg.exec(`INSERT INTO "LeadMemory" (id,"conversationId",unidade,"escalarHumano","updatedAt") VALUES ('memory','conversation-a','SBC',TRUE,NOW())`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+  } finally { await pg.close(); }
+});
+
+test('recusa de agenda registra motivo operacional sem texto do lead e mantém ausência de envio', async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    const slot = (await import('../src/lib/ai-assistant/sbc-scheduling-policy.ts')).buildSbcEvaluationOptions(f.state.clock)[0];
+    const [date,time] = slot.split('T');
+    const load = f.deps.loadContext;
+    f.deps.loadContext = async (...args) => ({ ...await load(...args), messages: [
+      { id:'offer', fromMe:true, status:'read', type:'text', respondedByName:'Alice', body:`Podemos agendar em ${date.split('-').reverse().join('/')} às ${time}?` },
+      { id:'source-a', fromMe:false, status:'received', type:'text', body:'Pode sim' },
+    ] });
+    f.deps.schedule = async () => ({ status:'review', reason:'Informe o procedimento de interesse antes de agendar.' });
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), 'needs_human');
+    const audit = (await f.pg.query(`SELECT details FROM "AuditLog" WHERE action='alice_booking_rejected'`)).rows;
+    assert.deepEqual(JSON.parse(audit[0].details), { version:1, reason:'Informe o procedimento de interesse antes de agendar.' });
+    assert.doesNotMatch(audit[0].details, /Pode sim|source-a|Podemos agendar/);
+    assert.equal(f.state.sends.length, 0);
+    assert.equal((await f.readChat()).aiMode, 'manual');
+    assert.equal((await f.readTurn()).appointmentId, null);
+  } finally { await f.pg.close(); }
+});

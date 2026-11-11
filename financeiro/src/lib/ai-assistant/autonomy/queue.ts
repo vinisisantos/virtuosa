@@ -178,12 +178,19 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
         select: { id: true, body: true, fromMe: true, status: true, type: true, respondedByName: true, respondedBy: true,
           timestamp: true, createdAt: true }, orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 });
       const exchange = selectSbcSchedulingExchange(history.reverse(), now);
-      if (exchange?.reply.id === source.id && !exchange.slot) {
+      if (exchange?.reply.id === source.id) {
         const [escalated, ledger] = await Promise.all([
           tx.leadMemory.findFirst({ where: { conversationId: params.conversationId, unidade: "SBC", escalarHumano: true }, select: { id: true } }),
           tx.aliceAutoSchedule.findUnique({ where: { conversationId_replyMessageId: { conversationId: params.conversationId, replyMessageId: source.id } }, select: { id: true } }),
         ]);
         resumeBookingChoice = !escalated && !ledger;
+        if (resumeBookingChoice && exchange.slot) {
+          const contact = await tx.whatsAppConversation.findFirst({ where: { id: params.conversationId, instanceId: params.instanceId },
+            select: { contact: { select: { phone: true } } } });
+          const phone = contact?.contact.phone;
+          resumeBookingChoice = Boolean(phone && (phoneLookupKey(phone)?.length || 0) >= 10
+            && !await currentAliceAppointment({ conversationId: params.conversationId, instanceId: params.instanceId, unidade: "SBC" }, phone, tx));
+        }
       }
     }
     const explicitRecovery = Boolean(resumeSchedule || resumeBookingChoice || resumeClinicalFear || resumeEmptyEnvelope
@@ -225,7 +232,8 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
           WHERE t.id=${turn.id} AND t.status IN ('needs_human','failed') AND t.error='booking_requires_review'
             AND ${recentSource} AND t.attempts<=1 AND t."claimToken" IS NULL
             AND t."nextMessageIndex"=0 AND t."firstSentAt" IS NULL AND t."generationStartedAt" IS NULL
-            AND t."providerMessageIds"='[]'::jsonb AND t."appointmentId" IS NULL AND t."messagesJson" IS NULL
+            AND t."providerMessageIds"='[]'::jsonb AND t."appointmentId" IS NULL
+            AND (t."messagesJson" IS NULL OR t."messagesJson"='null'::jsonb)
             AND t."sourceMessageId"=(SELECT id FROM "WhatsAppMessage" WHERE "conversationId"=t."conversationId"
               AND status<>'deleted' AND NOT (type='secretEncryptedMessage' AND btrim(body)='') ORDER BY timestamp DESC,id DESC LIMIT 1)
             AND NOT EXISTS (SELECT 1 FROM "AliceAutoSchedule" b WHERE b."conversationId"=t."conversationId" AND b."replyMessageId"=t."sourceMessageId")
