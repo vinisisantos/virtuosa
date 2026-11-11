@@ -27,6 +27,7 @@ import {
 import { costEntryMatchesMonth, normalizeCostReferenceMonth, resolveCostReferenceMonth } from '@/lib/cost-reference-month';
 import { resolveCostEntryUnit } from '@/lib/cost-entry-unit';
 import { previousCompetence } from '@/lib/automatic-costs';
+import { CostValueVisibilityContext, useCostValueFormatter } from './cost-value-visibility';
 import {
   normalizePayrollSyncUnit,
   payrollSyncSignalAffectsScope,
@@ -224,6 +225,8 @@ function AutomaticCostDetails({
   onTogglePayrollPayment: (entry: AutomaticPayrollEntry) => void;
   onToggleVacationAdvance: (advance: AutomaticVacationAdvance, paymentDate: string) => void;
 }) {
+  const formatAmount = useCostValueFormatter();
+
   if (row.source === 'automatic-vacation') {
     const advance = row.raw as AutomaticVacationAdvance;
     return (
@@ -231,7 +234,7 @@ function AutomaticCostDetails({
         <div style={{ minWidth: 0 }}>
           <strong>Recibo de férias · {advance.employeeName}</strong>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.78rem', marginTop: 4 }}>
-            {advance.unit} · {fmt(advance.amount)} · {advance.isPaid ? 'adiantamento pago' : 'adiantamento pendente'}
+            {advance.unit} · {formatAmount(advance.amount)} · {advance.isPaid ? 'adiantamento pago' : 'adiantamento pendente'}
           </div>
         </div>
         {canManagePayrollPayments && (
@@ -272,20 +275,20 @@ function AutomaticCostDetails({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
           <div style={{ padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)' }}>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 700 }}>SALÁRIOS · LÍQUIDO DA FOLHA</div>
-            <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1rem', fontWeight: 850 }}>{fmt(payroll.salaryTotal)}</div>
+            <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1rem', fontWeight: 850 }}>{formatAmount(payroll.salaryTotal)}</div>
           </div>
           <div style={{ padding: 12, borderRadius: 10, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.09)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#b45309', fontSize: '0.7rem', fontWeight: 850 }}>
               <span className="material-symbols-outlined" style={{ fontSize: 15 }}>account_balance</span>
               FGTS DESTACADO
             </div>
-            <div style={{ marginTop: 4, color: '#b45309', fontSize: '1rem', fontWeight: 900 }}>{fmt(payroll.fgtsTotal)}</div>
+            <div style={{ marginTop: 4, color: '#b45309', fontSize: '1rem', fontWeight: 900 }}>{formatAmount(payroll.fgtsTotal)}</div>
           </div>
           <div style={{ padding: 12, borderRadius: 10, border: '1px solid rgba(139,92,246,0.3)', background: 'rgba(139,92,246,0.08)' }}>
             <div style={{ color: 'var(--primary)', fontSize: '0.7rem', fontWeight: 800 }}>CUSTO PENDENTE · SALÁRIO + FGTS</div>
-            <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1rem', fontWeight: 900 }}>{fmt(payroll.pendingTotal)}</div>
+            <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1rem', fontWeight: 900 }}>{formatAmount(payroll.pendingTotal)}</div>
             <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: '0.66rem', fontWeight: 700 }}>
-              Pago {fmt(payroll.paidTotal)} · Total somado aos custos {fmt(payroll.total)}
+              Pago {formatAmount(payroll.paidTotal)} · Total somado aos custos {formatAmount(payroll.total)}
             </div>
           </div>
         </div>
@@ -295,7 +298,7 @@ function AutomaticCostDetails({
             {payroll.units.map(unit => (
               <div key={unit.unit} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, padding: '9px 11px', borderRadius: 9, background: 'var(--card-bg)', border: '1px solid var(--border)', fontSize: '0.75rem' }}>
                 <span style={{ color: 'var(--text-main)', fontWeight: 750 }}>{unit.unit} · {unit.employeeCount} {unit.employeeCount === 1 ? 'pessoa' : 'pessoas'}</span>
-                <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Salários {fmt(unit.salaryTotal)} · <strong style={{ color: '#b45309' }}>FGTS {fmt(unit.fgtsTotal)}</strong> · Total {fmt(unit.total)}</span>
+                <span style={{ color: 'var(--text-muted)', fontWeight: 700 }}>Salários {formatAmount(unit.salaryTotal)} · <strong style={{ color: '#b45309' }}>FGTS {formatAmount(unit.fgtsTotal)}</strong> · Total {formatAmount(unit.total)}</span>
               </div>
             ))}
           </div>
@@ -314,11 +317,11 @@ function AutomaticCostDetails({
                   <div style={{ flex: '1 1 180px', minWidth: 0 }}>
                     <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 800 }}>{entry.employeeName}</div>
                     <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.68rem' }}>
-                      {entry.unit} · FGTS da empresa {fmt(entry.fgts)} · Custo total {fmt(entry.total)}
+                      {entry.unit} · FGTS da empresa {formatAmount(entry.fgts)} · Custo total {formatAmount(entry.total)}
                     </div>
                   </div>
-                  <div style={{ minWidth: 90, color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 850 }} aria-label={`Salário líquido ${fmt(entry.salary)}`}>
-                    {fmt(entry.salary)}
+                  <div style={{ minWidth: 90, color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 850 }} aria-label={`Salário líquido ${formatAmount(entry.salary)}`}>
+                    {formatAmount(entry.salary)}
                   </div>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 8px', borderRadius: 7, background: isPaid ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: isPaid ? '#22c55e' : '#ef4444', fontSize: '0.7rem', fontWeight: 800 }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{isPaid ? 'check_circle' : 'schedule'}</span>
@@ -378,7 +381,7 @@ function AutomaticCostDetails({
                 {order.costRecognizedAt.slice(0, 10).split('-').reverse().join('/')} · {order.unit || 'Sem unidade'} · {order.status}
               </div>
             </div>
-            <div style={{ color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 850 }}>{fmt(order.totalPrice)}</div>
+            <div style={{ color: 'var(--text-main)', fontSize: '0.8rem', fontWeight: 850 }}>{formatAmount(order.totalPrice)}</div>
           </div>
         ))}
       </div>
@@ -403,6 +406,7 @@ function ProductCostsView({
   onTogglePaid: (row: CostRow) => void;
   onDelete: (row: CostRow) => void;
 }) {
+  const formatAmount = useCostValueFormatter();
   const productsTotal = entries.reduce((sum, entry) => sum + entry.productsTotal, 0);
   const freightTotal = entries.reduce((sum, entry) => sum + entry.freight, 0);
   const grandTotal = entries.reduce((sum, entry) => sum + entry.total, 0);
@@ -491,16 +495,16 @@ function ProductCostsView({
                   <div key={`${entry.key}-${item.id}`} className="product-cost-item">
                     <strong>{item.name}</strong>
                     <span data-label="Qtd.">{item.quantity}</span>
-                    <span data-label="Valor unitário">{fmt(item.value)}</span>
-                    <span data-label="Subtotal">{fmt(item.quantity * item.value)}</span>
+                    <span data-label="Valor unitário">{formatAmount(item.value)}</span>
+                    <span data-label="Subtotal">{formatAmount(item.quantity * item.value)}</span>
                   </div>
                 ))}
               </div>
 
               <footer className="product-cost-order-summary">
-                <div><span>Produtos</span><strong>{fmt(entry.productsTotal)}</strong></div>
-                <div><span>Frete</span><strong>{fmt(entry.freight)}</strong></div>
-                <div className="product-cost-order-total"><span>Total do pedido</span><strong>{fmt(entry.total)}</strong></div>
+                <div><span>Produtos</span><strong>{formatAmount(entry.productsTotal)}</strong></div>
+                <div><span>Frete</span><strong>{formatAmount(entry.freight)}</strong></div>
+                <div className="product-cost-order-total"><span>Total do pedido</span><strong>{formatAmount(entry.total)}</strong></div>
               </footer>
             </article>
           ))}
@@ -508,9 +512,9 @@ function ProductCostsView({
       )}
 
       <div className="product-costs-total">
-        <div><span>Total dos produtos</span><strong>{fmt(productsTotal)}</strong></div>
-        <div><span>Total dos fretes</span><strong>{fmt(freightTotal)}</strong></div>
-        <div className="product-costs-grand-total"><span>Total geral</span><strong>{fmt(grandTotal)}</strong></div>
+        <div><span>Total dos produtos</span><strong>{formatAmount(productsTotal)}</strong></div>
+        <div><span>Total dos fretes</span><strong>{formatAmount(freightTotal)}</strong></div>
+        <div className="product-costs-grand-total"><span>Total geral</span><strong>{formatAmount(grandTotal)}</strong></div>
       </div>
     </section>
   );
@@ -556,6 +560,8 @@ export function CustosUnificado({
   const [automaticCostsSnapshot, setAutomaticCosts] = useState<AutomaticCostsResponse | null>(null);
   const [loadingAutomaticCosts, setLoadingAutomaticCosts] = useState(true);
   const [automaticCostsErrorSnapshot, setAutomaticCostsError] = useState<string | null>(null);
+  const [valuesHidden, setValuesHidden] = useState(false);
+  const formatAmount = (value: number) => valuesHidden ? 'R$ ••••••' : fmt(value);
   const [expandedAutomaticRows, setExpandedAutomaticRows] = useState<Set<string>>(new Set());
   const [automaticCostsRefreshVersion, setAutomaticCostsRefreshVersion] = useState(0);
   const [payrollPaymentBusyId, setPayrollPaymentBusyId] = useState('');
@@ -784,7 +790,7 @@ export function CustosUnificado({
       title: advance.isPaid ? 'Desfazer adiantamento' : 'Confirmar adiantamento',
       message: advance.isPaid
         ? `Desfazer o pagamento das férias de ${advance.employeeName}? O abatimento será removido da folha ainda não paga.`
-        : `Confirma que ${fmt(advance.amount)} foi pago a ${advance.employeeName} em ${paymentDate.split('-').reverse().join('/')}? O valor será abatido da folha das competências correspondentes.`,
+        : `Confirma que ${formatAmount(advance.amount)} foi pago a ${advance.employeeName} em ${paymentDate.split('-').reverse().join('/')}? O valor será abatido da folha das competências correspondentes.`,
       confirmText: advance.isPaid ? 'Desfazer' : 'Confirmar pagamento',
       variant: advance.isPaid ? 'warning' : 'info',
     });
@@ -1444,6 +1450,7 @@ export function CustosUnificado({
     && (d.backupLoading || Boolean(d.backupError) || !automaticCosts);
 
   return (
+    <CostValueVisibilityContext.Provider value={valuesHidden}>
     <div className="costs-page" style={{ maxWidth: 1200, margin: '0 auto', paddingBottom: 60, fontFamily: 'Inter, sans-serif' }}>
       
       {/* ─── TOP BAR ─── */}
@@ -1465,6 +1472,17 @@ export function CustosUnificado({
         </div>
 
         <div className="costs-actions" style={{ display: 'flex', flex: '1 1 220px', flexWrap: 'wrap', justifyContent: 'flex-end', gap: 8 }}>
+          <button
+            type="button"
+            onClick={() => setValuesHidden(current => !current)}
+            aria-pressed={valuesHidden}
+            aria-label={valuesHidden ? 'Mostrar valores' : 'Ocultar valores'}
+            title={valuesHidden ? 'Mostrar valores' : 'Ocultar valores'}
+            style={{ display: 'flex', minHeight: 44, alignItems: 'center', justifyContent: 'center', gap: 7, border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 12, background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, fontFamily: 'inherit', cursor: 'pointer' }}
+          >
+            <span className="material-symbols-outlined" aria-hidden="true" style={{ fontSize: 19 }}>{valuesHidden ? 'visibility_off' : 'visibility'}</span>
+            {valuesHidden ? 'Mostrar valores' : 'Ocultar valores'}
+          </button>
           <button onClick={handleGenerateReport} disabled={generatingReport || loadingAutomaticCosts || Boolean(automaticCostsError) || d.backupLoading || Boolean(d.backupError)} title={automaticCostsError || d.backupError ? 'Relatório indisponível enquanto todos os dados financeiros não carregarem' : 'Gerar relatório financeiro mensal em PDF'} style={{ display: 'flex', alignItems: 'center', gap: 7, border: '1px solid var(--border)', padding: '10px 14px', borderRadius: 12, background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, fontFamily: 'inherit', cursor: generatingReport || loadingAutomaticCosts || d.backupLoading ? 'wait' : automaticCostsError || d.backupError ? 'not-allowed' : 'pointer', opacity: generatingReport || loadingAutomaticCosts || automaticCostsError || d.backupLoading || d.backupError ? 0.65 : 1 }}>
             <span className="material-symbols-outlined" style={{ fontSize: 19, color: '#ef4444' }}>picture_as_pdf</span>
             {generatingReport ? 'Gerando...' : loadingAutomaticCosts || d.backupLoading ? 'Atualizando...' : 'Relatório PDF'}
@@ -1576,7 +1594,7 @@ export function CustosUnificado({
           </div>
           <div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>TOTAL PENDENTE</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(totalPendente)}</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{formatAmount(totalPendente)}</div>
           </div>
         </div>
 
@@ -1586,7 +1604,7 @@ export function CustosUnificado({
           </div>
           <div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>TOTAL PAGO</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(totalPago)}</div>
+            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{formatAmount(totalPago)}</div>
           </div>
         </div>
 
@@ -1596,8 +1614,8 @@ export function CustosUnificado({
           </div>
           <div>
             <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', fontWeight: 600, marginBottom: 4 }}>TOTAL DO MÊS</div>
-            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{fmt(totalDespesas)}</div>
-            {totalLancado > 0 && <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 650 }}>Inclui {fmt(totalLancado)} do módulo Pedidos</div>}
+            <div style={{ fontSize: '1.6rem', fontWeight: 900, color: 'var(--text-main)', letterSpacing: '-0.5px' }}>{formatAmount(totalDespesas)}</div>
+            {totalLancado > 0 && <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 650 }}>Inclui {formatAmount(totalLancado)} do módulo Pedidos</div>}
             {loadingAutomaticCosts && <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: '0.68rem', fontWeight: 600 }}>Atualizando folha e pedidos...</div>}
           </div>
         </div>
@@ -1705,23 +1723,23 @@ export function CustosUnificado({
                             <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{row.category}</span>
                           </div>
                           {manualProductItems.length > 0 && (
-                            <div title={`${manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')}${manualProductFreight > 0 ? ` · Frete ${fmt(manualProductFreight)}` : ''}`} style={{ maxWidth: 420, marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                              {manualProductItems.length} {manualProductItems.length === 1 ? 'produto' : 'produtos'} · {manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')}{manualProductFreight > 0 ? ` · Frete ${fmt(manualProductFreight)}` : ''}
+                            <div title={`${manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')}${manualProductFreight > 0 ? ` · Frete ${formatAmount(manualProductFreight)}` : ''}`} style={{ maxWidth: 420, marginTop: 5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                              {manualProductItems.length} {manualProductItems.length === 1 ? 'produto' : 'produtos'} · {manualProductItems.map(item => `${item.quantity}x ${item.name}`).join(', ')}{manualProductFreight > 0 ? ` · Frete ${formatAmount(manualProductFreight)}` : ''}
                             </div>
                           )}
                         </td>
                         <td className="cost-due-cell" style={{ padding: '16px 20px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>{row.dueInfo}</td>
                         <td className="cost-value-cell" style={{ padding: '16px 20px', fontWeight: 700, color: 'var(--text-main)', fontSize: '0.95rem' }}>
-                          {fmt(displayedValue)}
+                          {formatAmount(displayedValue)}
                           {payroll && (
                             <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600 }}>
-                              Salários líquidos · FGTS {fmt(displayedFgts)} · Custo total {fmt(displayedValue + displayedFgts)}
-                              {filterStatus === 'all' && ` · Pago ${fmt(payroll.paidTotal)} · Pendente ${fmt(payroll.pendingTotal)}`}
+                              Salários líquidos · FGTS {formatAmount(displayedFgts)} · Custo total {formatAmount(displayedValue + displayedFgts)}
+                              {filterStatus === 'all' && ` · Pago ${formatAmount(payroll.paidTotal)} · Pendente ${formatAmount(payroll.pendingTotal)}`}
                             </div>
                           )}
                           {row.occurrenceCount > 1 && (
                             <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.7rem', fontWeight: 600 }}>
-                              {row.occurrenceCount}x no mês · {fmt(row.periodTotal)}
+                              {row.occurrenceCount}x no mês · {formatAmount(row.periodTotal)}
                             </div>
                           )}
                         </td>
@@ -1831,8 +1849,8 @@ export function CustosUnificado({
                 <div className="cost-form-saved" role="status">
                   <span className="material-symbols-outlined" aria-hidden="true">check_circle</span>
                   <div>
-                    <strong>{lastSavedCost.name} · {fmt(lastSavedCost.value)} adicionada{lastSavedCost.otherMonthLabel ? ` em ${lastSavedCost.otherMonthLabel}` : ''}</strong>
-                    <p>Total de {MONTHS[d.selectedMonth]}/{d.selectedYear}: {fmt(totalDespesas)}</p>
+                    <strong>{lastSavedCost.name} · {formatAmount(lastSavedCost.value)} adicionada{lastSavedCost.otherMonthLabel ? ` em ${lastSavedCost.otherMonthLabel}` : ''}</strong>
+                    <p>Total de {MONTHS[d.selectedMonth]}/{d.selectedYear}: {formatAmount(totalDespesas)}</p>
                   </div>
                 </div>
               )}
@@ -1971,7 +1989,7 @@ export function CustosUnificado({
                   ? 'Salvar Alterações'
                   : isProductExpense
                     ? 'Adicionar Pedido'
-                    : currencyInputToNumber(addValue) > 0 ? `Adicionar · ${fmt(currencyInputToNumber(addValue))}` : 'Adicionar Despesa'}
+                    : currencyInputToNumber(addValue) > 0 ? `Adicionar · ${formatAmount(currencyInputToNumber(addValue))}` : 'Adicionar Despesa'}
               </button>
             </div>
           </div>
@@ -2230,6 +2248,7 @@ export function CustosUnificado({
         }
       `}</style>
     </div>
+    </CostValueVisibilityContext.Provider>
   );
 }
 

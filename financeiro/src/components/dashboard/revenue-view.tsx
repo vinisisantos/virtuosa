@@ -5,13 +5,13 @@ import { CategorySelector } from '@/components/category-selector';
 import { DatePicker } from '@/components/ui/date-picker';
 import {
   formatCurrency,
-  fmt,
   LogEntry,
   ManualRevenueDraft,
   RevenueStatus,
   UNITS,
 } from '@/hooks/useDashboard';
 import { isManualRevenue } from '@/lib/revenue';
+import { useCostValueFormatter } from './cost-value-visibility';
 
 const DEFAULT_CATEGORIES = ['Serviços', 'Produtos', 'Reembolsos', 'Rendimentos', 'Outras receitas'];
 const PAYMENT_METHODS = ['Pix', 'Dinheiro', 'Cartão', 'Transferência', 'Boleto', 'Outro'];
@@ -38,6 +38,7 @@ function isInSelectedPeriod(entry: LogEntry, month: number, year: number, unit: 
 }
 
 export function RevenueView({ d }: { d: any }) {
+  const formatAmount = useCostValueFormatter();
   const [filter, setFilter] = useState<RevenueFilter>('all');
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<LogEntry | null>(null);
@@ -140,7 +141,7 @@ export function RevenueView({ d }: { d: any }) {
             </div>
             <div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: 750 }}>{card.label}</div>
-              <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1.45rem', fontWeight: 900 }}>{fmt(card.value)}</div>
+              <div style={{ marginTop: 4, color: 'var(--text-main)', fontSize: '1.45rem', fontWeight: 900 }}>{formatAmount(card.value)}</div>
             </div>
           </div>
         ))}
@@ -181,7 +182,7 @@ export function RevenueView({ d }: { d: any }) {
                       <div style={{ marginTop: 4, color: 'var(--text-muted)', fontSize: '0.78rem' }}>{entry.category || 'Outras receitas'}{entry.payment ? ` · ${entry.payment}` : ''}{d.selectedUnit === 'all' && entry.unit ? ` · ${entry.unit}` : ''}</div>
                     </td>
                     <td style={{ padding: '15px 18px', color: 'var(--text-muted)' }}>{formatDate(entry.date)}</td>
-                    <td style={{ padding: '15px 18px', color: 'var(--text-main)', fontWeight: 800 }}>{fmt(entry.value)}</td>
+                    <td style={{ padding: '15px 18px', color: 'var(--text-main)', fontWeight: 800 }}>{formatAmount(entry.value)}</td>
                     <td style={{ padding: '15px 18px' }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '4px 8px', borderRadius: 7, color: isReceived ? '#22c55e' : '#f59e0b', background: isReceived ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)', fontSize: '0.78rem', fontWeight: 750 }}>
                         <span className="material-symbols-outlined" style={{ fontSize: 14 }}>{isReceived ? 'check_circle' : 'schedule'}</span>

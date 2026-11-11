@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import type { CostRow } from './custos-unificado';
 import type { Bill, FixedExpense } from '@/hooks/useDashboard';
-import { fmt } from '@/hooks/useDashboard';
+import { useCostValueFormatter } from './cost-value-visibility';
 import { automaticExpenseGroupKey, groupExpenseRows, groupingCandidates, type ManualCostReference } from '@/lib/cost-expense-groups';
 import { recurringCostOccurrencesInMonth } from '@/lib/cost-recurrence';
 import styles from './cost-expense-list.module.css';
@@ -14,6 +14,7 @@ const targetKey = (target: ManualCostReference) => `${target.source}:${target.id
 export function AutomaticCostGroupingNotice({ fixed, bills, month, unit, category, value }: {
   fixed: FixedExpense[]; bills: Bill[]; month: string; unit: string; category: string; value: number;
 }) {
+  const formatAmount = useCostValueFormatter();
   const candidates = useMemo(() => groupingCandidates({ fixed, bills }, month, unit, category), [fixed, bills, month, unit, category]);
   const key = automaticExpenseGroupKey(unit, category, month);
   const currentTotal = candidates.find(candidate => candidate.key === key)?.total || 0;
@@ -21,7 +22,7 @@ export function AutomaticCostGroupingNotice({ fixed, bills, month, unit, categor
   return <div className={styles.picker} data-testid="cost-automatic-grouping">
     <strong>Agrupamento automático · {unit}</strong>
     <p>{category} · {month.split('-').reverse().join('/')} — lançamentos de dias diferentes ficam no mesmo grupo, com suas datas e pagamentos preservados.</p>
-    <p>Acumulado: {fmt(currentTotal)}{value > 0 && <> · Com este lançamento: <b>{fmt(nextTotal)}</b></>}</p>
+    <p>Acumulado: {formatAmount(currentTotal)}{value > 0 && <> · Com este lançamento: <b>{formatAmount(nextTotal)}</b></>}</p>
   </div>;
 }
 
@@ -29,6 +30,7 @@ export function CostGroupingPicker({ fixed, bills, month, unit, category, select
   fixed: FixedExpense[]; bills: Bill[]; month: string; unit: string; category: string;
   selection: string | null; disabled: boolean; onChange: (selection: string | null) => void;
 }) {
+  const formatAmount = useCostValueFormatter();
   const candidates = useMemo(() => groupingCandidates({ fixed, bills }, month, unit, category), [fixed, bills, month, unit, category]);
   return <fieldset className={styles.picker} disabled={disabled}>
     <label className={styles.toggle}>
@@ -40,7 +42,7 @@ export function CostGroupingPicker({ fixed, bills, month, unit, category, select
       <select id="cost-group-target" value={selection} onChange={event => onChange(event.target.value)}>
         <option value="">Selecione uma despesa</option>
         {candidates.map(candidate => <option key={candidate.key} value={targetKey(candidate.target)}>
-          {candidate.name} · {fmt(candidate.total)}{candidate.date ? ` · ${shortDate(candidate.date)}` : ''}{candidate.count > 1 ? ` · ${candidate.count} lançamentos` : ''}
+          {candidate.name} · {formatAmount(candidate.total)}{candidate.date ? ` · ${shortDate(candidate.date)}` : ''}{candidate.count > 1 ? ` · ${candidate.count} lançamentos` : ''}
         </option>)}
       </select>
       <p>{candidates.length ? 'Apenas despesas da mesma categoria, unidade e referência. Este novo lançamento continuará sendo único.' : 'Nenhuma despesa compatível. Confira a categoria, a unidade e a referência, ou desative o agrupamento.'}</p>
@@ -57,6 +59,7 @@ interface Props {
 }
 
 export function CostExpenseList({ rows, month, filtered, loading, error, canEdit, onEdit, onDelete, onTogglePaid, onUngroup }: Props) {
+  const formatAmount = useCostValueFormatter();
   const groups = useMemo(() => groupExpenseRows(rows, month), [rows, month]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [year, monthNumber] = month.split('-').map(Number);
@@ -93,23 +96,23 @@ export function CostExpenseList({ rows, month, filtered, loading, error, canEdit
         {group.grouped ? <>
           <button type="button" className={styles.groupButton} aria-expanded={isExpanded} onClick={() => toggle(group.key)}>
             <span className={styles.groupTitle}><span className={styles.badge}>{automaticExpenseGroupKey(first.raw.unit, first.category, month) ? 'Categoria' : 'Grupo'} · {first.raw.unit}</span><strong>{first.category}</strong><small>{group.rows.length} {group.rows.length === 1 ? 'lançamento' : 'lançamentos'} · {status}{filtered ? ' · filtro aplicado' : ''}</small></span>
-            <span className={styles.groupValue}><small>{filtered ? 'Total no filtro' : 'Total acumulado'}</small><strong>{fmt(group.total)}</strong></span>
+            <span className={styles.groupValue}><small>{filtered ? 'Total no filtro' : 'Total acumulado'}</small><strong>{formatAmount(group.total)}</strong></span>
             <span className="material-symbols-outlined" aria-hidden="true">{isExpanded ? 'expand_less' : 'expand_more'}</span>
           </button>
           {isExpanded && <div className={styles.details}>
-            <p className={styles.groupSummary}>Pago {fmt(paid)} · Pendente {fmt(pending)}</p>
+            <p className={styles.groupSummary}>Pago {formatAmount(paid)} · Pendente {formatAmount(pending)}</p>
             {ordered.map(row => <div className={styles.entry} key={`${row.source}:${row.id}`}>
               <div className={styles.description}><strong>{row.name}</strong><small>{row.recurrence === 'once' ? 'Único' : row.recurrence === 'weekly' ? 'Fixo semanal' : 'Fixo mensal'} · {row.isPaid ? 'Pago' : 'Pendente'}</small>
-                {dates(row).map(date => <span className={styles.day} key={date}><time dateTime={date}>{shortDate(date)}</time><b>{fmt(row.value)}</b></span>)}
+                {dates(row).map(date => <span className={styles.day} key={date}><time dateTime={date}>{shortDate(date)}</time><b>{formatAmount(row.value)}</b></span>)}
               </div>
-              <div className={styles.entryValue}>{fmt(row.periodTotal)}</div>
+              <div className={styles.entryValue}>{formatAmount(row.periodTotal)}</div>
               {row.raw.unit === 'SBC' && row.raw.obs && <p className={styles.entryNote}>{row.raw.obs}</p>}
               {actions(row, true)}
             </div>)}
           </div>}
         </> : <div className={styles.single}>
           <div className={styles.description}><strong>{first.name}</strong><small>{first.category} · {first.raw.unit || 'Unidade não informada'} · {first.recurrence === 'once' ? 'Único' : first.recurrence === 'weekly' ? 'Fixo semanal' : 'Fixo mensal'}</small><small>{first.dueInfo} · {status}</small></div>
-          <div className={styles.entryValue}>{fmt(first.periodTotal)}{first.occurrenceCount > 1 && <small>{first.occurrenceCount} × {fmt(first.value)}</small>}</div>
+          <div className={styles.entryValue}>{formatAmount(first.periodTotal)}{first.occurrenceCount > 1 && <small>{first.occurrenceCount} × {formatAmount(first.value)}</small>}</div>
           {actions(first, false)}
         </div>}
       </article>;

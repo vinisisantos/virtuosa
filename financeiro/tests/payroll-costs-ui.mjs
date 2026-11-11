@@ -75,8 +75,8 @@ function automaticCosts(paymentStatus, paymentDate) {
         updatedAt: '2026-09-12T14:00:00.000Z',
       }],
     },
-    productOrders: [],
-    productOrdersTotal: 0,
+    productOrders: [{ id: 'order-1', productName: 'Produto sintético', totalPrice: 500, costRecognizedAt: '2026-09-12', status: 'Entregue', unit: 'Osasco' }],
+    productOrdersTotal: 500,
   };
 }
 
@@ -133,7 +133,16 @@ try {
       if (url.pathname === '/api/auth/me') data = { authenticated: true, user };
       else if (url.pathname === '/api/backup') data = {
         exists: true,
-        logs: [],
+        logs: [{
+          id: 'revenue-1',
+          type: 'sale',
+          source: 'manual',
+          status: 'received',
+          name: 'Receita sintética',
+          value: 800,
+          unit: 'Osasco',
+          date: '2026-09-10T12:00:00.000Z',
+        }],
         goals: {},
         fixed: activeServerFixed,
         bills: [],
@@ -162,6 +171,27 @@ try {
     await page.waitForFunction(() => document.body.textContent?.includes('Folha de pagamento'));
     await page.waitForFunction(() => document.body.textContent?.includes('Aluguel sincronizado'));
     assert.equal(await page.evaluate(() => document.body.textContent?.includes('Aluguel antigo do celular')), false);
+    await page.click('button[aria-label="Ocultar valores"]');
+    await page.waitForFunction(() => document.body.textContent?.includes('R$ ••••••'));
+    assert.equal(await page.evaluate(() => /R\$\s*13\.717,15/.test(document.body.textContent || '')), false, 'despesa deixa de exibir o valor quando ocultada');
+    assert.equal(await page.$eval('button[aria-label="Mostrar valores"]', button => button.getAttribute('aria-pressed')), 'true');
+    for (const [label, visibleAmount] of [
+      ['Produtos', 'R\\$\\s*500,00'],
+      ['Receitas', 'R\\$\\s*800,00'],
+      ['Calendário', 'R\\$\\s*13\\.717,15'],
+      ['DRE gerencial', 'R\\$\\s*800,00'],
+    ]) {
+      await clickLastExactText(page, 'button', label);
+      await page.waitForFunction(activeLabel => (
+        [...document.querySelectorAll('[role="tab"]')]
+          .some(tab => tab.textContent?.trim() === activeLabel && tab.getAttribute('aria-selected') === 'true')
+      ), {}, label);
+      assert.match(await page.evaluate(() => document.body.textContent || ''), /R\$\s*••••••/, `${label} mantém os valores ocultos`);
+      assert.equal(await page.evaluate(amountPattern => new RegExp(amountPattern).test(document.body.textContent || ''), visibleAmount), false, `${label} não revela o valor no estado oculto`);
+    }
+    await clickLastExactText(page, 'button', 'Despesas');
+    await page.waitForFunction(() => [...document.querySelectorAll('[role="tab"]')]
+      .some(tab => tab.textContent?.trim() === 'Despesas' && tab.getAttribute('aria-selected') === 'true'));
     if (width === 390) {
       activeServerFixed = [{
         ...serverFixed[0],
@@ -174,31 +204,43 @@ try {
     }
     await page.click('button[aria-label^="Exibir detalhes de Folha de pagamento"]');
     await page.waitForFunction(() => document.body.textContent?.includes('Pagamentos por colaborador'));
+    assert.equal(await page.evaluate(() => /R\$\s*2\.500,00/.test(document.body.textContent || '')), false, 'detalhamento da folha também fica oculto');
+    await page.click('button[aria-label="Mostrar valores"]');
+    await page.waitForFunction(() => /R\$\s*2\.500,00/.test(document.body.textContent || ''));
     const payrollRowValue = () => page.evaluate(() => {
       const row = [...document.querySelectorAll('tr.cost-main-row')]
         .find(element => element.textContent?.includes('Folha de pagamento'));
       return row?.querySelector('.cost-value-cell')?.textContent?.trim().replace(/\s+/g, ' ') || null;
     });
     const initialPayrollRowValue = await payrollRowValue();
-    assert.ok(initialPayrollRowValue?.startsWith('R$ 3.780,00'), 'com todos pendentes, a linha mostra o saldo pendente');
+    assert.ok(initialPayrollRowValue?.startsWith('R$ 3.500,00'), 'a linha mostra o total líquido de salários na visão geral');
 
     const layout = await page.evaluate(() => {
       const button = [...document.querySelectorAll('button')]
         .find(element => element.textContent?.trim() === 'Confirmar pagamento');
+      const visibilityButton = document.querySelector('button[aria-label="Ocultar valores"]');
       const detail = [...document.querySelectorAll('div')]
         .find(element => element.textContent?.trim() === 'Pagamentos por colaborador')?.parentElement;
-      if (!button || !detail) return null;
+      if (!button || !detail || !visibilityButton) return null;
       const buttonRect = button.getBoundingClientRect();
+      const visibilityRect = visibilityButton.getBoundingClientRect();
       const detailRect = detail.getBoundingClientRect();
       return {
         buttonHeight: buttonRect.height,
+        visibilityButtonHeight: visibilityRect.height,
+        visibilityButtonLeft: visibilityRect.left,
+        visibilityButtonRight: visibilityRect.right,
         detailLeft: detailRect.left,
         detailRight: detailRect.right,
         viewport: document.documentElement.clientWidth,
+        documentWidth: document.documentElement.scrollWidth,
       };
     });
     assert.ok(layout, 'detalhamento e ação renderizados');
     assert.ok(layout.buttonHeight >= 44, 'alvo de toque da confirmação tem pelo menos 44px');
+    assert.ok(layout.visibilityButtonHeight >= 44, 'olho tem alvo de toque de pelo menos 44px');
+    assert.ok(layout.visibilityButtonLeft >= 0 && layout.visibilityButtonRight <= layout.viewport + 1, 'olho permanece dentro do viewport');
+    assert.equal(layout.documentWidth, layout.viewport, 'página sem overflow horizontal');
     assert.ok(layout.detailLeft >= 0 && layout.detailRight <= layout.viewport + 1, 'detalhamento permanece dentro do viewport');
 
     await clickPayrollPayment(page, 'Colaborador de teste com nome longo');
@@ -208,7 +250,7 @@ try {
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('tr.cost-main-row')]
         .find(element => element.textContent?.includes('Folha de pagamento'));
-      return row?.querySelector('.cost-value-cell')?.textContent?.trim().replace(/\s+/g, ' ').startsWith('R$ 1.080,00')
+      return row?.querySelector('.cost-value-cell')?.textContent?.trim().replace(/\s+/g, ' ').startsWith('R$ 3.500,00')
         && row.textContent?.includes('Parcial');
     });
     const payrollSummary = await page.evaluate(() => {
@@ -216,7 +258,7 @@ try {
         .find(element => element.textContent?.trim() === 'Pagamentos por colaborador');
       return paymentsLabel?.parentElement?.parentElement?.textContent || '';
     });
-    assert.match(payrollSummary, /TOTAL PENDENTE\s*R\$\s*1\.080,00/);
+    assert.match(payrollSummary, /CUSTO PENDENTE · SALÁRIO \+ FGTS\s*R\$\s*1\.080,00/);
     assert.match(payrollSummary, /Pago\s*R\$\s*2\.700,00\s*·\s*Total somado aos custos\s*R\$\s*3\.780,00/);
     assert.deepEqual(mutations.at(-1), {
       id: 'entry-1',

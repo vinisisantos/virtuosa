@@ -1,8 +1,8 @@
 'use client';
 
 import { formatCurrency } from '@/hooks/useDashboard';
-import { formatCurrency as formatBRL } from '@/lib/currency';
 import { sumProductExpenseItems } from '@/lib/product-expense-items';
+import { useCostValueFormatter } from './cost-value-visibility';
 
 export interface EditableProductExpenseItem {
   id: string;
@@ -46,6 +46,7 @@ function itemSubtotal(item: EditableProductExpenseItem) {
 }
 
 export function ProductExpenseItemsEditor({ items, total, onChange }: ProductExpenseItemsEditorProps) {
+  const formatAmount = useCostValueFormatter();
   const updateItem = (id: string, patch: Partial<EditableProductExpenseItem>) => {
     onChange(items.map(item => item.id === id ? { ...item, ...patch } : item));
   };
@@ -65,7 +66,7 @@ export function ProductExpenseItemsEditor({ items, total, onChange }: ProductExp
         </div>
         <div style={{ flexShrink: 0, textAlign: 'right' }}>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.62rem', fontWeight: 750, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Produtos</div>
-          <div style={{ marginTop: 2, color: '#f97316', fontSize: '0.82rem', fontWeight: 850 }}>{formatBRL(total)}</div>
+          <div style={{ marginTop: 2, color: '#f97316', fontSize: '0.82rem', fontWeight: 850 }}>{formatAmount(total)}</div>
         </div>
       </div>
 
@@ -75,7 +76,7 @@ export function ProductExpenseItemsEditor({ items, total, onChange }: ProductExp
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 9 }}>
               <div style={{ color: 'var(--text-main)', fontSize: '0.72rem', fontWeight: 800 }}>Produto {index + 1}</div>
               <div aria-live="polite" style={{ color: 'var(--text-muted)', fontSize: '0.67rem', fontWeight: 750, textAlign: 'right' }}>
-                Subtotal <strong style={{ color: 'var(--text-main)' }}>{formatBRL(itemSubtotal(item))}</strong>
+                Subtotal <strong style={{ color: 'var(--text-main)' }}>{formatAmount(itemSubtotal(item))}</strong>
               </div>
             </div>
             <div className="product-expense-item-row" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 78px 124px 44px', gap: 8, alignItems: 'end' }}>
@@ -157,13 +158,14 @@ export function ProductExpenseItemsEditor({ items, total, onChange }: ProductExp
 }
 
 export function ProductExpenseSummary({ itemsSubtotal, freight, total, onFreightChange }: ProductExpenseSummaryProps) {
+  const formatAmount = useCostValueFormatter();
   return (
     <section aria-labelledby="product-expense-summary-title" style={{ padding: 14, border: '1px solid var(--border)', borderRadius: 12, background: 'var(--bg)' }}>
       <div id="product-expense-summary-title" style={{ marginBottom: 10, color: 'var(--text-main)', fontSize: '0.82rem', fontWeight: 800 }}>Resumo da despesa</div>
       <div className="product-expense-summary-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10 }}>
         <div className="product-expense-summary-products" style={{ minWidth: 0, minHeight: 72, padding: 11, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)' }}>
           <div style={{ color: 'var(--text-muted)', fontSize: '0.65rem', fontWeight: 750 }}>PRODUTOS</div>
-          <div aria-live="polite" style={{ marginTop: 7, color: 'var(--text-main)', fontSize: '0.88rem', fontWeight: 850 }}>{formatBRL(itemsSubtotal)}</div>
+          <div aria-live="polite" style={{ marginTop: 7, color: 'var(--text-main)', fontSize: '0.88rem', fontWeight: 850 }}>{formatAmount(itemsSubtotal)}</div>
         </div>
         <label className="product-expense-summary-freight" htmlFor="product-expense-freight" style={{ display: 'block', minWidth: 0, minHeight: 72, padding: 10, borderRadius: 10, border: '1px solid var(--border)', background: 'var(--card-bg)' }}>
           <span style={{ display: 'block', color: 'var(--text-muted)', fontSize: '0.65rem', fontWeight: 750 }}>FRETE</span>
@@ -179,7 +181,7 @@ export function ProductExpenseSummary({ itemsSubtotal, freight, total, onFreight
         </label>
         <div className="product-expense-summary-total" style={{ minWidth: 0, minHeight: 72, padding: 11, borderRadius: 10, border: '1px solid rgba(249,115,22,0.35)', background: 'rgba(249,115,22,0.08)' }}>
           <div style={{ color: '#f97316', fontSize: '0.65rem', fontWeight: 800 }}>TOTAL DA DESPESA</div>
-          <div aria-live="polite" style={{ marginTop: 7, color: '#f97316', fontSize: '0.92rem', fontWeight: 900 }}>{formatBRL(total)}</div>
+          <div aria-live="polite" style={{ marginTop: 7, color: '#f97316', fontSize: '0.92rem', fontWeight: 900 }}>{formatAmount(total)}</div>
         </div>
       </div>
     </section>
