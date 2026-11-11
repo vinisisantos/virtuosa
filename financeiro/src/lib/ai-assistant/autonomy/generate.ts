@@ -8,6 +8,7 @@ import { generateAliceStructuredReply } from "@/lib/alice/structured-generation"
 import type { AliceStructuredOutput } from "@/lib/alice/schema";
 import { aliceFearInstructions } from "@/lib/alice/fear-policy";
 import { SBC_SCHEDULING_RETRY_INSTRUCTIONS } from "@/lib/ai-assistant/sbc-attendance-hours";
+import { splitAliceMessageParts } from "@/lib/alice/message-parts";
 
 export type AutonomousGeneration = {
   messages: string[]; needsHuman: boolean; model: string; inputTokens: number; outputTokens: number;
@@ -29,8 +30,8 @@ export async function generateAliceAutonomousReply(context: AliceAutonomousConte
     try {
       const proposal = generated.proposal;
       const normalized = normalizeAiAssistantMessageLayout({ response: proposal.resposta[0], messages: proposal.resposta,
-        confidence: proposal.confidence, needsHuman: proposal.escalarHumano, usedKnowledge: proposal.usedKnowledge }, true, context.prompt);
-      const messages = normalized.messages.map((message) => personalizeAiAssistantResponse(message, context.contactName));
+        confidence: proposal.confidence, needsHuman: proposal.escalarHumano, usedKnowledge: proposal.usedKnowledge }, true, context.prompt, true);
+      const messages = splitAliceMessageParts(normalized.messages.map((message) => personalizeAiAssistantResponse(message, context.contactName)));
       return { ...metrics, messages, needsHuman: normalized.needsHuman,
         proposal: { ...proposal, resposta: messages } };
     } catch { return { ...metrics, messages: [], needsHuman: true, generationFailure: "formatting_requires_review" }; }

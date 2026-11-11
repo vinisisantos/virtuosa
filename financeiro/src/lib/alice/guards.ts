@@ -4,6 +4,7 @@ import { aliceStructuredOutputSchema, type AliceStructuredOutput } from "@/lib/a
 import { containsPersonalPresentation, stripRepeatedPresentation } from "@/lib/alice/presentation-filter";
 import { ALICE_AUTONOMY_INSTANCE_ID, aliceAutonomyResponseClaimsBooking, aliceHumanReviewReason, type AliceHumanReviewReason } from "@/lib/ai-assistant/autonomy/policy";
 import { validateAliceFearReply, type AliceFearPolicy, type AliceFearViolation } from "@/lib/alice/fear-policy";
+import { ALICE_MESSAGE_MAX_WORDS } from "@/lib/alice/message-parts";
 
 export type AliceGuardContext = {
   scope: AliceMemoryScope; presentationAt: Date | null;
@@ -53,7 +54,7 @@ export function guardAliceReply(proposal: unknown, context: AliceGuardContext): 
     if (filtered.removed) events.push({ code: "presentation_removed", messageIndex });
     const formatted = filtered.text.replace(/\*\*([^*]+)\*\*/gu, "*$1*");
     if (formatted !== filtered.text) events.push({ code: "markdown_normalized", messageIndex });
-    if (formatted.trim().split(/\s+/u).length > 120) return { status: "handoff", reason: "word_limit", proposal: null,
+    if (formatted.trim().split(/\s+/u).length > ALICE_MESSAGE_MAX_WORDS) return { status: "handoff", reason: "word_limit", proposal: null,
       events: [...events, { code: "word_limit", messageIndex }] };
     if (formatted) messages.push(formatted);
   }

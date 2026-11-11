@@ -23,7 +23,7 @@ test("requisição mantém Sonnet e base aprovada; substitui contrato sem promov
   const input = { scope, prompt: buildAliceContext(contextInput({ memory: memory({ resumo: marker }) })) };
   const request = buildAliceStructuredRequest(input);
   assert.equal(request.model, "claude-sonnet-4-6");
-  assert.equal(request.max_tokens, 1024);
+  assert.equal(request.max_tokens, 2048);
   assert.equal(request.output_config.format.type, "json_schema");
   assert.equal(request.output_config.format.schema.properties.memoria.type, "object");
   assert.match(request.system, /CONTINUIDADE_CONVERSACIONAL_ALICE_V1/);
@@ -46,7 +46,7 @@ test("medo geral recebe instruções de acolhimento sem remover as travas clíni
 test("complemento após reserva responde só à dúvida sem repetir a confirmação ou sugerir outra agenda", () => {
   const request = buildAliceStructuredRequest({ ...context(), bookingFollowup: true });
   assert.match(request.system, /COMPLEMENTO_APOS_AGENDAMENTO/);
-  assert.match(request.system, /exatamente uma mensagem/);
+  assert.match(request.system, /caixas complementares de até 200 palavras/);
   assert.match(request.system, /não repita a confirmação/);
   assert.match(request.system, /não ofereça novos horários/);
   assert.doesNotMatch(buildAliceStructuredRequest(context()).system, /COMPLEMENTO_APOS_AGENDAMENTO/);
@@ -117,46 +117,17 @@ test("baixa confiança e pedido de humano não provocam nova geração nem mensa
   }
 });
 
-test("resposta acima de 120 palavras recebe uma única correção curta no orçamento existente", async () => {
-  const long = structuredOutput({ resposta: [Array(121).fill("palavra").join(" ")] });
-  const requests = [];
-  const result = await generateAliceStructuredReply(context(), dependencies(async (_url, options) => {
-    requests.push(JSON.parse(options.body));
-    return providerResponse(requests.length === 1 ? long : structuredOutput());
-  }));
-  assert.equal(result.status, "draft");
-  assert.equal(requests.length, 2);
-  assert.match(requests[1].system, /CORRECAO_DE_EXTENSAO/);
-  assert.equal(result.metrics.attempts, 2);
-  assert.equal(result.metrics.costMicroUsd, cost * 2);
-});
-
-test("reparo de resposta longa orienta uma mensagem realmente curta e permite resposta", async () => {
-  const long = structuredOutput({ resposta: [Array(121).fill("palavra").join(" ")] });
-  const concise = structuredOutput({ resposta: ["Entendo sua dúvida. A especialista pode explicar o procedimento e esclarecer isso na avaliação gratuita. Quer que eu te ajude a encontrar um horário?"] });
-  const requests = [];
-  const result = await generateAliceStructuredReply(context(), dependencies(async (_url, options) => {
-    const body = JSON.parse(options.body);
-    requests.push(body);
-    return providerResponse(requests.length === 1 ? long
-      : /no máximo 60 palavras/u.test(body.system) ? concise : long);
-  }));
-  assert.equal(result.status, "draft");
-  assert.equal(requests.length, 2);
-  assert.match(requests[1].system, /no máximo 60 palavras/u);
-  assert.equal(result.proposal.resposta.length, 1);
-  assert.ok(result.proposal.resposta[0].trim().split(/\s+/u).length <= 60);
-});
-
-test("duas respostas acima do limite continuam bloqueadas após o único reparo", async () => {
-  const long = structuredOutput({ resposta: [Array(121).fill("palavra").join(" ")] });
+test("201 palavras são divididas sem nova geração, preservando conteúdo e métricas", async () => {
+  const text = Array(201).fill("sim").join(" ");
   let calls = 0;
   const result = await generateAliceStructuredReply(context(), dependencies(async () => {
-    calls++;
-    return providerResponse(long);
+    calls++; return providerResponse(structuredOutput({ resposta: [text] }));
   }));
-  assertHandoff(result, "word_limit");
-  assert.equal(calls, 2);
+  assert.equal(result.status, "draft");
+  assert.equal(calls, 1);
+  assert.deepEqual(result.proposal.resposta.map(part => part.split(/\s+/u).length), [200, 1]);
+  assert.equal(result.proposal.resposta.join(" "), text);
+  assert.equal(result.metrics.costMicroUsd, cost);
 });
 
 test("preserva bloqueio existente de agendamento não comprovado", async () => {

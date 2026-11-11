@@ -22,8 +22,8 @@ test("resumo obrigatório aceita 600 pontos Unicode, rejeita ausente, branco e 6
   }
 });
 
-test("contrato mantém uma ou duas mensagens de até 1200 caracteres, sem coerção nem corte", () => {
-  for (const resposta of [[], [""], ["  "], [123], ["a", "b", "c"], ["a".repeat(1_201)]]) {
+test("contrato mantém sequência de mensagens de até 1200 caracteres, sem coerção nem corte", () => {
+  for (const resposta of [[], [""], ["  "], [123], [...Array(33).fill("a")], ["a".repeat(1_201)]]) {
     assert.equal(aliceStructuredOutputSchema.safeParse(structuredOutput({ resposta })).success, false);
   }
   assert.equal(aliceStructuredOutputSchema.safeParse(structuredOutput({ resposta: ["a".repeat(1_200), "b"] })).success, true);

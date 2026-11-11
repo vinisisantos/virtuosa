@@ -41,8 +41,8 @@ test("normaliza negrito para WhatsApp preservando parágrafos, preços e palavra
   assert.ok(result.events.some((event) => event.code === "markdown_normalized"));
 });
 
-test("até 120 palavras são preservadas; acima disso exige revisão sem cortar o lote", () => {
-  const valid = Array(120).fill("sim").join(" ");
+test("até 200 palavras são preservadas; acima disso exige revisão sem cortar o lote", () => {
+  const valid = Array(200).fill("sim").join(" ");
   const allowed = guardAliceReply(structuredOutput({ resposta: [valid] }), context());
   assert.equal(allowed.status, "ready");
   assert.equal(allowed.proposal.resposta[0], valid);
@@ -136,8 +136,8 @@ test("mensagem limpa mantém parágrafos, não modifica memória e pode passar n
   assert.deepEqual(again.events, []);
 });
 
-test("schema continua rejeitando mais de duas mensagens, corpos longos, vazios ou memória inválida", () => {
-  for (const proposal of [null, {}, structuredOutput({ resposta: ["a", "b", "c"] }), structuredOutput({ resposta: ["a".repeat(1_201)] }),
+test("schema continua rejeitando sequências acima do orçamento, corpos longos, vazios ou memória inválida", () => {
+  for (const proposal of [null, {}, structuredOutput({ resposta: Array(33).fill("a") }), structuredOutput({ resposta: ["a".repeat(1_201)] }),
     structuredOutput({ resposta: [] }), structuredOutput({ resposta: ["  "] }), structuredOutput({ memoria: { resumo: "Teste", apresentacaoFeitaEm: "ontem" } })]) {
     const result = guardAliceReply(proposal, context());
     assert.equal(result.status, "handoff");

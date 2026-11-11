@@ -56,15 +56,15 @@ export function parseGeneration(value: unknown): AiAssistantGeneration {
   };
 }
 
-export function normalizeAiAssistantMessageLayout(value: AiAssistantGeneration, allowSeparateMessages: boolean, input?: unknown): AiAssistantGeneration {
+export function normalizeAiAssistantMessageLayout(value: AiAssistantGeneration, allowSeparateMessages: boolean, input?: unknown, preserveComplements = false): AiAssistantGeneration {
   // Acolhimento não pode ser substituído por urgência promocional ou descoberta de volume.
-  const result = aliceFearPolicy(input) ? value : applyAiAssistantMessageLayout(applySbcPromotionValidity(value, input), allowSeparateMessages, input);
+  const result = aliceFearPolicy(input) ? value : applyAiAssistantMessageLayout(applySbcPromotionValidity(value, input), allowSeparateMessages, input, preserveComplements);
   if (!input || typeof input !== "object" || (input as Record<string, unknown>).UNIDADE !== "SBC") return result;
   const messages = result.messages.map((message) => formatAliceResponse(message));
   return { ...result, response: messages[0], messages };
 }
 
-function applyAiAssistantMessageLayout(value: AiAssistantGeneration, allowSeparateMessages: boolean, input?: unknown): AiAssistantGeneration {
+function applyAiAssistantMessageLayout(value: AiAssistantGeneration, allowSeparateMessages: boolean, input?: unknown, preserveComplements = false): AiAssistantGeneration {
   const flow = sbcGluteoConversationFlow(input);
   if (flow?.needsVolumeDiscovery && !value.needsHuman && !flow.directQuestion) {
     const nextMessage = flow.awaitingVolume ? "Fico por aqui para te ajudar 😊" : flow.volumeQuestion;
@@ -73,6 +73,7 @@ function applyAiAssistantMessageLayout(value: AiAssistantGeneration, allowSepara
   }
   const presentation = sbcConversationPresentation(input);
   if (presentation && !value.needsHuman && !presentation.introduced && !containsAliceIntroduction(value.messages.join(" "))) {
+    if (preserveComplements) return { ...value, response: presentation.introduction, messages: [presentation.introduction, ...value.messages] };
     const text = value.messages.join("\n\n");
     if (text.length > 1_200) throw new AiAssistantError("A Alice devolveu uma sugestão longa demais", 502);
     return { ...value, response: presentation.introduction, messages: [presentation.introduction, text] };

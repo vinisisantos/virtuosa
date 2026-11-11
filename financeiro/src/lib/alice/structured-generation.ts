@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { CLAUDE_MODEL } from "@/lib/ai-assistant/claude-provider";
 import { aliceAutonomyCostMicroUsd, aliceAutonomyResponseClaimsBooking, aliceHumanReviewReason, type AliceHumanReviewReason } from "@/lib/ai-assistant/autonomy/policy";
-import { aliceStructuredOutputSchema, type AliceStructuredOutput } from "@/lib/alice/schema";
+import { aliceStructuredDraftSchema, aliceStructuredOutputSchema, type AliceStructuredOutput } from "@/lib/alice/schema";
+import { splitAliceMessageParts } from "@/lib/alice/message-parts";
 import { buildAliceStructuredRequest, AliceStructuredRequestError, type AliceStructuredContext,
   type AliceStructuredRequestErrorCode } from "@/lib/alice/structured-request";
 
@@ -112,23 +113,19 @@ export async function generateAliceStructuredReply(context: AliceStructuredConte
 
     let decoded: unknown;
     try { decoded = JSON.parse(blocks.data.map((block) => block.text).join("")); } catch { decoded = undefined; }
-    const parsed = aliceStructuredOutputSchema.safeParse(decoded);
+    const parsed = aliceStructuredDraftSchema.safeParse(decoded);
     if (parsed.success) {
       const reviewReason = aliceHumanReviewReason(parsed.data);
       if (reviewReason) return handoff(reviewReason);
-      const overlong = parsed.data.resposta.some((message) => message.trim().split(/\s+/u).length > 120);
-      if (overlong) {
-        if (metrics.attempts === 2) return handoff("word_limit");
-        try {
-          payloads[1] = JSON.stringify(buildAliceStructuredRequest(context, "word_limit"));
-        } catch (error) {
-          if (error instanceof AliceStructuredRequestError) return handoff(error.code);
-          throw error;
-        }
+      if (aliceAutonomyResponseClaimsBooking(parsed.data.resposta)) return handoff("unproven_booking");
+      try {
+        const proposal = aliceStructuredOutputSchema.parse({ ...parsed.data, resposta: splitAliceMessageParts(parsed.data.resposta) });
+        return { status: "draft", proposal, metrics: snapshot() };
+      } catch {
+        if (metrics.attempts === 2) return handoff("invalid_output");
+        if (GENERATION_BUDGET_MS - elapsed() < MIN_REPAIR_BUDGET_MS) return handoff("deadline");
         continue;
       }
-      if (aliceAutonomyResponseClaimsBooking(parsed.data.resposta)) return handoff("unproven_booking");
-      return { status: "draft", proposal: parsed.data, metrics: snapshot() };
     }
     // Não ecoar saída inválida em instruções. Só formato concluído pode gastar uma correção adicional.
     if (metrics.attempts === 2) return handoff("invalid_output");

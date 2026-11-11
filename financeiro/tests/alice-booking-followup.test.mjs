@@ -173,3 +173,29 @@ for (const status of ['processing', 'sending']) test(`interrupção do complemen
     assert.equal(f.bookings(), 1);
   } finally { await f.pg.close(); }
 });
+
+test('dúvida após reserva pode completar três caixas sem repetir confirmação, custo ou agendamento', async () => {
+  const f = await fixture();
+  try {
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), 'queued');
+    const generate = f.deps.generate;
+    const messages = f.reply.split('\n\n');
+    f.deps.generate = async (...args) => ({ ...await generate(...args), messages, proposal: structuredOutput({ resposta: messages }) });
+    const firstSentAt = (await f.readTurn()).firstSentAt;
+    for (let index = 0; index < messages.length; index++) {
+      const claim = await f.next();
+      assert.ok(claim);
+      assert.equal(await processAliceAutonomousTurn(claim, {}, f.deps), index + 1 < messages.length ? 'queued' : 'sent', (await f.readTurn()).error);
+      assert.equal((await f.readTurn()).firstSentAt.getTime(), firstSentAt.getTime());
+    }
+    const final = await f.readTurn();
+    assert.deepEqual(f.state.sends, messages);
+    assert.equal(f.bookings(), 1);
+    assert.equal(f.state.generations, 1);
+    assert.deepEqual(final.providerMessageIds, ['provider-confirmation','provider-fixture-1','provider-fixture-2','provider-fixture-3']);
+    assert.equal(final.nextMessageIndex, 4);
+    assert.equal(final.costMicroUsd, 1050);
+    assert.equal(final.appointmentId, 'appointment');
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), 'skipped');
+  } finally { await f.pg.close(); }
+});

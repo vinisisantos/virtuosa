@@ -24,6 +24,7 @@ import { aliceFearPolicy } from "@/lib/alice/fear-policy";
 import { sbcOutOfHoursReply } from "@/lib/ai-assistant/autonomy/out-of-hours";
 import { SBC_BOOKING_CHOICE_CLARIFICATION } from "@/lib/ai-assistant/sbc-scheduling-exchange";
 import { sbcSchedulingContinuityReply } from "@/lib/ai-assistant/autonomy/scheduling-continuity";
+import { ALICE_MAX_MESSAGE_PARTS } from "@/lib/alice/message-parts";
 
 type BookingFollowup = { kind: "booking_followup"; version: 1; questions: string[]; startTime: string;
   payload?: AliceTurnPayload; messages?: string[] };
@@ -148,8 +149,9 @@ export async function processAliceAutonomousTurn(
     }
     const loadedContext = await deps.loadContext(turn, database, now());
     if (!loadedContext) { await finish("skipped", "context_changed"); return "skipped"; }
-    if (bookingFollowup && (!turn.appointmentId || !turn.firstSentAt || turn.nextMessageIndex !== 1
-      || !Array.isArray(turn.providerMessageIds) || turn.providerMessageIds.length !== 1)) return human("model_requested", "invalid_booking_followup");
+    if (bookingFollowup && (!turn.appointmentId || !turn.firstSentAt || turn.nextMessageIndex < 1
+      || !Array.isArray(turn.providerMessageIds) || turn.providerMessageIds.length !== turn.nextMessageIndex)) return human("model_requested", "invalid_booking_followup");
+    const responseIndex = bookingFollowup ? turn.nextMessageIndex - 1 : turn.nextMessageIndex;
     let context = bookingFollowup ? bookingFollowupContext(loadedContext, bookingFollowup) : loadedContext;
     memoryRuntime = context.memoryRuntime;
     if (context.handoffReason) return human(context.handoffReason);
@@ -228,7 +230,6 @@ export async function processAliceAutonomousTurn(
         await recordGenerationMetrics(metrics);
         if (needsHuman || !generatedMessages.length) return human("model_requested", generationFailure || "generation_requires_review");
         messages = generatedMessages;
-        if (bookingFollowup && messages.length !== 1) return human("model_requested", "invalid_booking_followup_sequence");
         if (memoryRuntime) {
           if (!proposal) return human("model_requested", "structured_proposal_missing");
           payload = { version: 1, proposal };
@@ -243,7 +244,7 @@ export async function processAliceAutonomousTurn(
       const memory = await getOrCreateMemory(memoryRuntime.scope, {}, database);
       memoryRuntime.guard.presentationAt = memory.apresentacaoFeitaEm;
       memoryRuntime.guard.appointment = await currentAliceAppointment(memoryRuntime.scope, context.conversation.contact.phone, database);
-      const guarded = guardAliceTurn(payload, memoryRuntime, bookingFollowup ? 0 : turn.nextMessageIndex);
+      const guarded = guardAliceTurn(payload, memoryRuntime, responseIndex);
       await auditAliceGuardEvents(turn.id, guarded.events, database);
       if (guarded.status === "handoff") return human("model_requested", guarded.reason);
       if (guarded.status === "skip") {
@@ -256,10 +257,9 @@ export async function processAliceAutonomousTurn(
       payload = guarded.payload;
       messages = payload.proposal.resposta;
     }
-    const responseIndex = bookingFollowup ? 0 : turn.nextMessageIndex;
     let message = messages[responseIndex];
-    if (!message || messages.length > 2 || message.length > 1_200) return human("model_requested", "invalid_message_sequence");
-    if (bookingFollowup && /\b\d{1,2}\/\d{1,2}\b/u.test(message) && /\b\d{1,2}(?:h|:\d{2})/iu.test(message)) {
+    if (!message || messages.length > (memoryRuntime ? ALICE_MAX_MESSAGE_PARTS : 2) || message.length > 1_200) return human("model_requested", "invalid_message_sequence");
+    if (bookingFollowup && messages.some(part => /\b\d{1,2}\/\d{1,2}\b/u.test(part) && /\b\d{1,2}(?:h|:\d{2})/iu.test(part))) {
       return human("model_requested", "booking_followup_new_offer");
     }
     const schedulingFailure = aliceAutonomySchedulingFailure(turn.nextMessageIndex === 0 ? messages : [message], now(), context.prompt);
@@ -327,7 +327,7 @@ export async function processAliceAutonomousTurn(
           messages = payload.proposal.resposta;
         }
         message = messages[responseIndex];
-        if (!message || messages.length > 2 || message.length > 1_200) return human("model_requested", "invalid_message_sequence");
+        if (!message || messages.length > (memoryRuntime ? ALICE_MAX_MESSAGE_PARTS : 2) || message.length > 1_200) return human("model_requested", "invalid_message_sequence");
         const retryIssue = aliceAutonomySchedulingFailure(turn.nextMessageIndex === 0 ? messages : [message], now(), retryContext.prompt);
         if (retryIssue) return scheduleFailure("retry_invalid", retryIssue);
         context = retryContext;
@@ -360,7 +360,7 @@ export async function processAliceAutonomousTurn(
     });
     const ids = Array.isArray(turn.providerMessageIds) ? turn.providerMessageIds : [];
     const nextIndex = turn.nextMessageIndex + 1;
-    const hasComplement = !bookingFollowup && nextIndex < messages.length;
+    const hasComplement = responseIndex + 1 < messages.length;
     if (memoryRuntime && payload) {
       await recordAliceSentMessage(memoryRuntime.scope, sent.messageRowId, database);
       if (!hasComplement && payload.persistMemory !== false) await applyCurrentAliceMemory(memoryRuntime.scope, turn.sourceMessageId, payload.proposal.memoria, database);
@@ -370,7 +370,8 @@ export async function processAliceAutonomousTurn(
         status: hasComplement ? "queued" : "sent", claimToken: null, claimedAt: null,
         nextMessageIndex: nextIndex, providerMessageIds: [...ids, sent.messageId], firstSentAt: turn.firstSentAt || sent.sentAt,
         availableAt: new Date(sent.sentAt.getTime() + ALICE_AUTONOMY_COMPLEMENT_MS),
-        messagesJson: hasComplement ? payload || messages : Prisma.JsonNull, completedAt: hasComplement ? null : now(), error: null,
+        messagesJson: hasComplement ? (bookingFollowup ? { ...bookingFollowup, ...(payload ? { payload } : { messages }) } : payload || messages)
+          : Prisma.JsonNull, completedAt: hasComplement ? null : now(), error: null,
       } });
       if (!transition.count) return false;
       await tx.whatsAppConversation.updateMany({
