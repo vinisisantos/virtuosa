@@ -65,7 +65,7 @@ export async function generateConversationSuggestion(params: {
   const isCurrentAliceDraft = current?.model === AI_ASSISTANT_MODEL && current.unit === context.unit;
   if (
     !params.force
-    && !(context.unit === "SBC" && looksLikeSchedulingExchange(context.recentMessages))
+    && !(context.unit === "SBC" && looksLikeSchedulingExchange(context.recentMessages, true))
     && !isSchedulingSuggestionExpired(usageRecord)
     && isCurrentAliceDraft
     && current

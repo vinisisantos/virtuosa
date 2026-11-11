@@ -20,15 +20,18 @@ import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_L
 import { AI_ASSISTANT_CONFIG_KEY, parseAiAssistantConfig } from "@/lib/ai-assistant/policy";
 import { projectAliceAudioHistory } from "@/lib/alice/audio/history";
 
-type RecentMessage = { id: string; body: string; status: string; fromMe: boolean; timestamp: Date; createdAt: Date };
+type RecentMessage = { id: string; body: string; status: string; fromMe: boolean; timestamp: Date; createdAt: Date;
+  type?: string; respondedByName?: string | null; respondedBy?: string | null };
 export type AliceAutoScheduleResult =
   | { status: "not_applicable" }
   | { status: "choice_required"; reason: string }
   | { status: "review"; reason: string }
-  | { status: "booked"; confirmation: "submitted" | "uncertain"; startTime: string };
+  | { status: "booked"; confirmation: "submitted" | "uncertain"; startTime: string;
+    pendingQuestions?: string[]; confirmationMessage?: { messageId: string; messageRowId: string; sentAt: Date } };
 
 const review = (reason: string): AliceAutoScheduleResult => ({ status: "review", reason });
 const choiceRequired = (reason: string): AliceAutoScheduleResult => ({ status: "choice_required", reason });
+const bookingLeaseChanged = new Error("alice_booking_lease_changed_before_confirmation");
 
 function procedureFromConfirmedCampaign(campaignName: string | null, messages: RecentMessage[], offerId: string) {
   const candidate = evaluationProcedureDraft({ campaignName });
@@ -54,8 +57,8 @@ function procedureFromConfirmedCampaign(campaignName: string | null, messages: R
   return null;
 }
 
-export function looksLikeSchedulingExchange(messages: RecentMessage[]) {
-  return selectSbcSchedulingExchange(messages) !== null;
+export function looksLikeSchedulingExchange(messages: RecentMessage[], allowHumanOffer = false) {
+  return selectSbcSchedulingExchange(messages, new Date(), { allowHumanOffer }) !== null;
 }
 
 export async function tryAliceAutoSchedule(params: {
@@ -73,7 +76,7 @@ export async function tryAliceAutoSchedule(params: {
 }): Promise<AliceAutoScheduleResult> {
   if (params.unit !== "SBC" || params.safetyHold || !params.instanceUnit || !["SBC", "Todas"].includes(params.instanceUnit)
     || (params.instanceUnit === "Todas" && params.contactUnit !== "SBC")) return { status: "not_applicable" };
-  const exchange = selectSbcSchedulingExchange(params.messages);
+  const exchange = selectSbcSchedulingExchange(params.messages, new Date(), { allowHumanOffer: !params.autonomyClaim });
   if (!exchange || (params.targetMessageId && params.targetMessageId !== exchange.reply.id)) return { status: "not_applicable" };
   const { offer, reply, replies, slot } = exchange;
   const activation = await prisma.appSetting.findUnique({ where: { key: "alice_auto_schedule_sbc_v1" }, select: { value: true } });
@@ -168,17 +171,27 @@ export async function tryAliceAutoSchedule(params: {
     if (latestAny?.id !== reply.id) return null;
     const messages = await tx.whatsAppMessage.findMany({
       where: { conversationId: params.conversationId, status: { not: "deleted" } },
-      select: { id: true, body: true, type: true, status: true, fromMe: true, timestamp: true, createdAt: true },
+      select: { id: true, body: true, type: true, status: true, fromMe: true, timestamp: true, createdAt: true,
+        respondedByName: true, respondedBy: true },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30,
     });
     const currentMessages = autonomy ? await projectAliceAudioHistory(messages.reverse(), params.conversationId, params.instanceId, tx) : messages.reverse();
-    const currentExchange = selectSbcSchedulingExchange(currentMessages);
+    const currentExchange = selectSbcSchedulingExchange(currentMessages, new Date(), { allowHumanOffer: !params.autonomyClaim });
     if (!currentExchange || currentExchange.reply.id !== reply.id || currentExchange.offer.id !== offer.id
       || currentExchange.slot !== slot || currentExchange.asksEvaluationCost !== exchange.asksEvaluationCost
+      || JSON.stringify(currentExchange.pendingQuestions) !== JSON.stringify(exchange.pendingQuestions)
+      || currentExchange.continuationMessages.length !== exchange.continuationMessages.length
+      || currentExchange.continuationMessages.some((message, index) => {
+        const original = exchange.continuationMessages[index];
+        return message.id !== original.id || message.body !== original.body
+          || message.respondedByName !== original.respondedByName || message.respondedBy !== original.respondedBy
+          || message.timestamp.getTime() !== original.timestamp.getTime() || message.createdAt.getTime() !== original.createdAt.getTime();
+      })
       || currentExchange.replies.length !== replies.length
       || [currentExchange.offer, ...currentExchange.replies].some((message, index) => {
         const original = [offer, ...replies][index];
         return message.id !== original.id || message.body !== original.body
+          || message.respondedByName !== original.respondedByName || message.respondedBy !== original.respondedBy
           || message.timestamp <= activatedAt || message.createdAt <= activatedAt;
       })) return null;
     const previous = await tx.aliceAutoSchedule.findUnique({ where: { conversationId_replyMessageId: { conversationId: params.conversationId, replyMessageId: reply.id } } });
@@ -220,8 +233,20 @@ export async function tryAliceAutoSchedule(params: {
       conversationId: params.conversationId, offerMessageId: offer.id, replyMessageId: reply.id,
       appointmentId: appointment.id, state: "sending",
     } });
+    if (autonomy && exchange.pendingQuestions.length) {
+      // A pendência precisa sobreviver mesmo se o worker cair depois de enviar a confirmação.
+      const linked = await tx.aliceAutonomousTurn.updateMany({ where: { id: autonomy.turnId, claimToken: autonomy.claimToken,
+        status: "processing", conversationId: params.conversationId, sourceMessageId: reply.id }, data: {
+        appointmentId: appointment.id, messagesJson: { kind: "booking_followup", version: 1,
+          questions: exchange.pendingQuestions, startTime: appointment.startTime.toISOString() },
+      } });
+      if (!linked.count) throw bookingLeaseChanged;
+    }
     return { appointment, clientName };
-  }, { timeout: 20_000 });
+  }, { timeout: 20_000 }).catch((error: unknown) => {
+    if (error === bookingLeaseChanged) return null;
+    throw error;
+  });
   if (!booked) return review("A conversa ou a agenda mudou, ou já existe uma avaliação. Confira antes de agendar.");
 
   if (booked.appointment.evaluationGroupNoticeId) {
@@ -242,7 +267,8 @@ export async function tryAliceAutoSchedule(params: {
       where: { conversationId: params.conversationId, replyMessageId: reply.id, state: "sending" },
       data: { state: confirmationState },
     });
-    return { status: "booked", confirmation: confirmationState, startTime: booked.appointment.startTime.toISOString() };
+    return { status: "booked", confirmation: confirmationState, startTime: booked.appointment.startTime.toISOString(),
+      pendingQuestions: exchange.pendingQuestions, confirmationMessage: confirmation.receipt };
   } catch (error) {
     console.error("[Alice] Resultado da confirmação não pôde ser registrado:", error);
     return { status: "booked", confirmation: "uncertain", startTime: booked.appointment.startTime.toISOString() };

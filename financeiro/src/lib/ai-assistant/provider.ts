@@ -6,6 +6,7 @@ import { formatAliceResponse } from "@/lib/ai-assistant/response-format";
 import { applySbcPromotionValidity, SBC_PROMOTION_VALIDITY_INSTRUCTIONS } from "@/lib/ai-assistant/promotion-validity";
 import { aliceContinuityInstructions } from "@/lib/alice/context-controls";
 import { aliceFearInstructions, aliceFearPolicy } from "@/lib/alice/fear-policy";
+import { SBC_VARIABLE_OFFER_INSTRUCTIONS } from "@/lib/ai-assistant/evaluation-offer-policy";
 
 export type AiAssistantUsage = { input: number; output: number };
 
@@ -169,7 +170,8 @@ export function buildAliceAssistantRequest(input: unknown) {
         "Use um tom de WhatsApp de SBC: natural, acolhedor e direto, com frases e parágrafos curtos. Evite travessões, títulos, listas, dois-pontos desnecessários e campos ou marcadores por preencher. Use emojis com moderação, apenas quando combinarem com a conversa.",
         "Leia a última mensagem da cliente junto com as respostas posteriores da equipe. Uma saudação automática ou manual não significa que a dúvida foi respondida: atenda ao que ainda falta. Se a equipe já respondeu, sugira uma continuação pertinente sem repetir saudação, pergunta ou informação e sem inventar fatos. A sugestão sempre será revisada pela equipe antes do envio.",
         "Quando for apropriado sugerir avaliação em SBC, escolha somente horários futuros incluídos em HORARIOS_SBC, na hora local de São Paulo. A lista já considera o horário comercial e permite avaliações simultâneas. Apresente data completa no formato DD/MM/AAAA e horário no formato 10h ou 10h30, sem afirmar que a avaliação foi reservada. Não trate a lista como comprovação de feriado ou folga.",
-        "Escolher o dia ou recusar um período ainda é negociação. Considere as mensagens seguidas da cliente juntas. Ofereça até dois horários da grade no mesmo dia que respeitem a restrição e pergunte qual prefere. Por exemplo, se neste sábado ela não puder de manhã, ofereça 12h30 e 13h somente se constarem na grade para a data. Se não sobrar horário compatível, pergunte por outro dia. Não repita o período recusado, não escale só por isso e não confirme agendamento sem uma escolha inequívoca e registro no CRM.",
+        "Escolher o dia ou recusar um período ainda é negociação. Considere as mensagens seguidas da cliente juntas. Não repita o período recusado, não escale só por isso e não confirme agendamento sem uma escolha inequívoca e registro no CRM.",
+        SBC_VARIABLE_OFFER_INSTRUCTIONS,
       ] : []),
       "Se o cliente não perguntar preço, não introduza preço espontaneamente. Se perguntar, use somente o valor explícito na base. Só informe a marca do produto quando o cliente perguntar diretamente.",
       "Responda primeiro ao que a pessoa realmente perguntou. Não introduza espontaneamente detalhes técnicos, lacunas da base ou ressalvas sobre informações que ela não pediu.",

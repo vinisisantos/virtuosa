@@ -6,6 +6,7 @@ import type { AliceAutonomousContext } from "@/lib/ai-assistant/autonomy/context
 import { ALICE_AUTONOMY_MODEL, aliceAutonomyCostMicroUsd, aliceAutonomyResponseClaimsBooking } from "@/lib/ai-assistant/autonomy/policy";
 import { generateAliceStructuredReply } from "@/lib/alice/structured-generation";
 import type { AliceStructuredOutput } from "@/lib/alice/schema";
+import { aliceFearInstructions } from "@/lib/alice/fear-policy";
 
 export type AutonomousGeneration = {
   messages: string[]; needsHuman: boolean; model: string; inputTokens: number; outputTokens: number;
@@ -19,7 +20,7 @@ export async function generateAliceAutonomousReply(context: AliceAutonomousConte
   signal?: AbortSignal): Promise<AutonomousGeneration> {
   if (context.memoryRuntime) {
     const generated = await generateAliceStructuredReply({ scope: context.memoryRuntime.scope, prompt: context.prompt,
-      schedulingRetry: context.schedulingRetry }, { fetcher, signal });
+      schedulingRetry: context.schedulingRetry, bookingFollowup: context.bookingFollowup }, { fetcher, signal });
     const { model, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, generationMs, usageRecorded, knownCostMicroUsd } = generated.metrics;
     const metrics = { model, inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens,
       generationMs: Math.ceil(generationMs), usageRecorded, costMicroUsd: knownCostMicroUsd };
@@ -42,6 +43,13 @@ export async function generateAliceAutonomousReply(context: AliceAutonomousConte
     + "Apresente-se como Alice, assistente virtual da Virtuosa, quando ainda não houver apresentação. Não imite a identidade de uma atendente humana. "
     + "Se não tiver base factual, se houver ambiguidade ou orientação clínica, marque needsHuman=true. Escreva somente a próxima etapa pertinente.";
   if (context.schedulingRetry) request.system += "\nCORRECAO_DE_HORARIOS: a resposta anterior sugeriu uma data ou horário que o sistema não pode enviar. Nesta recuperação, não ofereça data nem horário específico. Responda à dúvida direta com informações já confirmadas no contexto, reconheça a preferência ampla de período informada pela cliente e, se necessário, pergunte qual dia prefere para a equipe confirmar as opções. Não afirme que verificou disponibilidade ou que agendou.";
+  if (context.bookingFollowup) {
+    request.system += "\nDUVIDAS_APOS_AGENDAMENTO: o CRM já registrou a avaliação e submeteu a confirmação com endereço. Responda somente às dúvidas pendentes em exatamente uma mensagem, usando a base aprovada e o acolhimento necessário. Não repita confirmação ou endereço, não ofereça horários nem outro agendamento. A submissão não comprova entrega ou leitura. Se faltar base ou houver orientação clínica individual, marque needsHuman=true.";
+    const questions = context.prompt.MENSAGENS_RECENTES_SEM_RESPOSTA;
+    const fear = aliceFearInstructions({ UNIDADE: "SBC", CONVERSA: [{ role: "cliente", text: Array.isArray(questions)
+      ? questions.map((question) => question && typeof question === "object" && "text" in question ? question.text : "").join("\n") : "" }] });
+    if (fear) request.system += `\n${fear}`;
+  }
   const body = JSON.stringify(request);
   if (Buffer.byteLength(body, "utf8") > 80_000) throw new Error("context_too_large");
   const startedAt = Date.now();

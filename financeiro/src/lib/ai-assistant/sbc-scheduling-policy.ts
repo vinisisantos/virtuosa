@@ -61,5 +61,6 @@ export function deriveSbcEvaluationChoice(params: { offer: Message; reply: Messa
   const { offer, reply, now } = params;
   const sentStatus = normalizeWhatsAppMessageStatus(offer.status);
   if (!offer.fromMe || reply.fromMe || !sentStatus || !["sent", "delivered", "read", "played"].includes(sentStatus)) return null;
-  return chooseOfferedEvaluationSlot(offer.body, reply.body, buildSbcEvaluationOptions(now));
+  return chooseOfferedEvaluationSlot(offer.body, reply.body, buildSbcEvaluationOptions(now),
+    (key) => buildSbcEvaluationOptions(new Date(`${key}T00:00:00-03:00`), 1).length);
 }

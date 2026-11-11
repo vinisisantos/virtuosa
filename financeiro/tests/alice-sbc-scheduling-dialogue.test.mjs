@@ -33,7 +33,8 @@ test('não agenda aceite de uma oferta cujo dia da semana contradiz a data', () 
   assert.equal(deriveSbcEvaluationChoice({ offer: inconsistent, reply: reply('19h30'), now }), null);
 });
 
-const message = (id, body, fromMe) => ({ id, body, fromMe, status: fromMe ? 'delivered' : 'received', type: 'text' });
+const message = (id, body, fromMe) => ({ id, body, fromMe, status: fromMe ? 'delivered' : 'received', type: 'text',
+  ...(fromMe ? { respondedByName: 'Alice', respondedBy: null } : {}) });
 test('preferência só pelo sábado com vários horários mantém o diálogo, sem gravar nem escalar', () => {
   const offered = message('offer', 'Sábado 14/11 temos horários das 8h às 13h.', true);
   assert.equal(selectSbcSchedulingExchange([offered, message('reply', 'Prefiro sábado', false)], now), null);
@@ -99,7 +100,7 @@ test('não cruza intervenção humana, mídia, escolha contraditória ou condiç
     { ...message('audio', '', false), type: 'audio' }]) {
     assert.equal(selectSbcSchedulingExchange([offered, choice, extra], now)?.slot ?? null, null);
   }
-  assert.equal(selectSbcSchedulingExchange([offered, choice, message('human', 'Vou conferir', true), message('ok', 'Sim', false)], now), null);
+  assert.equal(selectSbcSchedulingExchange([offered, choice, { ...message('human', 'Vou conferir', true), respondedByName: 'Claudinice' }, message('ok', 'Sim', false)], now), null);
   assert.equal(selectSbcSchedulingExchange([{ ...offered, status: 'pending' }, choice], now)?.slot ?? null, null);
 });
 
@@ -119,4 +120,103 @@ test('não transforma oferta ambígua em aceite só porque uma opção passou ou
   const later = new Date('2026-11-09T23:30:00Z');
   assert.equal(deriveSbcEvaluationChoice({ offer: sameHour, reply: reply('14h'), now: later }), null);
   assert.equal(deriveSbcEvaluationChoice({ offer: sameHour, reply: reply('quarta às 14h'), now: later }), '2026-11-11T14:00');
+});
+
+test('oferta legítima com todos os horários de sábado continua reconhecível', () => {
+  const offered = offer('Para sábado, 14/11/2026, tenho 8h, 8h30, 9h, 9h30, 10h, 10h30, 11h, 11h30, 12h, 12h30 ou 13h. Qual prefere?');
+  assert.equal(deriveSbcEvaluationChoice({ offer: offered, reply: reply('10h'), now }), '2026-11-14T10:00');
+  assert.equal(deriveSbcEvaluationChoice({ offer: offered, reply: reply('13h'), now: new Date('2026-11-14T15:45Z') }), '2026-11-14T13:00');
+});
+
+const aliceMessage = (id, body) => ({ ...message(id, body, true), respondedByName: 'Alice', respondedBy: null });
+test('Carol conserva oferta após pergunta de fotos, aceita 10h e mantém somente dúvidas não cobertas pela confirmação', () => {
+  const offered = aliceMessage('offer', 'Para sábado, 14/11/2026, tenho 8h, 8h30, 9h, 9h30, 10h, 10h30, 11h, 11h30, 12h ou 12h30. Qual prefere?');
+  const followup = aliceMessage('followup', 'Fotos a equipe pode enviar. Qual horário do sábado funciona melhor?');
+  const messages = [offered, message('photos', 'Tem mais fotos pra ver?', false), followup,
+    message('choice', '10h', false), message('address', 'Manda o endereço pra mim por favor', false),
+    message('pain', 'Dói muito?', false), message('fear', 'Morro de medo de agulha', false)];
+  const result = selectSbcSchedulingExchange(messages, now);
+  assert.equal(result?.slot, '2026-11-14T10:00');
+  assert.equal(result?.offer.id, 'offer');
+  assert.equal(result?.reply.id, 'fear');
+  assert.deepEqual(result?.pendingQuestions, ['Dói muito?', 'Morro de medo de agulha']);
+  assert.deepEqual(result?.continuationMessages.map((m) => m.id), ['photos', 'followup']);
+});
+
+test('escolha e perguntas na mesma mensagem não apagam o horário inequívoco', () => {
+  const offered = aliceMessage('offer', 'Sábado, 14/11/2026, tenho 10h ou 10h30. Qual prefere?');
+  for (const text of ['10h, qual o endereço?', '10h. Dói muito? Tenho medo de agulha', '10h tenho medo de agulha']) {
+    const result = selectSbcSchedulingExchange([offered, message('choice', text, false)], now);
+    assert.equal(result?.slot, '2026-11-14T10:00', text);
+  }
+  const cost = selectSbcSchedulingExchange([offered, message('choice', '10h, a avaliação é gratuita?', false)], now);
+  assert.equal(cost?.slot, '2026-11-14T10:00');
+  assert.equal(cost?.asksEvaluationCost, true);
+});
+
+test('aceite condicionado, retratação, saúde e complemento desconhecido nunca viram reserva', () => {
+  const offered = aliceMessage('offer', 'Sábado, 14/11/2026, tenho 10h ou 10h30. Qual prefere?');
+  for (const text of ['10h, ainda não confirma', '10h. Depois eu confirmo', '10h se eu conseguir',
+    '10h. Só confirmo depois do endereço', '10h, mas estou grávida', '10h, tenho diabetes',
+    '10h. Preciso ver com meu marido', '10h. Não quero mais', '10h, uma coisa qualquer']) {
+    assert.equal(selectSbcSchedulingExchange([offered, message('choice', text, false)], now)?.slot ?? null, null, text);
+  }
+  assert.equal(selectSbcSchedulingExchange([offered, message('availability', '10h, tem esse horário?', false)], now)?.slot ?? null, null);
+  for (const question of ['Pode deixar em aberto?', 'Pode ser provisório?', 'Pode desmarcar?', 'Pode mudar para depois?']) {
+    assert.equal(selectSbcSchedulingExchange([offered, message('conditional', `10h. ${question}`, false)], now)?.slot ?? null, null, question);
+  }
+});
+
+test('oferta antiga não cruza saída humana, retirada, renegociação nem uma oferta nova', () => {
+  const offered = aliceMessage('offer', 'Sábado, 14/11/2026, tenho 10h ou 10h30. Qual prefere?');
+  const intervening = [
+    [{ ...aliceMessage('human', 'Vou conferir'), respondedByName: 'Claudinice' }],
+    [aliceMessage('withdraw', 'Esse horário já foi preenchido.')],
+    [aliceMessage('withdraw-plural', 'Não temos mais esse horário.')],
+    [aliceMessage('withdraw-available', 'Esse horário não está mais disponível.')],
+    [aliceMessage('partial-change', 'Você prefere quinta-feira?')],
+    [message('change', 'Prefiro quinta', false), aliceMessage('followup', 'Qual período fica melhor?')],
+  ];
+  for (const middle of intervening) assert.equal(selectSbcSchedulingExchange([offered, ...middle, message('choice', '10h', false)], now)?.slot ?? null, null);
+  const newer = aliceMessage('newer', 'Na sexta, 13/11/2026, tenho 15h ou 16h. Qual prefere?');
+  assert.equal(selectSbcSchedulingExchange([offered, newer, message('choice', '10h', false)], now)?.slot ?? null, null);
+  assert.equal(selectSbcSchedulingExchange([offered, newer, message('choice', '15h', false)], now)?.slot, '2026-11-13T15:00');
+});
+
+test('oferta tem validade de 24 horas e o Ok posterior não substitui uma escolha válida', () => {
+  const offered = { ...aliceMessage('offer', 'Sábado, 14/11/2026, tenho 10h ou 10h30. Qual prefere?'), timestamp: new Date('2026-11-08T14:59Z') };
+  const choice = { ...message('choice', '10h', false), timestamp: now };
+  assert.equal(selectSbcSchedulingExchange([offered, choice], now), null);
+  const current = { ...offered, timestamp: new Date('2026-11-09T14:30Z') };
+  const result = selectSbcSchedulingExchange([current, choice, { ...message('ok', 'Ok', false), timestamp: now }], now);
+  assert.equal(result?.slot, '2026-11-14T10:00');
+  assert.equal(result?.reply.id, 'ok');
+});
+
+test('fluxo assistido pode usar oferta humana exata, mas não atravessa outra intervenção humana', () => {
+  const offered = { ...aliceMessage('offer', 'Sábado, 14/11/2026, tenho 10h ou 10h30. Qual prefere?'), respondedByName: 'Claudinice', respondedBy: 'operator' };
+  const choice = message('choice', '10h', false);
+  assert.equal(selectSbcSchedulingExchange([offered, choice], now), null);
+  assert.equal(selectSbcSchedulingExchange([offered, choice], now, { allowHumanOffer: true })?.slot, '2026-11-14T10:00');
+  assert.equal(selectSbcSchedulingExchange([offered, { ...offered, id: 'intervention', body: 'Vou confirmar' }, choice], now, { allowHumanOffer: true }), null);
+  assert.equal(selectSbcSchedulingExchange([{ ...offered, respondedBy: null, respondedByName: null }, choice], now), null);
+});
+
+test('pedido sem escolha mantém negociação reconhecível sem inventar horário', () => {
+  const offered = aliceMessage('offer', 'Sábado, 14/11/2026, tenho 10h ou 10h30. Qual prefere?');
+  const result = selectSbcSchedulingExchange([offered, message('open', 'Pode ser no horário que tiver?', false)], now);
+  assert.ok(result);
+  assert.equal(result.slot, null);
+});
+
+test('confirmação de agenda não vira nova oferta nem reativa a oferta antiga após Ok', () => {
+  const offered = aliceMessage('offer', 'Sábado, 14/11/2026, tenho 10h ou 11h. Qual prefere?');
+  const choice = message('choice', '10h', false);
+  for (const confirmation of [
+    'Carol sua avaliação ficou agendada para sábado, 14/11/2026, às 10h.',
+    'Sua avaliação está confirmada.',
+  ]) {
+    const history = [offered, choice, aliceMessage('confirmation', confirmation), message('ok', 'Ok', false)];
+    assert.equal(selectSbcSchedulingExchange(history, now), null, confirmation);
+  }
 });

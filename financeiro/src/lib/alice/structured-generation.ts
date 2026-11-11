@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CLAUDE_MODEL } from "@/lib/ai-assistant/claude-provider";
-import { aliceAutonomyCostMicroUsd, aliceAutonomyResponseClaimsBooking } from "@/lib/ai-assistant/autonomy/policy";
+import { aliceAutonomyCostMicroUsd, aliceAutonomyResponseClaimsBooking, aliceHumanReviewReason, type AliceHumanReviewReason } from "@/lib/ai-assistant/autonomy/policy";
 import { aliceStructuredOutputSchema, type AliceStructuredOutput } from "@/lib/alice/schema";
 import { buildAliceStructuredRequest, AliceStructuredRequestError, type AliceStructuredContext,
   type AliceStructuredRequestErrorCode } from "@/lib/alice/structured-request";
@@ -22,7 +22,7 @@ export type AliceStructuredMetrics = {
 
 export type AliceStructuredFailure = AliceStructuredRequestErrorCode | "not_configured" | "cancelled" | "deadline"
   | "provider_unavailable" | "provider_response_invalid" | "usage_unavailable" | "unexpected_model"
-  | "provider_refusal" | "provider_incomplete" | "invalid_output" | "human_review" | "word_limit" | "unproven_booking";
+  | "provider_refusal" | "provider_incomplete" | "invalid_output" | "human_review" | "word_limit" | "unproven_booking" | AliceHumanReviewReason;
 
 export type AliceStructuredGeneration =
   | { status: "draft"; proposal: AliceStructuredOutput; metrics: AliceStructuredMetrics }
@@ -114,7 +114,8 @@ export async function generateAliceStructuredReply(context: AliceStructuredConte
     try { decoded = JSON.parse(blocks.data.map((block) => block.text).join("")); } catch { decoded = undefined; }
     const parsed = aliceStructuredOutputSchema.safeParse(decoded);
     if (parsed.success) {
-      if (parsed.data.escalarHumano || parsed.data.confidence === "low") return handoff("human_review");
+      const reviewReason = aliceHumanReviewReason(parsed.data);
+      if (reviewReason) return handoff(reviewReason);
       const overlong = parsed.data.resposta.some((message) => message.trim().split(/\s+/u).length > 120);
       if (overlong) {
         if (metrics.attempts === 2) return handoff("word_limit");

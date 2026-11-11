@@ -8,7 +8,7 @@ import { isEmptySecretEncryptedEnvelope } from "@/lib/whatsapp/message-content";
 
 export type AliceContextMessage = {
   id: string; conversationId: string; body: string; type: string; fromMe: boolean;
-  status: string; timestamp: Date; respondedByName: string | null;
+  status: string; timestamp: Date; respondedByName: string | null; respondedBy?: string | null;
   audioTranscribed?: boolean;
 };
 

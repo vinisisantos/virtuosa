@@ -14,6 +14,7 @@ import {
 
 export type EvaluationScheduleConfirmationResult = {
   status: "not_applicable" | "sent" | "failed";
+  receipt?: { messageId: string; messageRowId: string; sentAt: Date };
 };
 
 export async function sendEvaluationScheduleConfirmation(params: {
@@ -168,7 +169,7 @@ export async function sendEvaluationScheduleConfirmation(params: {
       }
     }
 
-    return { status: "sent" };
+    return { status: "sent", receipt: sent };
   } catch (error) {
     console.error("[Pipeline] Falha ao enviar confirmação automática do agendamento:", error);
     if (automation) {

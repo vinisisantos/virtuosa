@@ -43,6 +43,18 @@ test("medo geral recebe instruções de acolhimento sem remover as travas clíni
   assert.match(request.system, /Condição de saúde, medicação, gestação\/amamentação ou problema anterior exigem avaliação/);
 });
 
+test("complemento após reserva responde só à dúvida sem repetir a confirmação ou sugerir outra agenda", () => {
+  const request = buildAliceStructuredRequest({ ...context(), bookingFollowup: true });
+  assert.match(request.system, /COMPLEMENTO_APOS_AGENDAMENTO/);
+  assert.match(request.system, /exatamente uma mensagem/);
+  assert.match(request.system, /não repita a confirmação/);
+  assert.match(request.system, /não ofereça novos horários/);
+  assert.doesNotMatch(buildAliceStructuredRequest(context()).system, /COMPLEMENTO_APOS_AGENDAMENTO/);
+  const fear = buildAliceStructuredRequest({ ...context(), bookingFollowup: true,
+    prompt: { ...context().prompt, MENSAGENS_RECENTES_SEM_RESPOSTA: [{ text: 'Morro de medo de agulha' }, { text: 'Dói muito?' }] } });
+  assert.match(fear.system, /ACOLHIMENTO_SEM_PRESSAO_SBC_V1/);
+});
+
 test("geração válida retorna só proposta, sem gravar memória, rascunho ou apresentação", async () => {
   const input = context();
   const before = structuredClone(input);
@@ -99,7 +111,7 @@ test("baixa confiança e pedido de humano não provocam nova geração nem mensa
   for (const output of [structuredOutput({ confidence: "low" }), structuredOutput({ escalarHumano: true, motivoEscalonamento: "Risco clínico" })]) {
     let calls = 0;
     const result = await generateAliceStructuredReply(context(), dependencies(async () => { calls++; return providerResponse(output); }));
-    assertHandoff(result, "human_review");
+    assertHandoff(result, output.escalarHumano ? "human_review_requested" : "human_review_low_confidence");
     assert.equal(calls, 1);
     assert.equal(result.metrics.costMicroUsd, cost);
   }

@@ -19,6 +19,35 @@ import { applyCurrentAliceMemory } from "@/lib/alice/runtime-memory";
 import { currentAliceAppointment, type AliceMemoryRuntime } from "@/lib/alice/runtime-context";
 import { prepareAliceAudioTurn } from "@/lib/alice/audio/prepare";
 import { markCompletedAliceRepliesRead } from "@/lib/ai-assistant/autonomy/answered-read";
+import { sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
+import { aliceFearPolicy } from "@/lib/alice/fear-policy";
+
+type BookingFollowup = { kind: "booking_followup"; version: 1; questions: string[]; startTime: string;
+  payload?: AliceTurnPayload; messages?: string[] };
+
+function readBookingFollowup(value: unknown): BookingFollowup | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const data = value as Record<string, unknown>;
+  if (data.kind !== "booking_followup" || data.version !== 1 || typeof data.startTime !== "string"
+    || !Number.isFinite(Date.parse(data.startTime)) || !Array.isArray(data.questions) || !data.questions.length
+    || data.questions.length > 8 || data.questions.some((question) => typeof question !== "string" || !question.trim() || question.length > 1_200)) return null;
+  const payload = readAliceTurnPayload(data.payload);
+  const messages = Array.isArray(data.messages) && data.messages.every((message) => typeof message === "string") ? data.messages as string[] : undefined;
+  return { kind: "booking_followup", version: 1, questions: data.questions as string[], startTime: data.startTime,
+    ...(payload ? { payload } : {}), ...(messages ? { messages } : {}) };
+}
+
+function bookingFollowupContext(context: AliceAutonomousContext, followup: BookingFollowup): AliceAutonomousContext {
+  const questions = followup.questions.map((text) => ({ text: sanitizeAiAssistantText(text, [context.contactName || ""]) }));
+  const fear = aliceFearPolicy({ UNIDADE: "SBC", CONVERSA: [{ role: "cliente", text: questions.map((question) => question.text).join("\n") }],
+    MENSAGENS_RECENTES_SEM_RESPOSTA: questions });
+  const memoryRuntime = context.memoryRuntime ? { ...context.memoryRuntime, guard: { ...context.memoryRuntime.guard,
+    fear: context.memoryRuntime.guard.fear?.requiresHuman ? context.memoryRuntime.guard.fear : fear || context.memoryRuntime.guard.fear } } : undefined;
+  return { ...context, ...(memoryRuntime ? { memoryRuntime } : {}), bookingFollowup: true, prompt: { ...context.prompt, HORARIOS_SBC: [],
+    DUVIDAS_APOS_AGENDAMENTO: { dataRegistrada: followup.startTime, confirmacao: "submitted" },
+    MENSAGENS_RECENTES_SEM_RESPOSTA: questions,
+    ULTIMA_MENSAGEM_CLIENTE: { id: context.source.id, text: questions.map((question) => question.text).join("\n") } } };
+}
 
 export type AliceAutonomyDependencies = {
   database: typeof prisma;
@@ -47,6 +76,7 @@ export async function processAliceAutonomousTurn(
   const deps = { ...defaults, ...overrides };
   const { database, now } = deps;
   const { turn, token } = claim;
+  let bookingFollowup = readBookingFollowup(turn.messagesJson);
   const deadline = Date.now() + 55_000;
   let memoryRuntime: AliceMemoryRuntime | undefined;
   const finish = (status: "skipped" | "needs_human" | "uncertain" | "failed", reason: string) =>
@@ -61,6 +91,7 @@ export async function processAliceAutonomousTurn(
     return completed.count ? "sent" : "skipped";
   });
   const human = async (reason: "clinical_safety" | "unsupported_procedure" | "model_requested", error: string = reason) => {
+    if (bookingFollowup && reason !== "clinical_safety") error = "booking_followup_requires_review";
     if (memoryRuntime && reason === "clinical_safety") await applyCurrentAliceMemory(memoryRuntime.scope, turn.sourceMessageId,
       { escalarHumano: true, motivoEscalonamento: reason }, database);
     if (await finish("needs_human", error) && aliceAutonomyRequiresHumanOwnership("needs_human", error)
@@ -103,18 +134,21 @@ export async function processAliceAutonomousTurn(
         data: { status: "queued", claimToken: null, claimedAt: null, availableAt: now() } });
       return deferred.count ? "queued" : "skipped";
     }
-    const context = await deps.loadContext(turn, database, now());
-    if (!context) { await finish("skipped", "context_changed"); return "skipped"; }
+    const loadedContext = await deps.loadContext(turn, database, now());
+    if (!loadedContext) { await finish("skipped", "context_changed"); return "skipped"; }
+    if (bookingFollowup && (!turn.appointmentId || !turn.firstSentAt || turn.nextMessageIndex !== 1
+      || !Array.isArray(turn.providerMessageIds) || turn.providerMessageIds.length !== 1)) return human("model_requested", "invalid_booking_followup");
+    let context = bookingFollowup ? bookingFollowupContext(loadedContext, bookingFollowup) : loadedContext;
     memoryRuntime = context.memoryRuntime;
     if (context.handoffReason) return human(context.handoffReason);
-    let payload: AliceTurnPayload | null = readAliceTurnPayload(turn.messagesJson);
-    let messages = payload?.proposal.resposta || (Array.isArray(turn.messagesJson) ? turn.messagesJson.filter((value): value is string => typeof value === "string") : []);
-    if (turn.messagesJson !== null && !messages.length) return human("model_requested", "invalid_persisted_sequence");
+    let payload: AliceTurnPayload | null = bookingFollowup?.payload || readAliceTurnPayload(turn.messagesJson);
+    let messages = payload?.proposal.resposta || bookingFollowup?.messages || (Array.isArray(turn.messagesJson) ? turn.messagesJson.filter((value): value is string => typeof value === "string") : []);
+    if (turn.messagesJson !== null && !messages.length && !bookingFollowup) return human("model_requested", "invalid_persisted_sequence");
     // Turnos antigos passam pelas travas, mas não recebem resumo inventado nem nova geração.
     if (memoryRuntime && messages.length && !payload) payload = legacyAliceTurnPayload(messages);
     if (payload && !memoryRuntime) return human("model_requested", "memory_path_disabled");
     if (!messages.length) {
-      if (!context.memoryRuntime?.guard.fear && looksLikeSchedulingExchange(context.messages)) {
+      if (!bookingFollowup && !context.memoryRuntime?.guard.fear?.requiresHuman && looksLikeSchedulingExchange(context.messages)) {
         if (!deps.schedule) return human("model_requested", "trusted_booking_unavailable");
         // O serviço de agenda pode enviar a confirmação antes de devolver seu resultado.
         externalSendStarted = true;
@@ -135,6 +169,20 @@ export async function processAliceAutonomousTurn(
             if (await finish("uncertain", "booking_confirmation_uncertain")) await notifyAliceAutonomousHandoff(turn, "model_requested", deps.handoff);
             return state;
           }
+          if (booking.pendingQuestions?.length) {
+            const receipt = booking.confirmationMessage;
+            bookingFollowup = { kind: "booking_followup", version: 1, questions: booking.pendingQuestions, startTime: booking.startTime };
+            if (!receipt?.messageId || !receipt.messageRowId || !Number.isFinite(receipt.sentAt.getTime())) {
+              return human("model_requested", "booking_followup_receipt_missing");
+            }
+            // A confirmação é uma saída deste turno. Registrar seu ID mantém o guard estrito no complemento.
+            const queued = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: {
+              status: "queued", claimToken: null, claimedAt: null, firstSentAt: receipt.sentAt,
+              providerMessageIds: [receipt.messageId], nextMessageIndex: 1, messagesJson: bookingFollowup,
+              availableAt: new Date(receipt.sentAt.getTime() + ALICE_AUTONOMY_COMPLEMENT_MS),
+            } });
+            return queued.count ? "queued" : "skipped";
+          }
           return await completeAccepted(now());
         }
       }
@@ -148,21 +196,25 @@ export async function processAliceAutonomousTurn(
       await recordGenerationMetrics(metrics);
       if (needsHuman || !generatedMessages.length) return human("model_requested", generationFailure || "generation_requires_review");
       messages = generatedMessages;
+      if (bookingFollowup && messages.length !== 1) return human("model_requested", "invalid_booking_followup_sequence");
       if (memoryRuntime) {
         if (!proposal) return human("model_requested", "structured_proposal_missing");
         payload = { version: 1, proposal };
       }
-      const saved = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: { messagesJson: payload || messages } });
+      const saved = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: {
+        messagesJson: bookingFollowup ? { ...bookingFollowup, ...(payload ? { payload } : { messages }) } : payload || messages,
+      } });
       if (!saved.count) return "skipped";
     }
     if (memoryRuntime && payload) {
       const memory = await getOrCreateMemory(memoryRuntime.scope, {}, database);
       memoryRuntime.guard.presentationAt = memory.apresentacaoFeitaEm;
       memoryRuntime.guard.appointment = await currentAliceAppointment(memoryRuntime.scope, context.conversation.contact.phone, database);
-      const guarded = guardAliceTurn(payload, memoryRuntime, turn.nextMessageIndex);
+      const guarded = guardAliceTurn(payload, memoryRuntime, bookingFollowup ? 0 : turn.nextMessageIndex);
       await auditAliceGuardEvents(turn.id, guarded.events, database);
       if (guarded.status === "handoff") return human("model_requested", guarded.reason);
       if (guarded.status === "skip") {
+        if (bookingFollowup) return human("model_requested", "booking_followup_empty");
         if (turn.nextMessageIndex > 0 && turn.firstSentAt) {
           return await completeAccepted();
         }
@@ -171,9 +223,14 @@ export async function processAliceAutonomousTurn(
       payload = guarded.payload;
       messages = payload.proposal.resposta;
     }
-    let message = messages[turn.nextMessageIndex];
+    const responseIndex = bookingFollowup ? 0 : turn.nextMessageIndex;
+    let message = messages[responseIndex];
     if (!message || messages.length > 2 || message.length > 1_200) return human("model_requested", "invalid_message_sequence");
-    if (!aliceAutonomySchedulingTextValid([message], now())) {
+    if (bookingFollowup && /\b\d{1,2}\/\d{1,2}\b/u.test(message) && /\b\d{1,2}(?:h|:\d{2})/iu.test(message)) {
+      return human("model_requested", "booking_followup_new_offer");
+    }
+    if (!aliceAutonomySchedulingTextValid(turn.nextMessageIndex === 0 ? messages : [message], now(), context.prompt)) {
+      if (bookingFollowup) return human("model_requested", "booking_followup_invalid_content");
       const retryBudgetMs = deadline - Date.now() - 20_000;
       if (turn.nextMessageIndex > 0 || turn.firstSentAt || retryBudgetMs < 5_000) {
         return scheduleFailure();
@@ -215,9 +272,10 @@ export async function processAliceAutonomousTurn(
         payload = guarded.payload;
         messages = payload.proposal.resposta;
       }
-      message = messages[turn.nextMessageIndex];
+      message = messages[responseIndex];
       if (!message || messages.length > 2 || message.length > 1_200) return human("model_requested", "invalid_message_sequence");
-      if (!aliceAutonomySchedulingTextValid([message], now())) return scheduleFailure();
+      if (!aliceAutonomySchedulingTextValid(turn.nextMessageIndex === 0 ? messages : [message], now(), retryContext.prompt)) return scheduleFailure();
+      context = retryContext;
       const savedRetry = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
         data: { messagesJson: payload || messages } });
       if (!savedRetry.count) return "skipped";
@@ -233,19 +291,20 @@ export async function processAliceAutonomousTurn(
           const latest = await getOrCreateMemory(memoryRuntime.scope, {}, database);
           const appointment = await currentAliceAppointment(memoryRuntime.scope, context.conversation.contact.phone, database);
           const final = guardAliceTurn(payload, { ...memoryRuntime, guard: { ...memoryRuntime.guard,
-            presentationAt: latest.apresentacaoFeitaEm, appointment } }, turn.nextMessageIndex);
-          if (latest.escalarHumano || final.status !== "ready" || final.payload.proposal.resposta[turn.nextMessageIndex] !== message) {
+            presentationAt: latest.apresentacaoFeitaEm, appointment } }, responseIndex);
+          if (latest.escalarHumano || final.status !== "ready" || final.payload.proposal.resposta[responseIndex] !== message) {
             throw new Error("alice_final_guard_changed");
           }
         }
-        if (!await deps.validate(turn, token, "sending", database) || !aliceAutonomySchedulingTextValid([message], now())) throw new AliceAutonomyStopped();
+        if (!await deps.validate(turn, token, "sending", database)
+          || !aliceAutonomySchedulingTextValid(turn.nextMessageIndex === 0 ? messages : [message], now(), context.prompt)) throw new AliceAutonomyStopped();
         if (Date.now() > deadline - 16_000) throw new AliceAutonomyStopped();
         externalSendStarted = true;
       },
     });
     const ids = Array.isArray(turn.providerMessageIds) ? turn.providerMessageIds : [];
     const nextIndex = turn.nextMessageIndex + 1;
-    const hasComplement = nextIndex < messages.length;
+    const hasComplement = !bookingFollowup && nextIndex < messages.length;
     if (memoryRuntime && payload) {
       await recordAliceSentMessage(memoryRuntime.scope, sent.messageRowId, database);
       if (!hasComplement && payload.persistMemory !== false) await applyCurrentAliceMemory(memoryRuntime.scope, turn.sourceMessageId, payload.proposal.memoria, database);
@@ -267,6 +326,9 @@ export async function processAliceAutonomousTurn(
     });
     return !recorded ? "skipped" : hasComplement ? "queued" : "sent";
   } catch (error) {
+    if (bookingFollowup && !(error instanceof AliceAutonomyStopped) && !externalSendStarted) {
+      return human("model_requested", "booking_followup_requires_review");
+    }
     if (error instanceof AliceAutonomyStopped || !externalSendStarted) {
       const status = error instanceof AliceAutonomyStopped ? "skipped" : "failed";
       if (await finish(status, status === "skipped" ? "conversation_changed_before_send" : "worker_failed_before_send")) {

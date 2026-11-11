@@ -162,8 +162,8 @@ test("retomada recente de horário sem escolha exata não repete reserva nem ult
     await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);
     const operator = "codex-resume-100h";
     await pg.query(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"=$1 WHERE id='conversation-a'`, [operator]);
-    await pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp,"createdAt",status,type,body)
-      VALUES ('offer','conversation-a','offer-id',TRUE,$1,$1,'delivered','text','11/11/2026 às 10h30 ou 13h30. Qual prefere?')`, [new Date(now.getTime() - 20_000)]);
+    await pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",timestamp,"createdAt",status,type,body,"respondedByName")
+      VALUES ('offer','conversation-a','offer-id',TRUE,$1,$1,'delivered','text','11/11/2026 às 10h30 ou 13h30. Qual prefere?','Alice')`, [new Date(now.getTime() - 20_000)]);
     await pg.query(`UPDATE "WhatsAppMessage" SET body='Pode ser no horário que tiver?' WHERE id='source-a'`);
     await insertTurn(pg, { instanceId: ALICE_AUTONOMY_INSTANCE_ID, status: "needs_human" });
     await pg.query(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='booking_requires_review',attempts=1 WHERE id='turn-a'`);
@@ -562,7 +562,7 @@ test("horário sem escolha exata gera uma pergunta de continuidade sem handoff o
     const loadContext = f.deps.loadContext;
     const generate = f.deps.generate;
     f.deps.loadContext = async (...args) => ({ ...await loadContext(...args), messages: [
-      { id: "offer", fromMe: true, status: "delivered", body: "11/11/2026 às 10h30 ou 13h30. Qual prefere?" },
+      { id: "offer", fromMe: true, status: "delivered", respondedByName: 'Alice', body: "11/11/2026 às 10h30 ou 13h30. Qual prefere?" },
       { id: "source-a", fromMe: false, status: "received", body: "Pode ser no horário que tiver?" },
     ] });
     let scheduleAttempts = 0;
@@ -583,7 +583,7 @@ for (const confirmation of ["submitted", "uncertain"]) test(`worker reconhece es
   try {
     const loadContext = f.deps.loadContext;
     f.deps.loadContext = async (...args) => ({ ...await loadContext(...args), messages: [
-      { id: 'offer', fromMe: true, status: 'delivered', body: 'Opções: 10/11 às 14h ou 11/11 às 14h. Qual fica melhor?' },
+      { id: 'offer', fromMe: true, status: 'delivered', respondedByName: 'Alice', body: 'Opções: 10/11 às 14h ou 11/11 às 14h. Qual fica melhor?' },
       { id: 'choice', fromMe: false, status: 'received', body: 'quarta às 14h' },
       { id: 'source-a', fromMe: false, status: 'received', body: 'Tem algum custo a avaliação?' },
     ] });

@@ -21,7 +21,7 @@ function fixture({ instanceUnit = "SBC", contactUnit = "SBC", contactPhone = "55
     "@/lib/db": { prisma },
     "@/lib/phone": { phoneLookupKey: (phone) => phone?.replace(/\D/g, "").slice(-11) || null },
     "@/lib/whatsapp/instance-resolver": { getInstancesForRequest: async () => { state.humanAccess++; return { instances: [{ id: "other-sbc", unit: instanceUnit, status: "connected", canReply: true, name: "teste" }] }; } },
-    "@/lib/whatsapp/automation-sender": { sendAutomationText: async (input) => { await input.beforeSend?.(); calls.push(input); return { messageId: "fixture", sentAt: new Date() }; } },
+    "@/lib/whatsapp/automation-sender": { sendAutomationText: async (input) => { await input.beforeSend?.(); calls.push(input); return { messageId: "fixture", messageRowId: 'fixture-row', sentAt: new Date() }; } },
     "@/lib/whatsapp/evaluation-schedule-confirmation-message": {
       EVALUATION_SCHEDULED_AUTOMATION_TRIGGER: "evaluation_scheduled",
       buildEvaluationScheduleConfirmationMessage: () => "Confirmação fictícia",
@@ -59,7 +59,10 @@ test("não permite caixa de outra unidade, contato de outra unidade em caixa com
 
 test("confirmação autônoma revalida a lease antes do HTTP sem fabricar uma sessão humana", async () => {
   const f = fixture({ autonomy: true });
-  assert.equal((await f.run({ allowAuthorizedSbcInstance: true })).status, "sent");
+  const result = await f.run({ allowAuthorizedSbcInstance: true });
+  assert.equal(result.status, "sent");
+  assert.equal(result.receipt.messageId, 'fixture');
+  assert.equal(result.receipt.messageRowId, 'fixture-row');
   assert.equal(f.state.humanAccess, 0);
   assert.equal(f.state.validations, 2);
   assert.equal(f.state.outboundUpdates, 1);

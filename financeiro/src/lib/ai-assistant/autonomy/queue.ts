@@ -99,7 +99,8 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
           // Uma avaliação já confirmada libera perguntas gerais; nova negociação de horário continua com a equipe.
           const history = await tx.whatsAppMessage.findMany({ where: { conversationId: params.conversationId, status: { not: "deleted" },
             NOT: { type: "secretEncryptedMessage", body: "" } },
-            select: { id: true, body: true, fromMe: true, status: true, type: true }, orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 });
+            select: { id: true, body: true, fromMe: true, status: true, type: true, respondedByName: true, respondedBy: true,
+              timestamp: true, createdAt: true }, orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 });
           canResumeConversation = !selectSbcSchedulingExchange(history.reverse());
         }
       }
@@ -143,7 +144,8 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
       && !turn.generationStartedAt && Array.isArray(turn.providerMessageIds) && turn.providerMessageIds.length === 0) {
       const history = await tx.whatsAppMessage.findMany({ where: { conversationId: params.conversationId, status: { not: "deleted" },
         NOT: { type: "secretEncryptedMessage", body: "" } },
-        select: { id: true, body: true, fromMe: true, status: true, type: true }, orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 });
+        select: { id: true, body: true, fromMe: true, status: true, type: true, respondedByName: true, respondedBy: true,
+          timestamp: true, createdAt: true }, orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 });
       const exchange = selectSbcSchedulingExchange(history.reverse());
       if (exchange?.reply.id === source.id && !exchange.slot) {
         const [escalated, ledger] = await Promise.all([
@@ -318,12 +320,16 @@ export async function recoverAliceAutonomousTurns(database = prisma, now = new D
     const ids = interrupted.map((item) => item.id);
     const recovered = await tx.$queryRaw<{ id: string; conversationId: string; status: string }[]>(Prisma.sql`
       UPDATE "AliceAutonomousTurn" turn SET
-        status=CASE WHEN ledger.state='submitted' THEN 'sent' WHEN ledger.id IS NOT NULL OR turn.status='sending' THEN 'uncertain' ELSE 'failed' END,
+        status=CASE WHEN ledger.state='submitted' AND turn."messagesJson"->>'kind'='booking_followup'
+          THEN CASE WHEN turn.status='sending' THEN 'uncertain' ELSE 'needs_human' END
+          WHEN ledger.state='submitted' THEN 'sent' WHEN ledger.id IS NOT NULL OR turn.status='sending' THEN 'uncertain' ELSE 'failed' END,
         "appointmentId"=COALESCE(ledger."appointmentId",turn."appointmentId"),
         "firstSentAt"=CASE WHEN ledger.state='submitted' THEN COALESCE(turn."firstSentAt",ledger."updatedAt") ELSE turn."firstSentAt" END,
         "completedAt"=${now},"updatedAt"=${now},"claimToken"=NULL,
         "messagesJson"=CASE WHEN ledger.id IS NOT NULL AND ledger.state<>'submitted' OR turn.status='sending' THEN turn."messagesJson" ELSE NULL END,
-        error=CASE WHEN ledger.state='submitted' THEN NULL WHEN ledger.id IS NOT NULL THEN 'booking_confirmation_interrupted_no_retry'
+        error=CASE WHEN ledger.state='submitted' AND turn."messagesJson"->>'kind'='booking_followup'
+          THEN CASE WHEN turn.status='sending' THEN 'booking_followup_send_interrupted_no_retry' ELSE 'booking_followup_requires_review' END
+          WHEN ledger.state='submitted' THEN NULL WHEN ledger.id IS NOT NULL THEN 'booking_confirmation_interrupted_no_retry'
           WHEN turn.status='sending' THEN 'send_interrupted_no_retry' ELSE 'worker_interrupted_no_retry' END
       FROM (SELECT job.id,booking.id AS "bookingId",booking.state,booking."appointmentId",booking."updatedAt" FROM "AliceAutonomousTurn" job
         LEFT JOIN "AliceAutoSchedule" booking ON booking."conversationId"=job."conversationId" AND booking."replyMessageId"=job."sourceMessageId"
@@ -337,10 +343,12 @@ export async function recoverAliceAutonomousTurns(database = prisma, now = new D
       UPDATE "AliceAudioTranscript" SET status='failed',error='audio_interrupted_no_retry',"completedAt"=${now}
       WHERE "instanceId"=${ALICE_AUTONOMY_INSTANCE_ID} AND status='processing' AND "createdAt"<${stale}
         AND "conversationId" IN (${Prisma.join(unhealthy.map((item) => item.conversationId))}) RETURNING "messageId"`);
-    if (unhealthy.length) await tx.whatsAppConversation.updateMany({
-      where: { id: { in: unhealthy.map((item) => item.conversationId) }, instanceId: ALICE_AUTONOMY_INSTANCE_ID, aiMode: "agent" },
+    const ownershipRequired = unhealthy.filter((item) => item.status !== "needs_human");
+    if (ownershipRequired.length) await tx.whatsAppConversation.updateMany({
+      where: { id: { in: ownershipRequired.map((item) => item.conversationId) }, instanceId: ALICE_AUTONOMY_INSTANCE_ID, aiMode: "agent" },
       data: { aiMode: "manual", aiModeUpdatedAt: now, aiModeUpdatedBy: "alice-interrupted" },
     });
-    return { uncertain: recovered.filter((item) => item.status === "uncertain").length, failed: recovered.filter((item) => item.status === "failed").length };
+    return { uncertain: recovered.filter((item) => item.status === "uncertain").length,
+      failed: recovered.filter((item) => ["failed", "needs_human"].includes(item.status)).length };
   });
 }

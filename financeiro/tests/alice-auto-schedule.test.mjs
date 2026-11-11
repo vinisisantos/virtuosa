@@ -18,12 +18,15 @@ function fixture(options = {}) {
   const [year, month, day] = date.split("-");
   const [hour, minute] = time.split(":");
   const activation = JSON.stringify({ enabled: true, activatedAt: new Date(now - 60_000).toISOString() });
-  const offer = { id: "offer", body: options.offerBody || `Podemos agendar em ${day}/${month}/${year} às ${hour}h${minute}?`, fromMe: true, status: "delivered", timestamp: new Date(now - 30_000), createdAt: new Date(now - 30_000) };
+  const offer = { id: "offer", body: options.offerBody || `Podemos agendar em ${day}/${month}/${year} às ${hour}h${minute}?`, fromMe: true, status: "delivered", respondedByName: 'Alice', respondedBy: null, timestamp: new Date(now - 30_000), createdAt: new Date(now - 30_000) };
   const reply = { id: "reply", body: options.replyBody || "Pode ser", fromMe: false, status: "read", timestamp: new Date(now - 10_000), createdAt: new Date(now - 10_000) };
   const extraReplies = (options.beforeReply || []).map((body, index) => ({ ...reply, id: `part-${index}`, body, timestamp: new Date(now - 20_000 + index) }));
+  const continuation = (options.afterOffer || []).map((message, index) => ({ ...reply, ...message, id: `continuation-${index}`,
+    timestamp: new Date(now - 25_000 + index), ...(message.fromMe ? { respondedByName: 'Alice' } : {}) }));
   const sourceMessage = { ...reply, id: "source", body: options.sourceBody || "Olá, vim pelo Botox Terço Superior", timestamp: new Date(now - 40_000) };
   const prior = [sourceMessage, ...(options.beforeOffer || []).map((body, i) => ({ ...sourceMessage, id: `prior-${i}`, body }))];
-  const state = { ledger: null, appointment: null, sent: 0, updates: 0, locks: [], after: [], groupNotices: [], appointmentInput: null, confirmationInput: null };
+  const state = { ledger: null, appointment: null, sent: 0, updates: 0, locks: [], after: [], groupNotices: [], appointmentInput: null, confirmationInput: null,
+    turnPatch: null, confirmationSawIntent: false };
   const deal = { id: "deal", clientId: "client", clientName: "Cliente Teste", unit: "SBC", stage: options.stage || "novo_lead", commercialStatus: null, pipelineId: "pipeline", updatedAt: new Date(now - 100_000), notes: null };
   const tx = {
     $queryRaw: async (strings) => {
@@ -46,12 +49,14 @@ function fixture(options = {}) {
     whatsAppMessage: { findFirst: async (query) => query.where.id ? (options.changedCampaignMessage ? null : { id: query.where.id }) : ({ id: options.newMedia ? "new-audio" : reply.id }), findMany: async () => [
       ...prior,
       options.changedMessage ? { ...offer, id: "different" } : offer,
+      ...continuation.map((message) => options.changedContinuation && message.fromMe ? { ...message, respondedByName: 'Operadora' } : message),
       ...extraReplies.map((message) => options.changedPart ? { ...message, body: 'Não quero mais' } : message), reply,
     ].reverse() },
     aliceAutoSchedule: {
       findUnique: async () => state.ledger,
       create: async ({ data }) => { state.ledger = data; return data; },
     },
+    aliceAutonomousTurn: { updateMany: async ({ data }) => { state.turnPatch = data; return { count: options.changedClaimAtBooking ? 0 : 1 }; } },
     agendamento: { findFirst: async ({ where }) => {
       assert.equal(where.notes.contains, '[pipelineDealId:deal]', 'consulta não bloqueia o horário ocupado por outra cliente');
       return options.existingAppointment || state.appointment;
@@ -70,7 +75,8 @@ function fixture(options = {}) {
       const previous = transactionTail; let release;
       transactionTail = new Promise((resolve) => { release = resolve; });
       await previous;
-      try { return await fn(tx); } finally { release(); }
+      const snapshot = { ledger: state.ledger, appointment: state.appointment, updates: state.updates, turnPatch: state.turnPatch };
+      try { return await fn(tx); } catch (error) { Object.assign(state, snapshot); throw error; } finally { release(); }
     },
   };
   class NextResponse {}
@@ -101,15 +107,17 @@ function fixture(options = {}) {
     "@/lib/pipeline/stages": { pipelineStageKeyFromName: (name) => name.toLowerCase(), isDiscardPipelineStage: (stage) => stage === "perdido" },
     "@/lib/pipeline/commercial-status": { pausesCommercialCallbacks: () => false },
     "@/lib/pipeline/scheduled-stage-events": { recordPipelineScheduledStageEvent: async () => {} },
-    "@/lib/whatsapp/evaluation-schedule-confirmation": { sendEvaluationScheduleConfirmation: async (input) => { state.confirmationInput = input; state.sent++; return { status: options.sendFails ? "failed" : "sent" }; } },
+    "@/lib/whatsapp/evaluation-schedule-confirmation": { sendEvaluationScheduleConfirmation: async (input) => { state.confirmationInput = input; state.sent++;
+      state.confirmationSawIntent = state.turnPatch?.messagesJson?.kind === 'booking_followup';
+      return { status: options.sendFails ? "failed" : "sent", receipt: { messageId: 'confirmation-provider', messageRowId: 'confirmation-row', sentAt: new Date(now) } }; } },
     "@/lib/whatsapp/evaluation-group-notice": { dispatchEvaluationGroupNotice: async (id) => { state.groupNotices.push(id); } },
-    "@/lib/ai-assistant/sbc-scheduling-exchange": { selectSbcSchedulingExchange: (messages) => selectSbcSchedulingExchange(messages, new Date(now)) },
+    "@/lib/ai-assistant/sbc-scheduling-exchange": { selectSbcSchedulingExchange: (messages, _clock, policy) => selectSbcSchedulingExchange(messages, new Date(now), policy) },
   };
   const source = readFileSync(new URL("../src/lib/ai-assistant/auto-schedule.ts", import.meta.url), "utf8");
   const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   const exports = {};
   vm.runInNewContext(code, { exports, Date: Clock, console, require: (id) => { assert.ok(modules[id], `dependência não simulada: ${id}`); return modules[id]; } });
-  const params = { req: {}, unit: "SBC", instanceId: options.autonomy ? autonomyPolicy.ALICE_AUTONOMY_INSTANCE_ID : "sbc-instance", instanceUnit: "SBC", contactUnit: "SBC", conversationId: "conversation", phone: "5511999999999", targetMessageId: null, messages: [...prior, offer, ...extraReplies, reply], safetyHold: false,
+  const params = { req: {}, unit: "SBC", instanceId: options.autonomy ? autonomyPolicy.ALICE_AUTONOMY_INSTANCE_ID : "sbc-instance", instanceUnit: "SBC", contactUnit: "SBC", conversationId: "conversation", phone: "5511999999999", targetMessageId: null, messages: [...prior, offer, ...continuation, ...extraReplies, reply], safetyHold: false,
     ...(options.autonomy ? { autonomyClaim: { turnId: "turn", claimToken: "claim", sourceMessageId: reply.id } } : {}) };
   return { run: (changes = {}) => exports.tryAliceAutoSchedule({ ...params, ...changes }), state, offer, reply };
 }
@@ -122,6 +130,56 @@ test("registra uma vez e confirma uma vez mesmo com solicitações concorrentes"
   assert.equal(f.state.updates, 1);
   assert.ok(f.state.locks.some((query) => query.includes("FOR UPDATE")));
   assert.ok(f.state.locks.some((query) => query.includes("FOR SHARE")));
+});
+
+const carol = { now: '2026-11-10T19:05:55Z', autonomy: true,
+  offerBody: 'Ótimo, Carol! Para o sábado, 14/11/2026, tenho esses horários disponíveis: 8h, 8h30, 9h, 9h30, 10h, 10h30, 11h, 11h30, 12h ou 12h30. Qual funciona melhor pra você?',
+  afterOffer: [{ body: 'Tem mais fotos pra ver?', fromMe: false },
+    { body: 'Fotos de antes e depois a equipe consegue te enviar com mais detalhes. Qual horário do sábado funciona melhor para você?', fromMe: true }],
+  beforeReply: ['10h', 'Manda o endereço pra mim por favor', 'Dói muito?'], replyBody: 'Morro de medo de agulha' };
+
+test('perder a claim ao vincular a dúvida aborta a transação antes da confirmação', async () => {
+  const f = fixture({ ...carol, changedClaimAtBooking: true });
+  assert.equal((await f.run()).status, 'review');
+  assert.equal(f.state.appointment, null);
+  assert.equal(f.state.ledger, null);
+  assert.equal(f.state.updates, 0);
+  assert.equal(f.state.sent, 0);
+});
+
+test('diálogo completo da Carol cria uma única avaliação e confirmação, preservando dúvidas reais para complemento', async () => {
+  const f = fixture(carol);
+  const result = await f.run();
+  assert.equal(result.status, 'booked');
+  assert.equal(result.startTime, '2026-11-14T13:00:00.000Z');
+  assert.deepEqual(result.pendingQuestions, ['Dói muito?', 'Morro de medo de agulha']);
+  assert.equal(result.confirmationMessage.messageId, 'confirmation-provider');
+  assert.equal(f.state.ledger.appointmentId, f.state.appointment.id);
+  assert.equal(f.state.sent, 1);
+  assert.equal(f.state.confirmationSawIntent, true, 'a pendência foi gravada na mesma transação antes da confirmação externa');
+  assert.equal(f.state.updates, 1);
+  assert.equal((await f.run()).status, 'review');
+  assert.equal(f.state.sent, 1);
+});
+
+test('autoria humana surgida na continuação antes da transação impede a reserva da oferta antiga', async () => {
+  const f = fixture({ ...carol, changedContinuation: true });
+  assert.equal((await f.run()).status, 'review');
+  assert.equal(f.state.appointment, null);
+  assert.equal(f.state.sent, 0);
+});
+
+test('oferta coerente da Neia com escolha e Ok cria só uma avaliação e confirmação', async () => {
+  const f = fixture({ now: '2026-11-10T22:52:47Z', autonomy: true,
+    offerBody: 'Na quinta (12/11) à noite temos 19h ou 19h30. Qual fica melhor para você?',
+    beforeReply: ['19h30'], replyBody: 'Ok' });
+  const result = await f.run();
+  assert.equal(result.status, 'booked');
+  assert.equal(result.startTime, '2026-11-12T22:30:00.000Z');
+  assert.deepEqual(result.pendingQuestions, []);
+  assert.equal(f.state.sent, 1);
+  assert.equal((await f.run()).status, 'review');
+  assert.equal(f.state.sent, 1);
 });
 
 const schedulingCases = [

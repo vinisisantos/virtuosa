@@ -82,7 +82,7 @@ test("baixa confiança e pedido de humano continuam bloqueados mesmo ao chamar a
   for (const proposal of [structuredOutput({ confidence: "low" }), structuredOutput({ escalarHumano: true, motivoEscalonamento: "Revisão clínica" })]) {
     const result = guardAliceReply(proposal, context());
     assert.equal(result.status, "handoff");
-    assert.equal(result.reason, "human_review");
+    assert.equal(result.reason, proposal.escalarHumano ? "human_review_requested" : "human_review_low_confidence");
     assert.equal(result.proposal, null);
   }
 });

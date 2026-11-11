@@ -45,7 +45,7 @@ export function offeredWeekdaysMatchDates(text: string, dateKeys: readonly strin
 }
 
 /** Interpreta somente datas/horários presentes na oferta aceita, dentro da grade do servidor. */
-export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string, permitted: readonly string[]): string | null {
+export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string, permitted: readonly string[], dailyOfferLimit?: (dateKey: string) => number): string | null {
   const offer = normalize(offerBody);
   const reply = normalize(replyBody).replace(/\s+/gu, ' ').trim();
   const permittedDateKeys = [...new Set(permitted.map((slot) => slot.slice(0, 10)))];
@@ -66,7 +66,7 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
     if (matching.length > 1 || !Number.isFinite(dateValue.getTime()) || dateValue.toISOString().slice(0, 10) !== key) return null;
     const segment = offer.slice(date.index + date[0].length, dates[index + 1]?.index);
     const times = clocks(segment);
-    if (!times?.length || times.length > 6) return null;
+    if (!times?.length || times.length > Math.min(48, dailyOfferLimit?.(key) ?? 48)) return null;
     const beforeTime = segment.slice(0, times[0].index);
     const between = times.length > 1 ? segment.slice(times[0].index + times[0].length, times[1].index).trim() : '';
     const bounded = /^(?:as|a|ate(?: as?)?|e|[-–—])$/u.test(between);

@@ -24,7 +24,8 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
     || conversation.instance.status !== "connected" || conversation.commercialHolds.length) return null;
   const rows = (await database.whatsAppMessage.findMany({
     where: { conversationId: turn.conversationId, status: { not: "deleted" } },
-    select: { id: true, messageId: true, body: true, type: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true },
+    select: { id: true, messageId: true, body: true, type: true, fromMe: true, timestamp: true, createdAt: true, status: true,
+      respondedByName: true, respondedBy: true },
     orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30,
   })).reverse();
   const messages = await projectAliceAudioHistory(rows, turn.conversationId, turn.instanceId, database);
@@ -35,7 +36,9 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
   const intervention = messages.slice(sourceIndex + 1).some((message) => message.fromMe
     && !ownMessages.includes(message.messageId) && message.respondedByName !== "Automação de recepção");
   if (intervention) return null;
-  const continuation = turn.nextMessageIndex > 0 && turn.messagesJson !== null;
+  const bookingFollowup = turn.messagesJson && typeof turn.messagesJson === "object" && !Array.isArray(turn.messagesJson)
+    && turn.messagesJson.kind === "booking_followup";
+  const continuation = turn.nextMessageIndex > 0 && turn.messagesJson !== null && !bookingFollowup;
   const phoneKey = phoneLookupKey(conversation.contact.phone);
   const clients = phoneKey && !continuation ? await database.client.findMany({
     where: { unit: "SBC", isActive: true, phone: { contains: phoneKey.slice(-8) } },
@@ -69,7 +72,8 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
 }
 
 export type LegacyAliceAutonomousContext = NonNullable<Awaited<ReturnType<typeof loadLegacyAliceContext>>>;
-export type AliceAutonomousContext = LegacyAliceAutonomousContext & { memoryRuntime?: AliceMemoryRuntime; schedulingRetry?: boolean };
+export type AliceAutonomousContext = LegacyAliceAutonomousContext & { memoryRuntime?: AliceMemoryRuntime;
+  schedulingRetry?: boolean; bookingFollowup?: boolean };
 
 export async function loadAliceAutonomousContext(turn: AliceAutonomousTurn, database = prisma,
   now = new Date()): Promise<AliceAutonomousContext | null> {

@@ -2,14 +2,14 @@ import type { AliceRegisteredAppointment } from "@/lib/alice/build-context";
 import type { AliceMemoryScope } from "@/lib/alice/memory-input";
 import { aliceStructuredOutputSchema, type AliceStructuredOutput } from "@/lib/alice/schema";
 import { containsPersonalPresentation, stripRepeatedPresentation } from "@/lib/alice/presentation-filter";
-import { ALICE_AUTONOMY_INSTANCE_ID, aliceAutonomyResponseClaimsBooking } from "@/lib/ai-assistant/autonomy/policy";
+import { ALICE_AUTONOMY_INSTANCE_ID, aliceAutonomyResponseClaimsBooking, aliceHumanReviewReason, type AliceHumanReviewReason } from "@/lib/ai-assistant/autonomy/policy";
 import { validateAliceFearReply, type AliceFearPolicy, type AliceFearViolation } from "@/lib/alice/fear-policy";
 
 export type AliceGuardContext = {
   scope: AliceMemoryScope; presentationAt: Date | null;
   appointment: AliceRegisteredAppointment | null; contactName: string | null; fear?: AliceFearPolicy | null;
 };
-export type AliceGuardFailure = "invalid_context" | "invalid_proposal" | "presentation_not_separable" | "internal_content" | "word_limit" | "price_after_booking" | "human_review" | "unproven_booking" | AliceFearViolation;
+export type AliceGuardFailure = "invalid_context" | "invalid_proposal" | "presentation_not_separable" | "internal_content" | "word_limit" | "price_after_booking" | "human_review" | "unproven_booking" | AliceFearViolation | AliceHumanReviewReason;
 export type AliceGuardEvent = { code: AliceGuardFailure | "presentation_removed" | "markdown_normalized" | "presentation_flag_corrected"; messageIndex?: number };
 export type AliceGuardDecision =
   | { status: "ready"; proposal: AliceStructuredOutput; events: AliceGuardEvent[] }
@@ -33,7 +33,8 @@ export function guardAliceReply(proposal: unknown, context: AliceGuardContext): 
   if (!validContext(context)) return { status: "handoff", reason: "invalid_context", proposal: null, events: [{ code: "invalid_context" }] };
   const parsed = aliceStructuredOutputSchema.safeParse(proposal);
   if (!parsed.success) return { status: "handoff", reason: "invalid_proposal", proposal: null, events: [{ code: "invalid_proposal" }] };
-  if (parsed.data.escalarHumano || parsed.data.confidence === "low") return { status: "handoff", reason: "human_review", proposal: null, events: [{ code: "human_review" }] };
+  const reviewReason = aliceHumanReviewReason(parsed.data);
+  if (reviewReason) return { status: "handoff", reason: reviewReason, proposal: null, events: [{ code: reviewReason }] };
   const events: AliceGuardEvent[] = [];
   const messages: string[] = [];
   // Verifica o lote original antes de apagar apresentações: conteúdo interno não pode ser ocultado pela limpeza.

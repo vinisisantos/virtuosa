@@ -10,8 +10,16 @@ export const ALICE_AUTONOMY_LEASE_MS = 120_000;
 export const ALICE_AUTONOMY_RECOVERY_WINDOW_MS = 100 * 60 * 60 * 1000;
 export const ALICE_AUTONOMY_ACTIVE_STATES = ["queued", "processing", "sending"];
 
+export type AliceHumanReviewReason = "human_review_requested" | "human_review_low_confidence";
+const HUMAN_REVIEW_ERRORS = new Set(["human_review", "human_review_requested", "human_review_low_confidence"]);
+
+export function aliceHumanReviewReason(proposal: { escalarHumano: boolean; confidence: string }): AliceHumanReviewReason | null {
+  if (proposal.escalarHumano) return "human_review_requested";
+  return proposal.confidence === "low" ? "human_review_low_confidence" : null;
+}
+
 const SOFT_HANDOFF_ERRORS = new Set([
-  "human_review", "generation_requires_review", "word_limit", "invalid_message_sequence",
+  ...HUMAN_REVIEW_ERRORS, "generation_requires_review", "word_limit", "invalid_message_sequence",
   "structured_proposal_missing", "provider_unavailable", "provider_response_invalid", "provider_incomplete",
   "provider_refusal", "invalid_output", "usage_unavailable", "unexpected_model", "deadline",
   "worker_budget_exhausted", "worker_failed_before_send",
@@ -24,7 +32,8 @@ export function aliceAutonomyRequiresHumanOwnership(status: "skipped" | "needs_h
 }
 
 export function aliceCanContinueAfterSoftHandoff(error: string) {
-  return SOFT_HANDOFF_ERRORS.has(error);
+  // A avaliação já existe: manter a Alice ativa não autoriza repetir a reserva/confirmação.
+  return error === "booking_followup_requires_review" || SOFT_HANDOFF_ERRORS.has(error);
 }
 
 export function aliceRetryableTurnError(error: string | null | undefined) {
@@ -32,8 +41,8 @@ export function aliceRetryableTurnError(error: string | null | undefined) {
 }
 
 export function aliceRetryAttemptLimit(error: string | null | undefined, attempts = 0) {
-  // human_review may be retried once after explicit operator review and prompt correction.
-  if (error === "human_review") return 2;
+  // Inclui o código legado para preservar a retomada dos registros anteriores.
+  if (error && HUMAN_REVIEW_ERRORS.has(error)) return 2;
   // One additional explicit recovery is allowed when that reviewed retry reaches the corrected word-limit guard.
   if (error === "word_limit" && attempts === 3) return 3;
   return 1;

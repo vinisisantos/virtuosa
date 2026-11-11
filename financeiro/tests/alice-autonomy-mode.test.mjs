@@ -30,6 +30,7 @@ state.db = {
     updateMany: async ({ data }) => { state.events.push(`mode:${data.aiMode}`); return { count: 1 }; },
   },
   whatsAppMessage: { findFirst: async () => state.latest },
+  aliceAutonomousTurn: { findUnique: async () => null },
 };
 const { PATCH } = await import("../src/app/api/crm/ai-assistant/suggestions/route.ts");
 beforeEach(() => {

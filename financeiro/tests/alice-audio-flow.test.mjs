@@ -4,6 +4,7 @@ import { registerHooks } from 'node:module';
 import { existsSync, readFileSync } from 'node:fs';
 import { runnerFixture } from './fixtures/alice-autonomy-runner.mjs';
 import { claimAliceAutonomousTurn } from '../src/lib/ai-assistant/autonomy/queue.ts';
+import { buildSbcEvaluationOptions } from '../src/lib/ai-assistant/sbc-scheduling-policy.ts';
 globalThis.prisma = {};
 globalThis.fetch = async () => { throw new Error('Rede externa proibida'); };
 registerHooks({ resolve(specifier, context, next) {
@@ -108,15 +109,22 @@ test('não transcreve mídia antiga nem de outra instância ou após desligar a 
 test('escolha por voz conserva a fonte interna e permite agendar somente com transcrição verificada', async () => {
   const f = await fixture();
   try {
-    const offerTime = new Date(f.state.clock.getTime() - 40000);
-    await f.pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe",body,status,timestamp)
-      VALUES ('offer','conversation-a','offer',TRUE,'Na quarta-feira (11/11/2026) temos 13h, 13h30 ou 14h. Qual prefere?','sent',$1)`, [offerTime]);
-    f.dependencies.transcribe = async () => ({ text: 'Quarta às 14h', languages: [{ code: 'pt' }] });
+    const candidates = buildSbcEvaluationOptions(f.state.clock);
+    const date = candidates.find(slot => candidates.filter(other => other.slice(0, 10) === slot.slice(0, 10)).length >= 3).slice(0, 10);
+    const choices = candidates.filter(slot => slot.startsWith(date)).slice(0, 3);
+    const [year, month, day] = date.split('-');
+    const clock = slot => slot.slice(11).replace(':00', 'h').replace(':', 'h');
+    const source = await f.adapter.whatsAppMessage.findFirst({ where: { id: 'source-a' } });
+    const offerTime = new Date(source.timestamp.getTime() - 40000);
+    await f.pg.query(`INSERT INTO "WhatsAppMessage" (id,"conversationId","messageId","fromMe","respondedByName",body,status,timestamp)
+      VALUES ('offer','conversation-a','offer',TRUE,'Alice',$1,'sent',$2)`,
+    [`Em ${day}/${month}/${year} tenho ${choices.map(clock).join(' ou ')}. Qual prefere?`, offerTime]);
+    f.dependencies.transcribe = async () => ({ text: `Às ${clock(choices[1])}`, languages: [{ code: 'pt' }] });
     assert.equal(await prepareAliceAudioTurn(f.claim.turn, f.adapter, f.state.clock, f.dependencies), 'prepared');
     const context = await loadAliceAutonomousContext(f.claim.turn, f.adapter, f.state.clock);
-    const choice = selectSbcSchedulingExchange(context.messages, new Date('2026-11-09T15:00:00Z'));
-    assert.equal(choice.reply.id, 'source-a'); assert.equal(choice.slot, '2026-11-11T14:00');
-    assert.equal(selectSbcSchedulingExchange(context.messages.map((m) => ({ ...m, audioTranscribed: false }))).slot, null);
+    const choice = selectSbcSchedulingExchange(context.messages, f.state.clock);
+    assert.equal(choice.reply.id, 'source-a'); assert.equal(choice.slot, choices[1]);
+    assert.equal(selectSbcSchedulingExchange(context.messages.map((m) => ({ ...m, audioTranscribed: false })), f.state.clock).slot, null);
   } finally { await f.pg.close(); }
 });
 

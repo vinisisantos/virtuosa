@@ -18,6 +18,7 @@ type ContextMessage = {
   createdAt: Date;
   status: string;
   respondedByName: string | null;
+  respondedBy?: string | null;
 };
 
 export async function loadAccessibleAliceConversation(req: Request, conversationId: string, requireReply = true) {
@@ -71,7 +72,7 @@ export async function loadAliceSuggestionContext(params: {
       status: { not: "deleted" },
       body: { not: "" },
     },
-    select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true },
+    select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true, respondedBy: true },
     orderBy: [{ timestamp: "desc" }, { id: "desc" }],
     take: 12,
   })).reverse() as ContextMessage[];
@@ -91,7 +92,7 @@ export async function loadAliceSuggestionContext(params: {
         status: { not: "deleted" },
         body: { not: "" },
       },
-      select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true },
+      select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true, respondedBy: true },
     }) as ContextMessage | null
     : null;
   if (params.targetMessageId && !targetMessage) {
