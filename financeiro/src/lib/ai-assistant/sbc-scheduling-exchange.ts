@@ -7,6 +7,8 @@ type Message = { id: string; body: string; fromMe: boolean; status: string; type
 const normalize = (text: string) => text.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
   .replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/gu, ' ').trim();
 
+export const SBC_BOOKING_CHOICE_CLARIFICATION = 'Para concluir sua avaliação, me confirme o dia e um único horário das opções que te enviei 😊';
+
 const day = /(?:(?:na|no|de|neste|nesta|nesse|nessa|este|esta|esse|essa) )?(?:(?:segunda|terca|quarta|quinta|sexta)(?: ?feira)?|sabado)/u.source;
 const period = /(?:(?:(?:no|nesse|neste) periodo (?:da|de)|durante a|de|da|pela|a) )?(?:manha|tarde|noite)/u.source;
 const preference = /(?:(?:eu )?(?:prefiro|nao (?:posso|consigo|da)|so posso)|pode ser|(?:para|pra) mim e melhor)/u.source;
@@ -54,11 +56,15 @@ export function selectSbcSchedulingExchange<T extends Message>(messages: readonl
     || !['sent', 'delivered', 'read', 'played'].includes(message.status))) return null;
   const lastTeamIndex = recent.findLastIndex((message) => message.fromMe);
   const continuationMessages = recent.slice(offerIndex + 1, lastTeamIndex + 1);
+  const clarificationIndex = recent.findLastIndex((message, index) => index > offerIndex && message.fromMe
+    && authoredByAlice(message) === true && message.body === SBC_BOOKING_CHOICE_CLARIFICATION);
+  // O esclarecimento encerra o aceite ambíguo, sem renovar a oferta, sua validade ou sua autoria.
+  const replyStart = Math.max(offerIndex + 1, clarificationIndex + 1);
   // Uma pergunta sobre fotos não invalida a oferta; renegociar o período antes
   // de uma resposta da Alice exige que ela envie uma nova oferta inequívoca.
-  if (recent.slice(offerIndex + 1, lastTeamIndex).some((message) => !message.fromMe
+  if (recent.slice(replyStart, lastTeamIndex).some((message) => !message.fromMe
     && (evaluationTemporalReference.test(normalize(message.body)) || evaluationReplyBlocksBooking(message.body)))) return null;
-  const replies = continuation.filter((message) => !message.fromMe);
+  const replies = recent.slice(replyStart).filter((message) => !message.fromMe);
   if (replies.length > 8) return null;
   const hasUnsupportedContent = replies.some((message) => (message.type && message.type !== 'text' && !message.audioTranscribed) || !message.body.trim());
   const parsed = replies.map((message) => ({ message, segments: splitEvaluationReply(message.body) }));

@@ -1,3 +1,5 @@
+import { evaluationReplyAffirms } from '#lib/ai-assistant/evaluation-confirmation';
+
 type ClockToken = { index: number; length: number; minute: number; time: string };
 const normalize = (text: string) => text.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase().replace(/\p{Cf}/gu, '');
 const datePattern = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?(?![\d/])/gu;
@@ -20,6 +22,29 @@ function clocks(text: string): ClockToken[] | null {
 function dateMatches(key: string, date: RegExpMatchArray): boolean {
   const [year, month, day] = key.split('-');
   return day === date[1].padStart(2, '0') && month === date[2].padStart(2, '0') && (!date[3] || date[3] === year);
+}
+
+/** Compartilha a leitura de faixa entre o envio e a reserva, inclusive quando há opções depois dela. */
+export function readEvaluationOfferRange(text: string, times: readonly ClockToken[]) {
+  let range: { start: ClockToken; end: ClockToken; options: readonly ClockToken[] } | undefined;
+  for (let index = 0; index < times.length - 1; index++) {
+    const start = times[index];
+    const end = times[index + 1];
+    const before = text.slice(index ? times[index - 1].index + times[index - 1].length : 0, start.index);
+    const between = text.slice(start.index + start.length, end.index).trim();
+    const introduced = /\b(?:das|de|entre)\s*$/u.test(before);
+    const bounded = /^(?:as|a|ate(?: as?)?|[-–—])$/u.test(between) || introduced && between === 'e';
+    if (!bounded) {
+      if (introduced && !/\ba partir (?:das?|de)\s*$/u.test(before)) return null;
+      continue;
+    }
+    if (range || index !== 0 || start.minute >= end.minute) return null;
+    const options = times.slice(2);
+    if (options.length && (!/[.;:\n]|\b(?:opcoes|oferec\w*|prefere|escolh\w*)\b/u.test(text.slice(end.index + end.length, options[0].index))
+      || options.some((time) => time.minute < start.minute || time.minute > end.minute))) return null;
+    range = { start, end, options };
+  }
+  return range;
 }
 
 /** Recusa uma oferta quando um dia da semana próximo à data a contradiz. */
@@ -67,23 +92,19 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
     const segment = offer.slice(date.index + date[0].length, dates[index + 1]?.index);
     const times = clocks(segment);
     if (!times?.length || times.length > Math.min(48, dailyOfferLimit?.(key) ?? 48)) return null;
-    const beforeTime = segment.slice(0, times[0].index);
-    const between = times.length > 1 ? segment.slice(times[0].index + times[0].length, times[1].index).trim() : '';
-    const bounded = /^(?:as|a|ate(?: as?)?|e|[-–—])$/u.test(between);
-    const from = /\ba partir (?:das?|de)\s*$/u.test(beforeTime);
-    const isRange = /\b(?:das|de|entre)\s*$/u.test(beforeTime) && (!from || bounded);
-    if (from && !isRange) requiresExplicitTime = true;
-    if (isRange) {
-      if (times.length !== 2 || times[0].minute >= times[1].minute
-        || !bounded) return null;
-      if (times[0].minute % 30 !== 0) nonGridStart.add(key);
+    const range = readEvaluationOfferRange(segment, times);
+    if (range === null) return null;
+    if (!range && /\ba partir (?:das?|de)\s*$/u.test(segment.slice(0, times[0].index))) requiresExplicitTime = true;
+    if (range && !range.options.length) {
+      if (range.start.minute % 30 !== 0) nonGridStart.add(key);
       requiresExplicitTime = true;
-      for (let minute = Math.ceil(times[0].minute / 30) * 30; minute <= times[1].minute; minute += 30) {
+      for (let minute = Math.ceil(range.start.minute / 30) * 30; minute <= range.end.minute; minute += 30) {
         offered.add(`${key}T${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`);
       }
       continue;
     }
-    for (const time of times) {
+    // Compatibilidade com ofertas já enviadas: a lista explícita restringe a faixa, sem criar opções intermediárias.
+    for (const time of range?.options || times) {
       offered.add(`${key}T${time.time}`);
     }
   }
@@ -97,7 +118,7 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
   if ((earliest && replyTimes.length) || (requiresExplicitTime && !replyTimes.length && !earliest)) return null;
   const remaining = reply.replace(firstHour, '').replace(datePattern, '').replace(weekdayPattern, '').replace(clockPattern, '')
     .replace(/\b(?:as|na|no|dia)\b/gu, '').replace(/[,.!\s]+/gu, ' ').trim();
-  const affirmative = /^(sim|pode|pode ser|pode sim|sim pode|sim pode ser|ok|certo|combinado|confirmo|fechado|ta bom|esta bom|prefiro|eu prefiro|quero|eu quero|quero agendar|pode agendar|pode marcar)$/u.test(remaining);
+  const affirmative = evaluationReplyAffirms(remaining);
   if (!affirmative && (remaining || !(earliest || replyDates.length || replyDays.length || replyTimes.length))) return null;
   const choices = [...offered].filter((slot) => {
     const key = slot.slice(0, 10);

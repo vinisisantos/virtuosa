@@ -1,5 +1,5 @@
 import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-policy";
-import { offeredWeekdaysMatchDates } from "@/lib/ai-assistant/evaluation-choice-parser";
+import { offeredWeekdaysMatchDates, readEvaluationOfferRange } from "@/lib/ai-assistant/evaluation-choice-parser";
 import { ALICE_MAX_OFFERED_SLOTS, aliceEvaluationAllowedPeriods, aliceOfferClaimsUnsupportedScarcity,
   evaluationSlotPeriod } from "@/lib/ai-assistant/evaluation-offer-policy";
 import { withoutSbcAttendanceDescriptions } from "@/lib/ai-assistant/sbc-attendance-hours";
@@ -58,18 +58,14 @@ export function aliceAutonomySchedulingTextValid(messages: string[], now = new D
         if (/\b(?:a partir (?:das?|de)|apos(?: as?)?|depois das?|ate(?: as?)?)\s*$/u.test(before)
           || /^\s*(?:em diante|ate (?:fechar|o fechamento))/u.test(after)) return false;
       }
+      const range = readEvaluationOfferRange(text, scopedTimes);
+      // Novas ofertas separam funcionamento canônico e opções; o parser mantém compatibilidade com o histórico.
+      if (range === null || range?.options.length) return false;
       for (const time of scopedTimes) if (!allow(keys[0], time.time)) return false;
-      if (scopedTimes.length === 2) {
-        const [first, last] = scopedTimes;
-        const before = text.slice(dates.length === 1 ? 0 : date.index! + date[0].length, first.index);
-        const between = text.slice(first.index + first.length, last.index).trim();
-        if (/^(?:as|a|ate(?: as?)?|[-–—])$/u.test(between)
-          || /\b(?:das|de|entre)\s*$/u.test(before) && between === "e") {
-          if (first.minute >= last.minute) return false;
-          for (let minute = first.minute; minute <= last.minute; minute += 30) {
-            const time = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
-            if (!allow(keys[0], time)) return false;
-          }
+      if (range) {
+        for (let minute = range.start.minute; minute <= range.end.minute; minute += 30) {
+          const time = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+          if (!allow(keys[0], time)) return false;
         }
       }
     }

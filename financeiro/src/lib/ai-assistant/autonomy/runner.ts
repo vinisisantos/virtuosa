@@ -22,6 +22,7 @@ import { markCompletedAliceRepliesRead } from "@/lib/ai-assistant/autonomy/answe
 import { sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
 import { aliceFearPolicy } from "@/lib/alice/fear-policy";
 import { sbcOutOfHoursReply } from "@/lib/ai-assistant/autonomy/out-of-hours";
+import { SBC_BOOKING_CHOICE_CLARIFICATION } from "@/lib/ai-assistant/sbc-scheduling-exchange";
 
 type BookingFollowup = { kind: "booking_followup"; version: 1; questions: string[]; startTime: string;
   payload?: AliceTurnPayload; messages?: string[] };
@@ -148,17 +149,20 @@ export async function processAliceAutonomousTurn(
     // Turnos antigos passam pelas travas, mas não recebem resumo inventado nem nova geração.
     if (memoryRuntime && messages.length && !payload) payload = legacyAliceTurnPayload(messages);
     if (payload && !memoryRuntime) return human("model_requested", "memory_path_disabled");
+    const saveOperationalReply = async (reply: string) => {
+      messages = [reply];
+      if (memoryRuntime) payload = { version: 1, persistMemory: false, proposal: { resposta: messages,
+        memoria: { resumo: "Resposta operacional sem atualização de fatos da cliente." },
+        seApresentouNestaResposta: false, escalarHumano: false, confidence: "high", usedKnowledge: [] } };
+      const saved = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
+        data: { messagesJson: payload || messages, usageRecorded: turn.usageRecorded || !turn.generationStartedAt } });
+      return saved.count > 0;
+    };
     if (!messages.length && !bookingFollowup && !turn.firstSentAt && !turn.appointmentId && turn.nextMessageIndex === 0
       && !context.memoryRuntime?.guard.appointment && !context.prompt.DADOS_AGENDA_ATUAIS) {
       const availabilityReply = sbcOutOfHoursReply(context, now());
       if (availabilityReply) {
-        messages = [availabilityReply];
-        if (memoryRuntime) payload = { version: 1, persistMemory: false, proposal: { resposta: messages,
-          memoria: { resumo: "Resposta operacional sobre a grade, sem atualização de fatos da cliente." },
-          seApresentouNestaResposta: false, escalarHumano: false, confidence: "high", usedKnowledge: [] } };
-        const saved = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
-          data: { messagesJson: payload || messages, usageRecorded: turn.usageRecorded || !turn.generationStartedAt } });
-        if (!saved.count) return "skipped";
+        if (!await saveOperationalReply(availabilityReply)) return "skipped";
       }
     }
     if (!messages.length) {
@@ -169,6 +173,9 @@ export async function processAliceAutonomousTurn(
         const booking = await deps.schedule({ req, turn, context, claimToken: token });
         externalSendStarted = booking.status === "booked";
         if (booking.status === "review") return human("model_requested", "booking_requires_review");
+        if (booking.status === "choice_required") {
+          if (!await saveOperationalReply(SBC_BOOKING_CHOICE_CLARIFICATION)) return "skipped";
+        }
         if (booking.status === "booked") {
           const ledger = await database.aliceAutoSchedule.findUnique({
             where: { conversationId_replyMessageId: { conversationId: turn.conversationId, replyMessageId: turn.sourceMessageId } },
@@ -200,25 +207,27 @@ export async function processAliceAutonomousTurn(
           return await completeAccepted(now());
         }
       }
-      const generating = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
-        data: { generationStartedAt: now(), usageRecorded: false } });
-      if (!generating.count) return "skipped";
-      if (Date.now() >= deadline - 20_000) return human("model_requested", "worker_budget_exhausted");
-      const generated = await deps.generate(context, undefined, AbortSignal.timeout(Math.max(1, deadline - Date.now() - 20_000)));
-      const { messages: generatedMessages, needsHuman, proposal, generationFailure, ...metrics } = generated;
-      // O custo pertence ao turno mesmo quando uma intervenção durante a geração cancela a resposta.
-      await recordGenerationMetrics(metrics);
-      if (needsHuman || !generatedMessages.length) return human("model_requested", generationFailure || "generation_requires_review");
-      messages = generatedMessages;
-      if (bookingFollowup && messages.length !== 1) return human("model_requested", "invalid_booking_followup_sequence");
-      if (memoryRuntime) {
-        if (!proposal) return human("model_requested", "structured_proposal_missing");
-        payload = { version: 1, proposal };
+      if (!messages.length) {
+        const generating = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
+          data: { generationStartedAt: now(), usageRecorded: false } });
+        if (!generating.count) return "skipped";
+        if (Date.now() >= deadline - 20_000) return human("model_requested", "worker_budget_exhausted");
+        const generated = await deps.generate(context, undefined, AbortSignal.timeout(Math.max(1, deadline - Date.now() - 20_000)));
+        const { messages: generatedMessages, needsHuman, proposal, generationFailure, ...metrics } = generated;
+        // O custo pertence ao turno mesmo quando uma intervenção durante a geração cancela a resposta.
+        await recordGenerationMetrics(metrics);
+        if (needsHuman || !generatedMessages.length) return human("model_requested", generationFailure || "generation_requires_review");
+        messages = generatedMessages;
+        if (bookingFollowup && messages.length !== 1) return human("model_requested", "invalid_booking_followup_sequence");
+        if (memoryRuntime) {
+          if (!proposal) return human("model_requested", "structured_proposal_missing");
+          payload = { version: 1, proposal };
+        }
+        const saved = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: {
+          messagesJson: bookingFollowup ? { ...bookingFollowup, ...(payload ? { payload } : { messages }) } : payload || messages,
+        } });
+        if (!saved.count) return "skipped";
       }
-      const saved = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" }, data: {
-        messagesJson: bookingFollowup ? { ...bookingFollowup, ...(payload ? { payload } : { messages }) } : payload || messages,
-      } });
-      if (!saved.count) return "skipped";
     }
     if (memoryRuntime && payload) {
       const memory = await getOrCreateMemory(memoryRuntime.scope, {}, database);

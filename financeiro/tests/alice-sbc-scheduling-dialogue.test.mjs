@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildSbcEvaluationOptions, deriveSbcEvaluationChoice } from '../src/lib/ai-assistant/sbc-scheduling-policy.ts';
-import { selectSbcSchedulingExchange } from '../src/lib/ai-assistant/sbc-scheduling-exchange.ts';
+import { selectSbcSchedulingExchange, SBC_BOOKING_CHOICE_CLARIFICATION } from '../src/lib/ai-assistant/sbc-scheduling-exchange.ts';
 
 const now = new Date('2026-11-09T15:00:00Z');
 const offer = (body) => ({ body, fromMe: true, status: 'delivered' });
@@ -207,6 +207,21 @@ test('pedido sem escolha mantém negociação reconhecível sem inventar horári
   const result = selectSbcSchedulingExchange([offered, message('open', 'Pode ser no horário que tiver?', false)], now);
   assert.ok(result);
   assert.equal(result.slot, null);
+});
+
+test('esclarecimento não renova oferta vencida, ignora tomada humana nem libera ressalvas novas', () => {
+  const offered = { ...aliceMessage('offer', 'Sábado, 14/11/2026, tenho 10h ou 10h30. Qual prefere?'),
+    timestamp: new Date('2026-11-09T14:30Z') };
+  const clarify = aliceMessage('clarify', SBC_BOOKING_CHOICE_CLARIFICATION);
+  const history = [offered, message('ambiguous', 'Pode ser no horário que tiver?', false), clarify];
+  assert.equal(selectSbcSchedulingExchange([...history, message('choice', '10h30 pra mim tá bom', false)], now)?.slot, '2026-11-14T10:30');
+  const expired = [{ ...offered, timestamp: new Date('2026-11-08T14:30Z') }, ...history.slice(1)];
+  assert.equal(selectSbcSchedulingExchange([...expired, message('choice', '10h30', false)], now), null);
+  const human = [...history.slice(0, -1), { ...clarify, respondedBy: 'operator' }, message('choice', '10h30', false)];
+  assert.equal(selectSbcSchedulingExchange(human, now), null);
+  for (const body of ['10h30, mas ainda não confirma', '10h30, se eu conseguir', '10h30, estou grávida', 'Não quero mais']) {
+    assert.equal(selectSbcSchedulingExchange([...history, message('choice', body, false)], now)?.slot ?? null, null, body);
+  }
 });
 
 test('confirmação de agenda não vira nova oferta nem reativa a oferta antiga após Ok', () => {

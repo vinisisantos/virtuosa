@@ -132,6 +132,55 @@ test("registra uma vez e confirma uma vez mesmo com solicitações concorrentes"
   assert.ok(f.state.locks.some((query) => query.includes("FOR SHARE")));
 });
 
+const mixedSaturdayOffer = 'Ótimo! No sábado 14/11 temos horários disponíveis das 8h às 13h.\n\nAlgum desses te encaixa melhor?\n\n08h00, 09h00 ou 10h30';
+
+test('aceite coloquial da lista após faixa já enviada registra avaliação, confirmação e aviso uma única vez', async () => {
+  const f = fixture({ now: '2026-11-11T19:19:20Z', autonomy: true, groupNoticeId: 'notice',
+    campaignName: 'Glúteo Perfeito', noProcedure: true,
+    sourceBody: 'Olá! Eu vim pelo GLÚTEOS PERFEITOS, gostaria de saber mais sobre isso.',
+    offerBody: mixedSaturdayOffer, replyBody: 'As 10:30 pra mim tá bom' });
+  const result = await f.run();
+  assert.equal(result.status, 'booked');
+  assert.equal(result.startTime, '2026-11-14T13:30:00.000Z');
+  assert.equal(f.state.appointmentInput.evaluationProcedure, 'Glúteo Perfeito');
+  assert.equal(f.state.sent, 1);
+  await f.state.after[0]();
+  assert.deepEqual(f.state.groupNotices, ['notice']);
+  assert.equal((await f.run()).status, 'review');
+  assert.equal(f.state.sent, 1);
+});
+
+test('confirmação coloquial mantém o horário explícito na mesma mensagem ou em rajada', async () => {
+  for (const parts of [['As 10:30 pra mim tá bom'], ['As 10h30 para mim está bom'],
+    ['10h30', 'Pra mim tá bom'], ['10:30 pra mim funciona']]) {
+    const f = fixture({ now: '2026-11-11T19:19:20Z', autonomy: true,
+      offerBody: 'No sábado 14/11 temos 08h00, 09h00 ou 10h30. Qual prefere?',
+      beforeReply: parts.slice(0, -1), replyBody: parts.at(-1) });
+    assert.equal((await f.run()).status, 'booked', parts.join(' / '));
+    assert.equal(f.state.sent, 1);
+  }
+});
+
+test('faixa com lista não autoriza horário fora da lista nem aceite coloquial condicionado', async () => {
+  for (const text of ['As 13h pra mim tá bom', '9h30 pra mim tá bom', '10h30 pra mim tá bom se eu conseguir',
+    '10h30 pra mim tá bom, mas ainda não confirma', '10h30 pra mim tá bom?', '10h30 pra mim tá bom, estou grávida']) {
+    const f = fixture({ now: '2026-11-11T19:19:20Z', autonomy: true, offerBody: mixedSaturdayOffer, replyBody: text });
+    assert.notEqual((await f.run()).status, 'booked', text);
+    assert.equal(f.state.appointment, null);
+    assert.equal(f.state.sent, 0);
+  }
+});
+
+test('a escolha depois do esclarecimento encerra a tentativa ambígua e mantém a oferta original', async () => {
+  const f = fixture({ now: '2026-11-11T19:19:20Z', autonomy: true,
+    offerBody: 'No sábado 14/11 temos 08h00, 09h00 ou 10h30. Qual prefere?',
+    afterOffer: [{ fromMe: false, body: 'Pode ser no horário que tiver?' },
+      { fromMe: true, body: 'Para concluir sua avaliação, me confirme o dia e um único horário das opções que te enviei 😊' }],
+    replyBody: '14/11 às 10h30 pra mim tá bom' });
+  assert.equal((await f.run()).status, 'booked');
+  assert.equal(f.state.sent, 1);
+});
+
 const carol = { now: '2026-11-10T19:05:55Z', autonomy: true,
   offerBody: 'Ótimo, Carol! Para o sábado, 14/11/2026, tenho esses horários disponíveis: 8h, 8h30, 9h, 9h30, 10h, 10h30, 11h, 11h30, 12h ou 12h30. Qual funciona melhor pra você?',
   afterOffer: [{ body: 'Tem mais fotos pra ver?', fromMe: false },

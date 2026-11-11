@@ -560,22 +560,53 @@ test("horário sem escolha exata gera uma pergunta de continuidade sem handoff o
   const f = await runnerFixture(claimAliceAutonomousTurn);
   try {
     const loadContext = f.deps.loadContext;
-    const generate = f.deps.generate;
     f.deps.loadContext = async (...args) => ({ ...await loadContext(...args), messages: [
       { id: "offer", fromMe: true, status: "delivered", respondedByName: 'Alice', body: "11/11/2026 às 10h30 ou 13h30. Qual prefere?" },
       { id: "source-a", fromMe: false, status: "received", body: "Pode ser no horário que tiver?" },
     ] });
     let scheduleAttempts = 0;
     f.deps.schedule = async () => { scheduleAttempts++; return { status: "choice_required", reason: "Escolha um horário exato." }; };
-    f.deps.generate = async (...args) => ({ ...await generate(...args), messages: ["Qual horário exato fica melhor para você?"] });
+    f.deps.generate = async () => { throw new Error('Falha de reconhecimento deve pedir esclarecimento sem gerar promessa de confirmação humana'); };
     assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "sent", (await f.readTurn()).error);
     assert.equal(scheduleAttempts, 1);
-    assert.equal(f.state.generations, 1);
-    assert.deepEqual(f.state.sends, ["Qual horário exato fica melhor para você?"]);
+    assert.equal(f.state.generations, 0);
+    assert.equal(f.state.sends.length, 1);
+    assert.match(f.state.sends[0], /confirme.*dia.*único horário/u);
+    assert.doesNotMatch(f.state.sends[0], /equipe|agendad|reservad/iu);
     assert.deepEqual(f.state.handoffs, []);
     assert.equal((await f.readTurn()).appointmentId, null);
     assert.equal((await f.readChat()).aiMode, "agent");
   } finally { await f.pg.close(); }
+});
+
+test('esclarecimento com memória preserva fatos, respeita tomada humana e não repete resposta aceita', async () => {
+  const { getOrCreateMemory } = await import('../src/lib/alice/memory.ts');
+  for (const intervene of [false, true]) {
+    const f = await runnerFixture(claimAliceAutonomousTurn, { memory: true });
+    const scope = { conversationId: f.claim.turn.conversationId, instanceId: f.claim.turn.instanceId, unidade: 'SBC' };
+    try {
+      await getOrCreateMemory(scope, {}, f.adapter);
+      await f.pg.exec(`UPDATE "LeadMemory" SET resumo='Prefere sábado; horário ainda não confirmado' WHERE "conversationId"='conversation-a'`);
+      const loadContext = f.deps.loadContext;
+      f.deps.loadContext = async (...args) => ({ ...await loadContext(...args), prompt: { UNIDADE: 'SBC' }, messages: [
+        { id: 'offer', fromMe: true, status: 'delivered', respondedByName: 'Alice', body: '14/11/2026 temos 10h ou 11h. Qual prefere?' },
+        { id: 'source-a', fromMe: false, status: 'received', body: 'Pode ser no horário que tiver?' },
+      ], memoryRuntime: { scope, guard: { scope, presentationAt: new Date(f.state.clock.getTime() - 100_000),
+        contactName: 'Cliente de teste', appointment: null } } });
+      f.deps.schedule = async () => ({ status: 'choice_required', reason: 'Escolha um horário exato.' });
+      f.deps.generate = async () => { throw new Error('Esclarecimento não precisa do modelo'); };
+      if (intervene) f.state.onBeforeSend = () => pauseAliceForHuman('conversation-a', f.adapter);
+      assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), intervene ? 'skipped' : 'sent');
+      assert.equal(f.state.sends.length, intervene ? 0 : 1);
+      assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), 'skipped');
+      assert.equal(f.state.sends.length, intervene ? 0 : 1);
+      assert.equal((await f.readTurn()).appointmentId, null);
+      assert.deepEqual(f.state.handoffs, []);
+      const memory = await getOrCreateMemory(scope, {}, f.adapter);
+      assert.equal(memory.resumo, 'Prefere sábado; horário ainda não confirmado');
+      assert.equal(memory.escalarHumano, false);
+    } finally { await f.pg.close(); }
+  }
 });
 
 for (const confirmation of ["submitted", "uncertain"]) test(`worker reconhece escolha antes de pergunta complementar; confirmação ${confirmation} controla a baixa`, async () => {

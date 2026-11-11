@@ -31,6 +31,19 @@ test('limite considera os slots da oferta inteira, inclusive quando dividida em 
   assert.equal(aliceAutonomySchedulingTextValid(['11/11/2026 às 10h ou 11h. 12/11/2026 às 18h ou 19h.'], now), true);
 });
 
+test('nova oferta não mistura faixa aberta a lista; funcionamento canônico fica separado das opções', () => {
+  for (const text of [
+    'No sábado 14/11 temos horários disponíveis das 8h às 13h.\n08h00, 09h00 ou 10h30',
+    'No sábado 14/11 temos das 8h às 13h. Opções: 9h, 10h, 11h ou 12h.',
+    '14/11 temos 9h ou 10h, e das 11h às 13h.',
+  ]) assert.equal(aliceAutonomySchedulingTextValid([text], now), false, text);
+  for (const times of ['8h, 9h ou 10h30', '8h, 9h, 10h30 ou 11h']) {
+    assert.equal(aliceAutonomySchedulingTextValid([
+      `Aos sábados, atendemos das 8h às 13h. No sábado 14/11/2026 temos ${times}. Qual prefere?`,
+    ], now), true);
+  }
+});
+
 test('preferência explícita de período limita a oferta sem fixar sua quantidade', () => {
   const afternoon = context('Prefiro pela tarde');
   assert.equal(aliceAutonomySchedulingTextValid([offered(['14h', '16h'])], now, afternoon), true);

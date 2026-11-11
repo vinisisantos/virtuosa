@@ -1,11 +1,11 @@
 import { aliceHealthHistoryRequiresHuman } from '#lib/alice/fear-policy';
+import { evaluationReplyAffirms } from '#lib/ai-assistant/evaluation-confirmation';
 
 const normalize = (text: string) => text.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
   .replace(/\p{Cf}/gu, '').replace(/\s+/gu, ' ').trim();
 
 export const evaluationTemporalReference = /\b\d{1,2}(?:\/\d{1,2}|h(?:\d{2})?|:\d{2}|\s+horas?)\b|\b(?:domingo|segunda|terca|quarta|quinta|sexta|sabado)(?: ?feira)?\b|\b(?:manha|tarde|noite|primeiro horario)\b/u;
 const blocker = /\b(?:nao|nunca|talvez|caso|se|depend\w*|preciso|pensar|espera|aguard\w*|deixa|desisti|cancel\w*|mudei|retrata\w*|te aviso|eu aviso|vou ver|vou confirmar|depois (?:eu )?confirmo|outro horario|outro dia)\b/u;
-const affirmative = /^(?:sim|pode|pode ser|pode sim|sim pode|sim pode ser|ok|certo|combinado|confirmo|fechado|ta bom|esta bom|prefiro|eu prefiro|quero|eu quero|quero agendar|pode agendar|pode marcar)$/u;
 const greeting = /^(?:oi|ola|bom dia|boa tarde|boa noite|tudo bem|obrigad[ao]|obg)$/u;
 const costQuestion = /^(?:tem (?:algum )?custo(?: (?:a|na|para a|da) avaliacao)?|a avaliacao (?:tem (?:algum )?custo|e (?:gratuita|paga))|quanto (?:custa|e) a avaliacao)$/u;
 const addressQuestion = /^(?:(?:qual (?:e )?(?:o )?|(?:me )?(?:manda|mande|envia|envie|pode mandar|pode enviar) (?:o )?)(?:endereco|localizacao)(?: (?:da clinica|pra mim|para mim|por favor))*|onde (?:fica|e) (?:a clinica|a virtuosa|o endereco))$/u;
@@ -41,7 +41,7 @@ export function splitEvaluationReply(body: string): EvaluationReplySegments {
     const selection = clause.replace(/[,;.\s]+(?:eu\s+)?saio do trabalho e vou direto[.!]?\s*$/iu, '').trim();
     if (costQuestion.test(text)) { result.asksEvaluationCost = true; continue; }
     if (addressQuestion.test(text)) continue;
-    if (evaluationTemporalReference.test(text) || affirmative.test(text)) {
+    if (evaluationTemporalReference.test(text) || evaluationReplyAffirms(text)) {
       result.selections.push(selection);
       continue;
     }
