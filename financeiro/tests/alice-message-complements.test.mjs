@@ -53,6 +53,16 @@ test('divisão preserva parágrafos, frases, links, preços e o final, sem quebr
   assert.throws(() => splitAliceMessageParts(['x'.repeat(1201)]), /unsplittable_word/);
 });
 
+test('caixas adicionais não invalidam acolhimento já dividido; promessas clínicas continuam bloqueadas no lote inteiro', () => {
+  const text = Array.from({ length: 3 }, () => Array(220).fill('Contexto').join(' ')).join('\n\n');
+  const parts = splitAliceMessageParts([text]);
+  const context = { scope, presentationAt: earlier, appointment: null, contactName: null,
+    fear: { kind: 'needles', requiresHuman: false, generalInformationOnly: true } };
+  assert.ok(parts.length > 4);
+  assert.equal(guardAliceReply(structuredOutput({ resposta: parts }), context).status, 'ready');
+  assert.equal(guardAliceReply(structuredOutput({ resposta: [...parts, 'Não tem risco.'] }), context).reason, 'fear_unsafe_claim');
+});
+
 test('worker drena três ou mais caixas, preserva recibos e só grava o resumo ao concluir; intervenção interrompe complementos', async () => {
   process.env.ALICE_CONVERSATION_MEMORY_SBC_ENABLED = 'true';
   for (const stop of ['none', 'human', 'incoming', 'timeout']) {

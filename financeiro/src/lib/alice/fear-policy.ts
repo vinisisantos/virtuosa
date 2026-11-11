@@ -56,13 +56,16 @@ export function validateAliceFearReply(messages: readonly string[], policy: Alic
   if (/\b(?:nao (?:tem|ha) risco|zero risco|100\s*%\s*segur\w*|nao (?:da|causa) rea\w*|nao rejeita|nunca tivemos|99\s*%|nao doi|certamente vai ficar lindo|nao vai se arrepender|e bobagem|nao precisa ter medo)/u.test(text)) return "fear_unsafe_claim";
   if (/\b(?:so hoje|ultimas vagas|vale aproveitar|aproveit\w* enquanto|corra|garanta (?:ja|agora)|outra clinica.{0,50}(?:infecc\w*|complicac\w*|hospital)|ficar sem (?:a |essa )?(?:promocao|condicao))\b/u.test(text)) return "fear_pressure";
   const emojis = [...graphemes.segment(messages.join(" "))].filter(({ segment }) => /\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(segment)).length;
-  const content = messages.map((message) => {
+  const contentParts = messages.map((message) => {
     const stripped = stripRepeatedPresentation(message, contactName);
     return stripped.ambiguous ? message : stripped.text;
-  }).filter(Boolean).join("\n\n");
+  }).filter(Boolean);
+  const content = contentParts.join("\n\n");
   const paragraphs = content.split(/\n\s*\n/u).filter((value) => value.trim()).length;
-  if (emojis > 1 || (policy.kind === "thinking" ? paragraphs > 2 || /\b(?:prefere vir|vamos agendar|vamos marcar|fechar o pacote)\b/u.test(text)
-    : paragraphs < 3 || paragraphs > 4)) return "fear_format";
+  // A divisão em caixas insere separadores; conteúdo e pressão continuam verificados no lote inteiro.
+  const boxBoundaries = Math.max(0, contentParts.length - 1);
+  if (emojis > 1 || (policy.kind === "thinking" ? paragraphs > 2 + boxBoundaries || /\b(?:prefere vir|vamos agendar|vamos marcar|fechar o pacote)\b/u.test(text)
+    : paragraphs < 3 || paragraphs > 4 + boxBoundaries)) return "fear_format";
   return null;
 }
 
