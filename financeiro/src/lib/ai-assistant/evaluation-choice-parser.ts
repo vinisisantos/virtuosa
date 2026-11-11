@@ -74,7 +74,7 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
   const offer = normalize(offerBody);
   const reply = normalize(replyBody).replace(/\s+/gu, ' ').trim();
   const permittedDateKeys = [...new Set(permitted.map((slot) => slot.slice(0, 10)))];
-  if (!/\b(agend\w*|avaliac\w*|horari\w*|vagas?|marcar|prefere|pode ser|tenho|temos?|opcao|opcoes)\b/u.test(offer)
+  if (!/\b(agend\w*|avaliac\w*|horari\w*|vagas?|marcar|prefere|pode ser|tenho|temos?|oferec\w*|opcao|opcoes)\b/u.test(offer)
     || /\b(nao|indisponivel|indisponiveis|cancelad\w*|fechad\w*)\b/u.test(offer) || reply.includes('?')) return null;
   if (!offeredWeekdaysMatchDates(offerBody, permittedDateKeys)) return null;
   const dates = [...offer.matchAll(datePattern)];

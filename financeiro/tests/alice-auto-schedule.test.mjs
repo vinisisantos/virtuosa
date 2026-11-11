@@ -181,6 +181,16 @@ test('a escolha depois do esclarecimento encerra a tentativa ambígua e mantém 
   assert.equal(f.state.sent, 1);
 });
 
+test('nova oferta da tarde com posso te oferecer continua apta ao agendamento automático', async () => {
+  const f = fixture({ now: '2026-11-11T21:22:20Z', autonomy: true,
+    offerBody: 'No sábado, 14/11/2026, posso te oferecer 12h, 12h30 ou 13h. Qual fica melhor?',
+    replyBody: '12h30 pra mim tá bom' });
+  const result = await f.run();
+  assert.equal(result.status, 'booked');
+  assert.equal(result.startTime, '2026-11-14T15:30:00.000Z');
+  assert.equal(f.state.sent, 1);
+});
+
 const carol = { now: '2026-11-10T19:05:55Z', autonomy: true,
   offerBody: 'Ótimo, Carol! Para o sábado, 14/11/2026, tenho esses horários disponíveis: 8h, 8h30, 9h, 9h30, 10h, 10h30, 11h, 11h30, 12h ou 12h30. Qual funciona melhor pra você?',
   afterOffer: [{ body: 'Tem mais fotos pra ver?', fromMe: false },

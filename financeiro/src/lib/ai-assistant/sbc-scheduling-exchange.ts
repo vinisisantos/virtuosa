@@ -1,6 +1,7 @@
 import { deriveSbcEvaluationChoice } from '#lib/ai-assistant/sbc-scheduling-policy';
 import { evaluationReplyBlocksBooking, evaluationTemporalReference, splitEvaluationReply } from '#lib/ai-assistant/evaluation-reply-segments';
 import { aliceAutonomyResponseClaimsBooking } from '#lib/ai-assistant/autonomy/policy';
+import { evaluationRequestedPeriod } from '#lib/ai-assistant/evaluation-offer-policy';
 
 type Message = { id: string; body: string; fromMe: boolean; status: string; type?: string; audioTranscribed?: boolean;
   respondedBy?: string | null; respondedByName?: string | null; timestamp?: Date; createdAt?: Date };
@@ -74,7 +75,8 @@ export function selectSbcSchedulingExchange<T extends Message>(messages: readonl
     : deriveSbcEvaluationChoice({ offer, reply: { ...reply, body: selectionBody }, now });
   // Escolher um dia ou recusar um período pede opções, não revisão de uma reserva.
   const currentText = recent.slice(lastTeamIndex + 1).map((message) => message.body).join(' ');
-  if (!slot && !hasUnsupportedContent && !currentText.includes('?') && negotiating.test(normalize(currentText))) return null;
+  if (!slot && !hasUnsupportedContent && (evaluationRequestedPeriod(currentText)
+    || !currentText.includes('?') && negotiating.test(normalize(currentText)))) return null;
   const currentIds = new Set(recent.slice(lastTeamIndex + 1).map((message) => message.id));
   const currentParsed = parsed.filter(({ message }) => currentIds.has(message.id));
   return { offer, reply, replies, slot, continuationMessages,

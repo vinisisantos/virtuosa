@@ -7,6 +7,18 @@ type Period = "morning" | "afternoon" | "evening";
 const periods: readonly Period[] = ["morning", "afternoon", "evening"];
 const labels: Record<string, Period> = { manha: "morning", tarde: "afternoon", noite: "evening" };
 const normalize = (text: string) => text.normalize("NFKD").replace(/\p{Diacritic}|\p{Cf}/gu, "").toLowerCase().replace(/\s+/gu, " ").trim();
+const requestDay = String.raw`(?:(?:no|na|de|neste|nesta|nesse|nessa|para|pra) )?(?:domingo|segunda|terca|quarta|quinta|sexta|sabado)(?:[ -]feira)?`;
+const requestQuery = String.raw`(?:(?:voces )?(?:tem|teria|teriam|ha|existe|existem)(?: (?:algum|alguns|outro|outros|mais))?(?: (?:horarios?|vagas?|disponibilidade))?|(?:eu )?(?:prefiro|quero|posso|consigo)|pode ser|poderia ser)`;
+const requestPeriod = String.raw`(?:(?:na parte da|no periodo da|durante a|pela|a|de|da|na|no|para a|pra|para) )?(manha|tarde|noite)`;
+const periodRequest = new RegExp(`^(?:e )?(?:${requestDay} )?(?:${requestQuery} )?(?:${requestDay} )?${requestPeriod}(?: ${requestDay})?(?: ${requestQuery})?(?: por favor)?$`, "u");
+
+/** Pedido puro de período é negociação, mesmo em forma de pergunta; relógios, ressalvas e dúvidas extras não são apagados. */
+export function evaluationRequestedPeriod(value: string): Period | null {
+  const text = normalize(value).replace(/[.!?]+$/u, "").trim();
+  const match = text.match(periodRequest);
+  if (!match || [...text.matchAll(/\b(?:domingo|segunda|terca|quarta|quinta|sexta|sabado)\b/gu)].length > 1) return null;
+  return labels[match[1]] || null;
+}
 
 export function evaluationSlotPeriod(time: string): Period {
   const hour = Number(time.slice(0, 2));
@@ -29,6 +41,12 @@ export function aliceEvaluationAllowedPeriods(input: unknown, now: Date): Readon
       if (!Number.isFinite(at) || at > now.getTime() || now.getTime() - at > 86_400_000) continue;
     }
     const text = normalize(message.text);
+    const requestedPeriod = evaluationRequestedPeriod(text);
+    if (requestedPeriod) {
+      preferred = new Set([requestedPeriod]);
+      excluded.delete(requestedPeriod);
+      continue;
+    }
     const mentions = [...text.matchAll(/\b(manha|tarde|noite)\b/gu)];
     if (!mentions.length) {
       const requestedTime = text.match(/\b(?:so|somente|apenas|prefiro|consigo|posso)(?:\s+(?:as|a|ser|ir|vir|agendar|marcar))?\s+(\d{1,2})(?:h(\d{2})?|:(\d{2}))(?![\p{L}\p{N}])/u);
