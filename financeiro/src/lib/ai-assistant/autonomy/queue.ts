@@ -6,6 +6,7 @@ import { loadAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/config";
 import { currentAliceAppointment } from "@/lib/alice/current-appointment";
 import { phoneLookupKey } from "@/lib/phone";
 import { selectSbcSchedulingExchange } from "@/lib/ai-assistant/sbc-scheduling-exchange";
+import { aliceMediaTextContext } from "@/lib/ai-assistant/autonomy/media-text";
 import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_LEASE_MS, aliceAutonomyAvailableAt,
   ALICE_AUTONOMY_RECOVERY_WINDOW_MS, aliceAutonomyConversationEligible, aliceCanContinueAfterSoftHandoff, aliceRetryAttemptLimit } from "@/lib/ai-assistant/autonomy/policy";
 
@@ -37,7 +38,7 @@ export async function pauseAliceForHuman(conversationId: string, database = pris
 type EnqueueAliceTurn = {
   conversationId: string; instanceId: string; sourceMessageId: string; timestamp: Date; origin: "inbound" | "backlog";
   resumeBookingBy?: string; resumeHistoricalPriceBy?: string; resumeScheduleBy?: string; resumeSoftFailureBy?: string;
-  resumeClinicalFearBy?: string; resumeEmptyEnvelopeBy?: string;
+  resumeClinicalFearBy?: string; resumeEmptyEnvelopeBy?: string; resumeMediaTextBy?: string;
 };
 
 export async function enqueueAliceAutonomousTurn(params: EnqueueAliceTurn, database = prisma, now = new Date()) {
@@ -128,6 +129,36 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
       select: { id: true, status: true, error: true, origin: true, attempts: true, firstSentAt: true,
         generationStartedAt: true, nextMessageIndex: true, providerMessageIds: true, appointmentId: true },
     });
+    if (params.resumeMediaTextBy && conversation.aiModeUpdatedBy === params.resumeMediaTextBy
+      && ["image", "associatedChildMessage"].includes(source.type) && !source.body.trim()
+      && params.origin === "inbound" && turn.origin === "inbound" && turn.status === "needs_human"
+      && turn.error === "model_requested" && turn.attempts === 1 && !turn.generationStartedAt && !turn.firstSentAt
+      && !turn.appointmentId && turn.nextMessageIndex === 0 && Array.isArray(turn.providerMessageIds)
+      && turn.providerMessageIds.length === 0 && source.timestamp >= new Date(now.getTime() - ALICE_AUTONOMY_RECOVERY_WINDOW_MS)
+      && source.createdAt >= new Date(now.getTime() - ALICE_AUTONOMY_RECOVERY_WINDOW_MS)) {
+      const [history, escalation] = await Promise.all([
+        tx.whatsAppMessage.findMany({ where: { conversationId: params.conversationId, status: { not: "deleted" },
+          NOT: { type: "secretEncryptedMessage", body: "" } },
+          select: { id: true, type: true, body: true, fromMe: true, timestamp: true, createdAt: true },
+          orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 }),
+        tx.leadMemory.findFirst({ where: { conversationId: params.conversationId, unidade: "SBC", escalarHumano: true }, select: { id: true } }),
+      ]);
+      if (!escalation && aliceMediaTextContext(history.reverse(), source.id)) {
+        const resumed = await tx.$executeRaw`
+          UPDATE "AliceAutonomousTurn" t SET status='queued',error=NULL,"completedAt"=NULL,"claimedAt"=NULL,
+            "availableAt"=${aliceAutonomyAvailableAt(source.createdAt, now)},"messagesJson"=NULL,"updatedAt"=${now}
+          WHERE t.id=${turn.id} AND t.status='needs_human' AND t.error='model_requested' AND t.origin='inbound'
+            AND t.attempts=1 AND t."claimToken" IS NULL AND t."generationStartedAt" IS NULL
+            AND t."firstSentAt" IS NULL AND t."appointmentId" IS NULL AND t."nextMessageIndex"=0
+            AND t."providerMessageIds"='[]'::jsonb AND (t."messagesJson" IS NULL OR t."messagesJson"='null'::jsonb)
+            AND t."sourceMessageId"=(SELECT id FROM "WhatsAppMessage" WHERE "conversationId"=t."conversationId"
+              AND status<>'deleted' AND NOT (type='secretEncryptedMessage' AND btrim(body)='')
+              ORDER BY timestamp DESC,id DESC LIMIT 1)
+            AND NOT EXISTS (SELECT 1 FROM "AliceAutoSchedule" b WHERE b."conversationId"=t."conversationId" AND b."replyMessageId"=t."sourceMessageId")
+            AND NOT EXISTS (SELECT 1 FROM "LeadMemory" m WHERE m."conversationId"=t."conversationId" AND m.unidade='SBC' AND m."escalarHumano")`;
+        if (resumed === 1) return { queued: true, turnId: turn.id, reason: "queued" };
+      }
+    }
     const resumeBooking = turn.error === "booking_requires_review" && params.resumeBookingBy;
     const resumePrice = turn.error === "price_after_booking" && params.resumeHistoricalPriceBy;
     const resumeSchedule = turn.error === "schedule_option_expired_or_invalid" && params.resumeScheduleBy;

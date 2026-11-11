@@ -9,6 +9,7 @@ import { aliceAutonomyConversationEligible } from "@/lib/ai-assistant/autonomy/p
 import { aliceMemoryEnabled } from "@/lib/alice/runtime-memory";
 import { loadAliceMemoryContext, type AliceMemoryRuntime } from "@/lib/alice/runtime-context";
 import { projectAliceAudioHistory, isAliceTextInput } from "@/lib/alice/audio/history";
+import { aliceMediaTextContext } from "@/lib/ai-assistant/autonomy/media-text";
 
 async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = prisma, now = new Date()) {
   const conversation = await database.whatsAppConversation.findFirst({
@@ -51,13 +52,14 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
   const lastTeam = textMessages.findLastIndex((message) => message.fromMe);
   const pending = textMessages.slice(lastTeam + 1).filter((message) => !message.fromMe);
   const safeIncoming = messages.filter((message) => !message.fromMe).map((message) => message.body);
-  const handoffReason = continuation ? null : !isAliceTextInput(source) ? "model_requested" as const
+  const mediaTextContext = aliceMediaTextContext(messages, source.id);
+  const handoffReason = continuation ? null : !isAliceTextInput(source) && !mediaTextContext ? "model_requested" as const
     : classifyAliceHandoff({ unit: "SBC", campaignName, incomingMessages: safeIncoming });
   const knowledge = handoffReason || continuation ? null : buildAliceKnowledgeContext({
     unit: "SBC", campaignName, messageText: (pending.length ? pending : [source]).map((message) => message.body).join(" "),
   });
   return {
-    conversation, messages, source, contactName: resolveAiAssistantContactName(conversation.contact.name),
+    conversation, messages, source, mediaTextContext, contactName: resolveAiAssistantContactName(conversation.contact.name),
     handoffReason: handoffReason || (!knowledge && !continuation ? "model_requested" as const : null),
     prompt: {
       BASE_ALICE: knowledge, UNIDADE: "SBC", CAMPANHA: sanitizeAiAssistantText(campaignName, names),
@@ -67,6 +69,7 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
       CONVERSA: textMessages.map((message) => ({ role: message.fromMe ? "atendente" : "cliente", text: sanitizeAiAssistantText(message.body, names),
         ...(message.audioTranscribed ? { origem: "transcricao_audio" } : {}) })),
       ATENDIMENTO_AUTONOMO: true,
+      ...(mediaTextContext ? { ANEXOS_NAO_INTERPRETADOS: mediaTextContext } : {}),
     } as Prisma.InputJsonObject,
   };
 }

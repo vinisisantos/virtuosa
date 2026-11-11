@@ -47,8 +47,9 @@ export async function loadAliceMemoryContext(context: LegacyAliceAutonomousConte
   const current = pending.length ? pending : [context.source];
   const knowledge = buildAliceKnowledgeContext({ unit: "SBC", campaignName: campaign,
     messageText: [...current, ...history.filter((message) => !message.fromMe).slice(0, 2)].map((message) => message.body).join(" ") });
-  const prompt = buildAliceContext({ scope, memory, history, knowledge: knowledge || {}, campaignName: campaign,
-    contactName: context.contactName, evaluationOptions: buildSbcEvaluationOptions(now), appointment, autonomous: true, now });
+  const prompt = { ...buildAliceContext({ scope, memory, history, knowledge: knowledge || {}, campaignName: campaign,
+    contactName: context.contactName, evaluationOptions: buildSbcEvaluationOptions(now), appointment, autonomous: true, now }),
+    ...(context.mediaTextContext ? { ANEXOS_NAO_INTERPRETADOS: context.mediaTextContext } : {}) };
   const detectedFear = aliceFearPolicy(prompt);
   const fear = detectedFear && aliceHealthHistoryRequiresHuman(memory.saudeObservacoes)
     ? { ...detectedFear, requiresHuman: true, generalInformationOnly: false } : detectedFear;
@@ -60,6 +61,6 @@ export async function loadAliceMemoryContext(context: LegacyAliceAutonomousConte
   const handoffReason = memory.escalarHumano || fear?.requiresHuman ? "clinical_safety" as const
     : clinical === "clinical_safety" && fear?.generalInformationOnly && !remainingClinical ? null : clinical;
   return { ...context, messages: history.filter((message) => isAliceTextInput(message) && message.body.trim()), prompt,
-    handoffReason: handoffReason || (!isAliceTextInput(context.source) || !knowledge ? "model_requested" : null),
+    handoffReason: handoffReason || ((!isAliceTextInput(context.source) && !context.mediaTextContext) || !knowledge ? "model_requested" : null),
     memoryRuntime: { scope, guard: { scope, presentationAt: memory.apresentacaoFeitaEm, appointment, contactName: context.contactName, fear } } };
 }

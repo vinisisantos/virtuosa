@@ -85,6 +85,7 @@ test("PATCH só publica o modo autônomo se a entrada pendente for assumida sem 
   state.enqueueResult = { queued: false, reason: "processing" };
   assert.equal((await mode("agent")).status, 200, "turno já assumido não precisa de duplicata");
   assert.equal(state.events[1].resumeHistoricalPriceBy, "operator", "somente ação explícita autenticada");
+  assert.equal(state.events[1].resumeMediaTextBy, "operator", "retomada de mídia exige a ativação autenticada do chat");
 });
 
 test("retomada dirigida não ativa outra fonte nem se sobrepõe à saída posterior", async () => {

@@ -74,6 +74,7 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
         resumeSoftFailureBy: operator,
         resumeClinicalFearBy,
         resumeEmptyEnvelopeBy: operator,
+        resumeMediaTextBy: operator,
       }, tx, activatedAt, now);
       if (!turn.queued && !["processing", "sending", "sent"].includes(turn.reason)) {
         throw new AiAssistantError(turn.reason === "booking_not_excluded"
