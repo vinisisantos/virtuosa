@@ -177,7 +177,7 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
         NOT: { type: "secretEncryptedMessage", body: "" } },
         select: { id: true, body: true, fromMe: true, status: true, type: true, respondedByName: true, respondedBy: true,
           timestamp: true, createdAt: true }, orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30 });
-      const exchange = selectSbcSchedulingExchange(history.reverse());
+      const exchange = selectSbcSchedulingExchange(history.reverse(), now);
       if (exchange?.reply.id === source.id && !exchange.slot) {
         const [escalated, ledger] = await Promise.all([
           tx.leadMemory.findFirst({ where: { conversationId: params.conversationId, unidade: "SBC", escalarHumano: true }, select: { id: true } }),

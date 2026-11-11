@@ -21,6 +21,7 @@ import { prepareAliceAudioTurn } from "@/lib/alice/audio/prepare";
 import { markCompletedAliceRepliesRead } from "@/lib/ai-assistant/autonomy/answered-read";
 import { sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
 import { aliceFearPolicy } from "@/lib/alice/fear-policy";
+import { sbcOutOfHoursReply } from "@/lib/ai-assistant/autonomy/out-of-hours";
 
 type BookingFollowup = { kind: "booking_followup"; version: 1; questions: string[]; startTime: string;
   payload?: AliceTurnPayload; messages?: string[] };
@@ -147,6 +148,19 @@ export async function processAliceAutonomousTurn(
     // Turnos antigos passam pelas travas, mas não recebem resumo inventado nem nova geração.
     if (memoryRuntime && messages.length && !payload) payload = legacyAliceTurnPayload(messages);
     if (payload && !memoryRuntime) return human("model_requested", "memory_path_disabled");
+    if (!messages.length && !bookingFollowup && !turn.firstSentAt && !turn.appointmentId && turn.nextMessageIndex === 0
+      && !context.memoryRuntime?.guard.appointment && !context.prompt.DADOS_AGENDA_ATUAIS) {
+      const availabilityReply = sbcOutOfHoursReply(context, now());
+      if (availabilityReply) {
+        messages = [availabilityReply];
+        if (memoryRuntime) payload = { version: 1, persistMemory: false, proposal: { resposta: messages,
+          memoria: { resumo: "Resposta operacional sobre a grade, sem atualização de fatos da cliente." },
+          seApresentouNestaResposta: false, escalarHumano: false, confidence: "high", usedKnowledge: [] } };
+        const saved = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
+          data: { messagesJson: payload || messages, usageRecorded: turn.usageRecorded || !turn.generationStartedAt } });
+        if (!saved.count) return "skipped";
+      }
+    }
     if (!messages.length) {
       if (!bookingFollowup && !context.memoryRuntime?.guard.fear?.requiresHuman && looksLikeSchedulingExchange(context.messages)) {
         if (!deps.schedule) return human("model_requested", "trusted_booking_unavailable");

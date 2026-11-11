@@ -7,6 +7,7 @@ import { applySbcPromotionValidity, SBC_PROMOTION_VALIDITY_INSTRUCTIONS } from "
 import { aliceContinuityInstructions } from "@/lib/alice/context-controls";
 import { aliceFearInstructions, aliceFearPolicy } from "@/lib/alice/fear-policy";
 import { SBC_VARIABLE_OFFER_INSTRUCTIONS } from "@/lib/ai-assistant/evaluation-offer-policy";
+import { SBC_OUT_OF_HOURS_INSTRUCTIONS } from "@/lib/ai-assistant/sbc-attendance-hours";
 
 export type AiAssistantUsage = { input: number; output: number };
 
@@ -172,6 +173,7 @@ export function buildAliceAssistantRequest(input: unknown) {
         "Quando for apropriado sugerir avaliação em SBC, escolha somente horários futuros incluídos em HORARIOS_SBC, na hora local de São Paulo. A lista já considera o horário comercial e permite avaliações simultâneas. Apresente data completa no formato DD/MM/AAAA e horário no formato 10h ou 10h30, sem afirmar que a avaliação foi reservada. Não trate a lista como comprovação de feriado ou folga.",
         "Escolher o dia ou recusar um período ainda é negociação. Considere as mensagens seguidas da cliente juntas. Não repita o período recusado, não escale só por isso e não confirme agendamento sem uma escolha inequívoca e registro no CRM.",
         SBC_VARIABLE_OFFER_INSTRUCTIONS,
+        SBC_OUT_OF_HOURS_INSTRUCTIONS,
       ] : []),
       "Se o cliente não perguntar preço, não introduza preço espontaneamente. Se perguntar, use somente o valor explícito na base. Só informe a marca do produto quando o cliente perguntar diretamente.",
       "Responda primeiro ao que a pessoa realmente perguntou. Não introduza espontaneamente detalhes técnicos, lacunas da base ou ressalvas sobre informações que ela não pediu.",

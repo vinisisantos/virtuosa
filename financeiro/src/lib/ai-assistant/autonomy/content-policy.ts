@@ -2,6 +2,7 @@ import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-pol
 import { offeredWeekdaysMatchDates } from "@/lib/ai-assistant/evaluation-choice-parser";
 import { ALICE_MAX_OFFERED_SLOTS, aliceEvaluationAllowedPeriods, aliceOfferClaimsUnsupportedScarcity,
   evaluationSlotPeriod } from "@/lib/ai-assistant/evaluation-offer-policy";
+import { withoutSbcAttendanceDescriptions } from "@/lib/ai-assistant/sbc-attendance-hours";
 
 type Clock = { index: number; length: number; minute: number; time: string };
 const normalize = (text: string) => text.normalize("NFKD").replace(/\p{Diacritic}|\p{Cf}/gu, "").toLowerCase();
@@ -33,7 +34,7 @@ export function aliceAutonomySchedulingTextValid(messages: string[], now = new D
   };
   for (const message of messages) {
     if (aliceOfferClaimsUnsupportedScarcity(message)) return false;
-    const text = normalize(message);
+    const text = withoutSbcAttendanceDescriptions(normalize(message));
     if (!offeredWeekdaysMatchDates(text, dateKeys)) return false;
     const dates = [...text.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/gu)];
     const times = schedulingClocks(text);

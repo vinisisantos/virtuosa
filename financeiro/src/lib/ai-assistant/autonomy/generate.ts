@@ -7,6 +7,7 @@ import { ALICE_AUTONOMY_MODEL, aliceAutonomyCostMicroUsd, aliceAutonomyResponseC
 import { generateAliceStructuredReply } from "@/lib/alice/structured-generation";
 import type { AliceStructuredOutput } from "@/lib/alice/schema";
 import { aliceFearInstructions } from "@/lib/alice/fear-policy";
+import { SBC_SCHEDULING_RETRY_INSTRUCTIONS } from "@/lib/ai-assistant/sbc-attendance-hours";
 
 export type AutonomousGeneration = {
   messages: string[]; needsHuman: boolean; model: string; inputTokens: number; outputTokens: number;
@@ -42,7 +43,7 @@ export async function generateAliceAutonomousReply(context: AliceAutonomousConte
     + "A agenda só é registrada pelo fluxo do CRM após escolha inequívoca; nunca diga que reservou por conta própria. "
     + "Apresente-se como Alice, assistente virtual da Virtuosa, quando ainda não houver apresentação. Não imite a identidade de uma atendente humana. "
     + "Se não tiver base factual, se houver ambiguidade ou orientação clínica, marque needsHuman=true. Escreva somente a próxima etapa pertinente.";
-  if (context.schedulingRetry) request.system += "\nCORRECAO_DE_HORARIOS: a resposta anterior sugeriu uma data ou horário que o sistema não pode enviar. Nesta recuperação, não ofereça data nem horário específico. Responda à dúvida direta com informações já confirmadas no contexto, reconheça a preferência ampla de período informada pela cliente e, se necessário, pergunte qual dia prefere para a equipe confirmar as opções. Não afirme que verificou disponibilidade ou que agendou.";
+  if (context.schedulingRetry) request.system += `\n${SBC_SCHEDULING_RETRY_INSTRUCTIONS}`;
   if (context.bookingFollowup) {
     request.system += "\nDUVIDAS_APOS_AGENDAMENTO: o CRM já registrou a avaliação e submeteu a confirmação com endereço. Responda somente às dúvidas pendentes em exatamente uma mensagem, usando a base aprovada e o acolhimento necessário. Não repita confirmação ou endereço, não ofereça horários nem outro agendamento. A submissão não comprova entrega ou leitura. Se faltar base ou houver orientação clínica individual, marque needsHuman=true.";
     const questions = context.prompt.MENSAGENS_RECENTES_SEM_RESPOSTA;

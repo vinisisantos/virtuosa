@@ -31,6 +31,12 @@ export function aliceEvaluationAllowedPeriods(input: unknown, now: Date): Readon
     const text = normalize(message.text);
     const mentions = [...text.matchAll(/\b(manha|tarde|noite)\b/gu)];
     if (!mentions.length) {
+      const requestedTime = text.match(/\b(?:so|somente|apenas|prefiro|consigo|posso)(?:\s+(?:as|a|ser|ir|vir|agendar|marcar))?\s+(\d{1,2})(?:h(\d{2})?|:(\d{2}))(?![\p{L}\p{N}])/u);
+      if (requestedTime && !/\bnao\s+(?:posso|consigo)\b/u.test(text) && Number(requestedTime[1]) <= 23
+        && Number(requestedTime[2] || requestedTime[3] || 0) < 60) {
+        const period = evaluationSlotPeriod(`${requestedTime[1].padStart(2, "0")}:${requestedTime[2] || requestedTime[3] || "00"}`);
+        preferred = new Set([period]); excluded.delete(period);
+      }
       if (/\b(?:qualquer (?:horario|periodo)|tanto faz|sou flexivel)\b/u.test(text)) { preferred = null; excluded.clear(); }
       continue;
     }
@@ -67,7 +73,7 @@ export function aliceOfferClaimsUnsupportedScarcity(value: string): boolean {
     if (/\b(?:nao (?:sao|temos|ha)(?: as| os)?|nao (?:posso|podemos) (?:afirmar|dizer|garantir)(?: que (?:sao|sejam)(?: as| os)?)?|sem (?:afirmar|dizer))\s*$/u.test(before)
       || /^\s*\?/u.test(after)) continue;
     if (claim[0].startsWith("so ") || !/[\p{L}\p{N}]/u.test(before)
-      || /[.!?:]\s*$/u.test(before) || /\b(?:sao|temos|restam|aproveite|garanta)(?: as| os)?\s*$/u.test(before)) return true;
+      || /[.!?:]\s*$/u.test(before) || /\b(?:sao|temos|tenho(?: uma)?|restam|aproveite|garanta)(?: as| os)?\s*$/u.test(before)) return true;
   }
   return false;
 }

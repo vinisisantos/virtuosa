@@ -4,6 +4,7 @@ import { readAliceContinuityControls } from "@/lib/alice/context-controls";
 import type { AliceMemoryScope } from "@/lib/alice/memory-input";
 import { ALICE_STRUCTURED_OUTPUT_JSON_SCHEMA } from "@/lib/alice/schema";
 import { aliceFearInstructions } from "@/lib/alice/fear-policy";
+import { SBC_SCHEDULING_RETRY_INSTRUCTIONS } from "@/lib/ai-assistant/sbc-attendance-hours";
 
 export type AliceStructuredContext = { scope: AliceMemoryScope; prompt: unknown; schedulingRetry?: boolean; bookingFollowup?: boolean };
 export type AliceStructuredRequestErrorCode = "invalid_scope" | "invalid_context" | "context_too_large";
@@ -33,7 +34,6 @@ const structuredInstructions = [
 
 const repairInstruction = "CORRECAO_DE_FORMATO: a tentativa anterior não passou pela validação local. Gere novamente a partir do mesmo contexto, respeitando todos os tipos, campos permitidos, resumo obrigatório, limites e motivo de escalonamento quando necessário. Não adicione fatos novos nem afirme que houve envio.";
 const wordLimitRepairInstruction = "CORRECAO_DE_EXTENSAO: a resposta anterior ultrapassou o limite local. Gere exatamente uma mensagem curta com no máximo 60 palavras. Responda primeiro à dúvida mais recente, usando somente fatos aprovados e mantendo as salvaguardas necessárias. Omita apresentação, repetição de contexto e convite que não seja necessário para dar continuidade. Não ultrapasse 60 palavras.";
-const schedulingRetryInstruction = "CORRECAO_DE_HORARIOS: a resposta anterior sugeriu uma data ou horário que o sistema não pode enviar. Nesta recuperação, não ofereça data nem horário específico. Responda à dúvida direta com informações já confirmadas no contexto, reconheça a preferência ampla de período informada pela cliente e, se necessário, pergunte qual dia prefere para a equipe confirmar as opções. Não afirme que verificou disponibilidade ou que agendou.";
 const bookingFollowupInstruction = "COMPLEMENTO_APOS_AGENDAMENTO: o CRM já registrou a avaliação e submeteu a mensagem de confirmação neste turno. Produza exatamente uma mensagem para responder somente às dúvidas pendentes informadas pelo servidor. Acolha o medo geral quando presente e use apenas a base aprovada; não repita a confirmação nem o endereço já enviados, não ofereça novos horários ou outro agendamento e não repita apresentação. Não afirme que a cliente leu a confirmação. Se faltar conteúdo aprovado ou a dúvida exigir avaliação clínica individual, marque escalarHumano=true com o motivo; o registro da avaliação permanece sob controle do CRM.";
 
 export function buildAliceStructuredRequest(context: AliceStructuredContext, repair: boolean | "word_limit" = false) {
@@ -53,7 +53,7 @@ export function buildAliceStructuredRequest(context: AliceStructuredContext, rep
   const fearInstructions = aliceFearInstructions(pending.length
     ? { ...prompt, CONVERSA: [{ role: "cliente", text: pending.join(" ") }] } : context.prompt);
   if (fearInstructions) request.system += `\n${fearInstructions}`;
-  if (context.schedulingRetry) request.system += `\n${schedulingRetryInstruction}`;
+  if (context.schedulingRetry) request.system += `\n${SBC_SCHEDULING_RETRY_INSTRUCTIONS}`;
   if (context.bookingFollowup) request.system += `\n${bookingFollowupInstruction}`;
   if (Buffer.byteLength(JSON.stringify(request), "utf8") > 80_000) throw new AliceStructuredRequestError("context_too_large");
   return request;

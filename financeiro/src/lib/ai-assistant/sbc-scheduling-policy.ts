@@ -1,6 +1,7 @@
 import { saoPauloDateKey } from "#lib/date-filter";
 import { normalizeWhatsAppMessageStatus } from "#lib/whatsapp/message-status";
 import { chooseOfferedEvaluationSlot } from "#lib/ai-assistant/evaluation-choice-parser";
+import { sbcAttendanceHours } from "#lib/ai-assistant/sbc-attendance-hours";
 
 type Message = { body: string; fromMe: boolean; status: string };
 
@@ -21,9 +22,9 @@ export function buildSbcEvaluationOptions(now: Date, days = 7): string[] {
   for (let day = 0; day < count; day += 1) {
     const key = addDays(first, day);
     const weekday = dateAtNoon(key).getUTCDay();
-    if (weekday === 0) continue;
-    const firstMinute = weekday === 6 ? 8 * 60 : 10 * 60;
-    const lastMinute = weekday === 6 ? 13 * 60 : 20 * 60;
+    const hours = sbcAttendanceHours(weekday);
+    if (!hours) continue;
+    const { firstMinute, lastMinute } = hours;
     for (let minute = firstMinute; minute <= lastMinute; minute += 30) {
       const time = `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
       if (new Date(`${key}T${time}:00-03:00`).getTime() > now.getTime()) slots.push(`${key}T${time}`);
