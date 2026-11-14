@@ -3,6 +3,7 @@ import crypto from 'crypto';
 
 import { prisma } from "@/lib/db";
 import { findAuthorizedConversation } from "@/lib/whatsapp/conversation-access";
+import { isManualOnlyPhone } from "@/lib/manual-only-contact";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || 'http://localhost:8080',
@@ -42,8 +43,12 @@ export async function PATCH(
       }, { status: 409 });
     }
 
+    const manualOnlyContact = conversation.contact
+      ? await isManualOnlyPhone(conversation.contact.phone)
+      : false;
+
     // Enviar mensagem de despedida via WhatsApp
-    if (sendGoodbye && conversation.instance && conversation.contact) {
+    if (sendGoodbye && !manualOnlyContact && conversation.instance && conversation.contact) {
       const { url, apiKey } = getEvolutionConfig();
       const clientName = conversation.contact.name || '';
       const greeting = clientName ? `Obrigado ${clientName} pelo contato!` : 'Obrigado pelo contato!';
@@ -67,7 +72,7 @@ export async function PATCH(
     }
 
     // Enviar link de pesquisa (Survey) SEMPRE que fechar o chat
-    if (conversation.instance && conversation.contact) {
+    if (!manualOnlyContact && conversation.instance && conversation.contact) {
       const { url, apiKey } = getEvolutionConfig();
       const token = crypto.randomUUID();
       const baseUrl = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3000';

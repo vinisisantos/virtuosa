@@ -419,6 +419,10 @@ model Client {
   userId              String?
   user                User?     @relation(fields: [userId], references: [id])
   originUnit          String?
+  manualOnly          Boolean   @default(false)
+  manualOnlyPhoneKey  String?
+  referralsMade       ClientReferral[] @relation("ClientReferralReferrer")
+  referralsReceived   ClientReferral[] @relation("ClientReferralReferred")
 
   @@index([name])
   @@index([unit])
@@ -428,6 +432,28 @@ model Client {
   @@index([source])
   @@index([unit, isActive, arrivedAt])
   @@index([unit, isActive, createdAt])
+  @@index([manualOnlyPhoneKey])
+}
+
+model ClientReferral {
+  id                    String        @id @default(uuid())
+  salesPipelineId       String?       @unique
+  referredClientId      String
+  referrerClientId      String?
+  referrerName          String
+  unit                  String
+  registeredByUserId    String?
+  registeredByName      String
+  idempotencyKey        String        @unique
+  note                  String?
+  createdAt             DateTime      @default(now())
+  salesPipeline         SalesPipeline? @relation(fields: [salesPipelineId], references: [id], onDelete: SetNull)
+  referredClient        Client        @relation("ClientReferralReferred", fields: [referredClientId], references: [id], onDelete: Restrict)
+  referrerClient        Client?       @relation("ClientReferralReferrer", fields: [referrerClientId], references: [id], onDelete: SetNull)
+
+  @@index([referrerClientId, unit, createdAt])
+  @@index([referredClientId, createdAt])
+  @@index([unit, createdAt])
 }
 
 model Package {
@@ -930,6 +956,7 @@ model SalesPipeline {
   pipeline                    Pipeline?                @relation(fields: [pipelineId], references: [id])
   pipelineStage               PipelineStage?           @relation(fields: [stageId], references: [id])
   saleItems                   PipelineSaleItem[]
+  referral                    ClientReferral?
 
   @@index([stage])
   @@index([clientId])

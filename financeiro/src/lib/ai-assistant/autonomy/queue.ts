@@ -5,6 +5,7 @@ import { markCompletedAliceRepliesRead } from "@/lib/ai-assistant/autonomy/answe
 import { loadAliceAutonomyConfig } from "@/lib/ai-assistant/autonomy/config";
 import { currentAliceAppointment } from "@/lib/alice/current-appointment";
 import { phoneLookupKey } from "@/lib/phone";
+import { manualOnlyPhoneKey } from "@/lib/manual-only-contact";
 import { selectSbcSchedulingExchange } from "@/lib/ai-assistant/sbc-scheduling-exchange";
 import { aliceMediaTextContext } from "@/lib/ai-assistant/autonomy/media-text";
 import { ALICE_AUTONOMY_CONFIG_KEY, ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_LEASE_MS, aliceAutonomyAvailableAt,
@@ -61,13 +62,18 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
   activatedAt: Date, now: Date) {
     const [conversation, source] = await Promise.all([
       tx.whatsAppConversation.findFirst({ where: { id: params.conversationId, instanceId: params.instanceId }, select: {
-        instanceId: true, status: true, blockedAt: true, archivedAt: true, commercialPaused: true, aiMode: true, aiModeUpdatedAt: true, aiModeUpdatedBy: true, instance: { select: { unit: true } },
+        instanceId: true, status: true, blockedAt: true, archivedAt: true, commercialPaused: true, aiMode: true, aiModeUpdatedAt: true, aiModeUpdatedBy: true,
+        contact: { select: { phone: true } }, instance: { select: { unit: true } },
       } }),
       tx.whatsAppMessage.findFirst({ where: { id: params.sourceMessageId, conversationId: params.conversationId, fromMe: false,
         status: { not: "deleted" }, NOT: { type: "secretEncryptedMessage", body: "" } },
         select: { id: true, timestamp: true, createdAt: true, type: true, body: true } }),
     ]);
     if (!conversation || conversation.instance.unit !== "SBC" || !source || source.timestamp.getTime() > now.getTime() + 30_000) return { queued: false, reason: "invalid_source" };
+    const policyPhoneKey = manualOnlyPhoneKey(conversation.contact.phone);
+    if (policyPhoneKey && await tx.client.findFirst({ where: { manualOnlyPhoneKey: policyPhoneKey }, select: { id: true } })) {
+      return { queued: false, reason: "manual_only" };
+    }
     if (params.origin === "inbound" && (source.timestamp < activatedAt || source.createdAt < activatedAt)) {
       return { queued: false, reason: "before_activation" };
     }

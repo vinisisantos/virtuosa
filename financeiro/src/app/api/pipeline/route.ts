@@ -38,7 +38,9 @@ import {
   replacePipelineSaleItems,
   SaleItemValidationError,
 } from '@/lib/pipeline/sale-items';
-import { canonicalPipelineSource } from '@/lib/lead-source';
+import { canonicalPipelineSource, NOT_LEAD_SOURCE } from '@/lib/lead-source';
+import { cancelManualOnlyAutomationQueues, manualOnlyPhoneKey } from '@/lib/manual-only-contact';
+import { normalizedPhoneKeySql } from '@/lib/whatsapp/phone-sql';
 import {
   classifySaleItemsForCampaign,
   resolveCampaignOfferForClient,
@@ -90,6 +92,134 @@ function dispatchGroupNoticeAfterCommit(noticeId?: string | null) {
 }
 
 type EvaluationScheduleConflict = NonNullable<Awaited<ReturnType<typeof findEvaluationScheduleConflict>>>;
+
+type ReferralAttribution = {
+  referrerClientId: string | null;
+  referrerName: string;
+  idempotencyKey: string;
+  note: string | null;
+};
+type ReferralDraft = {
+  referrerClientId: string | null;
+  externalReferrerName: string | null;
+  idempotencyKey: string;
+  note: string | null;
+};
+
+class ReferralConflictError extends Error {}
+class ReferralValidationError extends Error {}
+
+function parseReferralAttribution(value: unknown): ReferralDraft | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object' || Array.isArray(value)) throw new ReferralValidationError('Dados do indicador inválidos');
+  const input = value as Record<string, unknown>;
+  const referrerClientId = typeof input.referrerClientId === 'string' ? input.referrerClientId.trim() : '';
+  const referrerName = typeof input.referrerName === 'string' ? input.referrerName.trim() : '';
+  if (Boolean(referrerClientId) === Boolean(referrerName)) {
+    throw new ReferralValidationError('Selecione um cliente indicador ou informe um nome externo');
+  }
+  const idempotencyKey = typeof input.idempotencyKey === 'string' ? input.idempotencyKey.trim() : '';
+  if (idempotencyKey.length < 8 || idempotencyKey.length > 120) {
+    throw new ReferralValidationError('Atualize o formulário e tente registrar a indicação novamente');
+  }
+  if (referrerName.length > 160) throw new ReferralValidationError('O nome do indicador deve ter até 160 caracteres');
+  const note = typeof input.note === 'string' ? input.note.trim() : '';
+  if (note.length > 500) throw new ReferralValidationError('A observação deve ter até 500 caracteres');
+  return {
+    referrerClientId: referrerClientId || null,
+    externalReferrerName: referrerName || null,
+    idempotencyKey,
+    note: note || null,
+  };
+}
+
+async function resolveReferralAttribution(value: unknown, unit: string): Promise<ReferralAttribution | null> {
+  const draft = parseReferralAttribution(value);
+  if (!draft) return null;
+  if (draft.referrerClientId) {
+    const referrer = await prisma.client.findFirst({
+      where: { id: draft.referrerClientId, unit, isActive: true },
+      select: { id: true, name: true },
+    });
+    if (!referrer) throw new ReferralValidationError('O cliente indicador não está disponível nesta unidade');
+    return {
+      referrerClientId: draft.referrerClientId,
+      referrerName: referrer.name,
+      idempotencyKey: draft.idempotencyKey,
+      note: draft.note,
+    };
+  }
+  return {
+    referrerClientId: null,
+    referrerName: draft.externalReferrerName!,
+    idempotencyKey: draft.idempotencyKey,
+    note: draft.note,
+  };
+}
+
+function isIndicationSource(source: string) {
+  return source.trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '') === 'indicacao';
+}
+
+async function attachReferralToSale(tx: Prisma.TransactionClient, params: {
+  saleId: string;
+  referredClientId: string;
+  unit: string;
+  attribution: ReferralAttribution;
+  registeredByUserId: string;
+  registeredByName: string;
+}) {
+  const referredClient = await tx.client.findFirst({
+    where: { id: params.referredClientId, unit: params.unit },
+    select: { id: true, name: true, phone: true },
+  });
+  if (!referredClient) throw new ReferralConflictError('O cliente indicado não pertence à unidade desta venda');
+  if (params.attribution.referrerClientId === referredClient.id) {
+    throw new ReferralConflictError('O cliente não pode indicar a si mesmo');
+  }
+  if (params.attribution.referrerClientId) {
+    const referrer = await tx.client.findFirst({
+      where: { id: params.attribution.referrerClientId, unit: params.unit, isActive: true },
+      select: { id: true, name: true },
+    });
+    if (!referrer) throw new ReferralConflictError('O cliente indicador não está disponível nesta unidade');
+    params.attribution.referrerName = referrer.name;
+  }
+
+  const [existingForSale, existingForKey] = await Promise.all([
+    tx.clientReferral.findUnique({ where: { salesPipelineId: params.saleId } }),
+    tx.clientReferral.findUnique({ where: { idempotencyKey: params.attribution.idempotencyKey } }),
+  ]);
+  const isSameReferral = (existing: typeof existingForSale) => Boolean(existing
+    && existing.salesPipelineId === params.saleId
+    && existing.referredClientId === referredClient.id
+    && existing.referrerClientId === params.attribution.referrerClientId
+    && existing.referrerName === params.attribution.referrerName);
+  if (existingForSale || existingForKey) {
+    if (isSameReferral(existingForSale) && existingForSale?.idempotencyKey === params.attribution.idempotencyKey) return;
+    throw new ReferralConflictError('Esta venda já possui um indicador registrado');
+  }
+
+  await tx.clientReferral.create({
+    data: {
+      salesPipelineId: params.saleId,
+      referredClientId: referredClient.id,
+      referrerClientId: params.attribution.referrerClientId,
+      referrerName: params.attribution.referrerName,
+      unit: params.unit,
+      registeredByUserId: params.registeredByUserId,
+      registeredByName: params.registeredByName,
+      idempotencyKey: params.attribution.idempotencyKey,
+      note: params.attribution.note,
+    },
+  });
+  const policyKey = manualOnlyPhoneKey(referredClient.phone);
+  await tx.client.update({
+    where: { id: referredClient.id },
+    data: { manualOnly: true, manualOnlyPhoneKey: policyKey },
+  });
+  if (policyKey) await cancelManualOnlyAutomationQueues(policyKey, tx);
+}
 
 function scheduleConflictResponse(conflict: EvaluationScheduleConflict) {
   return NextResponse.json({
@@ -373,7 +503,9 @@ export async function POST(req: NextRequest) {
       whatsappInstanceId,
       closedAt,
       forceDuplicateName,
+      forceDuplicatePhone,
       forceScheduleConflict,
+      referral: submittedReferral,
     } = body;
 
     const requestedEvaluationClientName = Object.hasOwn(body, 'evaluationClientName')
@@ -389,13 +521,17 @@ export async function POST(req: NextRequest) {
     const ownerAssignedTo = guard.isAdmin ? (assignedTo ?? ownerScope?.ownerUserId ?? null) : guard.userId;
     const ownerAssignedName = guard.isAdmin ? assignedName : guard.userName;
     const targetUnit = guard.createUnit(unit);
+    const leadSource = canonicalPipelineSource(source || socialSource);
+    const referralAttribution = await resolveReferralAttribution(submittedReferral, targetUnit);
+    if (isIndicationSource(leadSource) && !referralAttribution) {
+      return NextResponse.json({ error: 'Informe quem indicou este cliente' }, { status: 400 });
+    }
     const evaluationSourceInstanceId = evaluationStartTime
       ? await resolveEvaluationGroupSource({
           request: req, unit: targetUnit, instanceId: whatsappInstanceId,
           conversationId: whatsappConversationId, clientPhone: contactPhone,
         })
       : null;
-    const leadSource = canonicalPipelineSource(source || socialSource);
     const placement = await resolvePipelinePlacement({
       unit: targetUnit,
       pipelineId,
@@ -466,7 +602,7 @@ export async function POST(req: NextRequest) {
     let resolvedClientId = typeof clientId === 'string' && clientId.trim() ? clientId.trim() : '';
 
     if (!resolvedClientId) {
-      const candidateClients = normalizedPhoneKey
+      const candidateClients = normalizedPhoneKey && !referralAttribution && forceDuplicatePhone !== true
         ? await prisma.client.findMany({
             where: {
               unit: targetUnit,
@@ -475,9 +611,29 @@ export async function POST(req: NextRequest) {
             },
             orderBy: { updatedAt: 'desc' },
             take: 10,
+            select: { id: true, name: true, phone: true, unit: true },
           })
         : [];
-      const existingClient = candidateClients.find((client) => phoneLookupKey(client.phone) === normalizedPhoneKey) || null;
+      const matchingPhoneClients = referralAttribution && normalizedPhoneKey && forceDuplicatePhone !== true
+        ? await prisma.$queryRaw<Array<{ id: string; name: string; phone: string | null; unit: string }>>(Prisma.sql`
+            SELECT id, name, phone, unit
+            FROM "Client"
+            WHERE unit = ${targetUnit} AND "isActive" = TRUE
+              AND ${normalizedPhoneKeySql(Prisma.sql`phone`)} = ${normalizedPhoneKey}
+            ORDER BY id
+            LIMIT 21
+          `)
+        : candidateClients.filter((client) => phoneLookupKey(client.phone) === normalizedPhoneKey);
+      if (referralAttribution && matchingPhoneClients.length > 0 && forceDuplicatePhone !== true) {
+        return NextResponse.json({
+          referralPhoneCollision: true,
+          message: 'Este telefone já está associado a um cadastro. Confirme se é a mesma pessoa antes de continuar.',
+          candidates: matchingPhoneClients.map(({ id, name, phone, unit: clientUnit }) => ({ id, name, phone, unit: clientUnit })),
+        }, { status: 409 });
+      }
+      const existingClient = forceDuplicatePhone === true
+        ? null
+        : matchingPhoneClients[0] || null;
       const clientStage = pipelineToClientStage[effectiveStage] || 'entrada';
 
       if (existingClient) {
@@ -490,13 +646,47 @@ export async function POST(req: NextRequest) {
             unit: targetUnit,
             originUnit: targetUnit,
             stage: clientStage,
-            source: leadSource,
+            source: referralAttribution && leadSource === NOT_LEAD_SOURCE ? 'indicacao' : leadSource,
+            ...(referralAttribution ? {
+              manualOnly: true,
+              manualOnlyPhoneKey: manualOnlyPhoneKey(contactPhone),
+            } : {}),
             notes: notes || null,
             arrivedAt: new Date(),
             userId: ownerAssignedTo || guard.userId,
           },
         });
         resolvedClientId = createdClient.id;
+      }
+    }
+
+    if (referralAttribution) {
+      if (resolvedClientId === referralAttribution.referrerClientId) {
+        return NextResponse.json({ error: 'O cliente não pode indicar a si mesmo' }, { status: 400 });
+      }
+      const referredClient = await prisma.client.findFirst({
+        where: { id: resolvedClientId, unit: targetUnit, isActive: true },
+        select: { id: true },
+      });
+      if (!referredClient) return NextResponse.json({ error: 'Cliente não encontrado nesta unidade' }, { status: 404 });
+
+      const priorReferral = await prisma.clientReferral.findUnique({
+        where: { idempotencyKey: referralAttribution.idempotencyKey },
+      });
+      if (priorReferral) {
+        const sameAttribution = priorReferral.referredClientId === resolvedClientId
+          && priorReferral.referrerClientId === referralAttribution.referrerClientId
+          && (referralAttribution.referrerClientId !== null || priorReferral.referrerName === referralAttribution.referrerName);
+        if (!sameAttribution || priorReferral.unit !== targetUnit || !priorReferral.salesPipelineId) {
+          return NextResponse.json({ error: 'Esta chave já foi usada em outra indicação' }, { status: 409 });
+        }
+        const priorSale = await prisma.salesPipeline.findFirst({
+          where: { id: priorReferral.salesPipelineId, unit: targetUnit },
+        });
+        if (priorSale && await canAccessPipelineDeal(priorSale, ownerScope)) {
+          return NextResponse.json({ ...priorSale, referralReplay: true });
+        }
+        return unitAccessDeniedResponse();
       }
     }
 
@@ -577,7 +767,7 @@ export async function POST(req: NextRequest) {
             stageId: placement.stageId,
             pipelineId: placement.pipelineId,
             value: normalizedSale || hasValue ? normalizedValue : existingEntry.value,
-            source: leadSource ?? existingEntry.source,
+            source: referralAttribution ? existingEntry.source : leadSource ?? existingEntry.source,
             assignedTo: ownerAssignedTo ?? existingEntry.assignedTo,
             assignedName: ownerAssignedName ?? existingEntry.assignedName,
             unit: targetUnit,
@@ -585,11 +775,19 @@ export async function POST(req: NextRequest) {
             leadId: leadId ?? existingEntry.leadId,
             ...(normalizedClosedAt ? { closedAt: normalizedClosedAt } : {}),
             ...(normalizedSale ? {
-              campaignIdSnapshot: campaignOffer?.campaignId || null,
-              campaignNameSnapshot: campaignOffer?.campaignName || null,
-              campaignAttributionSnapshot: campaignOffer?.attribution || null,
+              campaignIdSnapshot: campaignOffer?.campaignId || (referralAttribution ? existingEntry.campaignIdSnapshot : null),
+              campaignNameSnapshot: campaignOffer?.campaignName || (referralAttribution ? existingEntry.campaignNameSnapshot : null),
+              campaignAttributionSnapshot: campaignOffer?.attribution || (referralAttribution ? existingEntry.campaignAttributionSnapshot : null),
             } : {}),
           },
+        });
+        if (referralAttribution) await attachReferralToSale(tx, {
+          saleId: saved.id,
+          referredClientId: saved.clientId,
+          unit: saved.unit,
+          attribution: referralAttribution,
+          registeredByUserId: guard.userId,
+          registeredByName: guard.userName || 'Sistema',
         });
         if (evaluationStartTime && saved.clientName !== existingEntry.clientName && saved.clientId) {
           await tx.client.updateMany({ where: { id: saved.clientId, unit: saved.unit }, data: { name: saved.clientName } });
@@ -713,6 +911,14 @@ export async function POST(req: NextRequest) {
           campaignAttributionSnapshot: campaignOffer?.attribution || null,
         },
       });
+      if (referralAttribution) await attachReferralToSale(tx, {
+        saleId: saved.id,
+        referredClientId: saved.clientId,
+        unit: saved.unit,
+        attribution: referralAttribution,
+        registeredByUserId: guard.userId,
+        registeredByName: guard.userName || 'Sistema',
+      });
       if (normalizedSale) await replacePipelineSaleItems(tx, saved.id, normalizedSale.items);
       const appointment = evaluationStartTime
         ? await upsertPipelineEvaluationAppointment({
@@ -796,6 +1002,8 @@ export async function POST(req: NextRequest) {
       rescheduleNotification: { status: 'not_applicable' as const },
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof ReferralValidationError) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof ReferralConflictError) return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof AppointmentClientNameError) return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
     if (error instanceof EvaluationSchedulingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
@@ -838,6 +1046,7 @@ export async function PUT(req: NextRequest) {
       whatsappConversationId,
       whatsappInstanceId,
       forceScheduleConflict,
+      referral: submittedReferral,
     } = body;
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
@@ -848,6 +1057,7 @@ export async function PUT(req: NextRequest) {
       if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
       throw e;
     }
+    const referralAttribution = await resolveReferralAttribution(submittedReferral, existing.unit);
     const ownerScope = await resolvePipelineOwnerScope(req, guard);
     const existingClient = existing.clientId
       ? await prisma.client.findUnique({
@@ -950,6 +1160,22 @@ export async function PUT(req: NextRequest) {
     const isClosingAction =
       targetStage === 'fechado' &&
       (effectiveStage === 'fechado' || value !== undefined || hasProcedureSubmission);
+    const existingReferral = referralAttribution || (isClosingAction && isIndicationSource(existing.source || ''))
+      ? await prisma.clientReferral.findUnique({ where: { salesPipelineId: existing.id } })
+      : null;
+    if (isClosingAction && isIndicationSource(existing.source || '') && !existingReferral && !referralAttribution) {
+      return NextResponse.json({ error: 'Informe quem indicou este cliente antes de fechar a venda' }, { status: 400 });
+    }
+    if (referralAttribution) {
+      if (existing.clientId === referralAttribution.referrerClientId) {
+        return NextResponse.json({ error: 'O cliente não pode indicar a si mesmo' }, { status: 400 });
+      }
+      const referredClient = await prisma.client.findFirst({
+        where: { id: existing.clientId, unit: existing.unit },
+        select: { id: true },
+      });
+      if (!referredClient) return NextResponse.json({ error: 'Cliente não encontrado nesta unidade' }, { status: 404 });
+    }
     if (isClosingAction && !nextProcedureName) {
       return NextResponse.json({ error: 'Informe o procedimento fechado' }, { status: 400 });
     }
@@ -1013,6 +1239,14 @@ export async function PUT(req: NextRequest) {
 
     const updated = await prisma.$transaction(async (tx) => {
       const saved = await tx.salesPipeline.update({ where: { id }, data });
+      if (referralAttribution) await attachReferralToSale(tx, {
+        saleId: saved.id,
+        referredClientId: saved.clientId,
+        unit: saved.unit,
+        attribution: referralAttribution,
+        registeredByUserId: guard.userId,
+        registeredByName: guard.userName || 'Sistema',
+      });
       if (requestedEvaluationClientName && requestedEvaluationClientName !== existing.clientName && saved.clientId) {
         await tx.client.updateMany({ where: { id: saved.clientId, unit: saved.unit }, data: { name: requestedEvaluationClientName } });
       }
@@ -1134,6 +1368,8 @@ export async function PUT(req: NextRequest) {
     });
   } catch (error) {
     if (error instanceof AppointmentClientNameError) return NextResponse.json({ error: error.message, code: error.code }, { status: 400 });
+    if (error instanceof ReferralValidationError) return NextResponse.json({ error: error.message }, { status: 400 });
+    if (error instanceof ReferralConflictError) return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof CommercialError) return NextResponse.json({ error: error.message }, { status: 409 });
     if (error instanceof EvaluationSchedulingError) {
       return NextResponse.json({ error: error.message }, { status: 400 });

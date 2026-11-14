@@ -8,7 +8,7 @@ export function welcomeReceptionQuery(input: { conversationId: string; clientId:
     FROM "Automation" a
     JOIN "AppSetting" s ON s.key = ${WELCOME_SCHEDULER_KEY}
     JOIN "WhatsAppConversation" c ON c.id = ${input.conversationId} AND c."instanceId" = ${input.instanceId}
-    JOIN "Client" lead ON lead.id = ${input.clientId} AND lead.unit = ${input.unit}
+    JOIN "Client" lead ON lead.id = ${input.clientId} AND lead.unit = ${input.unit} AND lead."manualOnly" = false
     WHERE a.id = ${`${CAMPAIGN_WELCOME_TRIGGER}:${input.unit}`} AND a.unit = ${input.unit}
       AND a."triggerType" = ${CAMPAIGN_WELCOME_TRIGGER}
       AND (s.value::jsonb->>'readyAt') IS NOT NULL
@@ -31,7 +31,7 @@ export function claimWelcomeQuery(token: string, now: Date, onlyIds?: string[]) 
 export function welcomeContextQuery(id: string) {
   return Prisma.sql`
     SELECT j.*, a."isActive" AS "enabled", a."triggerConfig", a."updatedAt" AS "currentConfigUpdatedAt",
-      lead."campaignName", lead.unit AS "clientUnit", lead."isActive" AS "clientActive",
+      lead."campaignName", lead.unit AS "clientUnit", lead."isActive" AS "clientActive", lead."manualOnly" AS "clientManualOnly",
       c."blockedAt", c."archivedAt", c."closedAt", c.status AS "conversationStatus", c."lastKnownJid",
       contact.phone AS "currentPhone", i.name AS "instanceName", i.provider, i.status AS "instanceStatus",
       reply."userId" AS "currentReplyUserId", category."userId" AS "currentCategoryUserId",

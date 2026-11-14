@@ -41,6 +41,7 @@ import { getEvaluationScheduleUnitConfigByUnit } from "@/lib/whatsapp/evaluation
 import { dispatchMetadataForSend, dispatchSnapshot, parseDispatchRequest } from "@/lib/whatsapp/dispatch";
 import { loadAssignedAliceHandoff } from "@/lib/ai-assistant/delegated-access";
 import { AiAssistantError } from "@/lib/ai-assistant/policy";
+import { isManualOnlyPhone } from "@/lib/manual-only-contact";
 
 const getEvolutionConfig = () => ({
   url: process.env.EVOLUTION_API_URL || "http://localhost:8080",
@@ -299,6 +300,14 @@ export async function POST(req: Request) {
 
     if (!contact) {
       return NextResponse.json({ error: "Contato não encontrado" }, { status: 404 });
+    }
+
+    const automatedDispatch = body.automated === true || requireCallbackDue || body.dispatch !== undefined;
+    if (automatedDispatch && await isManualOnlyPhone(contact.phone)) {
+      return NextResponse.json({
+        error: "Este contato recebe apenas mensagens individuais enviadas por uma pessoa.",
+        code: "MANUAL_ONLY_CONTACT",
+      }, { status: 409 });
     }
 
     // 2. Se o frontend enviou uma instância específica

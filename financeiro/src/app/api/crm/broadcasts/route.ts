@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { manualOnlyPhoneKey } from "@/lib/manual-only-contact";
 
 // GET /api/crm/broadcasts — listar broadcasts
 export async function GET(req: NextRequest) {
@@ -93,6 +94,37 @@ export async function POST(req: NextRequest) {
       return true;
     });
 
+    const phoneKeys = [...new Set(recipientList.flatMap(({ phone }) => {
+      const key = manualOnlyPhoneKey(phone);
+      return key ? [key] : [];
+    }))];
+    const manualOnlyPhoneKeys = new Set<string>();
+    for (let offset = 0; offset < phoneKeys.length; offset += 500) {
+      const rows = await prisma.client.findMany({
+        where: { manualOnlyPhoneKey: { in: phoneKeys.slice(offset, offset + 500) } },
+        select: { manualOnlyPhoneKey: true },
+      });
+      for (const row of rows) {
+        if (row.manualOnlyPhoneKey) manualOnlyPhoneKeys.add(row.manualOnlyPhoneKey);
+      }
+    }
+    const skippedManualOnly = recipientList.filter((recipient) => {
+      const key = manualOnlyPhoneKey(recipient.phone);
+      return Boolean(key && manualOnlyPhoneKeys.has(key));
+    }).length;
+    recipientList = recipientList.filter((recipient) => {
+      const key = manualOnlyPhoneKey(recipient.phone);
+      return !key || !manualOnlyPhoneKeys.has(key);
+    });
+
+    if (recipientList.length === 0) {
+      return NextResponse.json({
+        error: "Todos os contatos selecionados recebem apenas mensagens individuais.",
+        code: "MANUAL_ONLY_CONTACTS",
+        skippedManualOnly,
+      }, { status: 409 });
+    }
+
     // Create broadcast + recipients
     const broadcast = await prisma.broadcast.create({
       data: {
@@ -121,6 +153,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       id: broadcast.id,
       totalRecipients: recipientList.length,
+      skippedManualOnly,
       status: "sending",
     }, { status: 201 });
   } catch (error) {
@@ -164,6 +197,7 @@ async function sendBroadcastMessages(broadcastId: string, message: string) {
           contactId: recipient.contactPhone,
           body: message,
           type: "text",
+          automated: true,
         }),
       });
 

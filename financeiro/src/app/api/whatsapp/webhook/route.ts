@@ -59,6 +59,7 @@ import {
   whatsAppStatusUpdateFilter,
 } from "@/lib/whatsapp/message-status";
 import { sendAutomationText } from "@/lib/whatsapp/automation-sender";
+import { isManualOnlyPhone } from "@/lib/manual-only-contact";
 import {
   extractDirectFormLeadName,
   formLeadWelcomeMessage,
@@ -753,6 +754,8 @@ async function sendCallBlockNotice(params: {
   remoteJid?: string | null;
   message: string;
 }) {
+  if (await isManualOnlyPhone(params.phone)) return;
+
   const provider = getInstanceProvider(params.dbInstance);
 
   if (provider === "waha") {

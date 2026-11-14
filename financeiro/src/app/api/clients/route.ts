@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db';
 import { requireUnitGuard, UnitAccessDeniedError, unitAccessDeniedResponse } from '@/lib/unit-guard';
 import { parseDateTimeRange } from '@/lib/date-filter';
 import { normalizeCampaignNameForWrite } from '@/lib/campaign-labels';
+import { cancelManualOnlyAutomationQueues, manualOnlyPhoneKey } from '@/lib/manual-only-contact';
 
 /* GET — List clients with search + pagination */
 export async function GET(req: NextRequest) {
@@ -182,7 +183,7 @@ export async function PUT(req: NextRequest) {
     if (!id) return NextResponse.json({ error: 'ID obrigatório' }, { status: 400 });
 
     // UNIT GUARD: Validate record belongs to user's unit
-    const existing = await prisma.client.findUnique({ where: { id }, select: { unit: true } });
+    const existing = await prisma.client.findUnique({ where: { id }, select: { unit: true, phone: true, manualOnly: true } });
     if (!existing) return NextResponse.json({ error: 'Cliente não encontrado' }, { status: 404 });
     try { guard.enforceUnit(existing.unit); } catch (e) {
       if (e instanceof UnitAccessDeniedError) return unitAccessDeniedResponse();
@@ -190,6 +191,11 @@ export async function PUT(req: NextRequest) {
     }
     if (!guard.isAdmin) delete data.unit;
     delete data.originUnit;
+    delete data.manualOnly;
+    delete data.manualOnlyPhoneKey;
+    if (existing.manualOnly && Object.prototype.hasOwnProperty.call(data, 'phone')) {
+      data.manualOnlyPhoneKey = manualOnlyPhoneKey(data.phone);
+    }
 
     // ── Sanitize Date & Number fields ──────────────────────────────────────
     // JSON transit sends these as strings or null; Prisma DateTime fields
@@ -217,6 +223,10 @@ export async function PUT(req: NextRequest) {
 
     const shouldSyncCampaignName = Object.prototype.hasOwnProperty.call(data, 'campaignName');
     const client = await prisma.$transaction(async (tx) => {
+      if (existing.manualOnly && existing.phone !== data.phone && existing.phone) {
+        const previousPhoneKey = manualOnlyPhoneKey(existing.phone);
+        if (previousPhoneKey) await cancelManualOnlyAutomationQueues(previousPhoneKey, tx);
+      }
       const saved = await tx.client.update({ where: { id }, data });
       if (shouldSyncCampaignName) {
         await tx.salesPipeline.updateMany({

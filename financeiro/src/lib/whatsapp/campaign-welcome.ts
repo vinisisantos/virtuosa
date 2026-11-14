@@ -28,7 +28,7 @@ export async function enqueueWelcome(input: ReceptionInput & { contactPhone: str
 
 export type WelcomeContext = WhatsAppWelcomeJob & {
   enabled: boolean; triggerConfig: unknown; currentConfigUpdatedAt: Date; campaignName: string | null;
-  clientUnit: string; clientActive: boolean; blockedAt: Date | null; archivedAt: Date | null; closedAt: Date | null;
+  clientUnit: string; clientActive: boolean; clientManualOnly: boolean; blockedAt: Date | null; archivedAt: Date | null; closedAt: Date | null;
   conversationStatus: string; lastKnownJid: string | null; currentPhone: string; instanceName: string;
   provider: string; instanceStatus: string; instanceUnit: string | null; capturesLeads: boolean;
   hasOtherOutbound: boolean; hasReply: boolean; leftInitialStage: boolean; hasAppointment: boolean;
@@ -37,6 +37,7 @@ export type WelcomeContext = WhatsAppWelcomeJob & {
 };
 export function welcomeCancellation(context: WelcomeContext, now = new Date()) {
   if (!context.enabled) return "automation_paused";
+  if (context.clientManualOnly) return "manual_only_contact";
   if (!welcomeUnit(context.unit, context.instanceId) || context.instanceUnit !== context.unit || context.clientUnit !== context.unit) return "unit_changed";
   if (!context.clientActive || !context.capturesLeads || context.currentPhone !== context.contactPhone) return "contact_changed";
   if (context.blockedAt || context.archivedAt || context.closedAt || ['closed', 'resolved', 'lost'].includes(context.conversationStatus)) return "conversation_closed_or_blocked";

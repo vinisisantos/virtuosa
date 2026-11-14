@@ -15,6 +15,35 @@ export async function GET(req: NextRequest) {
     const url = new URL(req.url);
     const q = url.searchParams.get('q')?.trim() || '';
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '8'), 20);
+    const purpose = url.searchParams.get('purpose');
+
+    if (purpose === 'referrer') {
+      const id = url.searchParams.get('id')?.trim();
+      const unitWhere = guard.unitFilter ? { unit: guard.unitFilter } : {};
+      if (id) {
+        const client = await prisma.client.findFirst({
+          where: { id, isActive: true, ...unitWhere },
+          select: { id: true, name: true, unit: true },
+        });
+        return NextResponse.json({ client });
+      }
+      if (q.length < 2) return NextResponse.json({ clients: [] });
+
+      const clients = await prisma.client.findMany({
+        where: {
+          isActive: true,
+          ...unitWhere,
+          OR: [
+            { name: { contains: q } },
+            { phone: { contains: q } },
+          ],
+        },
+        select: { id: true, name: true, unit: true },
+        orderBy: { name: 'asc' },
+        take: limit,
+      });
+      return NextResponse.json({ clients });
+    }
 
     if (q.length < 2) {
       return NextResponse.json({ clients: [] });

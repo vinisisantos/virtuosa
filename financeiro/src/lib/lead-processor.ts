@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
 import { assignLeadToOperator } from '@/lib/lead-assigner';
+import { manualOnlyPhoneKey } from '@/lib/manual-only-contact';
 
 export interface LeadData {
   leadgenId: string;
@@ -234,7 +235,10 @@ export async function processLead(data: LeadData): Promise<{
       await prisma.client.update({
         where: { id: clientId },
         data: {
-          ...(phone && !existingClient.phone ? { phone } : {}),
+          ...(phone && !existingClient.phone ? {
+            phone,
+            ...(existingClient.manualOnly ? { manualOnlyPhoneKey: manualOnlyPhoneKey(phone) } : {}),
+          } : {}),
           ...(email && !existingClient.email ? { email } : {}),
           ...(!existingClient.campaignName && data.campaignName ? {
             campaignName: data.campaignName,

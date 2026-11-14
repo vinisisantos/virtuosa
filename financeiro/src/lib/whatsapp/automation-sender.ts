@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { isManualOnlyPhone } from "@/lib/manual-only-contact";
 import { ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_UNIT } from "@/lib/ai-assistant/autonomy/policy";
 import { ALICE_ATTENDANT_NAME } from "@/lib/whatsapp/inbox-attendant";
 import {
@@ -30,6 +31,9 @@ export async function sendAutomationText(params: {
   if (params.aliceAutonomous && !conversation) throw new Error("Conversa fora da instância do piloto.");
   if (conversation?.blockedAt) {
     throw new Error("Contato bloqueado no WhatsApp. A automação não foi enviada.");
+  }
+  if (await isManualOnlyPhone(params.contactPhone)) {
+    throw new Error("Contato configurado para atendimento manual. A automação não foi enviada.");
   }
 
   await params.beforeSend?.();

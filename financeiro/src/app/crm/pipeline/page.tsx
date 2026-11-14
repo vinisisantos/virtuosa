@@ -24,6 +24,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { DatePicker } from "@/components/ui/date-picker";
 import { MultiProcedureSelector } from "@/components/multi-procedure-selector";
 import { AppointmentClientNameField } from "@/components/appointment-client-name-field";
+import { ClientReferrerAutocomplete, type ReferrerChoice } from "@/components/client-referrer-autocomplete";
 import { normalizeAppointmentClientName, APPOINTMENT_CLIENT_NAME_ERROR } from "@/lib/appointment-client-name";
 import { evaluationProcedureDraft } from "@/lib/evaluation-procedure-draft";
 import { EvaluationProcedureField } from "@/components/evaluation-procedure-field";
@@ -70,6 +71,14 @@ type ScheduleConflict = {
   professionalName?: string | null;
 };
 const NEW_DEAL_SOURCES = ["Instagram", "Facebook", "WhatsApp", "Indicação", "Google", "Outro", NOT_LEAD_SOURCE];
+
+function newReferralKey() {
+  return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function isIndicationSource(source?: string | null) {
+  return (source || "").trim().toLowerCase().normalize("NFD").replace(/\p{Diacritic}/gu, "") === "indicacao";
+}
 
 function normalizeStageName(name?: string | null): string {
   return (name || "")
@@ -197,6 +206,11 @@ export default function PipelinePage() {
   const [closeModalOpen, setCloseModalOpen] = useState(false);
   const [dealToClose, setDealToClose] = useState<{ dealId: string; stageId: string } | null>(null);
   const [closeSaleItems, setCloseSaleItems] = useState<SaleItemDraft[]>([]);
+  const [closeReferral, setCloseReferral] = useState<ReferrerChoice | null>(null);
+  const [closeReferralKey, setCloseReferralKey] = useState("");
+  const [closeNeedsReferral, setCloseNeedsReferral] = useState(false);
+  const [closeExistingReferralName, setCloseExistingReferralName] = useState("");
+  const [loadingCloseReferral, setLoadingCloseReferral] = useState(false);
   const [closeCampaignOffer, setCloseCampaignOffer] = useState<CampaignOfferView | null>(null);
   const [loadingCloseCampaignOffer, setLoadingCloseCampaignOffer] = useState(false);
   const [isClosingDeal, setIsClosingDeal] = useState(false);
@@ -219,9 +233,14 @@ export default function PipelinePage() {
   const [chatLink, setChatLink] = useState<ChatLinkState | null>(null);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addStageId, setAddStageId] = useState("");
+  const [addUnit, setAddUnit] = useState("");
   const [addName, setAddName] = useState("");
   const [addPhone, setAddPhone] = useState("");
+  const [addClientId, setAddClientId] = useState("");
   const [addSource, setAddSource] = useState(NEW_DEAL_SOURCES[0]);
+  const [addReferral, setAddReferral] = useState<ReferrerChoice | null>(null);
+  const [addReferralKey, setAddReferralKey] = useState("");
+  const [isDirectReferral, setIsDirectReferral] = useState(false);
   const [addSaleItems, setAddSaleItems] = useState<SaleItemDraft[]>([]);
   const [addClosedDate, setAddClosedDate] = useState("");
   const [addScheduleDate, setAddScheduleDate] = useState("");
@@ -231,7 +250,9 @@ export default function PipelinePage() {
   const [addScheduleConflict, setAddScheduleConflict] = useState<ScheduleConflict | null>(null);
   const [addScheduleConflictApproved, setAddScheduleConflictApproved] = useState(false);
   const [addNameDuplicates, setAddNameDuplicates] = useState<NameDuplicateCandidate[]>([]);
+  const [referralPhoneDuplicates, setReferralPhoneDuplicates] = useState<NameDuplicateCandidate[]>([]);
   const [isAddingDeal, setIsAddingDeal] = useState(false);
+  const referralRouteHandledRef = useRef(false);
 
   // Modal for pipeline columns
   const [stageModalOpen, setStageModalOpen] = useState(false);
@@ -408,7 +429,7 @@ export default function PipelinePage() {
     stageId: string,
     reason?: string,
     evaluation?: { startTime: string; assigneeUserId?: string; durationMinutes?: number; procedure?: string; clientName?: string; forceScheduleConflict?: boolean },
-    closedSale?: { saleItems: SaleItemDraft[]; value: number },
+    closedSale?: { saleItems: SaleItemDraft[]; value: number; referral?: Record<string, string> },
   ) => {
     try {
       const res = await fetch("/api/pipeline", {
@@ -433,6 +454,7 @@ export default function PipelinePage() {
                 procedureNames: closedSale.saleItems.map((item) => item.procedureName),
                 saleItems: closedSale.saleItems,
                 value: closedSale.value,
+                ...(closedSale.referral ? { referral: closedSale.referral } : {}),
               }
             : {}),
         }),
@@ -456,8 +478,13 @@ export default function PipelinePage() {
     setDealToClose({ dealId: deal.id, stageId });
     setCloseCampaignOffer(null);
     setCloseSaleItems(saleItemDraftsFromView(deal.saleItems));
+    setCloseReferral(null);
+    setCloseReferralKey(newReferralKey());
+    setCloseNeedsReferral(isIndicationSource(deal.source));
+    setCloseExistingReferralName("");
     setCloseModalOpen(true);
     setLoadingCloseCampaignOffer(true);
+    setLoadingCloseReferral(isIndicationSource(deal.source));
 
     try {
       const response = await fetch(`/api/campaigns/offer?dealId=${encodeURIComponent(deal.id)}`);
@@ -472,6 +499,23 @@ export default function PipelinePage() {
       toast.error(error instanceof Error ? error.message : "Erro ao carregar a oferta da campanha");
     } finally {
       setLoadingCloseCampaignOffer(false);
+    }
+
+    if (isIndicationSource(deal.source)) {
+      try {
+        const params = new URLSearchParams({ salesPipelineId: deal.id, unit: deal.unit });
+        const response = await fetch(`/api/referrals?${params.toString()}`);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Não foi possível consultar o indicador já registrado");
+        if (data.referral?.referrerName) {
+          setCloseExistingReferralName(data.referral.referrerName);
+          setCloseNeedsReferral(false);
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Não foi possível consultar a indicação");
+      } finally {
+        setLoadingCloseReferral(false);
+      }
     }
   };
 
@@ -525,6 +569,10 @@ export default function PipelinePage() {
     setDealToClose(null);
     setCloseSaleItems([]);
     setCloseCampaignOffer(null);
+    setCloseReferral(null);
+    setCloseNeedsReferral(false);
+    setCloseExistingReferralName("");
+    setLoadingCloseReferral(false);
     setLoadingCloseCampaignOffer(false);
     setIsClosingDeal(false);
     fetchData();
@@ -541,6 +589,10 @@ export default function PipelinePage() {
       toast.error("Informe um valor de fechamento válido");
       return;
     }
+    if (closeNeedsReferral && !closeReferral) {
+      toast.error("Informe quem indicou este cliente antes de fechar a venda");
+      return;
+    }
 
     setIsClosingDeal(true);
     const ok = await updateDealStage(
@@ -548,7 +600,16 @@ export default function PipelinePage() {
       dealToClose.stageId,
       undefined,
       undefined,
-      { saleItems: closeSaleItems, value },
+      {
+        saleItems: closeSaleItems,
+        value,
+        ...(closeReferral ? {
+          referral: {
+            ...(closeReferral.type === "client" ? { referrerClientId: closeReferral.id } : { referrerName: closeReferral.name }),
+            idempotencyKey: closeReferralKey,
+          },
+        } : {}),
+      },
     );
     setIsClosingDeal(false);
     if (!ok) return;
@@ -558,6 +619,9 @@ export default function PipelinePage() {
     setDealToClose(null);
     setCloseSaleItems([]);
     setCloseCampaignOffer(null);
+    setCloseReferral(null);
+    setCloseNeedsReferral(false);
+    setCloseExistingReferralName("");
   };
 
   const confirmLost = () => {
@@ -633,9 +697,14 @@ export default function PipelinePage() {
     const defaultAssignee = pickDefaultAssignee(evaluationAssignees);
     const targetStage = stages.find((stage) => stage.id === stageId);
     setAddStageId(stageId);
+    setAddUnit(globalUnit || pipeline?.unit || "");
     setAddName("");
     setAddPhone("");
+    setAddClientId("");
     setAddSource(NEW_DEAL_SOURCES[0]);
+    setAddReferral(null);
+    setAddReferralKey(newReferralKey());
+    setIsDirectReferral(false);
     setAddSaleItems([]);
     setAddClosedDate(isClosedStageName(targetStage?.name) ? localDateInputValue(new Date().toISOString()) : "");
     setAddScheduleDate("");
@@ -645,8 +714,47 @@ export default function PipelinePage() {
     setAddScheduleConflict(null);
     setAddScheduleConflictApproved(false);
     setAddNameDuplicates([]);
+    setReferralPhoneDuplicates([]);
     setAddModalOpen(true);
-  }, [evaluationAssignees, pickDefaultAssignee, stages]);
+  }, [evaluationAssignees, globalUnit, pickDefaultAssignee, pipeline?.unit, stages]);
+
+  useEffect(() => {
+    const createReferral = searchParams.get("createReferral");
+    if (createReferral !== "1") {
+      referralRouteHandledRef.current = false;
+      return;
+    }
+    if (referralRouteHandledRef.current || stages.length === 0) return;
+    referralRouteHandledRef.current = true;
+    const closedStage = stages.find((stage) => isClosedStageName(stage.name));
+    if (!closedStage) {
+      toast.error("Este funil não possui uma etapa de venda fechada");
+    } else {
+      handleAddDeal(closedStage.id);
+      setAddSource(NOT_LEAD_SOURCE);
+      setIsDirectReferral(true);
+      const requestedUnit = searchParams.get("unit");
+      if (requestedUnit) setAddUnit(requestedUnit);
+      const referrerClientId = searchParams.get("referrerClientId");
+      if (referrerClientId) {
+        const params = new URLSearchParams({ purpose: "referrer", id: referrerClientId });
+        const referralUnit = requestedUnit || globalUnit || pipeline?.unit;
+        if (referralUnit) params.set("unit", referralUnit);
+        fetch(`/api/clients/search?${params.toString()}`)
+          .then(async (response) => {
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || !data.client) throw new Error(data.error || "Não foi possível carregar o cliente indicador");
+            setAddReferral({ type: "client", ...data.client });
+          })
+          .catch((error) => toast.error(error instanceof Error ? error.message : "Não foi possível carregar o cliente indicador"));
+      }
+    }
+    const nextParams = new URLSearchParams(searchParams.toString());
+    nextParams.delete("createReferral");
+    nextParams.delete("referrerClientId");
+    const query = nextParams.toString();
+    router.replace(`/crm/pipeline${query ? `?${query}` : ""}`);
+  }, [globalUnit, handleAddDeal, pipeline?.unit, router, searchParams, stages]);
 
   useEffect(() => {
     if (searchParams.get("createEvaluation") !== "1" || stages.length === 0) return;
@@ -665,7 +773,11 @@ export default function PipelinePage() {
     setAddStageId("");
     setAddName("");
     setAddPhone("");
+    setAddClientId("");
     setAddSource(NEW_DEAL_SOURCES[0]);
+    setAddReferral(null);
+    setAddReferralKey("");
+    setIsDirectReferral(false);
     setAddSaleItems([]);
     setAddClosedDate("");
     setAddScheduleDate("");
@@ -675,22 +787,29 @@ export default function PipelinePage() {
     setAddScheduleConflict(null);
     setAddScheduleConflictApproved(false);
     setAddNameDuplicates([]);
+    setReferralPhoneDuplicates([]);
     setIsAddingDeal(false);
   };
 
   const createDeal = async (
     forceDuplicateName = false,
     forceScheduleConflict = addScheduleConflictApproved,
+    options: { forceDuplicatePhone?: boolean; client?: NameDuplicateCandidate } = {},
   ) => {
     if (!pipeline || !addStageId) return;
-    const name = addName.trim();
-    const phone = addPhone.trim();
+    const name = (options.client?.name || addName).trim();
+    const phone = (options.client?.phone || addPhone).trim();
+    const selectedClientId = options.client?.id || addClientId;
     if (!name) {
       toast.error("Informe o nome do lead");
       return;
     }
     if (addSource !== NOT_LEAD_SOURCE && !phone) {
       toast.error("Informe o telefone do lead");
+      return;
+    }
+    if ((addSource === "Indicação" || isDirectReferral) && !addReferral) {
+      toast.error("Informe quem indicou este cliente");
       return;
     }
 
@@ -739,15 +858,25 @@ export default function PipelinePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           clientName: name,
+          ...(selectedClientId ? { clientId: selectedClientId } : {}),
           contactPhone: phone,
           source: addSource,
           socialSource: addSource,
           stageId: addStageId,
           pipelineId: pipeline.id,
-          unit: globalUnit || pipeline.unit,
+          unit: addUnit || globalUnit || pipeline.unit,
           forceDuplicateName,
+          forceDuplicatePhone: options.forceDuplicatePhone === true,
           forceScheduleConflict,
-          notes: addSource === NOT_LEAD_SOURCE
+          ...(addReferral ? {
+            referral: {
+              ...(addReferral.type === "client" ? { referrerClientId: addReferral.id } : { referrerName: addReferral.name }),
+              idempotencyKey: addReferralKey,
+            },
+          } : {}),
+          notes: isDirectReferral
+            ? "Venda direta por indicação · Não é lead"
+            : addSource === NOT_LEAD_SOURCE
             ? "Registro criado manualmente · Não é lead"
             : `Lead criado manualmente${addSource ? ` via ${addSource}` : ""}`,
           ...(isClosedStage
@@ -776,6 +905,11 @@ export default function PipelinePage() {
       if (res.status === 409 && data.duplicateName) {
         setAddScheduleConflict(null);
         setAddNameDuplicates(data.candidates || []);
+        return;
+      }
+      if (res.status === 409 && data.referralPhoneCollision) {
+        setAddScheduleConflict(null);
+        setReferralPhoneDuplicates(data.candidates || []);
         return;
       }
       if (!res.ok) throw new Error(data.error || "Erro ao criar negócio");
@@ -1432,6 +1566,25 @@ export default function PipelinePage() {
             <p className="text-sm text-muted-foreground">
               Informe os procedimentos, as sessões contratadas e o valor pago em cada item. O total será calculado automaticamente.
             </p>
+            {loadingCloseReferral ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Consultando indicação...</p>
+            ) : closeExistingReferralName ? (
+              <div className="rounded-md border border-border bg-muted/20 px-3 py-2 text-sm">
+                <span className="text-muted-foreground">Indicado por</span>
+                <span className="ml-2 font-semibold text-foreground">{closeExistingReferralName}</span>
+              </div>
+            ) : (
+              <ClientReferrerAutocomplete
+                value={closeReferral}
+                onChange={(choice) => {
+                  setCloseReferral(choice);
+                  setCloseReferralKey(newReferralKey());
+                }}
+                unit={deals.find((deal) => deal.id === dealToClose?.dealId)?.unit || globalUnit || pipeline?.unit}
+                disabled={isClosingDeal}
+                label={closeNeedsReferral ? "Indicado por (obrigatório)" : "Indicado por (opcional)"}
+              />
+            )}
             <div className="grid gap-2">
               <Label>Procedimentos vendidos</Label>
               <SaleItemsEditor
@@ -1447,7 +1600,7 @@ export default function PipelinePage() {
             <Button variant="ghost" onClick={cancelCloseDeal} disabled={isClosingDeal}>
               Cancelar
             </Button>
-            <Button onClick={confirmClosedDeal} disabled={isClosingDeal}>
+            <Button onClick={confirmClosedDeal} disabled={isClosingDeal || loadingCloseReferral}>
               {isClosingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Check className="mr-2 h-4 w-4" />}
               Confirmar fechamento
             </Button>
@@ -1589,7 +1742,9 @@ export default function PipelinePage() {
                 value={addName}
                 onChange={(event) => {
                   setAddName(event.target.value);
+                  setAddClientId("");
                   setAddNameDuplicates([]);
+                  setReferralPhoneDuplicates([]);
                 }}
                 placeholder="Nome do lead"
                 autoFocus
@@ -1602,7 +1757,11 @@ export default function PipelinePage() {
               <Input
                 id="addDealPhone"
                 value={addPhone}
-                onChange={(event) => setAddPhone(event.target.value)}
+                onChange={(event) => {
+                  setAddPhone(event.target.value);
+                  setAddClientId("");
+                  setReferralPhoneDuplicates([]);
+                }}
                 placeholder="(11) 99999-9999"
                 inputMode="tel"
               />
@@ -1622,6 +1781,24 @@ export default function PipelinePage() {
                 ))}
               </select>
             </div>
+
+            {isDirectReferral && (
+              <div className="rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
+                Venda direta por indicação. Ela fica fora dos indicadores de conversão de leads.
+              </div>
+            )}
+            {(addSource === "Indicação" || isDirectReferral) && (
+              <ClientReferrerAutocomplete
+                value={addReferral}
+                onChange={(choice) => {
+                  setAddReferral(choice);
+                  setAddReferralKey(newReferralKey());
+                  setReferralPhoneDuplicates([]);
+                }}
+                unit={addUnit || globalUnit || pipeline?.unit}
+                disabled={isAddingDeal}
+              />
+            )}
 
             {addNameDuplicates.length > 0 && (
               <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
@@ -1644,6 +1821,41 @@ export default function PipelinePage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {referralPhoneDuplicates.length > 0 && (
+              <div role="alert" className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-800 dark:text-amber-400" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-amber-800 dark:text-amber-400">Telefone já cadastrado</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Confirme a identidade para evitar vincular a indicação à pessoa errada.</p>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {referralPhoneDuplicates.map((candidate) => {
+                    const isReferrer = addReferral?.type === "client" && addReferral.id === candidate.id;
+                    return (
+                      <div key={candidate.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-background/70 px-3 py-2 text-xs">
+                        <div className="min-w-0">
+                          <div className="font-semibold text-foreground">{candidate.name}</div>
+                          <div className="mt-0.5 text-muted-foreground">{formatBrazilianPhone(candidate.phone) || "Sem telefone"} · {candidate.unit}</div>
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={isAddingDeal || isReferrer}
+                          onClick={() => void createDeal(false, addScheduleConflictApproved, { client: candidate })}
+                        >
+                          {isReferrer ? "É o indicador" : "Usar cadastro"}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <p className="mt-3 text-xs text-muted-foreground">Se for outra pessoa que compartilha o telefone, confirme “Criar outro cadastro” abaixo.</p>
               </div>
             )}
 
@@ -1749,6 +1961,16 @@ export default function PipelinePage() {
                 >
                   {isAddingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalendarDays className="mr-2 h-4 w-4" />}
                   Agendar mesmo assim
+                </Button>
+              </>
+            ) : referralPhoneDuplicates.length > 0 ? (
+              <>
+                <Button variant="ghost" onClick={closeAddDealModal} disabled={isAddingDeal}>
+                  Cancelar
+                </Button>
+                <Button onClick={() => createDeal(false, addScheduleConflictApproved, { forceDuplicatePhone: true })} disabled={isAddingDeal}>
+                  {isAddingDeal ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />}
+                  Criar outro cadastro
                 </Button>
               </>
             ) : addNameDuplicates.length > 0 ? (

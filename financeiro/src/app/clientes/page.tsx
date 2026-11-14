@@ -14,9 +14,17 @@ interface Client {
   cpf: string | null; birthdate: string | null; gender: string | null;
   unit: string; notes: string | null; tags: string | null;
   totalSpent: number; visitCount: number; lastVisit: string | null;
-  isActive: boolean; stage: string; source: string | null;
+  isActive: boolean; stage: string; source: string | null; manualOnly?: boolean;
   followUpDate: string | null; packageValue: number | null; arrivedAt: string | null; campaignName: string | null; createdAt: string;
 }
+
+type ReferralHistoryEntry = {
+  id: string;
+  createdAt: string;
+  referrerName: string;
+  referredClient: { id: string; name: string };
+  salesPipeline: { id: string; value: number; closedAt: string | null; stage: string } | null;
+};
 
 
 const SOURCES = [
@@ -69,6 +77,12 @@ export default function ClientesPage() {
   const [showModal, setShowModal] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [referralHistory, setReferralHistory] = useState<ReferralHistoryEntry[]>([]);
+  const [referralSummary, setReferralSummary] = useState({ referralCount: 0, closedCount: 0, closedValue: 0 });
+  const [referralPage, setReferralPage] = useState(1);
+  const [referralHasMore, setReferralHasMore] = useState(false);
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [referralError, setReferralError] = useState("");
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStage, setDragOverStage] = useState<string | null>(null);
   const [stages, setStages] = useState(DEFAULT_STAGES);
@@ -243,6 +257,58 @@ export default function ClientesPage() {
   }, [search, globalUnit]);
 
   useEffect(() => { fetchClients(); }, [fetchClients]);
+
+  useEffect(() => {
+    if (!selectedClient) {
+      setReferralHistory([]);
+      setReferralSummary({ referralCount: 0, closedCount: 0, closedValue: 0 });
+      setReferralPage(1);
+      setReferralHasMore(false);
+      setReferralError("");
+      return;
+    }
+    let active = true;
+    setReferralLoading(true);
+    setReferralError("");
+    const params = new URLSearchParams({ referrerClientId: selectedClient.id, page: "1", limit: "20", unit: selectedClient.unit });
+    fetch(`/api/referrals?${params.toString()}`)
+      .then(async (response) => {
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "Não foi possível carregar as indicações");
+        if (!active) return;
+        setReferralHistory(data.referrals || []);
+        setReferralSummary(data.summary || { referralCount: 0, closedCount: 0, closedValue: 0 });
+        setReferralPage(1);
+        setReferralHasMore((data.referrals || []).length === 20);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setReferralHistory([]);
+        setReferralError(error instanceof Error ? error.message : "Não foi possível carregar as indicações");
+      })
+      .finally(() => { if (active) setReferralLoading(false); });
+    return () => { active = false; };
+  }, [selectedClient?.id, selectedClient?.unit]);
+
+  const loadMoreReferrals = async () => {
+    if (!selectedClient || referralLoading || !referralHasMore) return;
+    setReferralLoading(true);
+    const nextPage = referralPage + 1;
+    try {
+      const params = new URLSearchParams({ referrerClientId: selectedClient.id, page: String(nextPage), limit: "20", unit: selectedClient.unit });
+      const response = await fetch(`/api/referrals?${params.toString()}`);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error || "Não foi possível carregar mais indicações");
+      const rows = Array.isArray(data.referrals) ? data.referrals : [];
+      setReferralHistory((current) => [...current, ...rows]);
+      setReferralPage(nextPage);
+      setReferralHasMore(rows.length === 20);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Não foi possível carregar mais indicações", "error");
+    } finally {
+      setReferralLoading(false);
+    }
+  };
 
   // ── Click outside to close name suggestions ──
   useEffect(() => {
@@ -657,7 +723,7 @@ export default function ClientesPage() {
       {selectedClient && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', justifyContent: 'flex-end' }} onClick={() => setSelectedClient(null)}>
           <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.3)' }} />
-          <div onClick={e => e.stopPropagation()} style={{ position: 'relative', width: 380, background: 'var(--card-bg)', borderLeft: '1px solid var(--border)', boxShadow: '-8px 0 32px rgba(0,0,0,0.1)', overflowY: 'auto', padding: 28, animation: 'slideInRight 0.2s ease-out' }}>
+          <div onClick={e => e.stopPropagation()} style={{ position: 'relative', boxSizing: 'border-box', width: 'min(100vw, 380px)', background: 'var(--card-bg)', borderLeft: '1px solid var(--border)', boxShadow: '-8px 0 32px rgba(0,0,0,0.1)', overflowY: 'auto', padding: 24, animation: 'slideInRight 0.2s ease-out' }}>
             <button onClick={() => setSelectedClient(null)} style={{ position: 'absolute', top: 16, right: 16, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}>
               <span className="material-symbols-outlined">close</span>
             </button>
@@ -723,8 +789,62 @@ export default function ClientesPage() {
               )}
             </div>
 
+            {selectedClient.manualOnly && (
+              <div role="status" style={{ marginTop: 14, borderRadius: 10, padding: '9px 11px', background: 'rgba(124,58,237,0.08)', color: '#6d28d9', fontSize: '0.76rem', fontWeight: 700 }}>
+                Contato somente manual · fora de automações e campanhas
+              </div>
+            )}
+
+            <section aria-labelledby="client-referrals-title" style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 }}>
+                <h3 id="client-referrals-title" style={{ margin: 0, fontSize: '0.9rem', fontWeight: 800 }}>Indicou</h3>
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>{referralSummary.referralCount} negócios</span>
+              </div>
+              <p style={{ margin: '5px 0 10px', color: 'var(--text-muted)', fontSize: '0.73rem' }}>
+                {referralSummary.closedCount} vendas fechadas · {fmt(referralSummary.closedValue)} em vendas
+              </p>
+              {referralLoading && referralHistory.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Carregando histórico…</p>
+              ) : referralError ? (
+                <p role="alert" style={{ color: '#b91c1c', fontSize: '0.78rem' }}>{referralError}</p>
+              ) : referralHistory.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Nenhuma indicação registrada para este cliente.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {referralHistory.map((referral) => (
+                    <div key={referral.id} style={{ borderRadius: 9, background: 'var(--bg)', padding: '9px 10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '0.8rem', fontWeight: 700 }}>{referral.referredClient.name}</span>
+                        <span style={{ flexShrink: 0, color: 'var(--text-muted)', fontSize: '0.68rem' }}>{new Date(referral.createdAt).toLocaleDateString('pt-BR')}</span>
+                      </div>
+                      <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: '0.72rem' }}>
+                        {referral.salesPipeline?.closedAt
+                          ? `Venda fechada · ${fmt(Number(referral.salesPipeline.value || 0))}`
+                          : referral.salesPipeline ? 'Negócio em andamento' : 'Negócio removido'}
+                      </div>
+                    </div>
+                  ))}
+                  {referralHasMore && (
+                    <button type="button" onClick={loadMoreReferrals} disabled={referralLoading} style={{ minHeight: 40, border: '1px solid var(--border)', borderRadius: 9, background: 'var(--card-bg)', color: 'var(--text-main)', fontWeight: 700, cursor: referralLoading ? 'wait' : 'pointer' }}>
+                      {referralLoading ? 'Carregando…' : 'Carregar mais'}
+                    </button>
+                  )}
+                </div>
+              )}
+            </section>
+
             {/* Actions */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams({ createReferral: '1', referrerClientId: selectedClient.id, unit: selectedClient.unit });
+                window.location.assign(`/crm/pipeline?${params.toString()}`);
+              }}
+              style={{ width: '100%', minHeight: 44, marginTop: 18, padding: '10px 12px', borderRadius: 10, border: '1px solid rgba(124,58,237,0.24)', background: 'rgba(124,58,237,0.08)', color: '#6d28d9', fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem' }}
+            >
+              Registrar venda por indicação
+            </button>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               {selectedClient.phone && (
                 <button onClick={() => { const p = (selectedClient.phone || '').replace(/\D/g, ''); window.open(`https://wa.me/${p.startsWith('55') ? p : '55' + p}`, '_blank'); }} style={{ padding: '10px 14px', borderRadius: 10, border: 'none', background: '#25d366', color: '#fff', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem' }}>
                   💬 WhatsApp
@@ -1063,10 +1183,10 @@ export default function ClientesPage() {
 
 function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0' }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', minWidth: 0 }}>
       <span className="material-symbols-outlined" style={{ fontSize: 16, color: 'var(--text-muted)' }}>{icon}</span>
       <span style={{ fontSize: '0.68rem', fontWeight: 600, color: 'var(--text-muted)', width: 70 }}>{label}</span>
-      <span style={{ fontSize: '0.82rem', fontWeight: 700 }}>{value}</span>
+      <span style={{ minWidth: 0, overflowWrap: 'anywhere', fontSize: '0.82rem', fontWeight: 700 }}>{value}</span>
     </div>
   );
 }
