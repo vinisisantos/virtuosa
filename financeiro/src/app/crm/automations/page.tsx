@@ -52,6 +52,7 @@ import { CampaignWelcomeDialog } from "@/components/whatsapp/campaign-welcome-di
 import { CAMPAIGN_WELCOME_TRIGGER } from "@/lib/whatsapp/campaign-welcome-policy";
 import { EvaluationNoResponseDialog } from "@/components/whatsapp/evaluation-no-response-dialog";
 import { EvaluationGroupPanel } from "@/components/whatsapp/evaluation-group-panel";
+import { ManualGroupMessagePanel } from "@/components/whatsapp/manual-group-message-panel";
 import { EVALUATION_NO_RESPONSE_TRIGGER, noResponseConfig } from "@/lib/whatsapp/evaluation-no-response-policy";
 
 // ─── Types ────────────────────────────────────────────────────
@@ -1204,6 +1205,7 @@ export default function AutomationsPage() {
 
       {selectedCategory === "general" && <CallBlockAutomationPanel />}
       {(selectedCategory === "SBC" || selectedCategory === "Osasco") && <EvaluationGroupPanel key={selectedCategory} unit={selectedCategory} />}
+      {selectedCategory === "SBC" && <ManualGroupMessagePanel />}
 
       {/* Quick-start templates */}
       {showTemplates && (
