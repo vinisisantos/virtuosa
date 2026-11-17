@@ -143,6 +143,7 @@ export function MobileTabBar() {
         && pathname !== '/login.html'
         && !pathname.startsWith('/avaliar')
         && !pathname.startsWith('/avaliacao')
+        && !pathname.startsWith('/produto')
         && !pathname.startsWith('/assinar')
         && !pathname.startsWith('/crm');
 

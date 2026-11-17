@@ -1754,6 +1754,15 @@ input[type="date"]::-webkit-inner-spin-button {
     background: #f7f6f6 !important;
   }
 
+  body.product-landing-page {
+    min-height: 100%;
+    height: auto !important;
+    padding-bottom: 0 !important;
+    overflow-x: clip !important;
+    overflow-y: visible !important;
+    background: #f8f6f3 !important;
+  }
+
   body.has-mobile-tab-bar {
     padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
