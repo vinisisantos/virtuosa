@@ -5,6 +5,8 @@ const normalize = (text: string) => text.normalize('NFKD').replace(/\p{Diacritic
   .replace(/\p{Cf}/gu, '').replace(/\s+/gu, ' ').trim();
 
 export const evaluationTemporalReference = /\b\d{1,2}(?:\/\d{1,2}|h(?:\d{2})?|:\d{2}|\s+horas?)\b|\b(?:domingo|segunda|terca|quarta|quinta|sexta|sabado)(?: ?feira)?\b|\b(?:manha|tarde|noite|primeiro horario)\b/u;
+// Resposta curta a uma oferta, como "11" ou "ss, sexta 11"; o horário só vale se coincidir com a oferta.
+const bareHourSelection = /^(?:(?:ss|sim|ok|pode ser|pode)[,\s]+)?(?:(?:(?:na|no)\s+)?(?:segunda|terca|quarta|quinta|sexta|sabado)(?: ?feira)?[,\s]+)?(?:(?:as|a)\s+)?\d{1,2}$/u;
 const blocker = /\b(?:nao|nunca|talvez|caso|se|depend\w*|preciso|pensar|espera|aguard\w*|deixa|desisti|cancel\w*|mudei|retrata\w*|te aviso|eu aviso|vou ver|vou confirmar|depois (?:eu )?confirmo|outro horario|outro dia)\b/u;
 const greeting = /^(?:oi|ola|bom dia|boa tarde|boa noite|tudo bem|obrigad[ao]|obg)$/u;
 const costQuestion = /^(?:tem (?:algum )?custo(?: (?:a|na|para a|da) avaliacao)?|a avaliacao (?:tem (?:algum )?custo|e (?:gratuita|paga))|quanto (?:custa|e) a avaliacao)$/u;
@@ -41,7 +43,7 @@ export function splitEvaluationReply(body: string): EvaluationReplySegments {
     const selection = clause.replace(/[,;.\s]+(?:eu\s+)?saio do trabalho e vou direto[.!]?\s*$/iu, '').trim();
     if (costQuestion.test(text)) { result.asksEvaluationCost = true; continue; }
     if (addressQuestion.test(text)) continue;
-    if (evaluationTemporalReference.test(text) || evaluationReplyAffirms(text)) {
+    if (evaluationTemporalReference.test(text) || evaluationReplyAffirms(text) || bareHourSelection.test(text)) {
       result.selections.push(selection);
       continue;
     }

@@ -5,6 +5,7 @@ const normalize = (text: string) => text.normalize('NFKD').replace(/\p{Diacritic
 const datePattern = /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?(?![\d/])/gu;
 const clockPattern = /\b(\d{1,2})(?:h(\d{2})?|:(\d{2})|[ \t]+horas?)(?![\p{L}\p{N}])/gu;
 const weekdayPattern = /\b(domingo|segunda|terca|quarta|quinta|sexta|sabado)(?:[ -]feira)?\b/gu;
+const bareNumberPattern = /(?<![\p{L}\p{N}:/])(\d{1,2})(?![\p{L}\p{N}:/])/gu;
 const weekdays = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
 
 function clocks(text: string): ClockToken[] | null {
@@ -22,6 +23,15 @@ function clocks(text: string): ClockToken[] | null {
 function dateMatches(key: string, date: RegExpMatchArray): boolean {
   const [year, month, day] = key.split('-');
   return day === date[1].padStart(2, '0') && month === date[2].padStart(2, '0') && (!date[3] || date[3] === year);
+}
+
+/** Lê "11" como 11h. Um número que também é dia ofertado fica ambíguo (undefined). */
+function readBareReplyHour(reply: string, offeredDates: readonly RegExpMatchArray[]): ClockToken[] | undefined {
+  const numbers = [...reply.replace(datePattern, ' ').matchAll(bareNumberPattern)];
+  if (!numbers.length) return [];
+  const hour = Number(numbers[0][1]);
+  if (numbers.length > 1 || hour > 23 || offeredDates.some((date) => Number(date[1]) === hour)) return undefined;
+  return [{ index: numbers[0].index!, length: numbers[0][0].length, minute: hour * 60, time: `${String(hour).padStart(2, '0')}:00` }];
 }
 
 /** Compartilha a leitura de faixa entre o envio e a reserva, inclusive quando há opções depois dela. */
@@ -111,12 +121,13 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
   if (!offered.size) return null;
   const replyDates = [...reply.matchAll(datePattern)];
   const replyDays = [...reply.matchAll(weekdayPattern)];
-  const replyTimes = clocks(reply);
+  const explicitTimes = clocks(reply);
+  const replyTimes = explicitTimes?.length ? explicitTimes : explicitTimes && readBareReplyHour(reply, dates);
   if (!replyTimes || replyDates.length > 1 || replyDays.length > 1 || replyTimes.length > 1) return null;
   const firstHour = /\b(?:o |no )?primeiro horario\b/u;
   const earliest = firstHour.test(reply);
   if ((earliest && replyTimes.length) || (requiresExplicitTime && !replyTimes.length && !earliest)) return null;
-  const remaining = reply.replace(firstHour, '').replace(datePattern, '').replace(weekdayPattern, '').replace(clockPattern, '')
+  const remaining = reply.replace(firstHour, '').replace(datePattern, '').replace(weekdayPattern, '').replace(clockPattern, '').replace(bareNumberPattern, '')
     .replace(/\b(?:as|na|no|dia)\b/gu, '').replace(/[,.!\s]+/gu, ' ').trim();
   const affirmative = evaluationReplyAffirms(remaining);
   if (!affirmative && (remaining || !(earliest || replyDates.length || replyDays.length || replyTimes.length))) return null;

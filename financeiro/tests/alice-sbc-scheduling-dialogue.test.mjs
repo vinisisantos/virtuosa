@@ -235,3 +235,23 @@ test('confirmação de agenda não vira nova oferta nem reativa a oferta antiga 
     assert.equal(selectSbcSchedulingExchange(history, now), null, confirmation);
   }
 });
+
+test('hora sem "h" ("11", "SS 11") fecha a escolha quando coincide com uma única opção ofertada', () => {
+  const at = (iso) => new Date(iso);
+  const timed = (id, body, fromMe, iso) => ({ ...message(id, body, fromMe), timestamp: at(iso), createdAt: at(iso) });
+  const offered = timed('offer', 'Tenho algumas opções para esta semana. Qual funciona melhor para você?\n\n26/11/2026 (quinta) — 14h ou 17h\n27/11/2026 (sexta) — 11h ou 16h', true, '2026-11-26T01:44:00Z');
+  const clock = at('2026-11-26T02:12:00Z');
+  const pick = (...texts) => selectSbcSchedulingExchange([offered, ...texts.map((text, i) => timed(String(i), text, false, '2026-11-26T02:11:00Z'))], clock)?.slot;
+  assert.equal(pick('Sexta', 'SS 11'), '2026-11-27T11:00');
+  assert.equal(pick('11'), '2026-11-27T11:00');
+  assert.equal(pick('às 16'), '2026-11-27T16:00');
+  // Depois do pedido de confirmação, a nova resposta curta é lida sozinha.
+  const clarified = [offered, timed('a', 'Sexta', false, '2026-11-26T02:11:00Z'), timed('b', 'SS 11', false, '2026-11-26T02:11:10Z'),
+    timed('c', SBC_BOOKING_CHOICE_CLARIFICATION, true, '2026-11-26T02:12:00Z'), timed('d', '11', false, '2026-11-26T03:13:00Z')];
+  assert.equal(selectSbcSchedulingExchange(clarified, at('2026-11-26T03:14:00Z'))?.slot, '2026-11-27T11:00');
+  for (const unsafe of [['quinta 11'], ['5'], ['11 ou 16'], ['26'], ['tenho 2 filhos']]) {
+    assert.equal(pick(...unsafe) ?? null, null, unsafe.join(' / '));
+  }
+  const dayClash = timed('clash', 'Opções: 11/12/2026 (sexta) às 11h ou 16h', true, '2026-12-09T13:00:00Z');
+  assert.equal(selectSbcSchedulingExchange([dayClash, timed('r', '11', false, '2026-12-09T13:05:00Z')], at('2026-12-09T13:06:00Z'))?.slot ?? null, null);
+});
