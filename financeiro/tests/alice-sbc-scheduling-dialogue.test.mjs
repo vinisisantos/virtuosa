@@ -255,3 +255,22 @@ test('hora sem "h" ("11", "SS 11") fecha a escolha quando coincide com uma únic
   const dayClash = timed('clash', 'Opções: 11/12/2026 (sexta) às 11h ou 16h', true, '2026-12-09T13:00:00Z');
   assert.equal(selectSbcSchedulingExchange([dayClash, timed('r', '11', false, '2026-12-09T13:05:00Z')], at('2026-12-09T13:06:00Z'))?.slot ?? null, null);
 });
+
+test('foto sem legenda e pergunta sobre resultado não impedem a escolha "09h"; a pergunta segue para depois da reserva', () => {
+  const at = (iso) => new Date(iso);
+  const item = (id, body, fromMe, iso, type = 'text') => ({ ...message(id, body, fromMe), type, timestamp: at(iso), createdAt: at(iso) });
+  const offered = item('offer', 'Aos sábados atendemos das 8h às 13h.\n\nTe ofereço esses horários para sábado, 28/11/2026:\n\n09h\n09h30\n\nQual fica melhor para você?', true, '2026-11-26T11:31:18Z');
+  const photo = [item('img', '', false, '2026-11-26T11:32:29Z', 'image'), item('child', '', false, '2026-11-26T11:32:30Z', 'associatedChildMessage')];
+  const result = selectSbcSchedulingExchange([offered, ...photo, item('q', 'Como ficou após o procedimento', false, '2026-11-26T11:32:46Z'),
+    item('pick', '09h', false, '2026-11-26T11:33:02Z')], at('2026-11-26T11:33:10Z'));
+  assert.equal(result?.slot, '2026-11-28T09:00');
+  assert.deepEqual(result?.pendingQuestions, ['Como ficou após o procedimento']);
+  // Áudio sem transcrição e documento continuam bloqueando: podem conter uma recusa.
+  for (const type of ['audio', 'document']) {
+    const blocked = selectSbcSchedulingExchange([offered, item('m', '', false, '2026-11-26T11:32:29Z', type), item('pick', '09h', false, '2026-11-26T11:33:02Z')], at('2026-11-26T11:33:10Z'));
+    assert.equal(blocked?.slot ?? null, null, type);
+  }
+  const condition = selectSbcSchedulingExchange([offered, ...photo, item('q', 'Como ficou? Não sei se posso', false, '2026-11-26T11:32:46Z'),
+    item('pick', '09h', false, '2026-11-26T11:33:02Z')], at('2026-11-26T11:33:10Z'));
+  assert.equal(condition?.slot ?? null, null);
+});

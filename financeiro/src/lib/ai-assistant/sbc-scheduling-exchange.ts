@@ -18,6 +18,9 @@ const negotiating = new RegExp(`^(?:(?:${preference} )?${day}|${periodPreference
 const dateAndTime = (text: string) => /\b\d{1,2}\/\d{1,2}\b/u.test(text) && /\b\d{1,2}(?:h|:\d{2}|\s+horas?)/iu.test(text);
 const withdrewOffer = (text: string) => /\b(?:nao (?:tenho|temos|ha|existe\w*) mais|nao (?:esta|estao|e|sera).{0,20}disponiv\w*|indisponiv\w*|ja (?:foi preenchid\w*|preencheram)|cancelad\w*|fech(?:ou|ad\w*)|outro dia|outro horario|alterad\w*)\b/u.test(normalize(text));
 
+const unreadVisualAttachment = (message: Message) => !message.fromMe && !message.body.trim()
+  && ['image', 'associatedChildMessage'].includes(message.type || '');
+
 function changesOffer(message: Message, offer: Message) {
   if (aliceAutonomyResponseClaimsBooking([message.body])) return true;
   if (withdrewOffer(message.body)) return true;
@@ -67,7 +70,9 @@ export function selectSbcSchedulingExchange<T extends Message>(messages: readonl
     && (evaluationTemporalReference.test(normalize(message.body)) || evaluationReplyBlocksBooking(message.body)))) return null;
   const replies = recent.slice(replyStart).filter((message) => !message.fromMe);
   if (replies.length > 8) return null;
-  const hasUnsupportedContent = replies.some((message) => (message.type && message.type !== 'text' && !message.audioTranscribed) || !message.body.trim());
+  // Foto sem legenda não muda a escolha; a Alice não a interpreta e a dúvida em texto segue para depois da reserva.
+  const hasUnsupportedContent = replies.some((message) => !unreadVisualAttachment(message)
+    && ((message.type && message.type !== 'text' && !message.audioTranscribed) || !message.body.trim()));
   const parsed = replies.map((message) => ({ message, segments: splitEvaluationReply(message.body) }));
   const selectionBody = parsed.flatMap(({ segments }) => segments.selections).join(' ');
   if (!selectionBody && !replies.some((message) => /\b(?:sim|pode|ok|certo|combinado|confirmo|fechado|prefiro|quero|primeiro horario|segunda|terca|quarta|quinta|sexta|sabado)\b|\b\d/u.test(normalize(message.body)))) return null;

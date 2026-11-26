@@ -23,6 +23,7 @@ import { sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
 import { aliceFearPolicy } from "@/lib/alice/fear-policy";
 import { sbcOutOfHoursReply } from "@/lib/ai-assistant/autonomy/out-of-hours";
 import { SBC_BOOKING_CHOICE_CLARIFICATION } from "@/lib/ai-assistant/sbc-scheduling-exchange";
+import { ALICE_UNREAD_MEDIA_INSTRUCTION } from "@/lib/ai-assistant/autonomy/media-text";
 import { sbcSchedulingContinuityReply } from "@/lib/ai-assistant/autonomy/scheduling-continuity";
 import { ALICE_MAX_MESSAGE_PARTS } from "@/lib/alice/message-parts";
 
@@ -50,7 +51,11 @@ function bookingFollowupContext(context: AliceAutonomousContext, followup: Booki
   return { ...context, ...(memoryRuntime ? { memoryRuntime } : {}), bookingFollowup: true, prompt: { ...context.prompt, HORARIOS_SBC: [],
     DUVIDAS_APOS_AGENDAMENTO: { dataRegistrada: followup.startTime, confirmacao: "submitted" },
     MENSAGENS_RECENTES_SEM_RESPOSTA: questions,
-    ULTIMA_MENSAGEM_CLIENTE: { id: context.source.id, text: questions.map((question) => question.text).join("\n") } } };
+    ULTIMA_MENSAGEM_CLIENTE: { id: context.source.id, text: questions.map((question) => question.text).join("\n") },
+    // A escolha pode ter vindo junto de foto sem legenda, que a Alice não interpreta.
+    ...(context.messages.slice(-12).some((message) => !message.fromMe && !message.body.trim()
+      && ["image", "associatedChildMessage"].includes(message.type))
+      ? { ANEXOS_NAO_INTERPRETADOS: { instruction: ALICE_UNREAD_MEDIA_INSTRUCTION } } : {}) } };
 }
 
 export type AliceAutonomyDependencies = {
@@ -192,6 +197,10 @@ export async function processAliceAutonomousTurn(
           return human("model_requested", "booking_requires_review");
         }
         if (booking.status === "choice_required") {
+          // Repetir o mesmo pedido não ajuda a cliente; a segunda dúvida seguida vai para a equipe.
+          if (context.messages.findLast((message) => message.fromMe)?.body === SBC_BOOKING_CHOICE_CLARIFICATION) {
+            return human("model_requested", "repeated_choice_clarification");
+          }
           if (!await saveOperationalReply(SBC_BOOKING_CHOICE_CLARIFICATION)) return "skipped";
         }
         if (booking.status === "booked") {

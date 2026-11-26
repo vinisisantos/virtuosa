@@ -579,6 +579,26 @@ test("horário sem escolha exata gera uma pergunta de continuidade sem handoff o
   } finally { await f.pg.close(); }
 });
 
+test("segundo pedido de horário seguido vai para a equipe em vez de repetir a mesma pergunta", async () => {
+  const { SBC_BOOKING_CHOICE_CLARIFICATION } = await import('../src/lib/ai-assistant/sbc-scheduling-exchange.ts');
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    const loadContext = f.deps.loadContext;
+    f.deps.loadContext = async (...args) => ({ ...await loadContext(...args), messages: [
+      { id: "offer", fromMe: true, status: "delivered", respondedByName: 'Alice', body: "11/11/2026 às 10h30 ou 13h30. Qual prefere?" },
+      { id: "first", fromMe: false, status: "received", body: "Pode ser no horário que tiver?" },
+      { id: "clarification", fromMe: true, status: "delivered", respondedByName: 'Alice', body: SBC_BOOKING_CHOICE_CLARIFICATION },
+      { id: "source-a", fromMe: false, status: "received", body: "pode ser qualquer um" },
+    ] });
+    f.deps.schedule = async () => ({ status: "choice_required", reason: "Escolha um horário exato." });
+    f.deps.generate = async () => { throw new Error('Não deve gerar nova resposta'); };
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "needs_human");
+    assert.deepEqual(f.state.sends, []);
+    assert.equal((await f.readTurn()).error, "repeated_choice_clarification");
+    assert.equal(f.state.handoffs.length, 1);
+  } finally { await f.pg.close(); }
+});
+
 test('esclarecimento com memória preserva fatos, respeita tomada humana e não repete resposta aceita', async () => {
   const { getOrCreateMemory } = await import('../src/lib/alice/memory.ts');
   for (const intervene of [false, true]) {
