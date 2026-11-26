@@ -6,6 +6,7 @@ import { ensureLegacyReceptionAvailable, handleAliceInboundReception } from "@/l
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 import { unreadCountForNewWhatsAppMessage } from "@/lib/ai-assistant/autonomy/echo-unread";
 import { prepareIndependentAliceAudio } from "@/lib/alice/audio/independent";
+import { requireAliceAudioBudget } from "@/lib/alice/audio/budget";
 
 import { prisma } from "@/lib/db";
 import { addClientTag } from "@/lib/client-tags";
@@ -1121,6 +1122,7 @@ async function handleWahaAck(payload: any, dbInstance: WebhookInstance) {
 }
 
 type ProcessMessageOptions = {
+  audioDeadlineMs?: number;
   phase?: "ingest" | "postprocess";
   conversationWasCreated?: boolean;
   receivedAt?: Date;
@@ -1385,6 +1387,7 @@ async function processInboundPostProcessJobs(withEvaluationGroupNotices = false)
     const payload = claim.job.payload as unknown as InboundPostProcessPayload;
     try {
       if (payload.audioTranscriptOnly === true) {
+        requireAliceAudioBudget(startedAt + 55_000);
         await prepareIndependentAliceAudio({ conversationId: claim.job.conversationId,
           instanceId: claim.job.instanceId, providerMessageId: claim.job.messageId });
         await completeInboundPostProcessJob(claim.job.id, claim.token);
@@ -1418,6 +1421,7 @@ async function processInboundPostProcessJobs(withEvaluationGroupNotices = false)
         },
         {
           phase: "postprocess",
+          audioDeadlineMs: startedAt + 55_000,
           conversationWasCreated: payload.conversationWasCreated,
           receivedAt: new Date(payload.receivedAt),
         },
@@ -1432,7 +1436,7 @@ async function processInboundPostProcessJobs(withEvaluationGroupNotices = false)
       });
       completed += 1;
       // Um áudio por invocação conserva o orçamento compartilhado do pós-processamento.
-      if (["audio", "ptt"].includes(extractMessageType(payload.message))) break;
+      if (claim.job.instanceId === ALICE_AUTONOMY_INSTANCE_ID && ["audio", "ptt"].includes(extractMessageType(payload.message))) break;
     } catch (error) {
       await retryInboundPostProcessJob(claim.job, claim.token, error);
       console.error("[WhatsApp Postprocess] failed", {
@@ -2169,6 +2173,7 @@ async function processMessage(
   }
 
   if (dbInstance.id === ALICE_AUTONOMY_INSTANCE_ID && ["audio", "ptt"].includes(msgType)) {
+    requireAliceAudioBudget(options.audioDeadlineMs);
     const transcription = await prepareIndependentAliceAudio({ conversationId: conversation.id,
       instanceId: dbInstance.id, providerMessageId: messageId });
     if (transcription === "prepared" || transcription === "review") await broadcastInboxRealtimeChange({

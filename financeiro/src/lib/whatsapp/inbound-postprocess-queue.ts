@@ -180,7 +180,7 @@ export async function retryInboundPostProcessJob(
   database: typeof prisma = prisma,
 ) {
   // Outro worker pode estar transcrevendo a mesma mídia; esperar não consome tentativa nem repete o POST.
-  const awaitingAudio = error instanceof Error && error.message === "audio_transcription_in_progress";
+  const awaitingAudio = error instanceof Error && ["audio_transcription_in_progress", "audio_worker_budget_wait"].includes(error.message);
   const terminal = !awaitingAudio && job.attempts >= INBOUND_POSTPROCESS_MAX_ATTEMPTS;
   const retryDelayMs = awaitingAudio ? 15_000 : Math.min(5 * 60_000, 15_000 * 2 ** Math.max(0, job.attempts - 1));
   return database.whatsAppInboundPostProcessJob.updateMany({

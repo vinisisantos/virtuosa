@@ -17,6 +17,18 @@ test("aguardar transcrição já em curso não esgota tentativas de entrega do j
   assert.equal(change.data.status, "pending");
   assert.deepEqual(change.data.attempts, { decrement: 1 });
   assert.equal(change.data.claimToken, null);
+  await retryInboundPostProcessJob({ id: "job", attempts: 4 }, "claim", new Error("audio_worker_budget_wait"), database);
+  assert.equal(change.data.status, "pending");
+  assert.deepEqual(change.data.attempts, { decrement: 1 });
+});
+
+test("áudio inicia somente com orçamento e o limite de lote não alcança outras caixas", async () => {
+  const { requireAliceAudioBudget } = await import('../src/lib/alice/audio/budget.ts');
+  assert.doesNotThrow(() => requireAliceAudioBudget(55_000, 10_000));
+  assert.throws(() => requireAliceAudioBudget(55_000, 10_001), /audio_worker_budget_wait/);
+  const source = await readFile(new URL('../src/app/api/whatsapp/webhook/route.ts', import.meta.url), 'utf8');
+  assert.match(source, /claim.job.instanceId === ALICE_AUTONOMY_INSTANCE_ID && \["audio", "ptt"\]/);
+  assert.ok(source.indexOf('requireAliceAudioBudget(options.audioDeadlineMs)') < source.indexOf('const transcription = await prepareIndependentAliceAudio'));
 });
 
 test("compacta o evento sem persistir base64 ou miniaturas pesadas", () => {
