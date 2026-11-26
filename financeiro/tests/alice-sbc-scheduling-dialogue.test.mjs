@@ -274,3 +274,37 @@ test('foto sem legenda e pergunta sobre resultado não impedem a escolha "09h"; 
     item('pick', '09h', false, '2026-11-26T11:33:02Z')], at('2026-11-26T11:33:10Z'));
   assert.equal(condition?.slot ?? null, null);
 });
+
+test('pedido direto da cliente com um único dia e horário da grade agenda sem nova oferta', () => {
+  const at = (iso) => new Date(iso);
+  const item = (id, body, fromMe, iso) => ({ ...message(id, body, fromMe), timestamp: at(iso), createdAt: at(iso) });
+  // Quinta, 26/11/2026, 08:30 em São Paulo.
+  const clock = at('2026-11-26T11:31:00Z');
+  const question = item('q', 'Você prefere vir durante a semana ou no sábado?', true, '2026-11-26T11:21:59Z');
+  const ask = (texts, options = { allowDirectRequest: true }, previous = question) => selectSbcSchedulingExchange(
+    [previous, ...texts.map((text, i) => item(`c${i}`, text, false, `2026-11-26T11:30:${String(10 + i).padStart(2, '0')}Z`))], clock, options);
+  const nanda = ask(['Teria para sabado agora as 9h', 'Tenho um exame ai perto as 7:30 sabado']);
+  assert.equal(nanda?.slot, '2026-11-28T09:00');
+  assert.equal(nanda?.offer.id, 'c0');
+  assert.equal(ask(['Vc pode me atender 11:00 hs ?', 'Hoje'])?.slot, '2026-11-26T11:00');
+  assert.equal(ask(['Amanhã pela manhã 10:30 hs ?'])?.slot, '2026-11-27T10:30');
+  assert.equal(ask(['Quarta feira as 19h30'])?.slot, '2026-12-02T19:30');
+  assert.equal(ask(['Sábado às 9h', 'Quanto tempo dura a avaliação?'])?.pendingQuestions.length, 1);
+  for (const unclear of [
+    ['Segunda às 8:30'],                      // fora do funcionamento: a Alice explica e oferece
+    ['Quinta após as 18:30 tudo bem?'],       // limite, não um início
+    ['Segunda 13:30 ou 14h'],                 // dois horários da grade
+    ['Ok ja confirmei hoje as 14 horas'],     // relato, não pedido
+    ['Sábado que vem às 9h'],                 // semana ambígua
+    ['Vou ver se não for viajar sábado', 'Ou segunda 17h'],
+    ['Sábado ou segunda às 10h'],             // dois dias
+    ['Às 10h'],                               // sem dia nem oferta de um único dia
+  ]) assert.equal(ask(unclear)?.slot ?? null, null, unclear.join(' / '));
+  // Sem a opção, nada muda: as sugestões e o modo manual continuam exigindo oferta.
+  assert.equal(ask(['Teria para sabado agora as 9h'], {}), null);
+  // Depois de uma oferta de um único dia, um horário diferente da grade vale para esse dia.
+  const offer = item('offer', 'Te ofereço esses horários para sábado, 28/11/2026:\n\n09h\n09h30\n\nQual fica melhor para você?', true, '2026-11-26T11:29:00Z');
+  assert.equal(ask(['pode ser 10h?'], { allowDirectRequest: true }, offer)?.slot, '2026-11-28T10:00');
+  assert.equal(ask(['09h30'], { allowDirectRequest: true }, offer)?.slot, '2026-11-28T09:30');
+  assert.equal(ask(['pode ser 14h?'], { allowDirectRequest: true }, offer)?.slot ?? null, null);
+});

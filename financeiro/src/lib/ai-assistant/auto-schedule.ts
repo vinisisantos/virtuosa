@@ -64,8 +64,8 @@ function procedureFromConfirmedCampaign(campaignName: string | null, messages: R
   return null;
 }
 
-export function looksLikeSchedulingExchange(messages: RecentMessage[], allowHumanOffer = false) {
-  return selectSbcSchedulingExchange(messages, new Date(), { allowHumanOffer }) !== null;
+export function looksLikeSchedulingExchange(messages: RecentMessage[], options: { allowHumanOffer?: boolean; allowDirectRequest?: boolean } = {}) {
+  return selectSbcSchedulingExchange(messages, new Date(), options) !== null;
 }
 
 export async function tryAliceAutoSchedule(params: {
@@ -83,7 +83,9 @@ export async function tryAliceAutoSchedule(params: {
 }): Promise<AliceAutoScheduleResult> {
   if (params.unit !== "SBC" || params.safetyHold || !params.instanceUnit || !["SBC", "Todas"].includes(params.instanceUnit)
     || (params.instanceUnit === "Todas" && params.contactUnit !== "SBC")) return { status: "not_applicable" };
-  const exchange = selectSbcSchedulingExchange(params.messages, new Date(), { allowHumanOffer: !params.autonomyClaim });
+  // Pedido direto da cliente só vale no modo autônomo; nas sugestões a equipe decide.
+  const exchangeOptions = { allowHumanOffer: !params.autonomyClaim, allowDirectRequest: Boolean(params.autonomyClaim) };
+  const exchange = selectSbcSchedulingExchange(params.messages, new Date(), exchangeOptions);
   if (!exchange || (params.targetMessageId && params.targetMessageId !== exchange.reply.id)) return { status: "not_applicable" };
   const { offer, reply, replies, slot } = exchange;
   const activation = await prisma.appSetting.findUnique({ where: { key: "alice_auto_schedule_sbc_v1" }, select: { value: true } });
@@ -183,7 +185,7 @@ export async function tryAliceAutoSchedule(params: {
       orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30,
     });
     const currentMessages = autonomy ? await projectAliceAudioHistory(messages.reverse(), params.conversationId, params.instanceId, tx) : messages.reverse();
-    const currentExchange = selectSbcSchedulingExchange(currentMessages, new Date(), { allowHumanOffer: !params.autonomyClaim });
+    const currentExchange = selectSbcSchedulingExchange(currentMessages, new Date(), exchangeOptions);
     if (!currentExchange || currentExchange.reply.id !== reply.id || currentExchange.offer.id !== offer.id
       || currentExchange.slot !== slot || currentExchange.asksEvaluationCost !== exchange.asksEvaluationCost
       || JSON.stringify(currentExchange.pendingQuestions) !== JSON.stringify(exchange.pendingQuestions)

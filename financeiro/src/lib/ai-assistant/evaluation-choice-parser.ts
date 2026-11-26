@@ -144,3 +144,46 @@ export function chooseOfferedEvaluationSlot(offerBody: string, replyBody: string
   }
   return choices.length === 1 && permitted.includes(choices[0]) ? choices[0] : null;
 }
+
+const relativeDayPattern = /\b(hoje|amanha)\b/gu;
+const dayOfMonthPattern = /\bdia (\d{1,2})\b/gu;
+// Pedido que não aponta um único início: faixa, limite, semana futura ou algo que já aconteceu.
+const unclearRequest = /\b(?:apos|depois d\w*|a partir|ate|antes d\w*|entre|das? \d+|que vem|proxim[oa]s?|confirmei|marquei|agendei|remarc\w*|reagend\w*)\b/u;
+
+function nextDateKey(key: string) {
+  const date = new Date(`${key}T12:00:00-03:00`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Lê um pedido feito pela cliente sem oferta prévia ("Teria sábado às 9h?").
+ * Exige um único dia (ou o único dia da última oferta da Alice) e um único início
+ * da grade; horários fora da grade, como o de um exame, são contexto.
+ */
+export function chooseRequestedEvaluationSlot(selections: readonly string[], permitted: readonly string[], todayKey: string, offeredDayKey?: string | null): string | null {
+  const text = normalize(selections.join('\n')).replace(/\s+/gu, ' ').trim();
+  if (!text || unclearRequest.test(text)) return null;
+  const dateKeys = [...new Set(permitted.map((slot) => slot.slice(0, 10)))];
+  const keys = new Set<string>();
+  const add = (matching: string[]) => { if (matching.length !== 1) return false; keys.add(matching[0]); return true; };
+  for (const date of text.matchAll(datePattern)) if (!add(dateKeys.filter((key) => dateMatches(key, date)))) return null;
+  for (const day of text.matchAll(weekdayPattern)) {
+    if (!add(dateKeys.filter((key) => weekdays[new Date(`${key}T12:00:00-03:00`).getUTCDay()] === day[1]))) return null;
+  }
+  for (const day of text.matchAll(relativeDayPattern)) {
+    const key = day[1] === 'hoje' ? todayKey : nextDateKey(todayKey);
+    if (!add(dateKeys.filter((candidate) => candidate === key))) return null;
+  }
+  for (const day of text.matchAll(dayOfMonthPattern)) {
+    if (!add(dateKeys.filter((key) => Number(key.slice(8, 10)) === Number(day[1])))) return null;
+  }
+  // "Pode ser 10h?" depois de uma oferta de um único dia refere-se a esse dia.
+  if (!keys.size && offeredDayKey && dateKeys.includes(offeredDayKey)) keys.add(offeredDayKey);
+  if (keys.size !== 1) return null;
+  const [key] = keys;
+  const times = clocks(text);
+  if (!times?.length) return null;
+  const starts = [...new Set(times.map((time) => `${key}T${time.time}`).filter((slot) => permitted.includes(slot)))];
+  return starts.length === 1 ? starts[0] : null;
+}

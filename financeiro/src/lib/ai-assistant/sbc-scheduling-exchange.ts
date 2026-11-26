@@ -1,4 +1,6 @@
-import { deriveSbcEvaluationChoice } from '#lib/ai-assistant/sbc-scheduling-policy';
+import { buildSbcEvaluationOptions, deriveSbcEvaluationChoice } from '#lib/ai-assistant/sbc-scheduling-policy';
+import { chooseRequestedEvaluationSlot } from '#lib/ai-assistant/evaluation-choice-parser';
+import { saoPauloDateKey } from '#lib/date-filter';
 import { evaluationReplyBlocksBooking, evaluationTemporalReference, splitEvaluationReply } from '#lib/ai-assistant/evaluation-reply-segments';
 import { aliceAutonomyResponseClaimsBooking } from '#lib/ai-assistant/autonomy/policy';
 import { evaluationRequestedPeriod } from '#lib/ai-assistant/evaluation-offer-policy';
@@ -45,8 +47,45 @@ function offerExpired(offer: Message, reply: Message, now: Date) {
     || until - from >= 24 * 60 * 60_000 || now.getTime() - from >= 24 * 60 * 60_000;
 }
 
+type ExchangeOptions = { allowHumanOffer?: boolean; allowDirectRequest?: boolean };
+
+/**
+ * Escolha de uma oferta da Alice; sem escolha válida e com `allowDirectRequest`,
+ * aceita o dia e horário pedidos diretamente pela cliente nas últimas mensagens.
+ */
+export function selectSbcSchedulingExchange<T extends Message>(messages: readonly T[], now = new Date(), options: ExchangeOptions = {}) {
+  const offered = selectOfferedExchange(messages, now, options);
+  if (offered?.slot || !options.allowDirectRequest) return offered;
+  return selectDirectRequestExchange(messages, now) || offered;
+}
+
+/** A primeira mensagem do pedido ocupa o lugar da oferta na lease e no registro da reserva. */
+function selectDirectRequestExchange<T extends Message>(messages: readonly T[], now: Date) {
+  const recent = messages.slice(-30);
+  const reply = recent.at(-1);
+  if (!reply || reply.fromMe) return null;
+  const lastTeamIndex = recent.findLastIndex((message) => message.fromMe);
+  const lastTeam = recent[lastTeamIndex];
+  const burst = recent.slice(lastTeamIndex + 1);
+  if (burst.length > 8 || burst.some((message) => !unreadVisualAttachment(message)
+    && ((message.type && message.type !== 'text' && !message.audioTranscribed) || !message.body.trim()))) return null;
+  const replies = burst.filter((message) => message.body.trim());
+  const parsed = replies.map((message) => ({ message, segments: splitEvaluationReply(message.body) }));
+  if (!replies.length || parsed.some(({ segments }) => segments.blocked)) return null;
+  const offeredDays = lastTeam && authoredByAlice(lastTeam) === true && !offerExpired(lastTeam, reply, now)
+    ? [...new Set([...lastTeam.body.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/gu)]
+      .map(([, day, month, year]) => `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`))] : [];
+  const offeredDayKey = offeredDays.length === 1 ? offeredDays[0] : null;
+  const slot = chooseRequestedEvaluationSlot(parsed.flatMap(({ segments }) => segments.selections),
+    buildSbcEvaluationOptions(now), saoPauloDateKey(now), offeredDayKey);
+  if (!slot) return null;
+  return { offer: replies[0], reply, replies, slot, continuationMessages: [] as T[],
+    pendingQuestions: parsed.flatMap(({ segments }) => segments.questions),
+    asksEvaluationCost: parsed.some(({ segments }) => segments.asksEvaluationCost) };
+}
+
 /** Mantém a última entrada como âncora da lease, mesmo quando o aceite veio antes da saudação/pergunta. */
-export function selectSbcSchedulingExchange<T extends Message>(messages: readonly T[], now = new Date(), options: { allowHumanOffer?: boolean } = {}) {
+function selectOfferedExchange<T extends Message>(messages: readonly T[], now: Date, options: ExchangeOptions) {
   const recent = messages.slice(-30);
   const reply = recent.at(-1);
   if (!reply || reply.fromMe) return null;

@@ -376,3 +376,15 @@ test("agendamento da Alice preserva a caixa de origem e dispara um único aviso 
   assert.deepEqual(f.state.groupNotices, ["notice-sbc"]);
   assert.equal(f.state.sent, 1, "confirmação individual não se duplica");
 });
+
+test('pedido direto da cliente agenda no modo autônomo e não nas sugestões', async () => {
+  const options = { now: '2026-11-26T11:31:00Z', offerBody: 'Você prefere vir durante a semana ou no sábado?', replyBody: 'Teria para sabado agora as 9h' };
+  const autonomous = fixture({ ...options, autonomy: true });
+  const result = await autonomous.run();
+  assert.equal(result.status, 'booked', JSON.stringify(result));
+  assert.equal(autonomous.state.appointmentInput.startTime.toISOString(), '2026-11-28T12:00:00.000Z');
+  assert.equal(autonomous.state.sent, 1);
+  const suggestions = fixture(options);
+  assert.equal((await suggestions.run()).status, 'not_applicable');
+  assert.equal(suggestions.state.sent, 0);
+});

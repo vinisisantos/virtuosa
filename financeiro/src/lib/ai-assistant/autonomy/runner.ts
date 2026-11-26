@@ -183,7 +183,10 @@ export async function processAliceAutonomousTurn(
       }
     }
     if (!messages.length) {
-      if (!bookingFollowup && !context.memoryRuntime?.guard.fear?.requiresHuman && looksLikeSchedulingExchange(context.messages)) {
+      // Com avaliação já marcada, um novo dia e horário é remarcação e segue para a conversa normal.
+      const allowDirectRequest = !context.memoryRuntime?.guard.appointment && !context.prompt.DADOS_AGENDA_ATUAIS;
+      if (!bookingFollowup && !context.memoryRuntime?.guard.fear?.requiresHuman
+        && looksLikeSchedulingExchange(context.messages, { allowDirectRequest })) {
         if (!deps.schedule) return human("model_requested", "trusted_booking_unavailable");
         // O serviço de agenda pode enviar a confirmação antes de devolver seu resultado.
         externalSendStarted = true;

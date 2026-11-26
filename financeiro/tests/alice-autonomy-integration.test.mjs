@@ -599,6 +599,29 @@ test("segundo pedido de horário seguido vai para a equipe em vez de repetir a m
   } finally { await f.pg.close(); }
 });
 
+test("pedido direto de dia e horário da grade chama a reserva; com avaliação já marcada segue para a conversa", async () => {
+  const { buildSbcEvaluationOptions } = await import('../src/lib/ai-assistant/sbc-scheduling-policy.ts');
+  const slot = buildSbcEvaluationOptions(new Date()).find((value) => new Date(`${value}:00-03:00`).getTime() > Date.now() + 86_400_000);
+  const [date, time] = slot.split('T');
+  const request = `Teria dia ${date.slice(8, 10)}/${date.slice(5, 7)} às ${time.replace(':00', 'h').replace(':30', 'h30')}?`;
+  for (const booked of [false, true]) {
+    const f = await runnerFixture(claimAliceAutonomousTurn);
+    try {
+      const loadContext = f.deps.loadContext;
+      f.deps.loadContext = async (...args) => { const context = await loadContext(...args); return { ...context,
+        prompt: { ...context.prompt, ...(booked ? { DADOS_AGENDA_ATUAIS: { inicio: slot } } : {}) }, messages: [
+        { id: "question", fromMe: true, status: "delivered", respondedByName: 'Alice', body: "Qual dia posso agendar o seu horário de avaliação?" },
+        { id: "source-a", fromMe: false, status: "received", body: request },
+      ] }; };
+      let attempts = 0;
+      f.deps.schedule = async () => { attempts++; return { status: "not_applicable" }; };
+      f.deps.generate = async () => { throw new Error("stop"); };
+      await processAliceAutonomousTurn(f.claim, {}, f.deps).catch(() => {});
+      assert.equal(attempts, booked ? 0 : 1, request);
+    } finally { await f.pg.close(); }
+  }
+});
+
 test('esclarecimento com memória preserva fatos, respeita tomada humana e não repete resposta aceita', async () => {
   const { getOrCreateMemory } = await import('../src/lib/alice/memory.ts');
   for (const intervene of [false, true]) {
