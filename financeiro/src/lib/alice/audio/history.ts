@@ -17,7 +17,7 @@ export async function aliceAudioTranscripts(conversationId: string, instanceId: 
     JOIN "WhatsAppConversation" c ON c.id=p."conversationId" AND c."instanceId"=a."instanceId"
     JOIN "WhatsAppInstance" i ON i.id=c."instanceId"
     WHERE c.id=${conversationId} AND c."instanceId"=${instanceId} AND i.unit='SBC'
-      AND p."fromMe"=FALSE AND p.type IN ('audio','ptt') AND p.status<>'deleted'
+      AND p.type IN ('audio','ptt') AND p.status<>'deleted'
       AND a."messageId" IN (${Prisma.join(ids)})`);
   return new Map(rows.map((row) => [row.messageId, row]));
 }
@@ -25,7 +25,7 @@ export async function aliceAudioTranscripts(conversationId: string, instanceId: 
 export async function projectAliceAudioHistory<T extends Message>(messages: T[], conversationId: string,
   instanceId: string, database: Pick<typeof prisma, "$queryRaw"> = prisma): Promise<(T & AliceAudioInput)[]> {
   const visibleMessages = messages.filter((message) => !isEmptySecretEncryptedEnvelope(message.type, message.body));
-  const ids = visibleMessages.filter((message) => !message.fromMe && ["audio", "ptt"].includes(message.type)).map((message) => message.id);
+  const ids = visibleMessages.filter((message) => ["audio", "ptt"].includes(message.type)).map((message) => message.id);
   const transcripts = await aliceAudioTranscripts(conversationId, instanceId, ids, database);
   return visibleMessages.map((message) => {
     const transcript = transcripts.get(message.id);

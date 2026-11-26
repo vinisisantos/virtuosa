@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { enqueueSentAliceAudio } from "@/lib/alice/audio/independent";
 import {
   mergeWhatsAppMessageStatus,
   normalizeWhatsAppMessageStatus,
@@ -952,6 +953,8 @@ export async function POST(req: Request) {
         },
       });
       const { callbackAttempts, ...callbackConversation } = updatedConversation;
+      await enqueueSentAliceAudio({ conversationId: conversation.id, instanceId: dbInstance.id,
+        providerMessageId: savedMessage.messageId, type: savedMessage.type }, tx);
       return {
         message: savedMessage,
         callbackTracking: {

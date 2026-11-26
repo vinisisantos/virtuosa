@@ -253,7 +253,7 @@ test("mensagem nova reativa uma conversa parada por falha transitória, mas resp
 });
 
 test("nova pergunta textual volta à Alice após revisão resolvida por avaliação registrada", async () => {
-  const now = new Date("2026-11-10T19:00:00.000Z");
+  const now = new Date();
   const { pg, adapter } = await database({ memory: true });
   try {
     await activateFixture(pg, ALICE_AUTONOMY_INSTANCE_ID, now);

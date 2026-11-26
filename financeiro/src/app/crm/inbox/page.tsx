@@ -2881,7 +2881,7 @@ function MessageBubble({
               isRecoveringMedia={recoveringMediaId === msg.id}
             />
           )}
-          {!isMe && <AudioTranscript transcript={msg.audioTranscript} />}
+          <AudioTranscript transcript={msg.audioTranscript} />
 
           {/* Document */}
           {documentMeta && (

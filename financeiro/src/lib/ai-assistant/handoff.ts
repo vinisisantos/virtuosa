@@ -41,6 +41,7 @@ export async function routeAliceHandoff(params: {
   sourceMessageId: string;
   unit: AliceUnit;
   reason: HandoffReason;
+  notificationOnly?: boolean;
 }) {
   const instance = await prisma.whatsAppInstance.findFirst({
     where: { id: params.instanceId },
@@ -63,7 +64,9 @@ export async function routeAliceHandoff(params: {
 
   let assignedRecipient: Recipient | null = null;
   let recipients: Recipient[] = [];
-  if (params.unit === "SBC") {
+  if (params.notificationOnly) {
+    recipients = [...permittedInstanceUsers.values()].filter((user) => hasCrmAccess(user) && belongsToUnit(user, params.unit));
+  } else if (params.unit === "SBC") {
     const handoffUserId = process.env.ALICE_SBC_HANDOFF_USER_ID?.trim();
     const commercial = handoffUserId ? await prisma.user.findUnique({
       where: { id: handoffUserId },
@@ -92,12 +95,14 @@ export async function routeAliceHandoff(params: {
   const link = params.unit === "SBC" && assignedRecipient
     ? `/crm/inbox/alice-handoff/${encodeURIComponent(params.conversationId)}`
     : `/crm/inbox?targetInstanceId=${encodeURIComponent(params.instanceId)}&conversationId=${encodeURIComponent(params.conversationId)}`;
-  const message = "Alice sinalizou que este atendimento precisa de apoio humano. Abra a conversa e retome o atendimento.";
+  const message = params.notificationOnly
+    ? "Não foi possível transcrever um áudio dentro dos limites de 5 minutos/8 MB. Ouça o original nesta conversa. O modo de atendimento foi preservado."
+    : "Alice sinalizou que este atendimento precisa de apoio humano. Abra a conversa e retome o atendimento.";
   const notifications = uniqueRecipients.map((user) => ({
-    id: notificationId(`${params.conversationId}:${params.sourceMessageId}:${user.id}:alice-handoff`),
+    id: notificationId(`${params.conversationId}:${params.sourceMessageId}:${user.id}:${params.notificationOnly ? "audio-review" : "alice-handoff"}`),
     userId: user.id,
     type: "AI_HUMAN_HANDOFF",
-    title: params.unit === "Osasco" ? "Atendimento para a equipe de Osasco" : "Atendimento encaminhado para apoio humano",
+    title: params.notificationOnly ? "Áudio precisa de revisão da equipe" : params.unit === "Osasco" ? "Atendimento para a equipe de Osasco" : "Atendimento encaminhado para apoio humano",
     message,
     icon: "support_agent",
     link,

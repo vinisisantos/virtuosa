@@ -564,7 +564,7 @@ export async function GET(req: Request) {
     }
 
     const transcripts = await aliceAudioTranscripts(conversationId, conversation.instanceId,
-      messages.filter((message) => !message.fromMe && ["audio", "ptt"].includes(message.type)).map((message) => message.id));
+      messages.filter((message) => ["audio", "ptt"].includes(message.type)).map((message) => message.id));
     const payloadSafeMessages = constrainInlineMediaPayload([...handoffHistory, ...messages.map((message) => ({ ...message,
       audioTranscript: transcripts.get(message.id) || null }))]);
     const signedMessages = await signPrivateMediaUrls(payloadSafeMessages);

@@ -3,12 +3,15 @@ import { createPrivateBlobReadUrl, privateBlobPathname } from "@/lib/whatsapp/me
 
 export const ALICE_AUDIO_MAX_BYTES = 8 * 1024 * 1024;
 export const ALICE_AUDIO_MAX_SECONDS = 300;
-export type AliceAudioMedia = { id: string; conversationId: string; mediaUrl: string | null; mediaSizeBytes: number | null };
+export type AliceAudioMedia = { id: string; conversationId: string; mediaUrl: string | null; mediaSizeBytes: number | null; fromMe?: boolean };
 
 /** Só recebe o objeto lido no banco; nunca aceita URL de um pedido do navegador. */
 export async function readAlicePrivateAudio(message: AliceAudioMedia): Promise<Uint8Array> {
   const path = privateBlobPathname(message.mediaUrl);
-  if (path !== `whatsapp/${message.conversationId}/inbound/${message.id}`) throw new Error("audio_private_media_unavailable");
+  const inbound = path === `whatsapp/${message.conversationId}/inbound/${message.id}`;
+  const sent = message.fromMe === true && path?.startsWith(`whatsapp/${message.conversationId}/`)
+    && !path.includes("..") && !path.includes("\\") && !path.slice(`whatsapp/${message.conversationId}/`.length).includes("/");
+  if (!inbound && !sent) throw new Error("audio_private_media_unavailable");
   if (message.mediaSizeBytes && message.mediaSizeBytes > ALICE_AUDIO_MAX_BYTES) throw new Error("audio_size_limit");
   const response = await fetch(await createPrivateBlobReadUrl(message.mediaUrl!), {
     signal: AbortSignal.timeout(10_000), redirect: "error", cache: "no-store",

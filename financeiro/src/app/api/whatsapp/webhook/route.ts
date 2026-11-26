@@ -5,6 +5,7 @@ import { enqueueWelcome, findWelcomeReception } from "@/lib/whatsapp/campaign-we
 import { ensureLegacyReceptionAvailable, handleAliceInboundReception } from "@/lib/whatsapp/campaign-welcome-autonomy";
 import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 import { unreadCountForNewWhatsAppMessage } from "@/lib/ai-assistant/autonomy/echo-unread";
+import { prepareIndependentAliceAudio } from "@/lib/alice/audio/independent";
 
 import { prisma } from "@/lib/db";
 import { addClientTag } from "@/lib/client-tags";
@@ -1383,6 +1384,15 @@ async function processInboundPostProcessJobs(withEvaluationGroupNotices = false)
     preferReceipt = true;
     const payload = claim.job.payload as unknown as InboundPostProcessPayload;
     try {
+      if (payload.audioTranscriptOnly === true) {
+        await prepareIndependentAliceAudio({ conversationId: claim.job.conversationId,
+          instanceId: claim.job.instanceId, providerMessageId: claim.job.messageId });
+        await completeInboundPostProcessJob(claim.job.id, claim.token);
+        await broadcastInboxRealtimeChange({ instanceId: claim.job.instanceId,
+          conversationId: claim.job.conversationId, messageId: claim.job.messageId, kind: "message" });
+        completed += 1;
+        break;
+      }
       if (!payload?.message || !payload?.webhook) throw new Error("Payload de pós-processamento inválido.");
       const dbInstance = await prisma.whatsAppInstance.findUnique({
         where: { id: claim.job.instanceId },
@@ -1421,6 +1431,8 @@ async function processInboundPostProcessJobs(withEvaluationGroupNotices = false)
         processMs: Date.now() - processStartedAt,
       });
       completed += 1;
+      // Um áudio por invocação conserva o orçamento compartilhado do pós-processamento.
+      if (["audio", "ptt"].includes(extractMessageType(payload.message))) break;
     } catch (error) {
       await retryInboundPostProcessJob(claim.job, claim.token, error);
       console.error("[WhatsApp Postprocess] failed", {
@@ -2153,6 +2165,14 @@ async function processMessage(
       conversationId: conversation.id,
       messageId,
       kind: "message",
+    });
+  }
+
+  if (dbInstance.id === ALICE_AUTONOMY_INSTANCE_ID && ["audio", "ptt"].includes(msgType)) {
+    const transcription = await prepareIndependentAliceAudio({ conversationId: conversation.id,
+      instanceId: dbInstance.id, providerMessageId: messageId });
+    if (transcription === "prepared" || transcription === "review") await broadcastInboxRealtimeChange({
+      instanceId: dbInstance.id, conversationId: conversation.id, messageId, kind: "message",
     });
   }
 

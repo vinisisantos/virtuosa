@@ -146,10 +146,10 @@ export async function processAliceAutonomousTurn(
     if (!await deps.validate(turn, token, "processing", database)) { await finish("skipped", "conversation_changed"); return "skipped"; }
     const audio = await deps.prepareAudio(turn, database, now());
     if (audio === "review") return human("model_requested", "audio_requires_review");
-    if (audio === "prepared") {
+    if (audio === "prepared" || audio === "waiting") {
       if (!await deps.validate(turn, token, "processing", database)) { await finish("skipped", "conversation_changed_during_audio"); return "skipped"; }
       const deferred = await database.aliceAutonomousTurn.updateMany({ where: { id: turn.id, claimToken: token, status: "processing" },
-        data: { status: "queued", claimToken: null, claimedAt: null, availableAt: now() } });
+        data: { status: "queued", claimToken: null, claimedAt: null, availableAt: new Date(now().getTime() + (audio === "waiting" ? 10_000 : 0)) } });
       return deferred.count ? "queued" : "skipped";
     }
     const loadedContext = await deps.loadContext(turn, database, now());

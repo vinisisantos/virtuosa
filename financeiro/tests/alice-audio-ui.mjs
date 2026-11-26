@@ -16,7 +16,7 @@ try {
     const chat = { id: 'audio', instanceId: instance.id, status: 'open', aiMode: 'agent', assignedTo: null, unreadCount: 1,
       contact: { id: 'contact', name: 'Cliente sintética de áudio', phone: '5511900001234', unit: 'SBC' }, lastMessage: 'Áudio', lastMessageAt: now };
     const text = 'Gostaria de saber como funciona o Lipo Laser para o abdômen. Tenho disponibilidade durante a semana e prefiro o período da tarde.\n\nAinda estou tirando minhas dúvidas antes de decidir.';
-    const messages = ['ready', 'processing', 'failed'].map((status, index) => ({ id: status, messageId: status, type: 'audio', body: '', fromMe: false,
+    const messages = ['ready', 'processing', 'failed', 'ready'].map((status, index) => ({ id: `${status}-${index}`, messageId: `${status}-${index}`, type: 'audio', body: '', fromMe: index === 3,
       status: 'received', timestamp: new Date(Date.now() + index * 1000).toISOString(), mediaUrl: `data:audio/ogg;base64,${readFileSync(new URL('./fixtures/alice-audio-synthetic.ogg', import.meta.url)).toString('base64')}`, mediaMimeType: 'audio/ogg',
       audioTranscript: { status, text: status === 'ready' ? `${text}\n${'palavralonga'.repeat(16)}` : null, durationMs: 15000 } }));
     await page.setViewport({ width, height: 1000 });
@@ -47,6 +47,10 @@ try {
     await page.keyboard.press('Enter');
     assert.equal(await page.$eval('[data-audio-transcript]', el => el.open), true);
     assert.ok((await page.$eval('[data-audio-transcript]', el => el.innerText)).includes(text));
+    const disclosures = await page.$$('[data-audio-transcript] summary');
+    assert.equal(disclosures.length, 2);
+    await disclosures[1].click();
+    assert.equal(await page.$$eval('[data-audio-transcript]', items => items.every(item => item.open)), true);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     assert.match(await page.$eval('.inbox-thread-messages', el => el.innerText), /está transcrevendo|equipe precisa ouvir/);
     await page.$eval('.inbox-thread-messages', el => { el.scrollTop = 0; });

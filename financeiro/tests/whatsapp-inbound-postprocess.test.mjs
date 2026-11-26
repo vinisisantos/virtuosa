@@ -7,7 +7,17 @@ globalThis.prisma = {};
 const {
   compactInboundPostProcessPayload,
   inboundPostProcessDispatchCommand,
+  retryInboundPostProcessJob,
 } = await import("../src/lib/whatsapp/inbound-postprocess-queue.ts");
+
+test("aguardar transcrição já em curso não esgota tentativas de entrega do job", async () => {
+  let change;
+  const database = { whatsAppInboundPostProcessJob: { updateMany: async (value) => { change = value; return { count: 1 }; } } };
+  await retryInboundPostProcessJob({ id: "job", attempts: 4 }, "claim", new Error("audio_transcription_in_progress"), database);
+  assert.equal(change.data.status, "pending");
+  assert.deepEqual(change.data.attempts, { decrement: 1 });
+  assert.equal(change.data.claimToken, null);
+});
 
 test("compacta o evento sem persistir base64 ou miniaturas pesadas", () => {
   const payload = compactInboundPostProcessPayload({

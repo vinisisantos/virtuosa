@@ -19,6 +19,7 @@ export type InboundPostProcessPayload = {
   };
   conversationWasCreated: boolean;
   receivedAt: string;
+  audioTranscriptOnly?: boolean;
 };
 
 function compactValue(value: unknown, key = "", depth = 0): unknown {
@@ -178,12 +179,15 @@ export async function retryInboundPostProcessJob(
   error: unknown,
   database: typeof prisma = prisma,
 ) {
-  const terminal = job.attempts >= INBOUND_POSTPROCESS_MAX_ATTEMPTS;
-  const retryDelayMs = Math.min(5 * 60_000, 15_000 * 2 ** Math.max(0, job.attempts - 1));
+  // Outro worker pode estar transcrevendo a mesma mídia; esperar não consome tentativa nem repete o POST.
+  const awaitingAudio = error instanceof Error && error.message === "audio_transcription_in_progress";
+  const terminal = !awaitingAudio && job.attempts >= INBOUND_POSTPROCESS_MAX_ATTEMPTS;
+  const retryDelayMs = awaitingAudio ? 15_000 : Math.min(5 * 60_000, 15_000 * 2 ** Math.max(0, job.attempts - 1));
   return database.whatsAppInboundPostProcessJob.updateMany({
     where: { id: job.id, claimToken: token, status: "processing" },
     data: {
       status: terminal ? "failed" : "pending",
+      ...(awaitingAudio ? { attempts: { decrement: 1 } } : {}),
       availableAt: terminal ? job.availableAt : new Date(Date.now() + retryDelayMs),
       claimToken: null,
       claimedAt: null,
