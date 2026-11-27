@@ -1,5 +1,6 @@
 const offers = [
-  { key: "botox", name: "BOTOX PINK FRIDAY", metaId: "120251255419000006", document: "knowledge/pink-friday-sbc-botox.md", opening: null },
+  { key: "botox", name: "BOTOX PINK FRIDAY", metaId: "120251255419000006", document: "knowledge/pink-friday-sbc-botox.md",
+    opening: "Olá! Vim pelo BOTOX PINK FRIDAY, posso ter mais informações sobre isso?" },
   { key: "gluteos", name: "GLÚTEOS PERFEITOS PINK FRIDAY", metaId: "120251255483450006", document: "knowledge/pink-friday-sbc-gluteos.md",
     opening: "Olá! Eu vim pelo GLÚTEOS PERFEITOS PINK FRIDAY, e quero mais informações!" },
   { key: "combo", name: "COMBO PINK FRIDAY", metaId: "120251255549180006", document: "knowledge/pink-friday-sbc-combo.md",

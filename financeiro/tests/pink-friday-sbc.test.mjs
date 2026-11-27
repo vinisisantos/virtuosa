@@ -42,6 +42,7 @@ test("IDs exatos identificam cada oferta Pink Friday somente em SBC, inclusive d
 
 test("aberturas aprovadas identificam a oferta sem inventar ID Meta ou aceitar menções casuais", () => {
   const openings = [
+    ["Olá! Vim pelo BOTOX PINK FRIDAY, posso ter mais informações sobre isso?", offers[0][0]],
     ["Olá! Eu vim pelo GLÚTEOS PERFEITOS PINK FRIDAY , e quero mais informações!", offers[1][0]],
     ["Quero mais informações sobre o COMBO PINK FRIDAY!", offers[2][0]],
     ["Olá! Vim pelo ENDOLASER PINK FRIDAY, posso ter mais informações sobre isso?", offers[3][0]],
