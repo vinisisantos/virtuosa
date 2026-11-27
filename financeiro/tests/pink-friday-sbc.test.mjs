@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { pinkFridaySbcOffer, pinkFridaySbcActive } from "#lib/pink-friday-sbc";
-import { campaignNameFromMetaAdAndTrackSignals, campaignNameFromMetaSignals } from "#lib/campaign-track-mapping";
+import { campaignFromPrefilledMetaLeadMessage, campaignNameFromMetaAdAndTrackSignals, campaignNameFromMetaSignals } from "#lib/campaign-track-mapping";
 import { selectAliceKnowledgeDocuments } from "#lib/ai-assistant/alice-knowledge-selection";
 import { applySbcPromotionValidity, sbcPromotionValidityInstructions } from "#lib/ai-assistant/promotion-validity";
 
 const offers = [
   ["BOTOX PINK FRIDAY", "120251255419000006", "botox", "399"],
+  ["GLÚTEOS PERFEITOS PINK FRIDAY", "120251255483450006", "gluteos", "3.399,00"],
+  ["COMBO PINK FRIDAY", "120251255549180006", "combo", "999,90"],
+  ["ENDOLASER PINK FRIDAY", "120251255510210006", "endolaser", "499"],
 ];
 const core = ["AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "MEMORY.md"];
 const documents = [
@@ -18,12 +21,10 @@ const documents = [
   { path: "knowledge/prices.md", content: "# Preços\nValor antigo R$ 3900.\n## Pink Friday SBC — novembro de 2026\n"
     + offers.map(([name,,,price]) => `### ${name}\nR$ ${price}\n`).join("\n") },
   { path: "knowledge/gluteos-perfeitos.md", content: "Pump: R$ 1797." },
-  { path: "knowledge/pink-friday-sbc-endolaser.md", content: "Outra oferta: R$ 499." },
-  { path: "knowledge/pink-friday-sbc-combo.md", content: "Outra oferta: R$ 999,90." },
   ...offers.map(([name,,key]) => ({ path: `knowledge/pink-friday-sbc-${key}.md`, content: `Ficha exclusiva ${name}.` })),
 ];
 
-test("ID exato identifica Botox Pink Friday somente em SBC, inclusive diante de link antigo", () => {
+test("IDs exatos identificam cada oferta Pink Friday somente em SBC, inclusive diante de link antigo", () => {
   for (const [name, id] of offers) {
     assert.equal(campaignNameFromMetaSignals(id, "https://instagram.com/p/DeVT_gugJTc", "SBC"), name);
     assert.equal(campaignNameFromMetaAdAndTrackSignals(id, null, null, "sbc"), name);
@@ -32,11 +33,31 @@ test("ID exato identifica Botox Pink Friday somente em SBC, inclusive diante de 
     assert.equal(campaignNameFromMetaAdAndTrackSignals(id, null, null, "Osasco"), null);
     for (const unit of ["Osasco", "SCS", undefined]) assert.equal(pinkFridaySbcOffer(unit, name, id), null);
   }
-  for (const id of ["120251255510210006", "120251255549180006"]) {
-    assert.equal(pinkFridaySbcOffer("SBC", null, id), null, "outras ofertas não são ativadas por esta entrega");
-  }
+  assert.equal(campaignNameFromMetaAdAndTrackSignals(offers[1][1], offers[2][1], null, "SBC"), null);
+  assert.equal(pinkFridaySbcOffer("SBC", null, "999999999999999999"), null);
   for (const name of ["Botox", "Glúteos Perfeitos", "Endolaser", "Combo Barriga Chapada", "Pink Friday"]) {
     assert.equal(pinkFridaySbcOffer("SBC", name), null);
+  }
+});
+
+test("aberturas aprovadas identificam a oferta sem inventar ID Meta ou aceitar menções casuais", () => {
+  const openings = [
+    ["Olá! Eu vim pelo GLÚTEOS PERFEITOS PINK FRIDAY , e quero mais informações!", offers[1][0]],
+    ["Quero mais informações sobre o COMBO PINK FRIDAY!", offers[2][0]],
+    ["Olá! Vim pelo ENDOLASER PINK FRIDAY, posso ter mais informações sobre isso?", offers[3][0]],
+  ];
+  for (const [message, campaignName] of openings) {
+    assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message, "SBC"), { campaignName, campaignTrackId: null });
+    assert.deepEqual(campaignFromPrefilledMetaLeadMessage(message.toLowerCase().replaceAll("!", " "), "sbc"), { campaignName, campaignTrackId: null });
+    for (const unit of ["Osasco", "SCS", "Todas", undefined]) {
+      assert.notEqual(campaignFromPrefilledMetaLeadMessage(message, unit)?.campaignName, campaignName);
+    }
+    for (const other of [`Não ${message}`, `Ela disse: ${message}`, `${message} Ou sobre o Botox?`]) {
+      assert.notEqual(campaignFromPrefilledMetaLeadMessage(other, "SBC")?.campaignName, campaignName);
+    }
+  }
+  for (const message of ["Quero saber sobre Glúteos Perfeitos", "Endolaser", "Combo Pink Friday", "Pink Friday"]) {
+    assert.equal(campaignFromPrefilledMetaLeadMessage(message, "SBC"), null);
   }
 });
 
@@ -48,8 +69,10 @@ test("cada oferta recebe somente seus preços e sua ficha, preservando voz e seg
     const text = selected.map((document) => document.content).join("\n");
     assert.ok(text.includes(`R$ ${price}`));
     assert.doesNotMatch(text, /R\$ (?:3900|699|1797)/);
-    assert.doesNotMatch(text, /R\$ (?:499|999,90)/);
-    assert.ok(!selected.some((document) => /sbc-(?:endolaser|combo)\.md$/.test(document.source)));
+    for (const [otherName,,otherKey,otherPrice] of offers.filter((offer) => offer[0] !== name)) {
+      assert.ok(!text.includes(`R$ ${otherPrice}\n`), otherName);
+      assert.ok(!selected.some((document) => document.source.endsWith(`sbc-${otherKey}.md`)));
+    }
     assert.ok(selected.some((document) => document.source.endsWith(`sbc-${key}.md`)));
     for (const path of core) assert.ok(selected.some((document) => document.source === path));
     assert.match(text, /Atenda com continuidade/);
@@ -69,6 +92,10 @@ test("campanhas antigas e Osasco não recebem fichas nem preços Pink Friday", (
 });
 
 test("ficha, preços ou instruções ausentes e contexto excedido falham sem usar oferta antiga", () => {
+  for (const [campaignName,,key] of offers) {
+    assert.equal(selectAliceKnowledgeDocuments({ documents: documents.filter((document) => document.path !== `knowledge/pink-friday-sbc-${key}.md`),
+      unit: "SBC", campaignName, messageText: "Qual o valor?" }), null);
+  }
   for (const missing of ["knowledge/pink-friday-sbc-botox.md", "knowledge/pink-friday-sbc.md", "knowledge/prices.md"]) {
     assert.equal(selectAliceKnowledgeDocuments({ documents: documents.filter((document) => document.path !== missing),
       unit: "SBC", campaignName: offers[0][0], messageText: "Qual o valor?" }), null);

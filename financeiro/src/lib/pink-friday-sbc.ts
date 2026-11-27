@@ -1,5 +1,11 @@
 const offers = [
-  { key: "botox", name: "BOTOX PINK FRIDAY", metaId: "120251255419000006", document: "knowledge/pink-friday-sbc-botox.md" },
+  { key: "botox", name: "BOTOX PINK FRIDAY", metaId: "120251255419000006", document: "knowledge/pink-friday-sbc-botox.md", opening: null },
+  { key: "gluteos", name: "GLÚTEOS PERFEITOS PINK FRIDAY", metaId: "120251255483450006", document: "knowledge/pink-friday-sbc-gluteos.md",
+    opening: "Olá! Eu vim pelo GLÚTEOS PERFEITOS PINK FRIDAY, e quero mais informações!" },
+  { key: "combo", name: "COMBO PINK FRIDAY", metaId: "120251255549180006", document: "knowledge/pink-friday-sbc-combo.md",
+    opening: "Quero mais informações sobre o COMBO PINK FRIDAY!" },
+  { key: "endolaser", name: "ENDOLASER PINK FRIDAY", metaId: "120251255510210006", document: "knowledge/pink-friday-sbc-endolaser.md",
+    opening: "Olá! Vim pelo ENDOLASER PINK FRIDAY, posso ter mais informações sobre isso?" },
 ] as const;
 
 export type PinkFridaySbcOffer = typeof offers[number];
@@ -13,6 +19,13 @@ export function pinkFridaySbcOffer(unit?: string | null, campaignName?: string |
   if (normalized(unit) !== "sbc") return null;
   if (metaId) return offers.find((offer) => offer.metaId === metaId.trim()) || null;
   return offers.find((offer) => normalized(offer.name) === normalized(campaignName)) || null;
+}
+
+export function pinkFridaySbcOfferFromPrefilledMessage(message?: string | null, unit?: string | null) {
+  if (normalized(unit) !== "sbc" || !message) return null;
+  const words = (value: string) => normalized(value)?.replace(/[^a-z0-9]+/g, " ").trim();
+  const text = words(message);
+  return offers.find((offer) => offer.opening && words(offer.opening) === text) || null;
 }
 
 export function pinkFridaySbcActive(now = new Date()) {

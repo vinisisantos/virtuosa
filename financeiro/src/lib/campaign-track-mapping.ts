@@ -1,5 +1,5 @@
 import { lipoLaserCampaignFromAdId, lipoLaserCampaignFromPrefilledMessage, lipoLaserCampaignFromSourceUrl } from "./lipo-laser-campaigns.ts";
-import { pinkFridaySbcOffer } from "./pink-friday-sbc.ts";
+import { pinkFridaySbcOffer, pinkFridaySbcOfferFromPrefilledMessage } from "./pink-friday-sbc.ts";
 
 export const FACIAL_FILLER_CAMPAIGN_NAME = "Preenchimento Facial";
 export const ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME = "Adeus Rosto Cansado";
@@ -52,6 +52,8 @@ export function campaignFromPrefilledMetaLeadMessage(
   const normalizedMessage = normalizePrefilledMetaLeadMessage(message);
 
   if (!normalizedUnit || !ACTIVE_CAMPAIGN_UNITS.has(normalizedUnit)) return null;
+  const pinkFriday = pinkFridaySbcOfferFromPrefilledMessage(message, unit);
+  if (pinkFriday) return { campaignName: pinkFriday.name, campaignTrackId: null };
   const lipoLaserCampaign = lipoLaserCampaignFromPrefilledMessage(message, unit);
   if (lipoLaserCampaign) return { campaignName: lipoLaserCampaign, campaignTrackId: null };
   if (!/^(?:(?:ola|oi) )?(?:eu )?vim pel[oa] /.test(normalizedMessage)) return null;
