@@ -22,7 +22,7 @@ import { markCompletedAliceRepliesRead } from "@/lib/ai-assistant/autonomy/answe
 import { sanitizeAiAssistantText } from "@/lib/ai-assistant/privacy";
 import { aliceFearPolicy } from "@/lib/alice/fear-policy";
 import { sbcOutOfHoursReply } from "@/lib/ai-assistant/autonomy/out-of-hours";
-import { SBC_BOOKING_CHOICE_CLARIFICATION } from "@/lib/ai-assistant/sbc-scheduling-exchange";
+import { isSbcBookingChoiceClarification, SBC_BOOKING_CHOICE_CLARIFICATION } from "@/lib/ai-assistant/sbc-scheduling-exchange";
 import { ALICE_UNREAD_MEDIA_INSTRUCTION } from "@/lib/ai-assistant/autonomy/media-text";
 import { sbcSchedulingContinuityReply } from "@/lib/ai-assistant/autonomy/scheduling-continuity";
 import { sameDayAdPromotionReply } from "@/lib/ai-assistant/promotion-validity";
@@ -207,7 +207,7 @@ export async function processAliceAutonomousTurn(
         }
         if (booking.status === "choice_required") {
           // Repetir o mesmo pedido não ajuda a cliente; a segunda dúvida seguida vai para a equipe.
-          if (context.messages.findLast((message) => message.fromMe)?.body === SBC_BOOKING_CHOICE_CLARIFICATION) {
+          if (isSbcBookingChoiceClarification(context.messages.findLast((message) => message.fromMe)?.body)) {
             return human("model_requested", "repeated_choice_clarification");
           }
           if (!await saveOperationalReply(SBC_BOOKING_CHOICE_CLARIFICATION)) return "skipped";

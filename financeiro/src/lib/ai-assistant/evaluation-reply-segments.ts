@@ -56,3 +56,27 @@ export function splitEvaluationReply(body: string): EvaluationReplySegments {
   }
   return result;
 }
+
+/** Preserva o pedido de agendamento quando a cliente explica o deslocamento ou recusa uma opção anterior. */
+export function splitDirectEvaluationReplies(bodies: readonly string[]) {
+  const lines = bodies.flatMap((body) => body.split(/\r?\n|(?<=[.!?])[ \t]+/u)).map((line) => line.trim()
+    .replace(/\b(\d{1,2});(\d{2})\b/gu, '$1:$2')
+    .replace(/\bdia[ \t]+(\d{1,2})[ \t]+(\d{1,2})[ \t]+(\d{2}|\d{4})\b/giu,
+      (_, day, month, year) => `${day}/${month}/${year.length === 2 ? `20${year}` : year}`)
+    .replace(/\b(\d{1,2}\/\d{1,2}\/)\s?(\d{2})\b/gu, (_date, prefix, year) => `${prefix}20${year}`)
+    .replace(/^no caso\s+(?=[aà]s\s+\d)/iu, '')
+    .replace(/(?<![\p{L}\p{N}])([aà]s\s+\d{1,2})(?=[.!?]*$)/iu, '$1h')
+    .replace(/^([aà]s\s+\d{1,2}(?:h\d{0,2}|:\d{2})?),?\s+(?=n[aã]o consigo chegar[.!]*$)/iu, '$1\n'))
+    .flatMap((line) => line.split('\n')).filter(Boolean);
+
+  let rejectedTime: string | null = null;
+  if (/^nao consigo chegar[.!]*$/u.test(normalize(lines.at(-1) || ''))) {
+    const rejection = normalize(lines.at(-2) || '').match(/^as (\d{1,2})(?:[h:](\d{2})?| horas?)?[.!]*$/u);
+    if (rejection) {
+      rejectedTime = `${rejection[1].padStart(2, '0')}:${rejection[2] || '00'}`;
+      lines.splice(-2);
+    }
+  }
+  const relevant = lines.filter((line) => !/^(?:(?:eu )?(?:saio|saiu) do trabalho as \d{1,2}(?:h\d{0,2}|:\d{2})?(?: e (?:vou|iria) direto)?|(?:eu )?(?:vou|iria) direto)[.!]*$/u.test(normalize(line)));
+  return { ...splitEvaluationReply(relevant.join('\n')), rejectedTime };
+}

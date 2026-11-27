@@ -5,7 +5,7 @@ import { aliceCanResumeGeneralFear, aliceHealthHistoryRequiresHuman } from "@/li
 import { ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_RECOVERY_WINDOW_MS } from "@/lib/ai-assistant/autonomy/policy";
 import { enqueueAliceTurnInTransaction, lockAliceQueue } from "@/lib/ai-assistant/autonomy/queue";
 import { recoverAlicePeriodNegotiation } from "@/lib/ai-assistant/autonomy/period-negotiation-recovery";
-import { SBC_BOOKING_CHOICE_CLARIFICATION } from "@/lib/ai-assistant/sbc-scheduling-exchange";
+import { isSbcBookingChoiceClarification } from "@/lib/ai-assistant/sbc-scheduling-exchange";
 
 type ModeSnapshot = { aiMode: string; aiModeUpdatedBy: string | null; aiModeUpdatedAt: Date | null; instanceId: string };
 
@@ -86,7 +86,7 @@ export function activateAliceConversation(conversationId: string, prior: ModeSna
       }
     }
     if (prior.aiMode === "manual" && prior.aiModeUpdatedBy === operator && latest?.fromMe
-      && !latest.respondedBy && latest.respondedByName === "Alice" && latest.body === SBC_BOOKING_CHOICE_CLARIFICATION) {
+      && !latest.respondedBy && latest.respondedByName === "Alice" && isSbcBookingChoiceClarification(latest.body)) {
       await recoverAlicePeriodNegotiation(conversationId, operator, tx, now);
     }
     // A alteração do modo e a retomada são atômicas. Em caso de bloqueio, preservamos também a pausa da memória.

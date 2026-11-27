@@ -1,7 +1,7 @@
 import { buildSbcEvaluationOptions, deriveSbcEvaluationChoice } from '#lib/ai-assistant/sbc-scheduling-policy';
-import { chooseRequestedEvaluationSlot } from '#lib/ai-assistant/evaluation-choice-parser';
+import { chooseRequestedEvaluationSlot, offeredWeekdaysMatchDates } from '#lib/ai-assistant/evaluation-choice-parser';
 import { saoPauloDateKey } from '#lib/date-filter';
-import { evaluationReplyBlocksBooking, evaluationTemporalReference, splitEvaluationReply } from '#lib/ai-assistant/evaluation-reply-segments';
+import { evaluationReplyBlocksBooking, evaluationTemporalReference, splitDirectEvaluationReplies, splitEvaluationReply } from '#lib/ai-assistant/evaluation-reply-segments';
 import { aliceAutonomyResponseClaimsBooking } from '#lib/ai-assistant/autonomy/policy';
 import { evaluationRequestedPeriod } from '#lib/ai-assistant/evaluation-offer-policy';
 
@@ -10,7 +10,12 @@ type Message = { id: string; body: string; fromMe: boolean; status: string; type
 const normalize = (text: string) => text.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
   .replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/gu, ' ').trim();
 
-export const SBC_BOOKING_CHOICE_CLARIFICATION = 'Para concluir sua avaliação, me confirme o dia e um único horário das opções que te enviei 😊';
+export const SBC_BOOKING_CHOICE_CLARIFICATION = 'Para concluir sua avaliação, me confirme o dia e um único horário que funcione para você 😊';
+
+export function isSbcBookingChoiceClarification(body?: string) {
+  return body === SBC_BOOKING_CHOICE_CLARIFICATION
+    || body === 'Para concluir sua avaliação, me confirme o dia e um único horário das opções que te enviei 😊';
+}
 
 const day = /(?:(?:na|no|de|neste|nesta|nesse|nessa|este|esta|esse|essa) )?(?:(?:segunda|terca|quarta|quinta|sexta)(?: ?feira)?|sabado)/u.source;
 const period = /(?:(?:(?:no|nesse|neste) periodo (?:da|de)|durante a|de|da|pela|a) )?(?:manha|tarde|noite)/u.source;
@@ -56,11 +61,12 @@ type ExchangeOptions = { allowHumanOffer?: boolean; allowDirectRequest?: boolean
 export function selectSbcSchedulingExchange<T extends Message>(messages: readonly T[], now = new Date(), options: ExchangeOptions = {}) {
   const offered = selectOfferedExchange(messages, now, options);
   if (offered?.slot || !options.allowDirectRequest) return offered;
-  return selectDirectRequestExchange(messages, now) || offered;
+  return selectDirectRequestExchange(messages, now, offered) || offered;
 }
 
 /** A primeira mensagem do pedido ocupa o lugar da oferta na lease e no registro da reserva. */
-function selectDirectRequestExchange<T extends Message>(messages: readonly T[], now: Date) {
+function selectDirectRequestExchange<T extends Message>(messages: readonly T[], now: Date,
+  offered: ReturnType<typeof selectOfferedExchange<T>>) {
   const recent = messages.slice(-30);
   const reply = recent.at(-1);
   if (!reply || reply.fromMe) return null;
@@ -70,18 +76,27 @@ function selectDirectRequestExchange<T extends Message>(messages: readonly T[], 
   if (burst.length > 8 || burst.some((message) => !unreadVisualAttachment(message)
     && ((message.type && message.type !== 'text' && !message.audioTranscribed) || !message.body.trim()))) return null;
   const replies = burst.filter((message) => message.body.trim());
-  const parsed = replies.map((message) => ({ message, segments: splitEvaluationReply(message.body) }));
-  if (!replies.length || parsed.some(({ segments }) => segments.blocked)) return null;
-  const offeredDays = lastTeam && authoredByAlice(lastTeam) === true && !offerExpired(lastTeam, reply, now)
-    ? [...new Set([...lastTeam.body.matchAll(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/gu)]
-      .map(([, day, month, year]) => `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`))] : [];
+  const parsed = splitDirectEvaluationReplies(replies.map((message) => message.body));
+  if (!replies.length || parsed.blocked) return null;
+  const permitted = buildSbcEvaluationOptions(now);
+  const dateKeys = [...new Set(permitted.map((slot) => slot.slice(0, 10)))];
+  const dateOffer = isSbcBookingChoiceClarification(lastTeam?.body) ? offered?.offer : lastTeam;
+  const dates = dateOffer && authoredByAlice(dateOffer) === true && !offerExpired(dateOffer, reply, now)
+    && ['sent', 'delivered', 'read', 'played'].includes(dateOffer.status) && dateAndTime(dateOffer.body)
+    && !withdrewOffer(dateOffer.body) && !aliceAutonomyResponseClaimsBooking([dateOffer.body])
+    && offeredWeekdaysMatchDates(dateOffer.body, dateKeys)
+    ? [...dateOffer.body.matchAll(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?\b/gu)] : [];
+  // Datas diferentes nunca viram uma opção única por uma delas ter saído da grade.
+  const offeredDays = dates.length === 1 ? dateKeys.filter((key) => {
+    const [, day, month, year] = dates[0];
+    return key.slice(5) === `${month.padStart(2, '0')}-${day.padStart(2, '0')}` && (!year || key.startsWith(year));
+  }) : [];
   const offeredDayKey = offeredDays.length === 1 ? offeredDays[0] : null;
-  const slot = chooseRequestedEvaluationSlot(parsed.flatMap(({ segments }) => segments.selections),
-    buildSbcEvaluationOptions(now), saoPauloDateKey(now), offeredDayKey);
-  if (!slot) return null;
-  return { offer: replies[0], reply, replies, slot, continuationMessages: [] as T[],
-    pendingQuestions: parsed.flatMap(({ segments }) => segments.questions),
-    asksEvaluationCost: parsed.some(({ segments }) => segments.asksEvaluationCost) };
+  const slot = chooseRequestedEvaluationSlot(parsed.selections, permitted, saoPauloDateKey(now), offeredDayKey);
+  if (!slot || slot.slice(11) === parsed.rejectedTime) return null;
+  const continuationMessages = dateOffer && offeredDayKey ? recent.slice(recent.indexOf(dateOffer), lastTeamIndex + 1) : [];
+  return { offer: replies[0], reply, replies, slot, continuationMessages,
+    pendingQuestions: parsed.questions, asksEvaluationCost: parsed.asksEvaluationCost };
 }
 
 /** Mantém a última entrada como âncora da lease, mesmo quando o aceite veio antes da saudação/pergunta. */
@@ -100,7 +115,7 @@ function selectOfferedExchange<T extends Message>(messages: readonly T[], now: D
   const lastTeamIndex = recent.findLastIndex((message) => message.fromMe);
   const continuationMessages = recent.slice(offerIndex + 1, lastTeamIndex + 1);
   const clarificationIndex = recent.findLastIndex((message, index) => index > offerIndex && message.fromMe
-    && authoredByAlice(message) === true && message.body === SBC_BOOKING_CHOICE_CLARIFICATION);
+    && authoredByAlice(message) === true && isSbcBookingChoiceClarification(message.body));
   // O esclarecimento encerra o aceite ambíguo, sem renovar a oferta, sua validade ou sua autoria.
   const replyStart = Math.max(offerIndex + 1, clarificationIndex + 1);
   // Uma pergunta sobre fotos não invalida a oferta; renegociar o período antes

@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { currentAliceAppointment } from "@/lib/alice/current-appointment";
 import { buildSbcEvaluationOptions, deriveSbcEvaluationChoice } from "@/lib/ai-assistant/sbc-scheduling-policy";
 import { evaluationRequestedPeriod, evaluationSlotPeriod } from "@/lib/ai-assistant/evaluation-offer-policy";
-import { SBC_BOOKING_CHOICE_CLARIFICATION } from "@/lib/ai-assistant/sbc-scheduling-exchange";
+import { isSbcBookingChoiceClarification } from "@/lib/ai-assistant/sbc-scheduling-exchange";
 import { aliceAutonomySchedulingTextValid } from "@/lib/ai-assistant/autonomy/content-policy";
 import { ALICE_AUTONOMY_INSTANCE_ID, ALICE_AUTONOMY_RECOVERY_WINDOW_MS } from "@/lib/ai-assistant/autonomy/policy";
 
@@ -14,7 +14,7 @@ const acceptedAlice = (message: Message) => message.fromMe && message.type === "
 function prepareContinuation(history: Message[], now: Date) {
   const [offer, source, previous] = history.slice(-3);
   if (!offer || !source || !previous || !acceptedAlice(offer) || !acceptedAlice(previous)
-    || previous.body !== SBC_BOOKING_CHOICE_CLARIFICATION || source.fromMe || source.type !== "text") return null;
+    || !isSbcBookingChoiceClarification(previous.body) || source.fromMe || source.type !== "text") return null;
   const period = evaluationRequestedPeriod(source.body);
   const cutoff = +now - ALICE_AUTONOMY_RECOVERY_WINDOW_MS;
   if (!period || +source.timestamp < cutoff || +source.createdAt < cutoff || +source.timestamp > +now

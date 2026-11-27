@@ -134,6 +134,35 @@ test("registra uma vez e confirma uma vez mesmo com solicitações concorrentes"
 
 const mixedSaturdayOffer = 'Ótimo! No sábado 14/11 temos horários disponíveis das 8h às 13h.\n\nAlgum desses te encaixa melhor?\n\n08h00, 09h00 ou 10h30';
 
+test('agenda o horário alternativo quando a cliente explica o deslocamento ou recusa outra opção', async () => {
+  const offerBody = 'Quarta-feira, 02/12/2026: 10h, 14h ou 19h para a avaliação. Qual fica melhor?';
+  const clarification = { fromMe: true, status: 'delivered', body: 'Para concluir sua avaliação, me confirme o dia e um único horário das opções que te enviei 😊' };
+  for (const [parts, afterOffer, expected] of [
+    [['Saiu do trabalho as 14;15', 'Iria direto', 'No caso as 15:30'], [], '18:30'],
+    [['Dia 02 12 26\nAs 15;30', 'As 14', 'Nao consigo chegar'], [clarification], '18:30'],
+    [['Às 15'], [clarification], '18:00'],
+    [['Saio do trabalho às 14h e vou direto. Posso ir em 02/12/26 às 15h30?'], [], '18:30'],
+  ]) {
+    const f = fixture({ now: '2026-11-27T21:35:00Z', autonomy: true, offerBody, afterOffer,
+      beforeReply: parts.slice(0, -1), replyBody: parts.at(-1) });
+    const result = await f.run();
+    assert.equal(result.status, 'booked', parts.join(' / '));
+    assert.equal(result.startTime, `2026-12-02T${expected}:00.000Z`);
+    assert.equal(f.state.sent, 1);
+  }
+});
+
+test('pedido alternativo exige horário da grade sem ambiguidade ou recusa do próprio horário', async () => {
+  for (const parts of [['Às 21h'], ['Às 15;15'], ['Às 15h30', 'Às 15h30', 'Não consigo chegar'],
+    ['Às 15h30 ou 16h'], ['Às 15h30 ou 22h'], ['Às 15h30 se der'], ['Às 15h30', 'Estou grávida']]) {
+    const f = fixture({ now: '2026-11-27T21:35:00Z', autonomy: true,
+      offerBody: 'Quarta-feira, 02/12/2026: 10h, 14h ou 19h para a avaliação. Qual fica melhor?',
+      beforeReply: parts.slice(0, -1), replyBody: parts.at(-1) });
+    assert.notEqual((await f.run()).status, 'booked', parts.join(' / '));
+    assert.equal(f.state.sent, 0);
+  }
+});
+
 test('aceite coloquial da lista após faixa já enviada registra avaliação, confirmação e aviso uma única vez', async () => {
   const f = fixture({ now: '2026-11-11T19:19:20Z', autonomy: true, groupNoticeId: 'notice',
     campaignName: 'Glúteo Perfeito', noProcedure: true,
@@ -161,8 +190,15 @@ test('confirmação coloquial mantém o horário explícito na mesma mensagem ou
   }
 });
 
-test('faixa com lista não autoriza horário fora da lista nem aceite coloquial condicionado', async () => {
-  for (const text of ['As 13h pra mim tá bom', '9h30 pra mim tá bom', '10h30 pra mim tá bom se eu conseguir',
+test('lista dentro da faixa permite pedir outro horário da grade no modo autônomo', async () => {
+  const f = fixture({ now: '2026-11-11T19:19:20Z', autonomy: true, offerBody: mixedSaturdayOffer,
+    replyBody: '9h30 pra mim tá bom' });
+  assert.equal((await f.run()).startTime, '2026-11-14T12:30:00.000Z');
+  assert.equal(f.state.sent, 1);
+});
+
+test('faixa com lista não autoriza fora da grade nem aceite coloquial condicionado', async () => {
+  for (const text of ['As 13h30 pra mim tá bom', '10h30 pra mim tá bom se eu conseguir',
     '10h30 pra mim tá bom, mas ainda não confirma', '10h30 pra mim tá bom?', '10h30 pra mim tá bom, estou grávida']) {
     const f = fixture({ now: '2026-11-11T19:19:20Z', autonomy: true, offerBody: mixedSaturdayOffer, replyBody: text });
     assert.notEqual((await f.run()).status, 'booked', text);

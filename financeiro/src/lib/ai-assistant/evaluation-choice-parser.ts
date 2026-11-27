@@ -162,6 +162,8 @@ function nextDateKey(key: string) {
  * da grade; horários fora da grade, como o de um exame, são contexto.
  */
 export function chooseRequestedEvaluationSlot(selections: readonly string[], permitted: readonly string[], todayKey: string, offeredDayKey?: string | null): string | null {
+  // Uma afirmação sobre a preferência em forma de dúvida não tem o mesmo sentido de "pode ser às 10h?".
+  if (selections.some((part) => /\b(?:pra|para) mim (?:ta|esta|fica) bom\s*\?$/u.test(normalize(part)))) return null;
   const text = normalize(selections.join('\n')).replace(/\s+/gu, ' ').trim();
   if (!text || unclearRequest.test(text)) return null;
   const dateKeys = [...new Set(permitted.map((slot) => slot.slice(0, 10)))];
@@ -175,7 +177,7 @@ export function chooseRequestedEvaluationSlot(selections: readonly string[], per
     const key = day[1] === 'hoje' ? todayKey : nextDateKey(todayKey);
     if (!add(dateKeys.filter((candidate) => candidate === key))) return null;
   }
-  for (const day of text.matchAll(dayOfMonthPattern)) {
+  for (const day of text.replace(datePattern, ' ').matchAll(dayOfMonthPattern)) {
     if (!add(dateKeys.filter((key) => Number(key.slice(8, 10)) === Number(day[1])))) return null;
   }
   // "Pode ser 10h?" depois de uma oferta de um único dia refere-se a esse dia.
@@ -184,6 +186,7 @@ export function chooseRequestedEvaluationSlot(selections: readonly string[], per
   const [key] = keys;
   const times = clocks(text);
   if (!times?.length) return null;
+  if (new Set(times.map((time) => time.time)).size > 1 && /\bou\b/u.test(text)) return null;
   const starts = [...new Set(times.map((time) => `${key}T${time.time}`).filter((slot) => permitted.includes(slot)))];
   return starts.length === 1 ? starts[0] : null;
 }
