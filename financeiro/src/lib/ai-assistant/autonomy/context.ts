@@ -11,6 +11,7 @@ import { loadAliceMemoryContext, type AliceMemoryRuntime } from "@/lib/alice/run
 import { projectAliceAudioHistory, isAliceTextInput } from "@/lib/alice/audio/history";
 import { aliceMediaTextContext } from "@/lib/ai-assistant/autonomy/media-text";
 import { pinkFridaySbcOffer } from "@/lib/pink-friday-sbc";
+import { arrivedFromIdentifiedAdToday } from "@/lib/ai-assistant/promotion-validity";
 
 async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = prisma, now = new Date()) {
   const conversation = await database.whatsAppConversation.findFirst({
@@ -44,7 +45,7 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
   const phoneKey = phoneLookupKey(conversation.contact.phone);
   const clients = phoneKey && !continuation ? await database.client.findMany({
     where: { unit: "SBC", isActive: true, phone: { contains: phoneKey.slice(-8) } },
-    select: { phone: true, campaignName: true, campaignId: true }, take: 12,
+    select: { phone: true, campaignName: true, campaignId: true, campaignAttribution: true, arrivedAt: true }, take: 12,
   }) : [];
   const matches = clients.filter((client) => phoneLookupKey(client.phone) === phoneKey);
   const campaignName = matches.length === 1
@@ -66,6 +67,7 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
     handoffReason: handoffReason || (!knowledge && !continuation ? "model_requested" as const : null),
     prompt: {
       BASE_ALICE: knowledge, UNIDADE: "SBC", CAMPANHA: sanitizeAiAssistantText(campaignName, names),
+      ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE: arrivedFromIdentifiedAdToday(matches.length === 1 ? matches[0] : undefined, campaignName, now),
       TEMPO_CONVERSA: { agora: now.toISOString(), fusoHorario: "America/Sao_Paulo" },
       HORARIOS_SBC: buildSbcEvaluationOptions(now), CONTATO: { nomeSalvoDisponivel: Boolean(resolveAiAssistantContactName(conversation.contact.name)) },
       MENSAGEM_ALVO: null, ULTIMA_MENSAGEM_CLIENTE: { id: source.id, text: sanitizeAiAssistantText(source.body, names) },

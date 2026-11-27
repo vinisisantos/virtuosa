@@ -25,6 +25,7 @@ import { sbcOutOfHoursReply } from "@/lib/ai-assistant/autonomy/out-of-hours";
 import { SBC_BOOKING_CHOICE_CLARIFICATION } from "@/lib/ai-assistant/sbc-scheduling-exchange";
 import { ALICE_UNREAD_MEDIA_INSTRUCTION } from "@/lib/ai-assistant/autonomy/media-text";
 import { sbcSchedulingContinuityReply } from "@/lib/ai-assistant/autonomy/scheduling-continuity";
+import { sameDayAdPromotionReply } from "@/lib/ai-assistant/promotion-validity";
 import { ALICE_MAX_MESSAGE_PARTS } from "@/lib/alice/message-parts";
 
 type BookingFollowup = { kind: "booking_followup"; version: 1; questions: string[]; startTime: string;
@@ -159,7 +160,10 @@ export async function processAliceAutonomousTurn(
     const responseIndex = bookingFollowup ? turn.nextMessageIndex - 1 : turn.nextMessageIndex;
     let context = bookingFollowup ? bookingFollowupContext(loadedContext, bookingFollowup) : loadedContext;
     memoryRuntime = context.memoryRuntime;
-    if (context.handoffReason) return human(context.handoffReason);
+    const canClarifyAdImage = context.handoffReason === "model_requested"
+      && context.prompt.ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE === true
+      && context.source.type === "image" && !context.source.body.trim();
+    if (context.handoffReason && !canClarifyAdImage) return human(context.handoffReason);
     let payload: AliceTurnPayload | null = bookingFollowup?.payload || readAliceTurnPayload(turn.messagesJson);
     let messages = payload?.proposal.resposta || bookingFollowup?.messages || (Array.isArray(turn.messagesJson) ? turn.messagesJson.filter((value): value is string => typeof value === "string") : []);
     if (turn.messagesJson !== null && !messages.length && !bookingFollowup) return human("model_requested", "invalid_persisted_sequence");
@@ -177,11 +181,13 @@ export async function processAliceAutonomousTurn(
     };
     if (!messages.length && !bookingFollowup && !turn.firstSentAt && !turn.appointmentId && turn.nextMessageIndex === 0
       && !context.memoryRuntime?.guard.appointment && !context.prompt.DADOS_AGENDA_ATUAIS) {
-      const availabilityReply = sbcOutOfHoursReply(context, now());
-      if (availabilityReply) {
-        if (!await saveOperationalReply(availabilityReply)) return "skipped";
+      const operationalReply = canClarifyAdImage ? "Qual informação você quer confirmar sobre a imagem que enviou?"
+        : sbcOutOfHoursReply(context, now()) || sameDayAdPromotionReply(context.prompt);
+      if (operationalReply) {
+        if (!await saveOperationalReply(operationalReply)) return "skipped";
       }
     }
+    if (context.handoffReason && !messages.length) return human(context.handoffReason);
     if (!messages.length) {
       // Com avaliação já marcada, um novo dia e horário é remarcação e segue para a conversa normal.
       const allowDirectRequest = !context.memoryRuntime?.guard.appointment && !context.prompt.DADOS_AGENDA_ATUAIS;

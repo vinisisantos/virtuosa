@@ -49,6 +49,7 @@ export async function loadAliceMemoryContext(context: LegacyAliceAutonomousConte
     messageText: [...current, ...history.filter((message) => !message.fromMe).slice(0, 2)].map((message) => message.body).join(" "), now });
   const prompt = { ...buildAliceContext({ scope, memory, history, knowledge: knowledge || {}, campaignName: campaign,
     contactName: context.contactName, evaluationOptions: buildSbcEvaluationOptions(now), appointment, autonomous: true, now }),
+    ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE: context.prompt.ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE === true,
     ...(context.mediaTextContext ? { ANEXOS_NAO_INTERPRETADOS: context.mediaTextContext } : {}) };
   const detectedFear = aliceFearPolicy(prompt);
   const fear = detectedFear && aliceHealthHistoryRequiresHuman(memory.saudeObservacoes)

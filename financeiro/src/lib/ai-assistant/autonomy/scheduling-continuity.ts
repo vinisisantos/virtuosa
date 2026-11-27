@@ -16,7 +16,8 @@ export function sbcSchedulingContinuityReply(context: AliceAutonomousContext) {
     || pending.some((message) => message.type !== "text" || !message.body.trim())) return null;
   const text = normalize(pending.map((message) => message.body).join("\n"));
   // A recuperação por modelo responde à dúvida comercial antes de retomar a agenda.
-  if (asksAboutPriceOrPayment.test(text)) return null;
+  if (asksAboutPriceOrPayment.test(text)
+    || (context.prompt.ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE === true && /\b(?:promocao|oferta|vigente|validade)\b/u.test(text))) return null;
   const clinic = getEvaluationScheduleUnitConfig({ unit: "SBC", instanceId: context.conversation.instance.id });
   if (!clinic) return null;
   const wantsAddress = /\b(?:endereco|localizacao|onde fica|(?:fica|ficam) (?:onde|aonde))\b/u.test(text);

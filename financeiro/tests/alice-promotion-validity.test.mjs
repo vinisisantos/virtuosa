@@ -3,6 +3,7 @@ import test from "node:test";
 import { normalizeAiAssistantMessageLayout, parseGeneration } from "#lib/ai-assistant/provider";
 import { buildAliceAssistantRequest } from "#lib/ai-assistant/provider";
 import { buildClaudeRequest } from "#lib/ai-assistant/claude-provider";
+import { arrivedFromIdentifiedAdToday } from "#lib/ai-assistant/promotion-validity";
 
 const prompt = { UNIDADE: "SBC", CAMPANHA: "Lipo Laser", CONVERSA: [
   { role: "atendente", text: "Olá! Recebemos seu contato." },
@@ -60,4 +61,38 @@ test("Osasco e procedimentos fora de escopo não têm encaminhamento removido", 
   }
   const noContext = { ...prompt, CONVERSA: [{ role: "cliente", text: "Até quando?" }], CAMPANHA: "" };
   assert.equal(normalizeAiAssistantMessageLayout(previousAnswer, true, noContext).needsHuman, true);
+});
+
+test("confirma a vigência de hoje para a oferta do anúncio identificado", () => {
+  for (const text of ["Essa promoção está válida?", "A oferta ainda está ativa?", "Essa promoção vai até quando?"]) {
+    const input = withQuestion(text, { ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE: true });
+    const result = normalizeAiAssistantMessageLayout(previousAnswer, true, input);
+    assert.equal(result.needsHuman, false, text);
+    assert.match(result.messages.join(" "), /vigente hoje/i, text);
+  }
+  const withoutEvidence = normalizeAiAssistantMessageLayout(previousAnswer, true, withQuestion("Essa promoção está válida?"));
+  assert.equal(withoutEvidence.needsHuman, true);
+});
+
+test("usa atribuição e dia de São Paulo para comprovar a chegada pelo anúncio", () => {
+  const now = new Date("2026-11-28T02:50:00Z");
+  const client = { campaignAttribution: "automatic_meta", arrivedAt: new Date("2026-11-27T19:04:11Z") };
+  assert.equal(arrivedFromIdentifiedAdToday(client, "Glúteo Perfeito", now), true);
+  assert.equal(arrivedFromIdentifiedAdToday(client, "Glúteo Perfeito", new Date("2026-11-28T03:00:00Z")), false);
+  assert.equal(arrivedFromIdentifiedAdToday({ ...client, campaignAttribution: "manual" }, "Glúteo Perfeito", now), false);
+  assert.equal(arrivedFromIdentifiedAdToday({ ...client, arrivedAt: null }, "Glúteo Perfeito", now), false);
+  assert.equal(arrivedFromIdentifiedAdToday(client, "Via link", now), false);
+  assert.equal(arrivedFromIdentifiedAdToday({ ...client, arrivedAt: new Date("2026-11-28T02:55:00Z") }, "Glúteo Perfeito", now), false);
+});
+
+test("preserva perguntas adicionais e o prazo explicitamente aprovado", () => {
+  const mixed = withQuestion("São 30 ml de cada lado?", { ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE: true,
+    MENSAGENS_RECENTES_SEM_RESPOSTA: [{ text: "Essa promoção está válida?" }, { text: "São 30 ml de cada lado?" }] });
+  assert.match(buildClaudeRequest(mixed).system, /confirme que a oferta está vigente hoje/i);
+  assert.equal(normalizeAiAssistantMessageLayout(previousAnswer, true, mixed).response, previousAnswer.response);
+  const clinical = withQuestion("Essa promoção está válida? Estou grávida, posso fazer?", { ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE: true });
+  assert.equal(normalizeAiAssistantMessageLayout(previousAnswer, true, clinical).needsHuman, true);
+  const expired = withQuestion("Essa promoção está válida?", { CAMPANHA: "BOTOX PINK FRIDAY",
+    ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE: true, TEMPO_CONVERSA: { agora: "2026-11-30T03:00:00Z" } });
+  assert.match(normalizeAiAssistantMessageLayout(previousAnswer, true, expired).messages.join(" "), /terminou em 29\/11\/2026/i);
 });

@@ -99,6 +99,27 @@ test('uma oferta de horário rejeitada não substitui a pergunta de preço e par
   } finally { await f.pg.close(); }
 });
 
+test('lead de anúncio no mesmo dia recebe confirmação direta da oferta ou esclarecimento sobre imagem', async () => {
+  for (const image of [false, true]) {
+    const f = await fixture();
+    try {
+      const load = f.deps.loadContext;
+      f.deps.loadContext = async (...args) => {
+        const context = await load(...args);
+        const source = { ...context.source, type: image ? 'image' : 'text', body: image ? '' : 'Essa promoção está válida?' };
+        return { ...context, source, messages: [source], handoffReason: image ? 'model_requested' : null,
+          prompt: { ...context.prompt, CAMPANHA: 'Glúteo Perfeito', ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE: true,
+            MENSAGENS_RECENTES_SEM_RESPOSTA: image ? [] : [{ text: source.body }] } };
+      };
+      assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), 'sent');
+      assert.equal(f.state.generations, 0);
+      assert.equal(f.state.sends.length, 1);
+      assert.match(f.state.sends[0], image ? /confirmar sobre a imagem/u : /vigente hoje/u);
+      assert.equal((await f.readChat()).aiMode, 'agent');
+    } finally { await f.pg.close(); }
+  }
+});
+
 test('continuidade não substitui segurança clínica, agenda existente, unidade ou mídia', async () => {
   const f = await fixture();
   try {
