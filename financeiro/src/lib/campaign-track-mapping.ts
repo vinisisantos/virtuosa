@@ -1,4 +1,5 @@
 import { lipoLaserCampaignFromAdId, lipoLaserCampaignFromPrefilledMessage, lipoLaserCampaignFromSourceUrl } from "./lipo-laser-campaigns.ts";
+import { pinkFridaySbcOffer } from "./pink-friday-sbc.ts";
 
 export const FACIAL_FILLER_CAMPAIGN_NAME = "Preenchimento Facial";
 export const ADEUS_ROSTO_CANSADO_CAMPAIGN_NAME = "Adeus Rosto Cansado";
@@ -265,6 +266,8 @@ export function campaignNameFromExactMetaAdId(
   unit?: string | null,
 ) {
   if (!adId) return null;
+  const pinkFriday = pinkFridaySbcOffer(unit, null, adId);
+  if (pinkFriday) return pinkFriday.name;
   const lipoLaserCampaign = lipoLaserCampaignFromAdId(adId, unit);
   if (lipoLaserCampaign) return lipoLaserCampaign;
   const normalizedUnit = unit?.trim().toLowerCase();
@@ -347,6 +350,7 @@ export function campaignNameFromMetaSignals(
   unit?: string | null,
 ) {
   const exactCampaign = campaignNameFromExactMetaAdId(trackId, unit);
+  if (pinkFridaySbcOffer(unit, exactCampaign)) return exactCampaign;
   if (exactCampaign === GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME) return exactCampaign;
   const lipoLaserCampaign = lipoLaserCampaignFromAdId(trackId, unit);
   if (lipoLaserCampaign) return lipoLaserCampaign;
@@ -372,6 +376,8 @@ export function campaignNameFromMetaAdAndTrackSignals(
   sourceUrl?: string | null,
   unit?: string | null,
 ) {
+  const pinkFriday = [adId, trackId].map((id) => pinkFridaySbcOffer(unit, null, id)).filter((offer) => offer !== null);
+  if (pinkFriday.length) return pinkFriday.every((offer) => offer.key === pinkFriday[0].key) ? pinkFriday[0].name : null;
   const exactCampaign = [adId, trackId]
     .map((id) => campaignNameFromExactMetaAdId(id, unit))
     .find((name) => name === GLUTEO_ESQUENTA_PINK_FRIDAY_CAMPAIGN_NAME);

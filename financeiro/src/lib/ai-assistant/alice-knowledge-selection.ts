@@ -1,4 +1,5 @@
 type AliceDocument = { path: string; content: string };
+import { pinkFridaySbcOffer, PINK_FRIDAY_SBC_RULES, PINK_FRIDAY_SBC_PRICES_HEADING, type PinkFridaySbcOffer } from "../pink-friday-sbc.ts";
 
 const CORE_DOCUMENTS = ["AGENTS.md", "IDENTITY.md", "RULES.md", "SAFETY.md", "SALES.md", "MEMORY.md"];
 const SBC_MANUAL = "knowledge/manual-atendimento-sbc.md";
@@ -19,6 +20,39 @@ const PROCEDURE_DOCUMENTS = new Set([
   "knowledge/emagreca-2kg.md",
   "knowledge/reticulado-corporal.md",
 ]);
+
+function regularPrices(content: string) {
+  return content.split(PINK_FRIDAY_SBC_PRICES_HEADING)[0].trim();
+}
+
+function promotionPrices(content: string, offer: PinkFridaySbcOffer) {
+  const section = content.split(PINK_FRIDAY_SBC_PRICES_HEADING)[1];
+  const entry = section?.split(/^### /m).find((part) => part.startsWith(`${offer.name}\n`));
+  return entry ? `# Valores exclusivos de ${offer.name} — SBC\n\n${entry.trim()}` : null;
+}
+
+function selectPromotionDocuments(byPath: Map<string, AliceDocument>, offer: PinkFridaySbcOffer) {
+  const prices = promotionPrices(byPath.get("knowledge/prices.md")?.content || "", offer);
+  const manual = byPath.get(SBC_MANUAL);
+  if (!prices || !manual) return null;
+  // O manual compartilhado contém preços antigos: a promoção recebe só a seção
+  // comercial própria; as demais orientações e políticas de SBC são preservadas.
+  const promotionManual = manual.content.replace(/## Informações comerciais fornecidas pela clínica\n[\s\S]*?(?=\n## |$)/u,
+    "## Informações comerciais desta conversa\nUse somente a oferta Pink Friday identificada e a seção de preços selecionada. Não importe condições de outras campanhas.\n");
+  const paths = [...CORE_DOCUMENTS, SBC_MANUAL, "knowledge/clinic.md", "knowledge/prices.md", "knowledge/payments.md",
+    PINK_FRIDAY_SBC_RULES, offer.document, "workflows/scheduling.md"];
+  const required = new Set([...CORE_DOCUMENTS, SBC_MANUAL, "knowledge/clinic.md", "knowledge/prices.md", "knowledge/payments.md",
+    PINK_FRIDAY_SBC_RULES, offer.document]);
+  const selected = paths.flatMap((path) => {
+    const document = byPath.get(path);
+    if (!document) return [];
+    return [{ source: path, content: path === "knowledge/prices.md" ? prices : path === SBC_MANUAL ? promotionManual : document.content }];
+  });
+  if ([...required].some((path) => !selected.some((document) => document.source === path))
+    || selected.some((document) => document.source !== "knowledge/prices.md" && /R\s*\$\s*\d/u.test(document.content))
+    || selected.length > MAX_DOCUMENTS || selected.reduce((sum, document) => sum + document.content.length, 0) > MAX_CHARS) return null;
+  return selected;
+}
 
 function normalized(value: string) {
   return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -49,6 +83,13 @@ export function selectAliceKnowledgeDocuments(params: {
 }) {
   const byPath = new Map(params.documents.map((document) => [document.path, document]));
   if (!CORE_DOCUMENTS.every((path) => byPath.has(path))) return null;
+  const promotion = pinkFridaySbcOffer(params.unit, params.campaignName);
+  if (promotion) return selectPromotionDocuments(byPath, promotion);
+  for (const path of byPath.keys()) {
+    if (path.startsWith("knowledge/pink-friday-sbc")) byPath.delete(path);
+  }
+  const prices = byPath.get("knowledge/prices.md");
+  if (prices) byPath.set(prices.path, { ...prices, content: regularPrices(prices.content) });
   const unitDocuments = params.unit === "SBC" ? [SBC_MANUAL] : [];
   if (!unitDocuments.every((path) => byPath.has(path))) return null;
 
@@ -65,7 +106,7 @@ export function selectAliceKnowledgeDocuments(params: {
   ];
   const contextualSet = new Set(contextualPaths);
   const requestedTerms = terms(`${params.campaignName} ${params.messageText}`);
-  const secondary = params.documents
+  const secondary = [...byPath.values()]
     .filter((document) => document.path !== "PENDENCIAS-RESPOSTAS-OFICIAIS.md"
       && (document.path !== SBC_MANUAL || params.unit === "SBC")
       && (!PROCEDURE_DOCUMENTS.has(document.path) || contextualSet.has(document.path)))

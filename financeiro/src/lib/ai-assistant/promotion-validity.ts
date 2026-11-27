@@ -1,9 +1,15 @@
 import type { AiAssistantGeneration } from "@/lib/ai-assistant/provider";
 import { classifyAliceHandoff } from "@/lib/ai-assistant/safety";
+import { pinkFridaySbcPromptOffer, pinkFridaySbcActive, pinkFridaySbcPromptNow } from "@/lib/pink-friday-sbc";
 
 export const SBC_PROMOTION_VALIDITY_INSTRUCTIONS = "VALIDADE_PROMOCIONAL_SBC, política comercial confirmada pela clínica. Quando perguntarem até quando uma promoção, preço ou condição promocional continuará disponível, explique que não temos data de término confirmada: a duração depende do marketing e pode mudar de um dia para outro. Incentive aproveitar e fechar o pacote enquanto a condição estiver disponível, sem pressão, contagem regressiva ou falsa escassez. Não afirme que acaba hoje, amanhã ou em uma data específica. Não prometa manter preço por agendar ou fazer reserva. Esta regra responde à validade mesmo sem data na base; quando a pergunta for apenas essa, não marque needsHuman nem prometa consultar a equipe. Se houver outras dúvidas, responda com a base aprovada e preserve os encaminhamentos necessários. Não acrescente preço, explicação de procedimento ou pergunta de descoberta que a pessoa não pediu.";
 
 const deadlineReply = "Não temos uma data de término confirmada para essa promoção. A duração depende do marketing, então ela pode ser encerrada de um dia para outro.\n\nSe o pacote faz sentido para você, vale aproveitar para fechar enquanto essa condição estiver disponível 😊";
+
+export function sbcPromotionValidityInstructions(input: unknown) {
+  if (!pinkFridaySbcPromptOffer(input)) return SBC_PROMOTION_VALIDITY_INSTRUCTIONS;
+  return "VALIDADE_PROMOCIONAL_PINK_FRIDAY_SBC: esta oferta específica é exclusiva de SBC e válida até domingo, 29/11/2026, inclusive. Esta data substitui a regra genérica sem término confirmado somente nesta campanha. Não invente hora de encerramento, desconto, pacote mínimo ou manutenção de preço por agendamento. Após 29/11/2026, não afirme que a promoção está vigente ou prorrogada: condições atuais precisam de confirmação. Use o agora do servidor. Nenhuma outra campanha herda preço, produto, validade ou condições desta oferta.";
+}
 const price = "(?:valor|preco)(?: promocional)?(?: de (?:r\\$ ?)?\\d+(?: \\d{2})?)?";
 const subject = `(?:(?:essa|esse|esta|este|a|o) )?(?:promocao|oferta|condicao(?: promocional)?|${price}|pacote)`;
 const duration = "(?:ate quando|ate que dia|por quanto tempo|quanto tempo)";
@@ -44,5 +50,11 @@ export function applySbcPromotionValidity(value: AiAssistantGeneration, input: u
   const hasPromotion = /\b(?:promocao|oferta|condicao promocional|valor promocional|preco promocional)\b/u.test(normalize(`${campaignName} ${context}`));
   const questions = messages.map(normalize).filter(Boolean);
   if (!questions.length || !questions.every((text) => deadlineOnlyPatterns.some((pattern) => pattern.test(text)) || (hasPromotion && contextualDeadline.test(text)))) return value;
-  return { ...value, response: deadlineReply, messages: [deadlineReply], needsHuman: false, confidence: "high", usedKnowledge: [...value.usedKnowledge, "business:promotion-validity-sbc-v1"].slice(-12) };
+  const promotion = pinkFridaySbcPromptOffer(prompt);
+  const reply = promotion ? pinkFridaySbcActive(pinkFridaySbcPromptNow(prompt))
+    ? "Essa condição da Pink Friday é válida até domingo, 29/11/2026. O agendamento por si só não garante a manutenção do preço após esse prazo."
+    : "Essa condição da Pink Friday terminou em 29/11/2026. Para uma nova contratação, as condições atuais precisam ser confirmadas com a equipe."
+    : deadlineReply;
+  return { ...value, response: reply, messages: [reply], needsHuman: false, confidence: "high", usedKnowledge: [...value.usedKnowledge,
+    promotion ? "business:pink-friday-sbc-2026" : "business:promotion-validity-sbc-v1"].slice(-12) };
 }

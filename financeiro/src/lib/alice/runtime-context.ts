@@ -46,7 +46,7 @@ export async function loadAliceMemoryContext(context: LegacyAliceAutonomousConte
   const pending = accepted.slice(lastTeam + 1).filter((message) => !message.fromMe);
   const current = pending.length ? pending : [context.source];
   const knowledge = buildAliceKnowledgeContext({ unit: "SBC", campaignName: campaign,
-    messageText: [...current, ...history.filter((message) => !message.fromMe).slice(0, 2)].map((message) => message.body).join(" ") });
+    messageText: [...current, ...history.filter((message) => !message.fromMe).slice(0, 2)].map((message) => message.body).join(" "), now });
   const prompt = { ...buildAliceContext({ scope, memory, history, knowledge: knowledge || {}, campaignName: campaign,
     contactName: context.contactName, evaluationOptions: buildSbcEvaluationOptions(now), appointment, autonomous: true, now }),
     ...(context.mediaTextContext ? { ANEXOS_NAO_INTERPRETADOS: context.mediaTextContext } : {}) };

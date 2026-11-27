@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { pinkFridaySbcOffer } from "@/lib/pink-friday-sbc";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { isFreshWelcomeEvent } from "@/lib/whatsapp/campaign-welcome-policy";
 import { enqueueWelcome, findWelcomeReception } from "@/lib/whatsapp/campaign-welcome";
@@ -2257,7 +2258,6 @@ async function processMessage(
   const exactAdCampaignName = campaignNameFromExactMetaAdId(adId, leadUnit);
   const confirmedLipoLaserCampaign = lipoLaserCampaignFromAdId(adId, leadUnit)
     || lipoLaserCampaignFromSourceUrl(adSourceUrl, leadUnit);
-  const canonicalAdCampaignName = confirmedLipoLaserCampaign || exactSourceCampaignName || exactAdCampaignName;
   // id da campanha real, senão o id do anúncio (preserva rastreio p/ backfill)
   const campaignTrackId: string | null = canCaptureLead
     ? (resolvedCampaignId || adId || prefilledMetaCampaign?.campaignTrackId || null)
@@ -2268,13 +2268,15 @@ async function processMessage(
     adSourceUrl,
     leadUnit,
   );
+  const confirmedPinkFridayCampaign = pinkFridaySbcOffer(leadUnit, trackedCampaignName)?.name;
+  const canonicalAdCampaignName = confirmedPinkFridayCampaign || confirmedLipoLaserCampaign || exactSourceCampaignName || exactAdCampaignName;
   // O marcador secundário de Osasco é dedicado à Barriga Trincada. A regra é
   // intencionalmente separada da origem da conta: SBC usa conta secundária para
   // mais de uma campanha e não pode herdar este nome.
   const accountCampaignName = campaignNameFromAccountTrackId(campaignTrackId, leadUnit);
   // Texto explícito e criativo identificado dispensam a busca aproximada.
   // O nome da campanha pai não deve contaminar a descrição do anúncio filho.
-  const explicitCampaignName = confirmedLipoLaserCampaign || prefilledMetaCampaign?.campaignName
+  const explicitCampaignName = confirmedPinkFridayCampaign || confirmedLipoLaserCampaign || prefilledMetaCampaign?.campaignName
     || exactSourceCampaignName || exactAdCampaignName || accountCampaignName
     || trackedCampaignName || keywordCampaignName || messageKeywordCampaignName;
   const managedCampaignName = canCaptureLead && hasCampaignSignal && !explicitCampaignName

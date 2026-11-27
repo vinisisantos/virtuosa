@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = resolve(root, "src/generated/alice-knowledge.ts");
 const repository = "vinisisantos/virtuosa-agent";
-const revision = "c6a3846901132711f725d1fea0971300b0e9406b";
+const revision = "819df961f4523dbed1222fbdc69dd846021f36cf";
 const maxDocumentBytes = 60_000;
 const maxTotalBytes = 180_000;
 const approvedDocuments = new Set([
@@ -15,6 +15,7 @@ const approvedDocuments = new Set([
   "knowledge/gluteos-perfeitos.md", "knowledge/gordura-localizada.md", "knowledge/orientacoes-clinicas.md",
   "knowledge/payments.md", "knowledge/prices.md", "knowledge/reticulado-corporal.md",
   "knowledge/tecnologias-corporais.md", "workflows/follow-up.md", "workflows/human-handoff.md",
+  "knowledge/pink-friday-sbc.md", "knowledge/pink-friday-sbc-botox.md",
   "workflows/new-lead.md", "workflows/objections.md", "workflows/qualification.md",
   "workflows/roteiro-procedimentos.md", "workflows/scheduling.md",
 ]);

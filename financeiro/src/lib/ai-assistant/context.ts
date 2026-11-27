@@ -181,6 +181,7 @@ export async function loadAliceSuggestionContext(params: {
       UNIDADE: unit,
       ...(unit === "SBC" ? { HORARIOS_SBC: buildSbcEvaluationOptions(new Date()) } : {}),
       CAMPANHA: campaignName || "Não identificada",
+      TEMPO_CONVERSA: { agora: new Date().toISOString(), fusoHorario: "America/Sao_Paulo" },
       CONTATO: { nomeSalvoDisponivel: Boolean(contactName) },
       MENSAGEM_ALVO: sanitizedTargetMessage,
       ...(unit === "SBC" ? { ULTIMA_MENSAGEM_CLIENTE: sanitizedLatestCustomerMessage } : {}),
