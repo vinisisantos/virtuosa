@@ -3,6 +3,7 @@ import { ALICE_AUTONOMY_INSTANCE_ID } from "@/lib/ai-assistant/autonomy/policy";
 import { getEvaluationScheduleUnitConfig } from "@/lib/whatsapp/evaluation-schedule-confirmation-message";
 
 const normalize = (text: string) => text.normalize("NFKD").replace(/\p{Diacritic}|\p{Cf}/gu, "").toLowerCase();
+const asksAboutPriceOrPayment = /\b(?:precos?|valor(?:es)?|orcamento|quanto (?:custa|fica|sai|e|que e)|parcel\w*|cartao|pagamento|pix|boleto|juros|desconto|(?:quantas|qtas) vezes|passar o calor)\b/u;
 
 /** Continuidade sem opções numéricas; nunca interpreta mídia nem substitui atendimento clínico ou agenda existente. */
 export function sbcSchedulingContinuityReply(context: AliceAutonomousContext) {
@@ -14,6 +15,8 @@ export function sbcSchedulingContinuityReply(context: AliceAutonomousContext) {
   if (!pending.length || pending.at(-1)?.id !== context.source.id
     || pending.some((message) => message.type !== "text" || !message.body.trim())) return null;
   const text = normalize(pending.map((message) => message.body).join("\n"));
+  // A recuperação por modelo responde à dúvida comercial antes de retomar a agenda.
+  if (asksAboutPriceOrPayment.test(text)) return null;
   const clinic = getEvaluationScheduleUnitConfig({ unit: "SBC", instanceId: context.conversation.instance.id });
   if (!clinic) return null;
   const wantsAddress = /\b(?:endereco|localizacao|onde fica|(?:fica|ficam) (?:onde|aonde))\b/u.test(text);

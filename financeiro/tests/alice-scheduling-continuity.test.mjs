@@ -75,6 +75,30 @@ test('diagnóstico diferencia falta de data, faixa misturada e opção fora da p
   assert.equal(aliceAutonomySchedulingTextValid(['Aos sábados, atendemos das 8h às 13h.'], now), true);
 });
 
+test('uma oferta de horário rejeitada não substitui a pergunta de preço e parcelas', async () => {
+  const f = await fixture();
+  try {
+    const load = f.deps.loadContext;
+    f.deps.loadContext = async (...args) => {
+      const context = await load(...args);
+      const source = { ...context.source, body: 'Quero mais informações sobre o COMBO PINK FRIDAY! Qual valor? Qtas vezes no cartão?' };
+      return { ...context, source, messages: [source], prompt: { ...context.prompt,
+        CAMPANHA: 'COMBO PINK FRIDAY', MENSAGENS_RECENTES_SEM_RESPOSTA: [{ text: source.body }] } };
+    };
+    const generate = f.deps.generate;
+    f.deps.generate = async (context, ...args) => {
+      const result = await generate(context, ...args);
+      if (!context.schedulingRetry) return result;
+      const response = 'O Combo Pink Friday de 50 sessões custa R$ 999,90 e pode ser parcelado no cartão. A equipe confirma em quantas vezes.';
+      return { ...result, messages: [response], proposal: structuredOutput({ resposta: [response] }) };
+    };
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), 'sent');
+    assert.equal(f.state.generations, 2);
+    assert.equal(f.state.sends.length, 1);
+    assert.match(f.state.sends[0], /R\$ 999,90.*parcelado no cartão/u);
+  } finally { await f.pg.close(); }
+});
+
 test('continuidade não substitui segurança clínica, agenda existente, unidade ou mídia', async () => {
   const f = await fixture();
   try {

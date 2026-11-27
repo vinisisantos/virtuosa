@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outputPath = resolve(root, "src/generated/alice-knowledge.ts");
 const repository = "vinisisantos/virtuosa-agent";
-const revision = "e1a28d1943da205f3eb9a56a0a94dc9765ff4d67";
+const revision = "30dd4b6d404ba99754c9b474aeceb9d1698ca81d";
 const maxDocumentBytes = 60_000;
 const maxTotalBytes = 180_000;
 const approvedDocuments = new Set([
