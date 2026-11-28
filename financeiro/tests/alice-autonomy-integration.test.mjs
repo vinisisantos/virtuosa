@@ -331,7 +331,7 @@ test("falha recuperável recente só recebe uma nova tentativa textual explícit
   } finally { await pg.close(); }
 });
 
-test("confirmação de agenda rejeitada permite uma retomada manual da mesma fonte sem efeitos", async () => {
+test("saída rejeitada pelas guardas permite uma retomada manual da mesma fonte sem efeitos", async () => {
   const { pg, adapter } = await database({ memory: true });
   const now = new Date();
   const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a",
@@ -340,14 +340,16 @@ test("confirmação de agenda rejeitada permite uma retomada manual da mesma fon
     await activateFixture(pg, input.instanceId, now);
     await pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
     await insertTurn(pg, { instanceId: input.instanceId, origin: "inbound", status: "needs_human" });
-    await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='unproven_booking',"generationStartedAt"=NOW(),attempts=1`);
-    assert.equal((await enqueueAliceAutonomousTurn({ ...input, resumeSoftFailureBy: undefined }, adapter, now)).queued, false);
-    await pg.exec(`UPDATE "AliceAutonomousTurn" SET "providerMessageIds"='["already-sent"]'`);
-    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
-    await pg.exec(`UPDATE "AliceAutonomousTurn" SET "providerMessageIds"='[]'`);
-    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
-    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='unproven_booking',attempts=2`);
-    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    for (const reason of ["unproven_booking", "presentation_not_separable"]) {
+      await pg.query(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error=$1,"generationStartedAt"=NOW(),attempts=1`, [reason]);
+      assert.equal((await enqueueAliceAutonomousTurn({ ...input, resumeSoftFailureBy: undefined }, adapter, now)).queued, false, reason);
+      await pg.exec(`UPDATE "AliceAutonomousTurn" SET "providerMessageIds"='["already-sent"]'`);
+      assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false, reason);
+      await pg.exec(`UPDATE "AliceAutonomousTurn" SET "providerMessageIds"='[]'`);
+      assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true, reason);
+      await pg.query(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error=$1,attempts=2`, [reason]);
+      assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false, reason);
+    }
   } finally { await pg.close(); }
 });
 

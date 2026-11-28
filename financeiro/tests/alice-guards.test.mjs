@@ -125,6 +125,16 @@ test("não apaga conteúdo clínico/comercial misturado com apresentação na me
   assert.equal(result.proposal, null);
 });
 
+test("separa boas-vindas de volta e apresentações com uma fronteira clara preservando a informação útil", () => {
+  const commercial = "Na Pink Friday, o Endolaser custa R$ 499,00 por sessão e por região.";
+  for (const prefix of ["Seja muito bem-vinda de volta à Clínica Virtuosa! ", "Olá! Sou a Alice, da Clínica Virtuosa 😊 ",
+    "Sou a Alice, da Clínica Virtuosa — "]) {
+    const result = guardAliceReply(structuredOutput({ resposta: [prefix + commercial] }), context());
+    assert.equal(result.status, "ready", prefix);
+    assert.deepEqual(result.proposal.resposta, [commercial]);
+  }
+});
+
 test("mensagem limpa mantém parágrafos, não modifica memória e pode passar novamente sem alteração", () => {
   const text = "Sou a Alice, da Clínica Virtuosa.\n\nEntendi sua dúvida.\n\nVocê prefere sábado?";
   const result = guardAliceReply(structuredOutput({ resposta: [text] }), context());

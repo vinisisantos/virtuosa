@@ -69,7 +69,7 @@ export function aliceContinuityInstructions(input: unknown): string | null {
     regiao: "região de interesse", procedimento: "procedimento", preferencia_dia: "preferência de dia", preferencia_horario: "preferência de horário",
   };
   if (controls.questionsAsked.length) instructions.push(`Temas de perguntas já feitas: ${controls.questionsAsked.map((key) => labels[key]).join(", ")}. Confira as respostas no histórico e evite repetir a pergunta de forma automática.`);
-  if (controls.returningAfter24h) instructions.push("A cliente retomou após mais de 24 horas desde a última saída da equipe. Cumprimente brevemente se adequado e continue do ponto anterior, sem repetir apresentação, explicação ou pergunta já resolvida.");
+  if (controls.returningAfter24h) instructions.push("A cliente voltou após mais de 24 horas. Se ela chegou por outro anúncio identificado em CAMPANHA, responda sobre a oferta atual e use o histórico só como contexto. Um cumprimento breve, como 'Que bom falar com você novamente!', pode vir em uma frase separada. Evite nova apresentação, boas-vindas e perguntas já respondidas.");
   if (controls.appointmentRegistered) instructions.push("Há avaliação registrada no CRM. Use DADOS_AGENDA_ATUAIS e não uma data inferida do texto ou do resumo. Não convide como se ainda faltasse agendar nem introduza preço ou promoção espontaneamente; responda dúvidas diretas com a base aprovada. Se a data já passou, não a descreva como futura.");
   return instructions.join("\n");
 }
