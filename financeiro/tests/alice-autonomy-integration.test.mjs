@@ -331,6 +331,50 @@ test("falha recuperável recente só recebe uma nova tentativa textual explícit
   } finally { await pg.close(); }
 });
 
+test("confirmação de agenda rejeitada permite uma retomada manual da mesma fonte sem efeitos", async () => {
+  const { pg, adapter } = await database({ memory: true });
+  const now = new Date();
+  const input = { conversationId: "conversation-a", instanceId: ALICE_AUTONOMY_INSTANCE_ID, sourceMessageId: "source-a",
+    timestamp: now, origin: "inbound", resumeSoftFailureBy: "operator" };
+  try {
+    await activateFixture(pg, input.instanceId, now);
+    await pg.exec(`UPDATE "WhatsAppConversation" SET "aiMode"='agent',"aiModeUpdatedBy"='operator' WHERE id='conversation-a'`);
+    await insertTurn(pg, { instanceId: input.instanceId, origin: "inbound", status: "needs_human" });
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET error='unproven_booking',"generationStartedAt"=NOW(),attempts=1`);
+    assert.equal((await enqueueAliceAutonomousTurn({ ...input, resumeSoftFailureBy: undefined }, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET "providerMessageIds"='["already-sent"]'`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET "providerMessageIds"='[]'`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, true);
+    await pg.exec(`UPDATE "AliceAutonomousTurn" SET status='needs_human',error='unproven_booking',attempts=2`);
+    assert.equal((await enqueueAliceAutonomousTurn(input, adapter, now)).queued, false);
+  } finally { await pg.close(); }
+});
+
+test("Alice responde a vigência e a marca da Pink Friday sem propor agendamento ou chamar o modelo", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    const messages = ["Olá! Vim pelo BOTOX PINK FRIDAY, posso ter mais informações sobre isso?", "Bom dia",
+      "Essa promoção ainda ta?", "E qual a marca do botox?"].map(text => ({ text }));
+    const load = f.deps.loadContext;
+    f.deps.loadContext = async (...args) => {
+      const context = await load(...args);
+      return { ...context, source: { ...context.source, type: "text", body: messages.at(-1).text },
+        prompt: { UNIDADE: "SBC", CAMPANHA: "BOTOX PINK FRIDAY", ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE: true,
+          TEMPO_CONVERSA: { agora: "2026-11-28T13:22:00Z" }, MENSAGENS_RECENTES_SEM_RESPOSTA: messages } };
+    };
+    const generate = f.deps.generate;
+    f.deps.generate = async (...args) => ({ ...await generate(...args), messages: [], needsHuman: true, generationFailure: "unproven_booking" });
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "sent");
+    assert.equal(f.state.generations, 0);
+    assert.equal(f.state.sends.length, 1);
+    assert.match(f.state.sends[0], /29\/11\/2026/u);
+    assert.match(f.state.sends[0], /Dysport/u);
+    assert.doesNotMatch(f.state.sends[0], /agend|reserv/iu);
+    assert.equal((await f.readTurn()).appointmentId, null);
+  } finally { await f.pg.close(); }
+});
+
 test("retomada explícita recupera apenas entrada recente cancelada por envelope criptografado vazio", async () => {
   const { pg, adapter } = await database({ memory: true });
   const now = new Date();

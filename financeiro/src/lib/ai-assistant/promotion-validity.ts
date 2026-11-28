@@ -1,6 +1,6 @@
 import type { AiAssistantGeneration } from "@/lib/ai-assistant/provider";
 import { classifyAliceHandoff } from "@/lib/ai-assistant/safety";
-import { pinkFridaySbcPromptOffer, pinkFridaySbcActive, pinkFridaySbcPromptNow } from "@/lib/pink-friday-sbc";
+import { pinkFridaySbcPromptOffer, pinkFridaySbcActive, pinkFridaySbcPromptNow, pinkFridaySbcOfferFromPrefilledMessage } from "@/lib/pink-friday-sbc";
 import { isGenericCampaignName } from "@/lib/campaign-labels";
 import { saoPauloDateKey } from "@/lib/date-filter";
 
@@ -47,6 +47,8 @@ const deadlineOnlyPatterns = [
   new RegExp(`^${subject} (?:vale|vai|fica|continua|estara disponivel) ate (?:o |a )?${time}$`, "u"),
 ];
 const activeOnly = new RegExp(`^(?:${subject} (?:(?:ainda |continua )?(?:esta |e )?)?(?:valid[ao]|ativ[ao]|disponivel|valendo|vigente)(?: hoje)?|(?:ainda )?(?:esta |continua )?(?:valid[ao]|ativ[ao]|disponivel|valendo|vigente)(?: hoje)?)$`, "u");
+const colloquialActive = new RegExp(`^${subject} ainda (?:ta|esta)(?: hoje)?$`, "u");
+const asksBotoxBrand = /^(?:e )?qual (?:e )?a marca(?: do botox| da toxina(?: botulinica)?)?$/u;
 const contextualDeadline = new RegExp(`^(?:(?:e |mas )?${duration}|tem prazo|e por tempo limitado|(?:vai )?(?:acabar|terminar|encerrar) ${time})$`, "u");
 const normalize = (text: string) => text.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase()
   .replace(/^(?:(?:oi|ola|bom dia|boa tarde|boa noite|tudo bem)(?:[,!?.\s]+|$))+/u, "")
@@ -61,6 +63,26 @@ function questionTexts(input: Record<string, unknown>) {
   const conversation = Array.isArray(input.CONVERSA) ? input.CONVERSA : [];
   const last = conversation.findLast((message) => message?.role === "cliente" && typeof message.text === "string");
   return last ? [last.text as string] : [];
+}
+
+function botoxPinkFridayBrandReply(input: unknown) {
+  if (pinkFridaySbcPromptOffer(input)?.key !== "botox") return null;
+  const prompt = input as Record<string, unknown>;
+  const messages = questionTexts(prompt);
+  if (classifyAliceHandoff({ unit: "SBC", incomingMessages: messages })) return null;
+  const questions = messages.flatMap((message) => message.split(/[?\n]+/u))
+    .filter((message) => pinkFridaySbcOfferFromPrefilledMessage(message, "SBC")?.key !== "botox")
+    .map(normalize).filter(Boolean);
+  if (!questions.some((question) => asksBotoxBrand.test(question))) return null;
+  const asksValidity = (question: string) => activeOnly.test(question) || colloquialActive.test(question)
+    || deadlineOnlyPatterns.some((pattern) => pattern.test(question));
+  if (!questions.every((question) => asksBotoxBrand.test(question) || asksValidity(question))) return null;
+  const active = pinkFridaySbcActive(pinkFridaySbcPromptNow(prompt));
+  const brand = active ? "A marca da toxina usada nessa oferta é Dysport." : "A marca usada nessa campanha era Dysport.";
+  if (!questions.some(asksValidity)) return brand;
+  const validity = active ? "A promoção de Botox Pink Friday em São Bernardo está válida até 29/11/2026."
+    : "A promoção de Botox Pink Friday em São Bernardo terminou em 29/11/2026.";
+  return `${validity} ${brand}`;
 }
 
 function promotionQuestionReply(input: unknown, requireSameDayAd = false) {
@@ -78,9 +100,9 @@ function promotionQuestionReply(input: unknown, requireSameDayAd = false) {
   const hasPromotion = /\b(?:promocao|oferta|condicao promocional|valor promocional|preco promocional)\b/u.test(normalize(`${campaignName} ${context}`));
   const questions = messages.map(normalize).filter(Boolean);
   if (!questions.length || !questions.every((text) => deadlineOnlyPatterns.some((pattern) => pattern.test(text))
-    || (hasPromotion && contextualDeadline.test(text)) || ((sameDayAd || promotion) && activeOnly.test(text)))) return null;
+    || (hasPromotion && contextualDeadline.test(text)) || ((sameDayAd || promotion) && (activeOnly.test(text) || colloquialActive.test(text))))) return null;
   const reply = promotion ? promotionActive
-    ? "Essa condição da Pink Friday é válida até domingo, 29/11/2026. O agendamento por si só não garante a manutenção do preço após esse prazo."
+    ? "Essa condição da Pink Friday é válida até 29/11/2026. O agendamento por si só não garante a manutenção do preço após esse prazo."
     : "Essa condição da Pink Friday terminou em 29/11/2026. Para uma nova contratação, as condições atuais precisam ser confirmadas com a equipe."
     : sameDayAd ? "Sim, a condição do anúncio pelo qual você chegou está vigente hoje. Não temos uma data de término confirmada."
       : deadlineReply;
@@ -88,7 +110,7 @@ function promotionQuestionReply(input: unknown, requireSameDayAd = false) {
 }
 
 export function sameDayAdPromotionReply(input: unknown) {
-  return promotionQuestionReply(input, true)?.reply || null;
+  return botoxPinkFridayBrandReply(input) || promotionQuestionReply(input, true)?.reply || null;
 }
 
 export function applySbcPromotionValidity(value: AiAssistantGeneration, input: unknown): AiAssistantGeneration {

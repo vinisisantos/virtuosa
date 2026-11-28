@@ -168,7 +168,10 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
     const resumeBooking = turn.error === "booking_requires_review" && params.resumeBookingBy;
     const resumePrice = turn.error === "price_after_booking" && params.resumeHistoricalPriceBy;
     const resumeSchedule = turn.error === "schedule_option_expired_or_invalid" && params.resumeScheduleBy;
-    const resumeSoftFailure = aliceCanContinueAfterSoftHandoff(turn.error || "") && params.resumeSoftFailureBy;
+    // A confirmação descartada pode ser regenerada só após ação explícita, sem liberar retomada automática.
+    const resumeUnprovenBooking = turn.error === "unproven_booking" && turn.origin === "inbound" && params.origin === "inbound";
+    const resumeSoftFailure = (aliceCanContinueAfterSoftHandoff(turn.error || "") || resumeUnprovenBooking)
+      && params.resumeSoftFailureBy;
     const resumeAttemptLimit = aliceRetryAttemptLimit(turn.error, turn.attempts);
     const resumeClinicalFear = turn.error === "clinical_safety" && params.resumeClinicalFearBy;
     const resumeEmptyEnvelope = turn.error === "new_customer_message" ? params.resumeEmptyEnvelopeBy : undefined;
@@ -299,12 +302,14 @@ export async function enqueueAliceTurnInTransaction(params: EnqueueAliceTurn, tx
             WHERE t.id=${turn.id} AND t.status IN ('needs_human','failed') AND t.error=${turn.error}
               AND t.attempts<=${resumeAttemptLimit} AND t."claimToken" IS NULL AND t."nextMessageIndex"=0 AND t."firstSentAt" IS NULL
               AND t."generationStartedAt" IS NOT NULL AND t."providerMessageIds"='[]'::jsonb AND t."appointmentId" IS NULL
+              AND (t.error<>'unproven_booking' OR t."messagesJson" IS NULL OR t."messagesJson"='null'::jsonb)
               AND t."sourceMessageId"=(SELECT id FROM "WhatsAppMessage" WHERE "conversationId"=t."conversationId"
                 AND status<>'deleted' AND NOT (type='secretEncryptedMessage' AND btrim(body)='') ORDER BY timestamp DESC,id DESC LIMIT 1)
               AND NOT EXISTS (SELECT 1 FROM "AliceAutoSchedule" b WHERE b."conversationId"=t."conversationId" AND b."replyMessageId"=t."sourceMessageId")`;
           if (resumed === 1) return { queued: true, turnId: turn.id, reason: "queued" };
         }
       }
+      if (resumeUnprovenBooking) return { queued: false, turnId: turn.id, reason: turn.status };
       if (resumePrice) {
         const contact = await tx.whatsAppConversation.findFirst({ where: { id: params.conversationId, instanceId: params.instanceId },
           select: { contact: { select: { phone: true } } } });

@@ -3,7 +3,7 @@ import test from "node:test";
 import { normalizeAiAssistantMessageLayout, parseGeneration } from "#lib/ai-assistant/provider";
 import { buildAliceAssistantRequest } from "#lib/ai-assistant/provider";
 import { buildClaudeRequest } from "#lib/ai-assistant/claude-provider";
-import { arrivedFromIdentifiedAdToday } from "#lib/ai-assistant/promotion-validity";
+import { arrivedFromIdentifiedAdToday, sameDayAdPromotionReply } from "#lib/ai-assistant/promotion-validity";
 
 const prompt = { UNIDADE: "SBC", CAMPANHA: "Lipo Laser", CONVERSA: [
   { role: "atendente", text: "Olá! Recebemos seu contato." },
@@ -95,4 +95,16 @@ test("preserva perguntas adicionais e o prazo explicitamente aprovado", () => {
   const expired = withQuestion("Essa promoção está válida?", { CAMPANHA: "BOTOX PINK FRIDAY",
     ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE: true, TEMPO_CONVERSA: { agora: "2026-11-30T03:00:00Z" } });
   assert.match(normalizeAiAssistantMessageLayout(previousAnswer, true, expired).messages.join(" "), /terminou em 29\/11\/2026/i);
+});
+
+test("resposta de marca do Botox Pink Friday preserva vigência, escopo e dúvidas adicionais", () => {
+  const input = withQuestion("Essa promoção ainda tá? E qual é a marca da toxina?", { CAMPANHA: "BOTOX PINK FRIDAY",
+    TEMPO_CONVERSA: { agora: "2026-11-30T02:59:59Z" } });
+  assert.match(sameDayAdPromotionReply(input), /válida até 29\/11\/2026.*Dysport/u);
+  assert.match(sameDayAdPromotionReply({ ...input, TEMPO_CONVERSA: { agora: "2026-11-30T03:00:00Z" } }), /terminou.*era Dysport/u);
+  for (const extra of [{ UNIDADE: "Osasco" }, { CAMPANHA: "Botox Terço Superior" }, { CAMPANHA: "ENDOLASER PINK FRIDAY" },
+    { MENSAGEM_ALVO: { text: "Estou grávida, posso fazer?" } }, { MENSAGEM_ALVO: { text: "Pode me agendar amanhã?" } },
+    { MENSAGEM_ALVO: { text: "Qual o preço inteiro?" } }]) {
+    assert.equal(sameDayAdPromotionReply({ ...input, ...extra }), null);
+  }
 });
