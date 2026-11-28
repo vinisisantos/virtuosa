@@ -23,6 +23,9 @@ const period = /(?:(?:(?:no|nesse|neste) periodo (?:da|de)|durante a|de|da|pela|
 const preference = /(?:(?:eu )?(?:prefiro|nao (?:posso|consigo|da)|so posso)|pode ser|(?:para|pra) mim e melhor)/u.source;
 const periodPreference = `(?:${preference} )?${period}`;
 const negotiating = new RegExp(`^(?:(?:${preference} )?${day}|${periodPreference}(?: ${day})?|${day} ${periodPreference})$`, 'u');
+const periodOnChosenDay = /^qual (?:periodo|horario) (?:fica|ficaria) melhor (?:para|pra) voce (?:fazer|realizar) sua avaliacao (?:nesse|neste) dia$/u;
+const numericDate = /(?:(?:dia )?\d{1,2}\/\d{1,2}(?:\/\d{4})?|dia \d{1,2})/u.source;
+const onlyChosenDate = new RegExp(`^(?:(?:pode ser|prefiro|quero) )?(?:${day}(?: ${numericDate})?|${numericDate})$`, 'u');
 const dateAndTime = (text: string) => /\b\d{1,2}\/\d{1,2}\b/u.test(text) && /\b\d{1,2}(?:h|:\d{2}|\s+horas?)/iu.test(text);
 const withdrewOffer = (text: string) => /\b(?:nao (?:tenho|temos|ha|existe\w*) mais|nao (?:esta|estao|e|sera).{0,20}disponiv\w*|indisponiv\w*|ja (?:foi preenchid\w*|preencheram)|cancelad\w*|fech(?:ou|ad\w*)|outro dia|outro horario|alterad\w*)\b/u.test(normalize(text));
 
@@ -51,6 +54,15 @@ function offerExpired(offer: Message, reply: Message, now: Date) {
   const until = (reply.timestamp || now).getTime();
   return !Number.isFinite(from) || !Number.isFinite(until) || from > now.getTime() || until < from
     || until - from >= 24 * 60 * 60_000 || now.getTime() - from >= 24 * 60 * 60_000;
+}
+
+function correspondingDateReply<T extends Message>(dayReply: T, prompt: T, now: Date, latest: T) {
+  if (!dayReply || !prompt || dayReply.fromMe || (dayReply.type && dayReply.type !== 'text') || dayReply.quotedMessageId
+    || authoredByAlice(prompt) !== true || !['sent', 'delivered', 'read', 'played'].includes(prompt.status)
+    || !periodOnChosenDay.test(normalize(prompt.body)) || offerExpired(dayReply, prompt, now) || offerExpired(prompt, latest, now)) return null;
+  const body = dayReply.body.normalize('NFKD').replace(/\p{Diacritic}|\p{Cf}/gu, '').toLowerCase()
+    .replace(/[,.!?]+/gu, ' ').replace(/\s+/gu, ' ').trim();
+  return onlyChosenDate.test(body) ? dayReply : null;
 }
 
 type ExchangeOptions = { allowHumanOffer?: boolean; allowDirectRequest?: boolean };
@@ -94,9 +106,17 @@ function selectDirectRequestExchange<T extends Message>(messages: readonly T[], 
     return key.slice(5) === `${month.padStart(2, '0')}-${day.padStart(2, '0')}` && (!year || key.startsWith(year));
   }) : [];
   const offeredDayKey = offeredDays.length === 1 ? offeredDays[0] : null;
-  const slot = chooseRequestedEvaluationSlot(parsed.selections, permitted, saoPauloDateKey(now), offeredDayKey);
+  const today = saoPauloDateKey(now);
+  let slot = chooseRequestedEvaluationSlot(parsed.selections, permitted, today, offeredDayKey);
+  let continuationMessages = dateOffer && offeredDayKey ? recent.slice(recent.indexOf(dateOffer), lastTeamIndex + 1) : [];
+  if (!slot && !offeredDayKey) {
+    const dateReply = correspondingDateReply(recent[lastTeamIndex - 1], lastTeam, now, reply);
+    if (dateReply) {
+      slot = chooseRequestedEvaluationSlot([dateReply.body, ...parsed.selections], permitted, today);
+      continuationMessages = [dateReply, lastTeam];
+    }
+  }
   if (!slot || slot.slice(11) === parsed.rejectedTime) return null;
-  const continuationMessages = dateOffer && offeredDayKey ? recent.slice(recent.indexOf(dateOffer), lastTeamIndex + 1) : [];
   return { offer: replies[0], reply, replies, slot, continuationMessages,
     pendingQuestions: parsed.questions, asksEvaluationCost: parsed.asksEvaluationCost };
 }

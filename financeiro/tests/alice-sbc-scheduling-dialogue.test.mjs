@@ -146,6 +146,24 @@ test('aceite da oferta única sobrevive ao agradecimento e à citação da ofert
   const multiple = { ...offered, body: 'Quinta-feira, 03/12/2026, temos horários às 14h ou 16h. Qual prefere?' };
   assert.equal(choose([multiple, accepted]), null);
 });
+
+test('mantém a data da cliente quando a Alice pergunta apenas o período desse dia', () => {
+  const clock = new Date('2026-11-28T20:20:00Z');
+  const at = (item, minutes) => ({ ...item, timestamp: new Date(+clock - minutes * 60_000) });
+  const date = at(message('date', 'Pode ser segunda dia 30', false), 2);
+  const period = at(aliceMessage('period', 'Qual período fica melhor para você fazer sua avaliação nesse dia?'), 1);
+  const time = at(message('time', '13h', false), 0);
+  const options = { allowDirectRequest: true };
+  const select = (history) => selectSbcSchedulingExchange(history, clock, options);
+  assert.equal(select([date, period, time])?.slot, '2026-11-30T13:00');
+  assert.deepEqual(select([date, period, time])?.continuationMessages.map((item) => item.id), ['date', 'period']);
+  for (const history of [[date, { ...period, respondedBy: 'human' }, time],
+    [{ ...date, body: 'Segunda ou terça' }, period, time], [{ ...date, timestamp: new Date(+clock - 86_400_001) }, period, time],
+    [date, period, { ...time, body: '13h se eu conseguir' }], [date, period, { ...time, body: '21h' }]]) {
+    assert.equal(select(history)?.slot ?? null, null);
+  }
+  assert.equal(select([date, period, { ...time, body: 'Na terça às 14h' }])?.slot, '2026-12-01T14:00');
+});
 test('Carol conserva oferta após pergunta de fotos, aceita 10h e mantém somente dúvidas não cobertas pela confirmação', () => {
   const offered = aliceMessage('offer', 'Para sábado, 14/11/2026, tenho 8h, 8h30, 9h, 9h30, 10h, 10h30, 11h, 11h30, 12h ou 12h30. Qual prefere?');
   const followup = aliceMessage('followup', 'Fotos a equipe pode enviar. Qual horário do sábado funciona melhor?');
