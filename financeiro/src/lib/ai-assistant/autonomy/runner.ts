@@ -10,7 +10,7 @@ import { loadAliceAutonomousContext, type AliceAutonomousContext } from "@/lib/a
 import { generateAliceAutonomousReply, type AutonomousGeneration } from "@/lib/ai-assistant/autonomy/generate";
 import { claimAliceAutonomousTurn, recoverAliceAutonomousTurns } from "@/lib/ai-assistant/autonomy/queue";
 import { validateAliceAutonomousTurn, AliceAutonomyStopped } from "@/lib/ai-assistant/autonomy/guard";
-import { finishAliceAutonomousTurn, notifyAliceAutonomousHandoff } from "@/lib/ai-assistant/autonomy/lifecycle";
+import { finishAliceAutonomousTurn, notifyAliceAutonomousHandoff, type AliceHandoffReceipt } from "@/lib/ai-assistant/autonomy/lifecycle";
 import { ALICE_AUTONOMY_COMPLEMENT_MS, aliceAutonomyRequiresHumanOwnership } from "@/lib/ai-assistant/autonomy/policy";
 import { aliceAutonomySchedulingTextValid, aliceAutonomySchedulingFailure } from "@/lib/ai-assistant/autonomy/content-policy";
 import { readAliceTurnPayload, legacyAliceTurnPayload, guardAliceTurn, auditAliceGuardEvents, type AliceTurnPayload } from "@/lib/alice/turn-payload";
@@ -27,6 +27,7 @@ import { ALICE_UNREAD_MEDIA_INSTRUCTION } from "@/lib/ai-assistant/autonomy/medi
 import { sbcSchedulingContinuityReply } from "@/lib/ai-assistant/autonomy/scheduling-continuity";
 import { sameDayAdPromotionReply } from "@/lib/ai-assistant/promotion-validity";
 import { ALICE_MAX_MESSAGE_PARTS } from "@/lib/alice/message-parts";
+import { hasUnclearPregnancyReference, SBC_PREGNANCY_CONTEXT_QUESTION } from "@/lib/ai-assistant/safety";
 
 type BookingFollowup = { kind: "booking_followup"; version: 1; questions: string[]; startTime: string;
   payload?: AliceTurnPayload; messages?: string[] };
@@ -89,8 +90,8 @@ export async function processAliceAutonomousTurn(
   let bookingFollowup = readBookingFollowup(turn.messagesJson);
   const deadline = Date.now() + 55_000;
   let memoryRuntime: AliceMemoryRuntime | undefined;
-  const finish = (status: "skipped" | "needs_human" | "uncertain" | "failed", reason: string) =>
-    finishAliceAutonomousTurn({ turn, token, status, reason, database, now: now() });
+  const finish = (status: "skipped" | "needs_human" | "uncertain" | "failed", reason: string, handoffReceipt?: AliceHandoffReceipt) =>
+    finishAliceAutonomousTurn({ turn, token, status, reason, database, now: now(), handoffReceipt });
   const completeAccepted = (firstSentAt?: Date) => database.$transaction(async (tx) => {
     const completed = await tx.aliceAutonomousTurn.updateMany({
       where: { id: turn.id, claimToken: token, status: "processing" },
@@ -100,11 +101,12 @@ export async function processAliceAutonomousTurn(
     if (completed.count) await markCompletedAliceRepliesRead(tx, [turn.id]);
     return completed.count ? "sent" : "skipped";
   });
-  const human = async (reason: "clinical_safety" | "unsupported_procedure" | "model_requested", error: string = reason) => {
+  const human = async (reason: "clinical_safety" | "unsupported_procedure" | "model_requested", error: string = reason,
+    handoffReceipt?: AliceHandoffReceipt) => {
     if (bookingFollowup && reason !== "clinical_safety") error = "booking_followup_requires_review";
     if (memoryRuntime && reason === "clinical_safety") await applyCurrentAliceMemory(memoryRuntime.scope, turn.sourceMessageId,
       { escalarHumano: true, motivoEscalonamento: reason }, database);
-    if (await finish("needs_human", error) && aliceAutonomyRequiresHumanOwnership("needs_human", error)
+    if (await finish("needs_human", error, handoffReceipt) && aliceAutonomyRequiresHumanOwnership("needs_human", error)
       && error !== "schedule_option_expired_or_invalid") {
       await notifyAliceAutonomousHandoff(turn, reason, deps.handoff);
     }
@@ -143,6 +145,7 @@ export async function processAliceAutonomousTurn(
     } });
   };
   let externalSendStarted = false;
+  let clarifyPregnancy = false;
   try {
     if (!await deps.validate(turn, token, "processing", database)) { await finish("skipped", "conversation_changed"); return "skipped"; }
     const audio = await deps.prepareAudio(turn, database, now());
@@ -163,7 +166,13 @@ export async function processAliceAutonomousTurn(
     const canClarifyAdImage = context.handoffReason === "model_requested"
       && context.prompt.ANUNCIO_DE_ORIGEM_RECEBIDO_HOJE === true
       && context.source.type === "image" && !context.source.body.trim();
-    if (context.handoffReason && !canClarifyAdImage) return human(context.handoffReason);
+    const pending = context.messages.slice(context.messages.findLastIndex((message) => message.fromMe) + 1);
+    clarifyPregnancy = context.handoffReason === "clinical_safety" && context.prompt.UNIDADE === "SBC"
+      && turn.origin === "inbound" && turn.attempts === 1 && turn.messagesJson === null
+      && !turn.firstSentAt && !turn.appointmentId && turn.nextMessageIndex === 0 && !bookingFollowup
+      && pending.length === 1 && pending[0].id === context.source.id && context.source.type === "text"
+      && hasUnclearPregnancyReference(context.source.body);
+    if (context.handoffReason && !canClarifyAdImage && !clarifyPregnancy) return human(context.handoffReason);
     let payload: AliceTurnPayload | null = bookingFollowup?.payload || readAliceTurnPayload(turn.messagesJson);
     let messages = payload?.proposal.resposta || bookingFollowup?.messages || (Array.isArray(turn.messagesJson) ? turn.messagesJson.filter((value): value is string => typeof value === "string") : []);
     if (turn.messagesJson !== null && !messages.length && !bookingFollowup) return human("model_requested", "invalid_persisted_sequence");
@@ -179,7 +188,9 @@ export async function processAliceAutonomousTurn(
         data: { messagesJson: payload || messages, usageRecorded: turn.usageRecorded || !turn.generationStartedAt } });
       return saved.count > 0;
     };
-    if (!messages.length && !bookingFollowup && !turn.firstSentAt && !turn.appointmentId && turn.nextMessageIndex === 0
+    if (clarifyPregnancy) {
+      if (!await saveOperationalReply(SBC_PREGNANCY_CONTEXT_QUESTION)) return "skipped";
+    } else if (!messages.length && !bookingFollowup && !turn.firstSentAt && !turn.appointmentId && turn.nextMessageIndex === 0
       && !context.memoryRuntime?.guard.appointment && !context.prompt.DADOS_AGENDA_ATUAIS) {
       const operationalReply = canClarifyAdImage ? "Qual informação você quer confirmar sobre a imagem que enviou?"
         : sbcOutOfHoursReply(context, now()) || sameDayAdPromotionReply(context.prompt);
@@ -382,6 +393,10 @@ export async function processAliceAutonomousTurn(
         externalSendStarted = true;
       },
     });
+    if (clarifyPregnancy) {
+      if (memoryRuntime) await recordAliceSentMessage(memoryRuntime.scope, sent.messageRowId, database);
+      return human("clinical_safety", "clinical_safety", sent);
+    }
     const ids = Array.isArray(turn.providerMessageIds) ? turn.providerMessageIds : [];
     const nextIndex = turn.nextMessageIndex + 1;
     const hasComplement = responseIndex + 1 < messages.length;
@@ -407,6 +422,7 @@ export async function processAliceAutonomousTurn(
     });
     return !recorded ? "skipped" : hasComplement ? "queued" : "sent";
   } catch (error) {
+    if (clarifyPregnancy && !externalSendStarted && !(error instanceof AliceAutonomyStopped)) return human("clinical_safety");
     if (bookingFollowup && !(error instanceof AliceAutonomyStopped) && !externalSendStarted) {
       return human("model_requested", "booking_followup_requires_review");
     }

@@ -3,22 +3,26 @@ import { prisma } from "@/lib/db";
 import { routeAliceHandoff } from "@/lib/ai-assistant/handoff";
 import { ALICE_AUTONOMY_INSTANCE_ID, aliceAutonomyRequiresHumanOwnership } from "@/lib/ai-assistant/autonomy/policy";
 
+export type AliceHandoffReceipt = { messageId: string; sentAt: Date };
+
 export async function finishAliceAutonomousTurn(params: {
   turn: AliceAutonomousTurn; token: string; status: "skipped" | "needs_human" | "uncertain" | "failed";
-  reason: string; database?: typeof prisma; now?: Date;
+  reason: string; database?: typeof prisma; now?: Date; handoffReceipt?: AliceHandoffReceipt;
 }) {
   const database = params.database || prisma;
   const now = params.now || new Date();
+  const receipt = params.handoffReceipt;
   return database.$transaction(async (tx) => {
     const updated = await tx.aliceAutonomousTurn.updateMany({
       where: { id: params.turn.id, instanceId: ALICE_AUTONOMY_INSTANCE_ID, claimToken: params.token, status: { in: ["processing", "sending"] } },
-      data: { status: params.status, completedAt: now, messagesJson: params.status === "uncertain" ? undefined : Prisma.JsonNull, claimToken: null, error: params.reason },
+      data: { status: params.status, completedAt: now, messagesJson: params.status === "uncertain" ? undefined : Prisma.JsonNull, claimToken: null, error: params.reason,
+        ...(receipt && { firstSentAt: receipt.sentAt, nextMessageIndex: 1, providerMessageIds: [receipt.messageId] }) },
     });
     const recoverableScheduleOffer = params.reason === "schedule_option_expired_or_invalid";
     if (updated.count && aliceAutonomyRequiresHumanOwnership(params.status, params.reason) && !recoverableScheduleOffer) {
       await tx.whatsAppConversation.updateMany({
         where: { id: params.turn.conversationId, instanceId: ALICE_AUTONOMY_INSTANCE_ID, aiMode: "agent" },
-        data: { aiMode: "manual", aiModeUpdatedAt: now, aiModeUpdatedBy: "alice-handoff" },
+        data: { aiMode: "manual", aiModeUpdatedAt: now, aiModeUpdatedBy: "alice-handoff", ...(receipt && { lastOutboundAt: receipt.sentAt }) },
       });
       await tx.aliceAutonomousTurn.updateMany({
         where: { conversationId: params.turn.conversationId, id: { not: params.turn.id }, status: "queued" },

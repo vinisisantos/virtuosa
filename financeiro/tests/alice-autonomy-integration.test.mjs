@@ -353,6 +353,28 @@ test("saída rejeitada pelas guardas permite uma retomada manual da mesma fonte 
   } finally { await pg.close(); }
 });
 
+test("relato ambíguo sobre gravidez recebe esclarecimento neutro e continua com revisão humana", async () => {
+  const f = await runnerFixture(claimAliceAutonomousTurn);
+  try {
+    const load = f.deps.loadContext;
+    f.deps.loadContext = async (...args) => {
+      const context = await load(...args);
+      const source = { ...context.source, fromMe: false, type: "text", body: "Tenho gordura localizada por causa da minha gravidez, e meu abdômen ficou com flacidez" };
+      return { ...context, source, messages: [source], prompt: { UNIDADE: "SBC" }, handoffReason: "clinical_safety" };
+    };
+    f.deps.schedule = async () => assert.fail("não pode agendar");
+    assert.equal(await processAliceAutonomousTurn(f.claim, {}, f.deps), "needs_human");
+    assert.equal(f.state.generations, 0);
+    assert.equal(f.state.sends.length, 1);
+    assert.match(f.state.sends[0], /gestação anterior|está grávida ou amamentando/u);
+    assert.doesNotMatch(f.state.sends[0], /indicado|seguro|agend|ansi/u);
+    assert.equal(f.state.handoffs.length, 1);
+    assert.equal((await f.readChat()).aiMode, "manual");
+    assert.equal((await f.readTurn()).error, "clinical_safety");
+    assert.equal((await f.readTurn()).providerMessageIds.length, 1);
+  } finally { await f.pg.close(); }
+});
+
 test("Alice responde a vigência e a marca da Pink Friday sem propor agendamento ou chamar o modelo", async () => {
   const f = await runnerFixture(claimAliceAutonomousTurn);
   try {

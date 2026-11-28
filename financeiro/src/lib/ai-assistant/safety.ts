@@ -31,6 +31,14 @@ function normalizeForSafety(value: string) {
   return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
 }
 
+export const SBC_PREGNANCY_CONTEXT_QUESTION = "Entendi, obrigada por me contar. Você se refere a uma gestação anterior ou está grávida ou amamentando atualmente? A equipe vai acompanhar seu atendimento para te orientar.";
+
+export function hasUnclearPregnancyReference(text: string) {
+  const body = normalizeForSafety(text);
+  const reference = /\b(?:por causa da|desde a|depois da) (?:minha )?gravidez\b(?!\s+(?:atual|de agora|em curso)\b)/u;
+  return reference.test(body) && !classifyAliceHandoff({ unit: "SBC", incomingMessages: [body.replace(reference, " ")] });
+}
+
 export function classifyAliceHandoff(params: {
   unit: AliceUnit;
   campaignName?: string | null;
