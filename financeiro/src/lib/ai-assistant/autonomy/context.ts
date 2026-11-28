@@ -27,7 +27,7 @@ async function loadLegacyAliceContext(turn: AliceAutonomousTurn, database = pris
     || conversation.instance.status !== "connected" || conversation.commercialHolds.length) return null;
   const rows = (await database.whatsAppMessage.findMany({
     where: { conversationId: turn.conversationId, status: { not: "deleted" } },
-    select: { id: true, messageId: true, body: true, type: true, fromMe: true, timestamp: true, createdAt: true, status: true,
+    select: { id: true, messageId: true, quotedMessageId: true, body: true, type: true, fromMe: true, timestamp: true, createdAt: true, status: true,
       respondedByName: true, respondedBy: true },
     orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30,
   })).reverse();

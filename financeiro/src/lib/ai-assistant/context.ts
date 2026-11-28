@@ -12,6 +12,8 @@ import { buildSbcEvaluationOptions } from "@/lib/ai-assistant/sbc-scheduling-pol
 
 type ContextMessage = {
   id: string;
+  messageId: string;
+  quotedMessageId: string | null;
   body: string;
   fromMe: boolean;
   timestamp: Date;
@@ -72,7 +74,8 @@ export async function loadAliceSuggestionContext(params: {
       status: { not: "deleted" },
       body: { not: "" },
     },
-    select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true, respondedBy: true },
+    select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true, respondedBy: true,
+      messageId: true, quotedMessageId: true },
     orderBy: [{ timestamp: "desc" }, { id: "desc" }],
     take: 12,
   })).reverse() as ContextMessage[];
@@ -92,7 +95,8 @@ export async function loadAliceSuggestionContext(params: {
         status: { not: "deleted" },
         body: { not: "" },
       },
-      select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true, respondedBy: true },
+      select: { id: true, body: true, fromMe: true, timestamp: true, createdAt: true, status: true, respondedByName: true, respondedBy: true,
+        messageId: true, quotedMessageId: true },
     }) as ContextMessage | null
     : null;
   if (params.targetMessageId && !targetMessage) {

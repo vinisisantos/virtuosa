@@ -129,6 +129,23 @@ test('oferta legítima com todos os horários de sábado continua reconhecível'
 });
 
 const aliceMessage = (id, body) => ({ ...message(id, body, true), respondedByName: 'Alice', respondedBy: null });
+
+test('aceite da oferta única sobrevive ao agradecimento e à citação da oferta original', () => {
+  const clock = new Date('2026-11-28T18:31:00Z');
+  const timely = (item) => ({ ...item, timestamp: new Date('2026-11-28T18:13:30Z') });
+  const offered = { ...timely(aliceMessage('offer', 'Quinta-feira, 03/12/2026 às 14h está ótimo! 😊\n\nA especialista orienta você na avaliação.\n\nPosso confirmar sua avaliação para 03/12 às 14h?')), messageId: 'provider-offer' };
+  const ok = timely(message('ok', 'Ok', false));
+  const thanks = timely(message('thanks', 'Obgda', false));
+  const clarification = timely(aliceMessage('clarification', SBC_BOOKING_CHOICE_CLARIFICATION));
+  const accepted = { ...timely(message('accept', 'Pode ser esse hr', false)), quotedMessageId: 'provider-offer' };
+  const choose = (messages) => selectSbcSchedulingExchange(messages, clock, { allowDirectRequest: true })?.slot ?? null;
+  assert.equal(choose([offered, ok, thanks]), '2026-12-03T14:00');
+  assert.equal(choose([offered, ok, thanks, clarification, accepted]), '2026-12-03T14:00');
+  assert.equal(choose([offered, clarification, { ...accepted, quotedMessageId: 'old-or-other-offer' }]), null);
+  assert.equal(choose([offered, { ...accepted, body: 'Pode ser esse hr, se eu sair cedo' }]), null);
+  const multiple = { ...offered, body: 'Quinta-feira, 03/12/2026, temos horários às 14h ou 16h. Qual prefere?' };
+  assert.equal(choose([multiple, accepted]), null);
+});
 test('Carol conserva oferta após pergunta de fotos, aceita 10h e mantém somente dúvidas não cobertas pela confirmação', () => {
   const offered = aliceMessage('offer', 'Para sábado, 14/11/2026, tenho 8h, 8h30, 9h, 9h30, 10h, 10h30, 11h, 11h30, 12h ou 12h30. Qual prefere?');
   const followup = aliceMessage('followup', 'Fotos a equipe pode enviar. Qual horário do sábado funciona melhor?');

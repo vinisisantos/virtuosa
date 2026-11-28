@@ -8,7 +8,7 @@ export const evaluationTemporalReference = /\b\d{1,2}(?:\/\d{1,2}|h(?:\d{2})?|:\
 // Resposta curta a uma oferta, como "11" ou "ss, sexta 11"; o horário só vale se coincidir com a oferta.
 const bareHourSelection = /^(?:(?:ss|sim|ok|pode ser|pode)[,\s]+)?(?:(?:(?:na|no)\s+)?(?:segunda|terca|quarta|quinta|sexta|sabado)(?: ?feira)?[,\s]+)?(?:(?:as|a)\s+)?\d{1,2}$/u;
 const blocker = /\b(?:nao|nunca|talvez|caso|se|depend\w*|preciso|pensar|espera|aguard\w*|deixa|desisti|cancel\w*|mudei|retrata\w*|te aviso|eu aviso|vou ver|vou confirmar|depois (?:eu )?confirmo|outro horario|outro dia)\b/u;
-const greeting = /^(?:oi|ola|bom dia|boa tarde|boa noite|tudo bem|obrigad[ao]|obg)$/u;
+const greeting = /^(?:oi|ola|bom dia|boa tarde|boa noite|tudo bem|obrigad[ao]|obg(?:d[ao]?)?)$/u;
 const costQuestion = /^(?:tem (?:algum )?custo(?: (?:a|na|para a|da) avaliacao)?|a avaliacao (?:tem (?:algum )?custo|e (?:gratuita|paga))|quanto (?:custa|e) a avaliacao)$/u;
 const addressQuestion = /^(?:(?:qual (?:e )?(?:o )?|(?:me )?(?:manda|mande|envia|envie|pode mandar|pode enviar) (?:o )?)(?:endereco|localizacao)(?: (?:da clinica|pra mim|para mim|por favor))*|onde (?:fica|e) (?:a clinica|a virtuosa|o endereco))$/u;
 const generalFear = /^(?:(?:eu )?(?:tenho|morro de|estou com|to com) (?:muito )?(?:medo|receio)(?: (?:de|da|do|das|dos|desse|dessa) (?:agulhas?|injecao|dor|doer|procedimento|tratamento|resultado)(?: demais)?)?|(?:mas )?doi(?: muito)?|e doloroso)$/u;

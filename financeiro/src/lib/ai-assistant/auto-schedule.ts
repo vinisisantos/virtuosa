@@ -21,7 +21,7 @@ import { AI_ASSISTANT_CONFIG_KEY, parseAiAssistantConfig } from "@/lib/ai-assist
 import { projectAliceAudioHistory } from "@/lib/alice/audio/history";
 
 type RecentMessage = { id: string; body: string; status: string; fromMe: boolean; timestamp: Date; createdAt: Date;
-  type?: string; respondedByName?: string | null; respondedBy?: string | null };
+  type?: string; respondedByName?: string | null; respondedBy?: string | null; messageId?: string; quotedMessageId?: string | null };
 export type AliceAutoScheduleResult =
   | { status: "not_applicable" }
   | { status: "choice_required"; reason: string }
@@ -181,7 +181,7 @@ export async function tryAliceAutoSchedule(params: {
     const messages = await tx.whatsAppMessage.findMany({
       where: { conversationId: params.conversationId, status: { not: "deleted" } },
       select: { id: true, body: true, type: true, status: true, fromMe: true, timestamp: true, createdAt: true,
-        respondedByName: true, respondedBy: true },
+        respondedByName: true, respondedBy: true, messageId: true, quotedMessageId: true },
       orderBy: [{ timestamp: "desc" }, { id: "desc" }], take: 30,
     });
     const currentMessages = autonomy ? await projectAliceAudioHistory(messages.reverse(), params.conversationId, params.instanceId, tx) : messages.reverse();
@@ -200,6 +200,7 @@ export async function tryAliceAutoSchedule(params: {
       || [currentExchange.offer, ...currentExchange.replies].some((message, index) => {
         const original = [offer, ...replies][index];
         return message.id !== original.id || message.body !== original.body
+          || (message.quotedMessageId || null) !== (original.quotedMessageId || null)
           || message.respondedByName !== original.respondedByName || message.respondedBy !== original.respondedBy
           || message.timestamp <= activatedAt || message.createdAt <= activatedAt;
       })) return null;

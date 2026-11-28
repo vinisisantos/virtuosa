@@ -99,7 +99,7 @@ export async function database({ memory = false } = {}) {
     CREATE TABLE "WhatsAppMessage" (
       "id" TEXT PRIMARY KEY,
       "conversationId" TEXT NOT NULL REFERENCES "WhatsAppConversation"("id") ON DELETE CASCADE,
-      "messageId" TEXT NOT NULL, "fromMe" BOOLEAN NOT NULL DEFAULT FALSE,
+      "messageId" TEXT NOT NULL, "quotedMessageId" TEXT, "fromMe" BOOLEAN NOT NULL DEFAULT FALSE,
       "timestamp" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "status" TEXT NOT NULL DEFAULT 'received', "body" TEXT NOT NULL DEFAULT 'Olá',

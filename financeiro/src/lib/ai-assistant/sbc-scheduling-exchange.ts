@@ -6,7 +6,8 @@ import { aliceAutonomyResponseClaimsBooking } from '#lib/ai-assistant/autonomy/p
 import { evaluationRequestedPeriod } from '#lib/ai-assistant/evaluation-offer-policy';
 
 type Message = { id: string; body: string; fromMe: boolean; status: string; type?: string; audioTranscribed?: boolean;
-  respondedBy?: string | null; respondedByName?: string | null; timestamp?: Date; createdAt?: Date };
+  respondedBy?: string | null; respondedByName?: string | null; timestamp?: Date; createdAt?: Date;
+  messageId?: string; quotedMessageId?: string | null };
 const normalize = (text: string) => text.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
   .replace(/[^\p{L}\p{N}\s]/gu, '').replace(/\s+/gu, ' ').trim();
 
@@ -81,6 +82,7 @@ function selectDirectRequestExchange<T extends Message>(messages: readonly T[], 
   const permitted = buildSbcEvaluationOptions(now);
   const dateKeys = [...new Set(permitted.map((slot) => slot.slice(0, 10)))];
   const dateOffer = isSbcBookingChoiceClarification(lastTeam?.body) ? offered?.offer : lastTeam;
+  if (replies.some((message) => message.quotedMessageId && message.quotedMessageId !== dateOffer?.messageId)) return null;
   const dates = dateOffer && authoredByAlice(dateOffer) === true && !offerExpired(dateOffer, reply, now)
     && ['sent', 'delivered', 'read', 'played'].includes(dateOffer.status) && dateAndTime(dateOffer.body)
     && !withdrewOffer(dateOffer.body) && !aliceAutonomyResponseClaimsBooking([dateOffer.body])
@@ -130,7 +132,9 @@ function selectOfferedExchange<T extends Message>(messages: readonly T[], now: D
   const parsed = replies.map((message) => ({ message, segments: splitEvaluationReply(message.body) }));
   const selectionBody = parsed.flatMap(({ segments }) => segments.selections).join(' ');
   if (!selectionBody && !replies.some((message) => /\b(?:sim|pode|ok|certo|combinado|confirmo|fechado|prefiro|quero|primeiro horario|segunda|terca|quarta|quinta|sexta|sabado)\b|\b\d/u.test(normalize(message.body)))) return null;
-  const slot = hasUnsupportedContent || parsed.some(({ segments }) => segments.blocked) ? null
+  const conflictingQuote = parsed.some(({ message, segments }) => segments.selections.length
+    && message.quotedMessageId && message.quotedMessageId !== offer.messageId);
+  const slot = hasUnsupportedContent || conflictingQuote || parsed.some(({ segments }) => segments.blocked) ? null
     : deriveSbcEvaluationChoice({ offer, reply: { ...reply, body: selectionBody }, now });
   // Escolher um dia ou recusar um período pede opções, não revisão de uma reserva.
   const currentText = recent.slice(lastTeamIndex + 1).map((message) => message.body).join(' ');
